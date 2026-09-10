@@ -38,6 +38,7 @@
 | Redis / 消息队列 | MVP 用单进程 Worker 轮询 `analysis_jobs` 即可，引入中间件徒增运维面 | 单进程轮询的吞吐/延迟成为瓶颈，或需要多 Worker 并发消费 | [技术选型](技术选型-MVP-20260910.md)、[../AGENTS.md](../AGENTS.md) |
 | LLM 层启用（`packages/llm`） | 规则内核先做到可复现、可解释、带版本；LLM 输出不稳定，必须经结构化校验，过早接入会污染可复现性 | P1：规则内核在标注集上稳定后，确需自然语言摘要 / 面试题润色时 | [技术选型](技术选型-MVP-20260910.md)、[../AGENTS.md](../AGENTS.md) |
 | 账号体系 / 本人认领头表（accounts、claim、OAuth） | M1 先做"用户名 → 画像"匿名分析 + waitlist；账号与认领形态取决于决策 #1/#6 | 决策 #1 拍板走 C 授权主脊、需要本人 OAuth 认领与权威分享时（P1） | [待拍板决策清单 #1/#6](待拍板决策清单-20260910.md) |
+| Postgres 方言适配（`packages/storage` 双轨） | MVP 持久化层已用 SQLite 跑通迁移/仓储机制（本地/实验合法场景）；在线服务主轨是 Postgres，需补 pg 方言 schema/client、`COMMENT ON` 迁移与 CI service | W3 服务化（api/worker 上生产）前 | [技术选型 6.5](技术选型-MVP-20260910.md)、[../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
 
 ### 界面与国际化线
 

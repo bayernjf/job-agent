@@ -37,14 +37,22 @@
 
 - **尽量幂等**：`CREATE TABLE IF NOT EXISTS`、`ADD COLUMN IF NOT EXISTS`、`DROP ... IF EXISTS`，可重复执行不报错。
 - 标识符一律 `snake_case`；数据库字段 `snake_case`，TypeScript 字段 `camelCase`，两者转换只允许出现在数据访问层。
-- **每张表、每列都要 `COMMENT ON`** 说明业务含义（枚举值在注释里写清取值）。
+- **每张表、每列都要说明业务含义**（枚举值在注释里写清取值）：Postgres 方言用 `COMMENT ON`；**SQLite 方言（MVP 本地/实验）无 `COMMENT ON`，改为在列定义上方以内联注释 `-- <列名>: <含义>` 说明**。
 - 迁移**只追加、不重写**：已上线/已合入的迁移不改写、不删除；需要改结构就新增一个迁移。
 - 没有安全逆向操作的数据迁移，必须在 `-- Note:` 显式声明，回滚脚本会拒绝无 `down` 的回滚。
 
 ## 5. 应用 / 回滚 / 校验（脚手架期 W1 落地）
 
 - **向前应用**：迁移器按 `NNN` 顺序应用，记录已应用版本。
-- **回滚一步**：`scripts/migrate-down`（经持久化层的 `rollbackLatestMigration`；最新迁移无安全 down 时拒绝执行）。
+- **回滚一步**：`scripts/migrate-down`（经持久化层的 `rollbackLatestMigration`；最新迁移无安全 down 时拒绝执行）。迁移文件末尾可携带 down 脚本段（放在 up 内容之后）：
+
+  ```sql
+  -- DOWN BEGIN
+  DROP TABLE IF EXISTS xxx;
+  -- DOWN END
+  ```
+
+  迁移器只执行段外部分作为 up；有 down 段的迁移可回滚，无 down 段的迁移视为不可回滚、`migrate-down` 拒绝执行。
 - **规范校验**：`bash tools/check-migrations.sh`（只读，不改动文件；作为 CI 门禁）。
 - **迁移测试**：`migrations.test.ts` 守护所有迁移能在干净库上顺序加载、编号连续、关键表/列存在。
 
