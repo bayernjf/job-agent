@@ -26,7 +26,7 @@ JobAgent 当前状态，截至 2026-09-10。
 ## 当前状态
 
 - 阶段：**M1·W1 脚手架已完成**（pnpm workspaces 骨架 + `packages/shared` 契约，typecheck/test/build 全绿），下一步是持久化抽象层与首个迁移。
-- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；M1·W1 脚手架提交（`fa0c637`…`a416f41`）已 push 至 `origin/dev`，截至本提交仅 `e7730fe`（CI gitleaks 修复）起的本地提交未 push。
+- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；截至 `f0de749`，W1 脚手架/契约/CI 修复均已 push，本地 `dev` 与 `origin/dev` 一致、无未推送提交。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 → 系统层）。
 
