@@ -25,10 +25,10 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 当前状态
 
-- 阶段：**产品定义完成、工程代码未起步**的 MVP（M1）准备期。MVP 只做 L0/L1（纯 API、不 clone）的单账号可信能力画像。
-- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`，初始提交含 5 份产品文档；工程约定文档（README/AGENTS/CONTRIBUTING/handoff/迁移规范/PR 流程等）已提交并经 PR #1 合入 `main`。
+- 阶段：**M1·W1 脚手架已完成**（pnpm workspaces 骨架 + `packages/shared` 契约，typecheck/test/build 全绿），下一步是持久化抽象层与首个迁移。
+- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；M1·W1 脚手架提交（`fa0c637`…`a416f41`）已 push 至 `origin/dev`，截至本提交仅 `e7730fe`（CI gitleaks 修复）起的本地提交未 push。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
-- 尚无任何代码、`package.json`、CI。
+- 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 → 系统层）。
 
 ## 活跃待办（下一步）
 
@@ -49,11 +49,11 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 已知限制 / 待核实
 
-- #1–#4 启动前决策仍未拍板；不得把"助手建议"当作"已决策"实现。
+- 启动前决策 #1–#8 已于 2026-09-10 拍板；#9–#14 保持延后（见待拍板决策清单），不得把"助手建议"当作"已决策"实现。
 - GitHub API 限额为 2026-09-10 官方文档核实值，开工前需复核非企业 GitHub App 精确额度（来源见技术选型文档）。
 - 托管价格、LLM 厂商/单价待当期 spike；本机访问 GitHub 直连不稳定（全局代理 127.0.0.1:7897 常未开启，需临时直连重试，勿改全局配置）。
 
 ## Git 状态
 
-- 当前工作分支：`dev`（track `origin/dev`，与 `main` 均在 `48af58f`）。
-- 工作区：干净。文档与约定改动已按 PULL_REQUEST_WORKFLOW 经 PR #1 合入 `main`。
+- 当前工作分支：`dev`（track `origin/dev`）；M1·W1 脚手架提交已推送，本地领先提交以 `git log origin/dev..dev` 为准。
+- 不直接在 `main`/`dev` 上开发新功能；后续工作从最新 `dev` 切 `feature/*` 分支并经 PR 合入（见 PULL_REQUEST_WORKFLOW.md）。
