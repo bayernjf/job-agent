@@ -31,16 +31,16 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 活跃待办（下一步）
 
-> 启动前决策 #1–#8 已于 2026-09-10 拍板（采纳助手推荐组合，见决策清单）；#9–#14 延后。M1 启动条件已满足。
+> 启动前决策 #1–#8 已于 2026-09-10 拍板；M1·W1 骨架与 `packages/shared` 契约已完成（见最近变更）。
 
-1. M1·W1：搭 **pnpm workspaces** 骨架（`packages/*` + `apps/*`、`.nvmrc`、tsconfig.base、husky、CI 三件套），把 PRD 第 8 章落成 `packages/shared` 的 TS 类型 + Zod。
-2. M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。
-3. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
-4. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
-5. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
+1. M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。
+2. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
+3. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
+4. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
 
 ## 最近变更
 
+- 2026-09-10：M1·W1 脚手架落地——pnpm workspaces 根（package.json / tsconfig.base / .gitignore / husky pre-commit / CI 三件套）、`packages/shared` 落成 PRD 第 8 章 Zod 契约（7 测试通过）、7 个占位包；typecheck/test/build 全绿。启动前决策 #1–#8 拍板（采纳助手推荐组合）。
 - 2026-09-10：工程约定文档提交并合入 `main`（PR #1），`dev` 与 `main` 同步；落地页 `job-agent-landing` 完成 Cloudflare Pages 部署上线（https://job-agent.bayjf.com，含构建时预览截图管线）。
 - 2026-09-10：以 `agent-world` 为基准对齐工程惯例——文档分层（handoff 索引 / docs 全文 / deferred 带触发条件 / docs 场景导航）、pnpm workspace + `.nvmrc`、数据访问收敛单一持久化层、`db/migrations` 迁移规范与 `tools/check-migrations.sh`、新增 CONTRIBUTING；5 份产品文档移入 `docs/`，移除 docs/superpowers。
 - 2026-09-10：参照 tab-manager 建立 README/AGENTS/CLAUDE/PR 流程/commit 规范（后被 agent-world 对齐版取代/增强）。
