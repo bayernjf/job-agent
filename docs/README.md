@@ -1,0 +1,34 @@
+# JobAgent 文档地图
+
+> **场景导航 + 文档状态约定**。完整文档清单（每个文档一句话定位）的单一事实源是 [../handoff.md](../handoff.md) 的「Project documents」区——本文档不重复维护清单，只回答「我想做某事该看哪个」。与 `agent-world` 的文档分层惯例对齐。
+
+## 怎么读这个仓库（按场景）
+
+| 我想… | 看 |
+| --- | --- |
+| 知道现在做到哪、接下来做什么 | [../handoff.md](../handoff.md) ★ 交接必读 |
+| 理解产品初衷、要解决的根本问题 | [产品构想-以GitHub为桥梁的招聘系统.md](产品构想-以GitHub为桥梁的招聘系统.md) |
+| 看产品范围、功能 F1–F9、画像契约、指标与风险 | [PRD.md](PRD.md) ★ |
+| 回看"为什么从分析 GitHub 切入、MVP 如何收敛"的讨论过程 | [讨论记录-01-切入口与MVP收敛-20260910.md](讨论记录-01-切入口与MVP收敛-20260910.md) |
+| 看技术栈选型、运行架构、目录规划、M1 排期与 Spike | [技术选型-MVP-20260910.md](技术选型-MVP-20260910.md) |
+| 逐条看待拍板事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#4 为启动前阻塞） |
+| 看哪些事被刻意缓做、什么条件下重启 | [deferred-items.md](deferred-items.md) |
+| 接手写代码 / 了解工程硬约束 | [../AGENTS.md](../AGENTS.md) + [../CONTRIBUTING.md](../CONTRIBUTING.md) |
+| 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
+| 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
+| 快速了解项目门面与技术栈 | [../README.md](../README.md) |
+
+## 文档分层约定（重要）
+
+- **[../handoff.md](../handoff.md)**：管"正在做"——当前状态、活跃待办、最近变更、以及全部文档的索引（清单的单一事实源）。接手先读它。
+- **`docs/`（本目录）**：管"设计与结论全文"——一个主题一份文档，不重复记实施进度。
+- **[deferred-items.md](deferred-items.md)**：管"挂着没做"——每条缓做事项必须写明**触发条件**；触发后移回 handoff 待办并标注重启日期。
+- **新增任何文档后**：在 handoff 的「Project documents」登记一行（含一句话定位），并在本导航表补一行场景入口。
+
+## 文档状态约定
+
+- **现行**：当前事实，以此为准；事实变化直接更新。
+- **历史**：决策/讨论过程记录，结论已体现在现行文档；要改结论应改现行文档而非历史记录（如「讨论记录」「产品构想」）。
+- **归档**：冻结只读，不再追加。
+- **实施进度**：统一记在 [../handoff.md](../handoff.md)，设计文档只写设计，不重复记流水进度。
+- **完整清单**：所有文档（含一句话定位）见 handoff「Project documents」区——新增文档先在那里登记。
