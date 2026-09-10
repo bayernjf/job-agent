@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks scans a base..head commit range and needs the parent commits;
+          # a shallow clone (default depth 1) makes that range unresolvable.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
