@@ -11,12 +11,14 @@
 | 看产品范围、功能 F1–F9、画像契约、指标与风险 | [PRD.md](PRD.md) ★ |
 | 回看"为什么从分析 GitHub 切入、MVP 如何收敛"的讨论过程 | [讨论记录-01-切入口与MVP收敛-20260910.md](讨论记录-01-切入口与MVP收敛-20260910.md) |
 | 看技术栈选型、运行架构、目录规划、M1 排期与 Spike | [技术选型-MVP-20260910.md](技术选型-MVP-20260910.md) |
-| 逐条看待拍板事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#4 为启动前阻塞） |
+| 逐条看待拍板事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已拍板，#9–#14 延后） |
 | 看哪些事被刻意缓做、什么条件下重启 | [deferred-items.md](deferred-items.md) |
 | 接手写代码 / 了解工程硬约束 | [../AGENTS.md](../AGENTS.md) + [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
 | 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
 | 看 AI 求职赛道的竞品认知、机会与跟进清单 | [市场调研-AI求职赛道-20260910.md](市场调研-AI求职赛道-20260910.md) |
+| 写用户可见文案 / 加双语 / 处理语言与分享链接 | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
+| 定颜色、间距、圆角、字号 / 改主题 | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
 | 快速了解项目门面与技术栈 | [../README.md](../README.md) |
 
 ## 文档分层约定（重要）
