@@ -32,6 +32,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 job-agent/
 ├─ packages/
 │  ├─ shared/         # AbilityProfile/EvidenceItem 类型 + Zod 契约（单一事实源）
+│  ├─ storage/        # 持久化抽象层：Drizzle 表定义 + 迁移器/回滚 + profiles 仓储（业务模块禁裸 SQL；MVP 方言 SQLite）
 │  ├─ github-source/  # Octokit、GraphQL 查询、L0/L1 采集、限频/缓存（首个 EvidenceSource）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
 │  └─ llm/            # LLM 端口 + 结构化输出校验（P1 才启用，见 deferred）
@@ -57,6 +58,7 @@ pnpm -r test                 # 全部就近单测（Vitest）
 pnpm -r build                # 构建各 workspace
 pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm --filter <pkg> exec vitest run path/to/file.test.ts  # 跑单个测试文件
+pnpm migrate:up / migrate:down / migrate:status          # 应用/回滚一步/查看迁移（默认 data/job-agent.db）
 bash tools/check-migrations.sh   # 只读校验迁移命名/编号/文件头
 ```
 
