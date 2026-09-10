@@ -31,12 +31,13 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 活跃待办（下一步）
 
-1. **等拍板 #1–#4**（启动前阻塞）：第一界面 B/C、真实性呈现形态、MVP 深度、首个市场；见决策清单。
-2. M1·W1：搭 **pnpm workspaces** 骨架（`packages/*` + `apps/*`、`.nvmrc`、tsconfig.base、husky、CI 三件套），把 PRD 第 8 章落成 `packages/shared` 的 TS 类型 + Zod。
-3. M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。
-4. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
-5. M1·W2–W3：用 CLI 跑决策 #8 的 20–50 标注账号实验，校准真实性信号，**通过后才进 P2 系统层**。
-6. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
+> 启动前决策 #1–#8 已于 2026-09-10 拍板（采纳助手推荐组合，见决策清单）；#9–#14 延后。M1 启动条件已满足。
+
+1. M1·W1：搭 **pnpm workspaces** 骨架（`packages/*` + `apps/*`、`.nvmrc`、tsconfig.base、husky、CI 三件套），把 PRD 第 8 章落成 `packages/shared` 的 TS 类型 + Zod。
+2. M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。
+3. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
+4. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
+5. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
 
 ## 最近变更
 
