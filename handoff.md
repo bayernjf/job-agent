@@ -19,24 +19,24 @@ JobAgent 当前状态，截至 2026-09-10。
 - [docs/讨论记录-01-切入口与MVP收敛-20260910.md](docs/讨论记录-01-切入口与MVP收敛-20260910.md) — 切入口、护城河、L0–L4 分层、MVP 收敛过程（历史）
 - [docs/PRD.md](docs/PRD.md) — 产品范围、F1–F9、AbilityProfile/EvidenceItem 契约、指标、风险 ★
 - [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) — 技术栈选型、运行架构、目录规划、M1 排期与 Spike ★
-- [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) — AI 求职赛道头部玩家匿名调研：市场格局、功能全景、增长打法、信任风险与 P0/P1/P2 跟进建议（现行）
-- [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) — #1–#14，#1–#8 已拍板（#4 当日修订为海内外同步），#9–#14 延后 ★
+- [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) — AI 求职赛道市场调研：市场格局、功能全景、代表性产品画像、信任风险与 P0/P1/P2 跟进建议（现行）
+- [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) — #1–#14；#1–#8 已拍板（#4 当日修订为海内外同步），#9–#14 延后 ★
 - [docs/deferred-items.md](docs/deferred-items.md) — 缓做/低优事项登记表（挂起项 + 触发条件的单一事实源）
 - [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) — i18n 设计：自研 `t()` + 中英 JSON 字典、key 对齐守护、分享链接语言固定、不翻译边界（现行）
 - [docs/design-tokens-20260910.md](docs/design-tokens-20260910.md) — 设计 token 设计：`--ja-*` 三层变量体系、组件禁 hex、与落地页 `--lui-*` 互不约束（现行）
 
 ## 当前状态
 
-- 阶段：**M1·W1 脚手架已完成**（pnpm workspaces 骨架 + `packages/shared` 契约，typecheck/test/build 全绿），下一步是持久化抽象层与首个迁移。
-- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；截至 `f0de749`，W1 脚手架/契约/CI 修复均已 push，本地 `dev` 与 `origin/dev` 一致、无未推送提交。
+- 阶段：**M1·W1 已完成**（pnpm workspaces 骨架 + `packages/shared` 契约 + `packages/storage` 持久化层 + `db/migrations/001`，typecheck/test/build/check-migrations 全绿），下一步是 `github-source` + `analyzer-core` + `cli`。
+- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架与 CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场等均已 push 至 `origin/dev`，本地 `dev` 领先 3 个未推送提交（持久化层 `73f5172`、规范文档 `86f6d86`、本 handoff 更新 `d10fa4a`）。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 → 系统层）。
 
 ## 活跃待办（下一步）
 
-> 启动前决策 #1–#8 已于 2026-09-10 拍板；M1·W1 骨架与 `packages/shared` 契约已完成（见最近变更）。
+> 启动前决策 #1–#8 已于 2026-09-10 拍板；M1·W1（骨架、`packages/shared` 契约、持久化层与首个迁移）已完成（见最近变更）。
 
-1. M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。
+1. ~~M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。~~ ✅ 已完成（2026-09-11）
 2. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
 3. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
 4. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
@@ -46,6 +46,8 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 最近变更
 
+- 2026-09-11：M1·W1 持久化层落地——`packages/storage`（Drizzle + better-sqlite3：迁移器/回滚、profiles 仓储、CLI `migrate up/down/status`）、`db/migrations/001_create_profiles.sql`（含 down 段）、`scripts/migrate-down`、根 `migrate:*` 命令与 `data/` 忽略；typecheck/test/build/check-migrations 全绿，CLI 冒烟通过。
+- 2026-09-11：市场调研文档定稿并落库（`docs/市场调研-AI求职赛道-20260910.md`，经多轮脱敏：量级口径、去头部点名、删纯商业描述），docs/README 补入口。
 - 2026-09-10：分支策略放宽为「日常改动直接在 `dev` 提交，`main` 仍需 PR」，已同步 AGENTS / PULL_REQUEST_WORKFLOW / CONTRIBUTING / README（细节见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)）。
 - 2026-09-10：新增 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md) 两份设计文档，后续项已登记 [deferred](docs/deferred-items.md)；落地页双语/token 由负责人自行推进，不纳入本仓。
 - 2026-09-10：决策 **#4 修订为"海内外同步"**，PRD 升 v0.2 回灌 #1–#8 决策与市场边界（细节见 [待拍板决策清单](docs/待拍板决策清单-20260910.md) 与 [PRD](docs/PRD.md)）。
