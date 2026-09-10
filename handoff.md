@@ -22,6 +22,8 @@ JobAgent 当前状态，截至 2026-09-10。
 - [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) — AI 求职赛道头部玩家匿名调研：市场格局、功能全景、增长打法、信任风险与 P0/P1/P2 跟进建议（现行）
 - [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) — #1–#14，#1–#8 已拍板（#4 当日修订为海内外同步），#9–#14 延后 ★
 - [docs/deferred-items.md](docs/deferred-items.md) — 缓做/低优事项登记表（挂起项 + 触发条件的单一事实源）
+- [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) — i18n 设计：自研 `t()` + 中英 JSON 字典、key 对齐守护、分享链接语言固定、不翻译边界（现行）
+- [docs/design-tokens-20260910.md](docs/design-tokens-20260910.md) — 设计 token 设计：`--ja-*` 三层变量体系、组件禁 hex、与落地页 `--lui-*` 互不约束（现行）
 
 ## 当前状态
 
@@ -38,11 +40,13 @@ JobAgent 当前状态，截至 2026-09-10。
 2. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
 3. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
 4. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
+5. M1·W4（与第 4 项同批）：报告页落地即执行 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md)——自研 `t()` + 中英字典 + key 对齐测试、`--ja-*` 变量体系；**落地页 `job-agent-landing` 双语与 token 由负责人自行推进，不在本仓范围**。
 
 > **决策 #4 修订（海内外同步）对后续待办的影响**：报告/界面 P0 起中英双语（i18n `t()`、中英 key 对齐）、部署双区域可访问、合规 GDPR + 个保法双线；证据源仍先 GitHub 跑通内核，Gitee 适配器提前到 M1 末/M2 初（第一个并行 EvidenceSource），不进 M1 最早期。
 
 ## 最近变更
 
+- 2026-09-10：新增两份设计文档 —— [i18n](docs/design-i18n-20260910.md)（方案定为自研 `t()` + 中英 JSON 字典 + key 对齐测试，不引框架；分享链接固定语言）与[设计 token](docs/design-tokens-20260910.md)（`--ja-*` 三层变量、组件禁 hex），并在 deferred 登记引 i18n 库 / 双仓 token 统一 / 第三语言等触发条件。落地页双语与 token 由负责人自行推进，不纳入本仓。
 - 2026-09-10：决策 **#4 由"先海外"修订为"海内外同步"**（P0 中英双语、双区域、合规双线；Gitee 提前为 GitHub 内核验证后的首个并行证据源）；PRD 升 v0.2（回灌 #1–#8 决策与市场调研结论、清除过时"待决策"标记、补"不做自动投递/表单填充"边界），同步决策清单/deferred。
 - 2026-09-10：M1·W1 脚手架落地——pnpm workspaces 根（package.json / tsconfig.base / .gitignore / husky pre-commit / CI 三件套）、`packages/shared` 落成 PRD 第 8 章 Zod 契约（7 测试通过）、7 个占位包；typecheck/test/build 全绿。启动前决策 #1–#8 拍板（采纳助手推荐组合）。
 - 2026-09-10：工程约定文档提交并合入 `main`（PR #1），`dev` 与 `main` 同步；落地页 `job-agent-landing` 完成 Cloudflare Pages 部署上线（https://job-agent.bayjf.com，含构建时预览截图管线）。
