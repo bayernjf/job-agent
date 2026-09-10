@@ -12,7 +12,7 @@ AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（
 
 - 仓库目前以产品与工程文档为主，**代码骨架尚未初始化**。
 - MVP（M1）最小闭环：输入 GitHub 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
-- 长期分支：`main`（稳定）、`dev`（日常集成）；不在这两个分支上直接开发，流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
+- 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
 
 ## 文档导航
 
@@ -27,7 +27,7 @@ AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
 | [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md) | 数据库迁移规范（`db/migrations/NNN_*.sql`） |
-| [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md) | feature → dev → main 的强制交付流程 |
+| [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md) | dev 直接提交 + `dev → main` PR 的交付流程 |
 | [git-commit-message.md](git-commit-message.md) | 原子提交与 Conventional Commits 规范 |
 | [handoff.md](handoff.md) | 项目交接主入口（当前状态 / 下一步 / 文档索引） |
 
