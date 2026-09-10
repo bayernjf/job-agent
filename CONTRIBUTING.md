@@ -47,7 +47,7 @@ pnpm --filter <pkg> test  # 只跑某个包的测试
 
 ## 7. 分支与 PR
 
-分支职责、评审与合并流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)：从最新 `dev` 切 `feature/*`，PR 先合入 `dev`、再经 PR 合入 `main`，不直接在 `main`/`dev` 提交。
+分支职责、评审与合并流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)：**日常改动直接在 `dev` 提交并 push（push 前先 `pull --rebase`）**；`main` 只能经 `dev → main` 的真实 PR 合入，永不直接提交；临时分支为可选项。
 
 **PR 合并前三件套必须全绿**：`pnpm -r typecheck`、`pnpm -r build`、`pnpm -r test`（CI 建立后以 PR 上 Actions 为准，含依赖审计与密钥扫描）。
 

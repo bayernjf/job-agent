@@ -46,6 +46,7 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 最近变更
 
+- 2026-09-10：**分支策略放宽（单人开发）**——日常改动直接在 `dev` 提交并 push（push 前 `pull --rebase` + 本地三件套），`main` 仍只能经 `dev → main` 真实 PR 合入；临时分支降为可选项。已同步 AGENTS / PULL_REQUEST_WORKFLOW / CONTRIBUTING / README。
 - 2026-09-10：新增两份设计文档 —— [i18n](docs/design-i18n-20260910.md)（方案定为自研 `t()` + 中英 JSON 字典 + key 对齐测试，不引框架；分享链接固定语言）与[设计 token](docs/design-tokens-20260910.md)（`--ja-*` 三层变量、组件禁 hex），并在 deferred 登记引 i18n 库 / 双仓 token 统一 / 第三语言等触发条件。落地页双语与 token 由负责人自行推进，不纳入本仓。
 - 2026-09-10：决策 **#4 由"先海外"修订为"海内外同步"**（P0 中英双语、双区域、合规双线；Gitee 提前为 GitHub 内核验证后的首个并行证据源）；PRD 升 v0.2（回灌 #1–#8 决策与市场调研结论、清除过时"待决策"标记、补"不做自动投递/表单填充"边界），同步决策清单/deferred。
 - 2026-09-10：M1·W1 脚手架落地——pnpm workspaces 根（package.json / tsconfig.base / .gitignore / husky pre-commit / CI 三件套）、`packages/shared` 落成 PRD 第 8 章 Zod 契约（7 测试通过）、7 个占位包；typecheck/test/build 全绿。启动前决策 #1–#8 拍板（采纳助手推荐组合）。
@@ -62,5 +63,4 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## Git 状态
 
-- 当前工作分支：`dev`（track `origin/dev`）；M1·W1 脚手架提交已推送，本地领先提交以 `git log origin/dev..dev` 为准。
-- 不直接在 `main`/`dev` 上开发新功能；后续工作从最新 `dev` 切 `feature/*` 分支并经 PR 合入（见 PULL_REQUEST_WORKFLOW.md）。
+- 当前工作分支：`dev`（track `origin/dev`）。**2026-09-10 起分支策略放宽**：日常改动直接在 `dev` 提交并 push（push 前 `pull --rebase` + 本地三件套）；`main` 仍只能经 `dev → main` 真实 PR 合入；临时分支仅在需要独立 review / 实验性改动时使用（见 PULL_REQUEST_WORKFLOW.md）。
