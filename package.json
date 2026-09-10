@@ -10,6 +10,9 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "migrate:up": "pnpm --filter @jobagent/storage exec node dist/cli.js migrate up",
+    "migrate:down": "pnpm --filter @jobagent/storage exec node dist/cli.js migrate down",
+    "migrate:status": "pnpm --filter @jobagent/storage exec node dist/cli.js migrate status",
     "check:migrations": "bash tools/check-migrations.sh",
     "prepare": "husky"
   },
