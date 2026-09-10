@@ -26,7 +26,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 
 > 选型理由、备选方案与待核实项见 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)；产品范围以 [docs/PRD.md](docs/PRD.md) 为准；未拍板事项见 [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md)，**不得把"建议"当作"已决策"直接实现**。
 
-## 项目结构（规划，以技术选型文档第 7 章为准）
+## 项目结构（已按技术选型文档第 7 章落地，2026-09-10 脚手架）
 
 ```text
 job-agent/
@@ -46,11 +46,9 @@ job-agent/
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
 ```
 
-> 该结构在脚手架落地前为**规划态**；实际创建后请回写本节，保持与真实目录一致。
+> 结构已于 2026-09-10 脚手架落地：`packages/*` 与 `apps/*` 已建（shared 含完整契约，其余为占位包），根 `package.json`/`tsconfig.base.json`/`.husky`/`.github/workflows/ci.yml` 就绪；后续里程碑按各包注释填充。
 
 ## 常用命令
-
-> 工程骨架初始化后生效；当前仓库尚无 package.json。
 
 ```bash
 pnpm install                 # 安装依赖

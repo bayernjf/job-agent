@@ -1,0 +1,22 @@
+{
+  "name": "job-agent",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "check:migrations": "bash tools/check-migrations.sh",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "husky": "^9.1.7",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  }
+}

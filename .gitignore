@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# test / coverage
+coverage/
+
+# logs
+*.log
+
+# environment variables（密钥绝不入库）
+.env
+.env.*
+.env.*.local
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Astro
+.astro/
+.preview/
+
+# macOS
+.DS_Store
