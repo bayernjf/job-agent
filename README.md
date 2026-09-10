@@ -1,0 +1,63 @@
+# JobAgent
+
+AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前处于**产品定义完成、工程尚未起步**的 MVP 准备阶段。工程惯例与 `agent-world` 对齐。
+
+## 从哪读起
+
+- **接手/了解进度先读 [handoff.md](handoff.md)**（当前状态 + 活跃待办 + 文档索引）。
+- 按场景找文档看 [docs/README.md](docs/README.md)；刻意缓做的事项看 [docs/deferred-items.md](docs/deferred-items.md)。
+- 在本仓库写代码前必读 [AGENTS.md](AGENTS.md)（工程约定单一事实源）；参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 当前阶段（M1 之前）
+
+- 仓库目前以产品与工程文档为主，**代码骨架尚未初始化**。
+- MVP（M1）最小闭环：输入 GitHub 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
+- 长期分支：`main`（稳定）、`dev`（日常集成）；不在这两个分支上直接开发，流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
+
+## 文档导航
+
+| 文档 | 作用 |
+| --- | --- |
+| [docs/PRD.md](docs/PRD.md) | 产品需求：范围、F1–F9、数据契约、指标、风险 |
+| [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) | 技术栈、架构、工程结构与 M1 落地顺序 |
+| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#14，#1–#4 启动前阻塞） |
+| [docs/讨论记录-01-切入口与MVP收敛-20260910.md](docs/讨论记录-01-切入口与MVP收敛-20260910.md) | 关键产品判断的讨论过程与依据 |
+| [docs/产品构想-以GitHub为桥梁的招聘系统.md](docs/产品构想-以GitHub为桥梁的招聘系统.md) | 最初的产品构想与市场背景 |
+| [docs/deferred-items.md](docs/deferred-items.md) | 缓做/低优事项 + 重启触发条件 |
+| [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
+| [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md) | 数据库迁移规范（`db/migrations/NNN_*.sql`） |
+| [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md) | feature → dev → main 的强制交付流程 |
+| [git-commit-message.md](git-commit-message.md) | 原子提交与 Conventional Commits 规范 |
+| [handoff.md](handoff.md) | 项目交接主入口（当前状态 / 下一步 / 文档索引） |
+
+## 技术栈（选定方向，详见技术选型文档）
+
+- 语言/运行时：TypeScript（strict、ESM）+ Node.js（版本以 [.nvmrc](.nvmrc) 为准，`nvm use`）
+- 工程组织：**pnpm workspaces** monorepo（`packages/*` + `apps/*`，不用 npm/yarn）
+- 后端：Hono + Zod；后台分析：独立 Worker
+- 数据：PostgreSQL + Drizzle ORM（**Drizzle 仅在持久化层内部用，所有 DB 访问收敛到单一仓储模块**）；MVP 用数据库任务表，不引入 Redis
+- 迁移：`db/migrations/NNN_verb_snake_case.sql`，规范见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)
+- 采集：官方 Octokit，GraphQL 批量优先；生产用 GitHub App
+- 页面：Astro + React islands（落地页为独立 Astro 工程 `../job-agent-landing`）
+- 测试：Vitest（就近单测）+ Playwright（E2E）
+
+## 开发
+
+> 工程骨架尚未初始化，以下命令为**规划命令**，待 W1 搭建 monorepo 后生效；当前执行会报"缺少 package.json"。
+
+```bash
+pnpm install          # 规划：安装依赖
+pnpm -r typecheck     # 规划：全仓类型检查
+pnpm -r test          # 规划：运行就近 Vitest 单测
+pnpm -r build         # 规划：构建各 workspace
+```
+
+## 当前不可违背的产品/工程规则
+
+- 分析内核（`analyzer-core`）必须是**纯函数、带 analyzerVersion、可复现**，不直接做 I/O。
+- **任何结论必须有证据（EvidenceItem）支撑；证据不足输出 `insufficient_data`，不臆断。**
+- 真实性用"分级 + 证据信号 + 置信度"，**不输出单一"真实度百分比"**。
+- MVP **只走 GitHub API（L0/L1），不 clone、不执行任何仓库代码**。
+- 所有 DB 访问经单一持久化/仓储模块，业务层不写裸 SQL、不感知方言。
+- 所有写入 GitHub 的内容（commit/PR/Issue/Actions 名称）使用英文；本地中文文档与中文汇报不受限。
