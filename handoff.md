@@ -46,6 +46,7 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 最近变更
 
+- 2026-09-10：新增两份设计文档 —— [i18n](docs/design-i18n-20260910.md)（方案定为自研 `t()` + 中英 JSON 字典 + key 对齐测试，不引框架；分享链接固定语言）与[设计 token](docs/design-tokens-20260910.md)（`--ja-*` 三层变量、组件禁 hex），并在 deferred 登记引 i18n 库 / 双仓 token 统一 / 第三语言等触发条件。落地页双语与 token 由负责人自行推进，不纳入本仓。
 - 2026-09-10：决策 **#4 由"先海外"修订为"海内外同步"**（P0 中英双语、双区域、合规双线；Gitee 提前为 GitHub 内核验证后的首个并行证据源）；PRD 升 v0.2（回灌 #1–#8 决策与市场调研结论、清除过时"待决策"标记、补"不做自动投递/表单填充"边界），同步决策清单/deferred。
 - 2026-09-10：M1·W1 脚手架落地——pnpm workspaces 根（package.json / tsconfig.base / .gitignore / husky pre-commit / CI 三件套）、`packages/shared` 落成 PRD 第 8 章 Zod 契约（7 测试通过）、7 个占位包；typecheck/test/build 全绿。启动前决策 #1–#8 拍板（采纳助手推荐组合）。
 - 2026-09-10：工程约定文档提交并合入 `main`（PR #1），`dev` 与 `main` 同步；落地页 `job-agent-landing` 完成 Cloudflare Pages 部署上线（https://job-agent.bayjf.com，含构建时预览截图管线）。
