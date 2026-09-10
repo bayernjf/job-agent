@@ -2,7 +2,7 @@
 
 JobAgent 当前状态，截至 2026-09-10。
 
-> 本文件只保留「项目当前状态 + 活跃任务 + 最近变更 + 文档索引」，是接手（人或 AI agent）的第一入口。
+> 本文件只保留「项目当前状态 + 活跃任务 + 最近变更 + 文档索引」，是接手（人或 AI agent）的第一入口；**只写状态与结论，明细一律放进对应文档并在此给链接，不在本文件展开**。
 > 设计/结论全文放 [docs/](docs/)；缓做事项放 [docs/deferred-items.md](docs/deferred-items.md)；场景化导航见 [docs/README.md](docs/README.md)。
 
 ## Project documents
@@ -40,15 +40,15 @@ JobAgent 当前状态，截至 2026-09-10。
 2. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
 3. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
 4. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
-5. M1·W4（与第 4 项同批）：报告页落地即执行 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md)——自研 `t()` + 中英字典 + key 对齐测试、`--ja-*` 变量体系；**落地页 `job-agent-landing` 双语与 token 由负责人自行推进，不在本仓范围**。
+5. M1·W4（与第 4 项同批）：报告页落地即执行 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md)（落地页不在本仓范围）。
 
-> **决策 #4 修订（海内外同步）对后续待办的影响**：报告/界面 P0 起中英双语（i18n `t()`、中英 key 对齐）、部署双区域可访问、合规 GDPR + 个保法双线；证据源仍先 GitHub 跑通内核，Gitee 适配器提前到 M1 末/M2 初（第一个并行 EvidenceSource），不进 M1 最早期。
+> **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
 
-- 2026-09-10：**分支策略放宽（单人开发）**——日常改动直接在 `dev` 提交并 push（push 前 `pull --rebase` + 本地三件套），`main` 仍只能经 `dev → main` 真实 PR 合入；临时分支降为可选项。已同步 AGENTS / PULL_REQUEST_WORKFLOW / CONTRIBUTING / README。
-- 2026-09-10：新增两份设计文档 —— [i18n](docs/design-i18n-20260910.md)（方案定为自研 `t()` + 中英 JSON 字典 + key 对齐测试，不引框架；分享链接固定语言）与[设计 token](docs/design-tokens-20260910.md)（`--ja-*` 三层变量、组件禁 hex），并在 deferred 登记引 i18n 库 / 双仓 token 统一 / 第三语言等触发条件。落地页双语与 token 由负责人自行推进，不纳入本仓。
-- 2026-09-10：决策 **#4 由"先海外"修订为"海内外同步"**（P0 中英双语、双区域、合规双线；Gitee 提前为 GitHub 内核验证后的首个并行证据源）；PRD 升 v0.2（回灌 #1–#8 决策与市场调研结论、清除过时"待决策"标记、补"不做自动投递/表单填充"边界），同步决策清单/deferred。
+- 2026-09-10：分支策略放宽为「日常改动直接在 `dev` 提交，`main` 仍需 PR」，已同步 AGENTS / PULL_REQUEST_WORKFLOW / CONTRIBUTING / README（细节见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)）。
+- 2026-09-10：新增 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md) 两份设计文档，后续项已登记 [deferred](docs/deferred-items.md)；落地页双语/token 由负责人自行推进，不纳入本仓。
+- 2026-09-10：决策 **#4 修订为"海内外同步"**，PRD 升 v0.2 回灌 #1–#8 决策与市场边界（细节见 [待拍板决策清单](docs/待拍板决策清单-20260910.md) 与 [PRD](docs/PRD.md)）。
 - 2026-09-10：M1·W1 脚手架落地——pnpm workspaces 根（package.json / tsconfig.base / .gitignore / husky pre-commit / CI 三件套）、`packages/shared` 落成 PRD 第 8 章 Zod 契约（7 测试通过）、7 个占位包；typecheck/test/build 全绿。启动前决策 #1–#8 拍板（采纳助手推荐组合）。
 - 2026-09-10：工程约定文档提交并合入 `main`（PR #1），`dev` 与 `main` 同步；落地页 `job-agent-landing` 完成 Cloudflare Pages 部署上线（https://job-agent.bayjf.com，含构建时预览截图管线）。
 - 2026-09-10：以 `agent-world` 为基准对齐工程惯例——文档分层（handoff 索引 / docs 全文 / deferred 带触发条件 / docs 场景导航）、pnpm workspace + `.nvmrc`、数据访问收敛单一持久化层、`db/migrations` 迁移规范与 `tools/check-migrations.sh`、新增 CONTRIBUTING；5 份产品文档移入 `docs/`，移除 docs/superpowers。
@@ -63,4 +63,4 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## Git 状态
 
-- 当前工作分支：`dev`（track `origin/dev`）。**2026-09-10 起分支策略放宽**：日常改动直接在 `dev` 提交并 push（push 前 `pull --rebase` + 本地三件套）；`main` 仍只能经 `dev → main` 真实 PR 合入；临时分支仅在需要独立 review / 实验性改动时使用（见 PULL_REQUEST_WORKFLOW.md）。
+- 当前工作分支：`dev`（track `origin/dev`）；分支策略：日常改动直接在 `dev` 提交，`main` 仍需 PR（细节见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)）。
