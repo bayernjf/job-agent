@@ -25,21 +25,23 @@ JobAgent 当前状态，截至 2026-09-10。
 ## 当前状态
 
 - 阶段：**产品定义完成、工程代码未起步**的 MVP（M1）准备期。MVP 只做 L0/L1（纯 API、不 clone）的单账号可信能力画像。
-- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`，已推送的初始提交含 5 份产品文档。
-- 工程约定文档（README/AGENTS/CONTRIBUTING/handoff/迁移规范/PR 流程等）与本次 `agent-world` 对齐改动**均在工作区、尚未提交**（遵循"未明确要求不提交/push"）。
+- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`，初始提交含 5 份产品文档；工程约定文档（README/AGENTS/CONTRIBUTING/handoff/迁移规范/PR 流程等）已提交并经 PR #1 合入 `main`。
+- 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 尚无任何代码、`package.json`、CI。
 
 ## 活跃待办（下一步）
 
-1. **等拍板 #1–#4**（启动前阻塞）：第一界面 B/C、真实性呈现形态、MVP 深度、首个市场；见决策清单。
-2. M1·W1：搭 **pnpm workspaces** 骨架（`packages/*` + `apps/*`、`.nvmrc`、tsconfig.base、husky、CI 三件套），把 PRD 第 8 章落成 `packages/shared` 的 TS 类型 + Zod。
-3. M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。
-4. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
-5. M1·W2–W3：用 CLI 跑决策 #8 的 20–50 标注账号实验，校准真实性信号，**通过后才进 P2 系统层**。
-6. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
+> 启动前决策 #1–#8 已于 2026-09-10 拍板（采纳助手推荐组合，见决策清单）；#9–#14 延后。M1 启动条件已满足。
+
+1. M1·W1：搭 **pnpm workspaces** 骨架（`packages/*` + `apps/*`、`.nvmrc`、tsconfig.base、husky、CI 三件套），把 PRD 第 8 章落成 `packages/shared` 的 TS 类型 + Zod。
+2. M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。
+3. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
+4. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
+5. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
 
 ## 最近变更
 
+- 2026-09-10：工程约定文档提交并合入 `main`（PR #1），`dev` 与 `main` 同步；落地页 `job-agent-landing` 完成 Cloudflare Pages 部署上线（https://job-agent.bayjf.com，含构建时预览截图管线）。
 - 2026-09-10：以 `agent-world` 为基准对齐工程惯例——文档分层（handoff 索引 / docs 全文 / deferred 带触发条件 / docs 场景导航）、pnpm workspace + `.nvmrc`、数据访问收敛单一持久化层、`db/migrations` 迁移规范与 `tools/check-migrations.sh`、新增 CONTRIBUTING；5 份产品文档移入 `docs/`，移除 docs/superpowers。
 - 2026-09-10：参照 tab-manager 建立 README/AGENTS/CLAUDE/PR 流程/commit 规范（后被 agent-world 对齐版取代/增强）。
 - 2026-09-10：产出 PRD、技术选型、待拍板决策清单、讨论记录，并推送 main/dev 初始提交。
@@ -52,5 +54,5 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## Git 状态
 
-- 当前工作分支：`dev`（track `origin/dev`）。
-- 工作区：产品文档移动已 `git mv`（暂存为重命名），其余约定/对齐文档为未跟踪或已修改；**待用户明确要求后**再按 PULL_REQUEST_WORKFLOW 做原子提交、推送与 PR。
+- 当前工作分支：`dev`（track `origin/dev`，与 `main` 均在 `48af58f`）。
+- 工作区：干净。文档与约定改动已按 PULL_REQUEST_WORKFLOW 经 PR #1 合入 `main`。
