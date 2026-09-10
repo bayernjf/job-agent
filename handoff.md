@@ -19,6 +19,7 @@ JobAgent 当前状态，截至 2026-09-10。
 - [docs/讨论记录-01-切入口与MVP收敛-20260910.md](docs/讨论记录-01-切入口与MVP收敛-20260910.md) — 切入口、护城河、L0–L4 分层、MVP 收敛过程（历史）
 - [docs/PRD.md](docs/PRD.md) — 产品范围、F1–F9、AbilityProfile/EvidenceItem 契约、指标、风险 ★
 - [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) — 技术栈选型、运行架构、目录规划、M1 排期与 Spike ★
+- [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) — AI 求职赛道头部玩家匿名调研：市场格局、功能全景、增长打法、信任风险与 P0/P1/P2 跟进建议（现行）
 - [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) — #1–#14，#1–#4 为启动前阻塞项（尚未拍板）★
 - [docs/deferred-items.md](docs/deferred-items.md) — 缓做/低优事项登记表（挂起项 + 触发条件的单一事实源）
 
