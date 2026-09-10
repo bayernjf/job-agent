@@ -103,7 +103,7 @@ bash tools/check-migrations.sh   # 只读校验迁移命名/编号/文件头
 - TypeScript strict 必须通过；避免 `any` 与不必要的类型断言；所有外部输入与 LLM 输出用 Zod 校验。
 - 共享类型与画像契约只放在 `packages/shared`，全链路复用，禁止各处重复定义。
 - 能力/真实性结论必须挂 `evidenceRefs`；**无证据不下结论，证据不足走 `insufficient_data`**。
-- 用户可见文案用简体中文，内部标识、代码命名、GitHub 内容用英文。
+- 用户可见文案**中英双语并行**（决策 #4 海内外同步，落地即 i18n，见下条），内部标识、代码命名、GitHub 内容用英文。
 - **i18n（报告页/UI 落地起执行）**：用户可见字符串一律走 `t()`，先加中文 key 再加同构英文 key，禁止在组件硬编码用户可见文案（仅代码注释、术语数据、输入 placeholder 示例、语言切换器本身可例外）；用一致性测试守护中英文 key 对齐。
 - **设计 token（UI 落地起执行）**：颜色/间距/圆角/阴影用 CSS 变量，禁止散落 `#hex/rgb/hsl` 与硬编码尺寸；不写带 hex fallback 的 `var(--x, #xxx)`。
 - 未经明确需求不引入新框架/状态库/中间件（尤其不在 MVP 引入 Redis、消息队列、clone 沙箱，见 deferred）。
