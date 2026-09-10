@@ -17,6 +17,8 @@
 | 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
 | 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
 | 看 AI 求职赛道的竞品认知、机会与跟进清单 | [市场调研-AI求职赛道-20260910.md](市场调研-AI求职赛道-20260910.md) |
+| 写用户可见文案 / 加双语 / 处理语言与分享链接 | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
+| 定颜色、间距、圆角、字号 / 改主题 | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
 | 快速了解项目门面与技术栈 | [../README.md](../README.md) |
 
 ## 文档分层约定（重要）
