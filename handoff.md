@@ -63,5 +63,4 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## Git 状态
 
-- 当前工作分支：`dev`（track `origin/dev`）；M1·W1 脚手架提交已推送，本地领先提交以 `git log origin/dev..dev` 为准。
-- 不直接在 `main`/`dev` 上开发新功能；后续工作从最新 `dev` 切 `feature/*` 分支并经 PR 合入（见 PULL_REQUEST_WORKFLOW.md）。
+- 当前工作分支：`dev`（track `origin/dev`）。**2026-09-10 起分支策略放宽**：日常改动直接在 `dev` 提交并 push（push 前 `pull --rebase` + 本地三件套）；`main` 仍只能经 `dev → main` 真实 PR 合入；临时分支仅在需要独立 review / 实验性改动时使用（见 PULL_REQUEST_WORKFLOW.md）。
