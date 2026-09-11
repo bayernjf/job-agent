@@ -11,6 +11,8 @@ import type { L0Data } from './types.js';
 
 export interface L0RepoNode {
   name: string;
+  nameWithOwner: string;
+  owner: { login: string };
   url: string;
   isFork: boolean;
   isArchived: boolean;
@@ -18,7 +20,8 @@ export interface L0RepoNode {
   description: string | null;
   stargazerCount: number;
   forkCount: number;
-  pushedAt: string;
+  /** 空仓库从未推送时为 null */
+  pushedAt: string | null;
   createdAt: string;
   repositoryTopics: { nodes: Array<{ topic: { name: string } }> };
 }
@@ -65,6 +68,8 @@ export const L0_QUERY = /* GraphQL */ `
         totalCount
         nodes {
           name
+          nameWithOwner
+          owner { login }
           url
           isFork
           isArchived
@@ -114,6 +119,7 @@ export function parseL0Response(raw: L0GraphqlResponse, login: string): L0Data |
 
   const repos: AnalyzerInput['repos'] = user.repositories.nodes.map((r) => ({
     name: r.name,
+    ownerLogin: r.owner.login,
     url: r.url,
     isFork: r.isFork,
     isArchived: r.isArchived,
@@ -275,7 +281,7 @@ export const ISSUES_QUERY = /* GraphQL */ `
   }
 `;
 
-export function parseRepoCommits(raw: RepoCommitsResponse, owner: string, repoName: string): AnalyzerCommit[] {
+export function parseRepoCommits(raw: RepoCommitsResponse, repoNameWithOwner: string): AnalyzerCommit[] {
   const history = raw.repository?.defaultBranchRef?.target?.history?.nodes ?? [];
   return history
     .filter((c) => Boolean(c?.oid))
@@ -284,7 +290,7 @@ export function parseRepoCommits(raw: RepoCommitsResponse, owner: string, repoNa
       committedAt: c.committedDate,
       authorName: c.author?.name ?? null,
       authorEmail: c.author?.email ?? null,
-      repoName,
+      repoName: repoNameWithOwner,
       messageHeadline: c.messageHeadline,
     }));
 }

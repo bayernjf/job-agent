@@ -37,7 +37,7 @@ describe('computeAuthenticitySignals', () => {
       committedAt: `2026-0${i + 1}-15T10:00:00Z`,
       authorName: 'Someone Else',
       authorEmail: 'someone.else@example.com',
-      repoName: 'web-platform',
+      repoName: 'dev-strong/web-platform',
       messageHeadline: `mismatched commit ${i}`,
     }));
     const input = buildInput({ email: 'other@example.com', commits: mismatchedCommits });
@@ -55,7 +55,7 @@ describe('computeAuthenticitySignals', () => {
         committedAt: '2026-03-15T10:00:00Z',
         authorName: 'Someone Else',
         authorEmail: null,
-        repoName: 'web-platform',
+        repoName: 'dev-strong/web-platform',
         messageHeadline: 'fix: x',
       },
       {
@@ -63,7 +63,7 @@ describe('computeAuthenticitySignals', () => {
         committedAt: '2026-04-15T10:00:00Z',
         authorName: 'Another Person',
         authorEmail: null,
-        repoName: 'web-platform',
+        repoName: 'dev-strong/web-platform',
         messageHeadline: 'fix: y',
       },
       {
@@ -71,7 +71,7 @@ describe('computeAuthenticitySignals', () => {
         committedAt: '2026-05-15T10:00:00Z',
         authorName: 'Third Person',
         authorEmail: null,
-        repoName: 'web-platform',
+        repoName: 'dev-strong/web-platform',
         messageHeadline: 'fix: z',
       },
     ];
@@ -89,7 +89,7 @@ describe('computeAuthenticitySignals', () => {
       committedAt: `2026-03-${String((i % 28) + 1).padStart(2, '0')}T10:00:00Z`,
       authorName: 'Dev Strong',
       authorEmail: 'dev.strong@example.com',
-      repoName: 'web-platform',
+      repoName: 'dev-strong/web-platform',
       messageHeadline: `batch commit ${i}`,
     }));
     const input = buildInput({ commits: bursts });
@@ -104,6 +104,7 @@ describe('computeAuthenticitySignals', () => {
     const starRepos: AnalyzerRepo[] = [
       {
         name: 'repo-a',
+        ownerLogin: 'dev-suspicious',
         url: 'https://github.com/dev-suspicious/repo-a',
         isFork: false,
         isArchived: false,
@@ -142,6 +143,7 @@ describe('computeAuthenticitySignals', () => {
     const staleRepos: AnalyzerRepo[] = [
       {
         name: 'old-repo',
+        ownerLogin: 'dev-strong',
         url: 'https://github.com/dev-strong/old-repo',
         isFork: false,
         isArchived: false,
@@ -182,7 +184,7 @@ describe('computeAuthenticity (status & confidence)', () => {
       committedAt: `2026-0${i + 1}-15T10:00:00Z`,
       authorName: 'Someone Else',
       authorEmail: 'someone.else@example.com',
-      repoName: 'web-platform',
+      repoName: 'dev-strong/web-platform',
       messageHeadline: `mismatched ${i}`,
     }));
     const { status: doubleStatus } = computeAuthenticity(
@@ -216,6 +218,7 @@ describe('computeAuthenticity (status & confidence)', () => {
     const staleRepos: AnalyzerRepo[] = [
       {
         name: 'old-repo',
+        ownerLogin: 'dev-strong',
         url: 'https://github.com/dev-strong/old-repo',
         isFork: false,
         isArchived: false,

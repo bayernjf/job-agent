@@ -67,10 +67,13 @@ export class GitHubSource {
     // GitHub GraphQL 实测不返回 x-ratelimit-cost（2026-09-11）；按官方"单次查询 ≥1 点"保守记账
     const cost = Number(res.headers['x-ratelimit-cost']);
     this.budget.recordGraphql(Number.isFinite(cost) && cost > 0 ? cost : 1);
-    const body = res.data as { data?: T; errors?: Array<{ message: string }> };
+    const body = res.data as { data?: T; errors?: Array<{ message: string; type?: string }> };
     if (body.errors && body.errors.length > 0) {
-      const message = body.errors[0]?.message ?? 'graphql error';
-      throw new GitHubSourceError('api_error', message);
+      const first = body.errors[0];
+      const message = first?.message ?? 'graphql error';
+      // 账号/仓库不存在（含 login 实为 Organization 的情况）归一为 not_found
+      const code = first?.type === 'NOT_FOUND' ? 'not_found' : 'api_error';
+      throw new GitHubSourceError(code, message);
     }
     if (body.data === undefined) {
       throw new GitHubSourceError('api_error', 'graphql response missing data');
@@ -125,11 +128,11 @@ export class GitHubSource {
       }
       try {
         const data = await this.graphql<RepoCommitsResponse>(REPO_COMMITS_QUERY, {
-          owner: login,
+          owner: repo.ownerLogin,
           name: repo.name,
           first: this.commitsPerRepo,
         });
-        l1.commits.push(...parseRepoCommits(data, login, repo.name));
+        l1.commits.push(...parseRepoCommits(data, `${repo.ownerLogin}/${repo.name}`));
       } catch (err) {
         // GraphQL 失败回退 REST（带 ETag 条件请求）
         try {
@@ -137,15 +140,15 @@ export class GitHubSource {
           const { commits } = await fetchRepoCommitsCached(
             this.octokit,
             this.cache,
-            login,
+            repo.ownerLogin,
             repo.name,
             this.commitsPerRepo,
           );
           l1.commits.push(...commits);
         } catch (restErr) {
-          missing.push(`commits:${repo.name}`);
+          missing.push(`commits:${repo.ownerLogin}/${repo.name}`);
           this.log.warn(
-            `[github-source] commits failed for ${login}/${repo.name}: ${(restErr as Error).message}`,
+            `[github-source] commits failed for ${repo.ownerLogin}/${repo.name}: ${(restErr as Error).message}`,
           );
         }
       }
@@ -158,7 +161,7 @@ export class GitHubSource {
     evidence.push(
       ...l1.pullRequests.map(buildPullRequestEvidence),
       ...l1.issues.map(buildIssueEvidence),
-      ...l1.commits.map((c) => buildCommitEvidence(c, login)),
+      ...l1.commits.map((c) => buildCommitEvidence(c)),
     );
     return { l1, evidence, missing };
   }

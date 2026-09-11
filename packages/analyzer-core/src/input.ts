@@ -21,7 +21,10 @@ export interface AnalyzerSubject {
 }
 
 export interface AnalyzerRepo {
+  /** 仓库短名（不含 owner） */
   name: string;
+  /** 真实 owner login（可能是组织而非被分析用户本人，如 vitest-dev/vitest） */
+  ownerLogin: string;
   url: string;
   isFork: boolean;
   isArchived: boolean;
@@ -30,8 +33,14 @@ export interface AnalyzerRepo {
   description: string | null;
   stargazerCount: number;
   forkCount: number;
-  pushedAt: string;
+  /** 空仓库从未推送时为 null */
+  pushedAt: string | null;
   createdAt: string;
+}
+
+/** 仓库的全局唯一名 owner/name，用作证据 id 与跨表关联键（避免短名碰撞） */
+export function repoRef(repo: AnalyzerRepo): string {
+  return `${repo.ownerLogin}/${repo.name}`;
 }
 
 export interface AnalyzerCommit {
@@ -39,6 +48,7 @@ export interface AnalyzerCommit {
   committedAt: string;
   authorName: string | null;
   authorEmail: string | null;
+  /** 归属仓库的 owner/name（与 repoRef 一致） */
   repoName: string;
   messageHeadline: string;
 }
