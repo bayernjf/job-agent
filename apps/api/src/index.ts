@@ -150,6 +150,22 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
 
     const { username, platform } = parsed.data;
 
+    // 画像缓存：命中未过期的完整画像则直接返回，避免重复分析（PRD 运行架构第 1 步）
+    const cacheTtlMs = Number(process.env.PROFILE_CACHE_TTL_MS ?? 24 * 60 * 60 * 1000);
+    const latestProfile = await repos.profiles.latestBySubject(platform, username);
+    if (
+      latestProfile &&
+      latestProfile.status === 'complete' &&
+      Date.now() - Date.parse(latestProfile.updatedAt) < cacheTtlMs
+    ) {
+      return c.json({
+        profileId: latestProfile.id,
+        status: 'succeeded',
+        cached: true,
+        message: 'A recent complete profile already exists.',
+      });
+    }
+
     // 去重：同一用户有 active（queued/running）任务则返回现有 jobId
     const existing = await repos.jobs.latestActiveBySubject(platform, username);
     if (existing) {

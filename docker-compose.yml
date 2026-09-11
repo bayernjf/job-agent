@@ -1,0 +1,85 @@
+# JobAgent full-stack local/staging orchestration
+# Usage:
+#   docker compose up --build           # start all services
+#   docker compose --profile with-pg up # also start a local Postgres
+# Services:
+#   api     -> http://localhost:3000
+#   worker  -> background analysis consumer
+#   report  -> http://localhost:4321
+#   db      -> local Postgres (profile: with-pg)
+
+services:
+  db:
+    image: postgres:16-alpine
+    profiles: ["with-pg"]
+    environment:
+      POSTGRES_USER: jobagent
+      POSTGRES_PASSWORD: jobagent
+      POSTGRES_DB: jobagent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobagent"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      target: api
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      DB_DRIVER: ${DB_DRIVER:-sqlite}
+      DB_PATH: /app/data/job-agent.db
+      DATABASE_URL: ${DATABASE_URL:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+
+  worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      DB_DRIVER: ${DB_DRIVER:-sqlite}
+      DB_PATH: /app/data/job-agent.db
+      DATABASE_URL: ${DATABASE_URL:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      POLL_INTERVAL_MS: "2000"
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+
+  report:
+    build:
+      context: .
+      target: report
+    ports:
+      - "4321:4321"
+    environment:
+      REPORT_PORT: "4321"
+      DB_DRIVER: ${DB_DRIVER:-sqlite}
+      DB_PATH: /app/data/job-agent.db
+      DATABASE_URL: ${DATABASE_URL:-}
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+
+volumes:
+  pgdata:
+  appdata:
