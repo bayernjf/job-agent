@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 /**
- * Drizzle 表定义——必须与 `db/migrations/001_create_profiles.sql` 保持一致
+ * Drizzle 表定义——必须与 `db/migrations/sqlite/001_create_profiles.sql` 保持一致
  * （MIGRATION_CONVENTION 第 6 节：持久化模块内的表定义与编号迁移一一对应）。
  *
  * MVP 方言为 SQLite（本地/实验）；Postgres 适配见 docs/deferred-items.md。
@@ -45,7 +45,7 @@ export type ProfileSelect = typeof profiles.$inferSelect;
  * analysis_jobs 表——异步分析任务队列（技术选型 6.6）。
  * MVP 用单 Worker 轮询/认领，不引入 Redis。
  * 状态机：queued -> running -> succeeded | failed。
- * 必须与 db/migrations/002_create_analysis_jobs.sql 保持一致。
+ * 必须与 db/migrations/sqlite/002_create_analysis_jobs.sql 保持一致。
  */
 export const analysisJobs = sqliteTable(
   'analysis_jobs',
@@ -88,7 +88,7 @@ export type AnalysisJobSelect = typeof analysisJobs.$inferSelect;
  * evidence 表——单独证据项索引（PRD 第 8 章 EvidenceItem 契约）。
  * 证据项同时存储在 profiles.snapshot JSON 中；本表提供单独索引用于
  * 按证据查询、跨画像关联、审计追溯。
- * 必须与 db/migrations/003_create_evidence.sql 保持一致。
+ * 必须与 db/migrations/sqlite/003_create_evidence.sql 保持一致。
  */
 export const evidence = sqliteTable(
   'evidence',
@@ -119,7 +119,7 @@ export type EvidenceSelect = typeof evidence.$inferSelect;
 /**
  * waitlist 表——落地页留资（PRD F7）。
  * 存储早期用户注册信息，email 唯一去重。
- * 必须与 db/migrations/004_create_waitlist.sql 保持一致。
+ * 必须与 db/migrations/sqlite/004_create_waitlist.sql 保持一致。
  */
 export const waitlist = sqliteTable(
   'waitlist',

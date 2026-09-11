@@ -5,7 +5,7 @@ import type { Database } from 'better-sqlite3';
 /**
  * 迁移器（MIGRATION_CONVENTION 第 5 节）。
  *
- * - 按 NNN 顺序应用 `db/migrations/*.sql`，在 `schema_migrations` 记录已应用版本。
+ * - 按 NNN 顺序应用 `db/migrations/<dialect>/*.sql`，在 `schema_migrations` 记录已应用版本。
  * - 迁移文件可在末尾携带 `-- DOWN BEGIN ... -- DOWN END` 段；up 只执行段外部分，
  *   down 段仅由 rollbackLatestMigration 使用（无 down 段的迁移不可回滚）。
  * - 本模块位于持久化层内部，直接执行 DDL 属于该层实现细节，不违反「业务模块禁裸 SQL」。

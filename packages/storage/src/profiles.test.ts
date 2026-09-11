@@ -9,7 +9,7 @@ import { ProfilesRepository, type NewProfile } from './profiles.js';
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations',
+  '../../../db/migrations/sqlite',
 );
 
 function freshRepo(): { repo: ProfilesRepository; db: Database.Database } {
