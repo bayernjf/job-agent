@@ -1,0 +1,30 @@
+{
+  "data": {
+    "user": {
+      "issues": {
+        "nodes": [
+          {
+            "number": 12,
+            "title": "bug: profile snapshot not immutable after re-analysis",
+            "url": "https://github.com/dev-strong/web-platform/issues/12",
+            "state": "CLOSED",
+            "createdAt": "2026-04-11T03:00:00Z",
+            "repository": {
+              "nameWithOwner": "dev-strong/web-platform"
+            }
+          },
+          {
+            "number": 13,
+            "title": "question: how to verify commit authorship?",
+            "url": "https://github.com/dev-strong/web-platform/issues/13",
+            "state": "OPEN",
+            "createdAt": "2026-08-22T02:00:00Z",
+            "repository": {
+              "nameWithOwner": "dev-strong/web-platform"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

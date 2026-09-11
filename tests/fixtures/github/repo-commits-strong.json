@@ -1,0 +1,41 @@
+{
+  "data": {
+    "repository": {
+      "defaultBranchRef": {
+        "target": {
+          "history": {
+            "nodes": [
+              {
+                "oid": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4",
+                "committedDate": "2026-08-18T09:12:00Z",
+                "messageHeadline": "feat: add SSR caching for report pages",
+                "author": {
+                  "name": "Dev Strong",
+                  "email": "dev.strong@example.com"
+                }
+              },
+              {
+                "oid": "b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5",
+                "committedDate": "2026-08-10T14:30:00Z",
+                "messageHeadline": "fix: handle empty evidence list in profile render",
+                "author": {
+                  "name": "Dev Strong",
+                  "email": "dev.strong@example.com"
+                }
+              },
+              {
+                "oid": "c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6",
+                "committedDate": "2026-07-28T11:05:00Z",
+                "messageHeadline": "refactor: extract skill tag scoring",
+                "author": {
+                  "name": "Dev Strong",
+                  "email": "dev.strong@example.com"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
