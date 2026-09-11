@@ -61,6 +61,7 @@ const until = formatDateTime(profile.dataWindow.until, locale);
       <div class="header-meta">
         <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
         <ShareButton
+          client:load
           url={shareUrl}
           copyLabel={t('report.copyLink')}
           copiedLabel={t('report.shareCopied')}
