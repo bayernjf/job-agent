@@ -44,7 +44,7 @@ JobAgent 当前状态，截至 2026-09-11。
 5. **#8 去风险实验·重新批量验证（进行中，待 GITHUB_TOKEN）**：bug 修复已完成（commit `b77ec11`），需设置 `GITHUB_TOKEN` 后用修复后 CLI 重跑 5 个账号（建议：torvalds / 2 位 OSS 维护者 / github 组织账号 / 1 个普通账号）确认无崩溃、证据链对齐；通过后扩到 20–50 标注账号（标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
 6. **M1·W3 服务化**（进行中）：
    - ~~W3-1：`analysis_jobs` 表迁移(002) + schema + AnalysisJobsRepository（create/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus）+ 12 测试~~ ✅ 已完成（2026-09-11）
-   - W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次
+   - ~~W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次~~ ✅ 已完成（2026-09-11）
    - W3-3：api Hono 接口——POST /analyze（创建 job，去重：同一用户有 active job 则返回现有 jobId）、GET /jobs/:id（查询状态）、GET /profiles/:id（查询画像快照）
    - W3-4：evidence 表迁移(003) + schema + 仓储（证据索引，关联 profile_id）
    - W3-5：waitlist 表迁移(004) + schema + 仓储（落地页留资）
@@ -57,6 +57,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**M1·W3-2 worker 核心逻辑落地**——`apps/worker/src/index.ts` 实现完整 Worker：initRepos（数据库连接+迁移+仓储）、processJob（采集→更新 stage→分析→写画像→标记成功，纯逻辑可单测）、handleJobFailure（attempts<maxRetries 时 resetToQueued 重试，否则永久 failed）、runWorker（主循环：claimNext 原子认领→processJob→成功/失败处理，无任务时 sleep，支持优雅关闭 SIGINT/SIGTERM）；AnalysisJobsRepository 新增 resetToQueued 方法（失败重试时重置状态，保留 attempts 计数，清空 stage/startedAt/finishedAt/claimedBy）；worker package.json 添加 @jobagent/storage、@jobagent/github-source、@jobagent/analyzer-core、better-sqlite3、drizzle-orm 依赖；10 个测试覆盖 processJob 成功/失败/缺失层、handleJobFailure 重试/永久失败/重试后可再认领、runWorker 主循环/失败重试/空轮询 sleep；全仓 typecheck/build 全绿，worker 10 测试全绿。
 
 - 2026-09-11：**M1·W3-1 analysis_jobs 表+仓储落地**——新增 `db/migrations/002_create_analysis_jobs.sql`（analysis_jobs 表：id/subject_platform/subject_login/status/stage/attempts/profile_id/error_message/budget_used/missing/claimed_by/created_at/updated_at/started_at/finished_at，两个索引，含 down 段）；`packages/storage/src/schema.ts` 新增 analysisJobs Drizzle 表定义；`packages/storage/src/analysis-jobs.ts` 实现 AnalysisJobsRepository（create/getById/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus），claimNext 用事务内两步法（SELECT 最老 queued id → UPDATE 特定 id + status 双重校验）保证原子认领只更新一行，attempts<3 防无限重试；12 个测试覆盖全方法 + 迁移列检查；migrations.test.ts 适配 002（分两步回滚验证）；全仓 typecheck/build 全绿，storage 22 测试全绿，check-migrations 通过。
 

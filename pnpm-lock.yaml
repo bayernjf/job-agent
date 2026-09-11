@@ -47,9 +47,28 @@ importers:
 
   apps/worker:
     dependencies:
+      '@jobagent/analyzer-core':
+        specifier: workspace:*
+        version: link:../../packages/analyzer-core
+      '@jobagent/github-source':
+        specifier: workspace:*
+        version: link:../../packages/github-source
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@jobagent/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
+      better-sqlite3:
+        specifier: ^12.0.0
+        version: 12.11.1
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.0
+        version: 7.6.13
 
   packages/analyzer-core:
     dependencies:
