@@ -1,6 +1,6 @@
 # Handoff
 
-JobAgent 当前状态，截至 2026-09-10。
+JobAgent 当前状态，截至 2026-09-11。
 
 > 本文件只保留「项目当前状态 + 活跃任务 + 最近变更 + 文档索引」，是接手（人或 AI agent）的第一入口；**只写状态与结论，明细一律放进对应文档并在此给链接，不在本文件展开**。
 > 设计/结论全文放 [docs/](docs/)；缓做事项放 [docs/deferred-items.md](docs/deferred-items.md)；场景化导航见 [docs/README.md](docs/README.md)。
@@ -27,7 +27,7 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 当前状态
 
-- 阶段：**M1·W1 已完成**（pnpm workspaces 骨架 + `packages/shared` 契约 + `packages/storage` 持久化层 + `db/migrations/001`，typecheck/test/build/check-migrations 全绿），下一步是 `github-source` + `analyzer-core` + `cli`。
+- 阶段：**M1·W2 代码交付完成**（`github-source` 采集 + `analyzer-core` 纯函数内核 + `cli` 命令行出画像，typecheck/test/build/check-migrations 全绿，真实账号冒烟通过），下一步是 #8 去风险实验与 W3 系统层。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 → 系统层）。
@@ -37,15 +37,16 @@ JobAgent 当前状态，截至 2026-09-10。
 > 启动前决策 #1–#8 已于 2026-09-10 拍板；M1·W1（骨架、`packages/shared` 契约、持久化层与首个迁移）已完成（见最近变更）。
 
 1. ~~M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。~~ ✅ 已完成（2026-09-11）
-2. M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。
-3. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
-4. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
-5. M1·W4（与第 4 项同批）：报告页落地即执行 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md)（落地页不在本仓范围）。
+2. ~~M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。~~ ✅ 已完成（2026-09-11，见最近变更）
+2. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
+3. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
+4. M1·W4（与第 3 项同批）：报告页落地即执行 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md)（落地页不在本仓范围）。
 
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
 
+- 2026-09-11：**M1·W2 交付**——`github-source`（Octokit + 限频/重试 + 单画像预算 + ETag 缓存 + L0/L1 采集）、`analyzer-core`（纯函数内核：四态真实性 + 置信度、技能标签、资历提示、模板面试题）、`cli`（analyze/batch，JSONL 输出）；4 个原子提交 `c663594`/`d1585f2`/`ccda43f`/`01c26c6`，53 测试全绿，真实账号 bayernjf 冒烟通过（likely_authentic 0.72）。真实冒烟校准两点：①GraphQL 响应无 `x-ratelimit-cost` 头，预算改为每次至少记 1 点；②仅 email 不一致降级 warn（noreply 常见），email+name 双重不一致才 risk，避免强工程师误判可疑。
 - 2026-09-11：M1·W1 持久化层等 4 个提交已 push 至 `origin/dev`；`fix(storage)` 排除测试文件出构建产物（`tsconfig.build.json` + vitest exclude `dist/`），修复 vitest 双跑问题（20 → 10）。
 - 2026-09-11：M1·W1 持久化层落地——`packages/storage`（Drizzle + better-sqlite3：迁移器/回滚、profiles 仓储、CLI `migrate up/down/status`）、`db/migrations/001_create_profiles.sql`（含 down 段）、`scripts/migrate-down`、根 `migrate:*` 命令与 `data/` 忽略；typecheck/test/build/check-migrations 全绿，CLI 冒烟通过。
 - 2026-09-11：市场调研文档定稿并落库（`docs/市场调研-AI求职赛道-20260910.md`，经多轮脱敏：量级口径、去头部点名、删纯商业描述），docs/README 补入口。

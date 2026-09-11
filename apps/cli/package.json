@@ -16,9 +16,12 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@jobagent/analyzer-core": "workspace:*",
+    "@jobagent/github-source": "workspace:*",
     "@jobagent/shared": "workspace:*"
   }
 }

@@ -1,0 +1,203 @@
+import type { AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest } from '@jobagent/analyzer-core';
+import type { EvidenceItem } from '@jobagent/shared';
+import type { Octokit } from 'octokit';
+import { BudgetTracker } from './budget.js';
+import { createOctokit, DEFAULT_BUDGET } from './client.js';
+import {
+  buildCommitEvidence,
+  buildIssueEvidence,
+  buildPullRequestEvidence,
+  buildRepoEvidence,
+  buildSubjectEvidence,
+} from './evidence.js';
+import {
+  ISSUES_QUERY,
+  L0_QUERY,
+  PULL_REQUESTS_QUERY,
+  REPO_COMMITS_QUERY,
+  parseIssues,
+  parseL0Response,
+  parsePullRequests,
+  parseRepoCommits,
+  type IssuesResponse,
+  type L0GraphqlResponse,
+  type PullRequestsResponse,
+  type RepoCommitsResponse,
+} from './graphql.js';
+import { fetchRepoCommitsCached, fetchUserEmailRest, HttpCache } from './rest.js';
+import type { GitHubCollectedData, GitHubSourceOptions, L0Data, L1Data } from './types.js';
+
+/** 采集错误：not_found（账号不存在）/ api_error（GitHub 侧失败）/ budget_exhausted */
+export class GitHubSourceError extends Error {
+  constructor(
+    readonly code: 'not_found' | 'api_error' | 'budget_exhausted',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'GitHubSourceError';
+  }
+}
+
+export class GitHubSource {
+  private readonly octokit: Octokit;
+  private readonly budget: BudgetTracker;
+  private readonly cache = new HttpCache();
+  private readonly log: Pick<Console, 'info' | 'warn' | 'error'>;
+  private readonly maxCommitsRepos = 10;
+  private readonly commitsPerRepo = 30;
+
+  constructor(options: GitHubSourceOptions) {
+    this.log = options.log ?? console;
+    this.budget = new BudgetTracker({ ...DEFAULT_BUDGET, ...(options.budget ?? {}) });
+    this.octokit = createOctokit({
+      token: options.token,
+      budget: options.budget,
+      log: this.log,
+      fetch: options.fetch,
+      throttleEnabled: options.throttleEnabled,
+    });
+  }
+
+  /** GraphQL 统一入口：预算记账 + 错误归一 */
+  private async graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+    if (this.budget.exhausted) {
+      throw new GitHubSourceError('budget_exhausted', 'per-profile budget exhausted before request');
+    }
+    const res = await this.octokit.request('POST /graphql', { query, variables });
+    // GitHub GraphQL 实测不返回 x-ratelimit-cost（2026-09-11）；按官方"单次查询 ≥1 点"保守记账
+    const cost = Number(res.headers['x-ratelimit-cost']);
+    this.budget.recordGraphql(Number.isFinite(cost) && cost > 0 ? cost : 1);
+    const body = res.data as { data?: T; errors?: Array<{ message: string }> };
+    if (body.errors && body.errors.length > 0) {
+      const message = body.errors[0]?.message ?? 'graphql error';
+      throw new GitHubSourceError('api_error', message);
+    }
+    if (body.data === undefined) {
+      throw new GitHubSourceError('api_error', 'graphql response missing data');
+    }
+    return body.data;
+  }
+
+  /** L0：账号元数据 + 仓库列表 + 贡献概览（一次批量查询） */
+  async collectL0(login: string): Promise<{ l0: L0Data; evidence: EvidenceItem[] }> {
+    const data = await this.graphql<L0GraphqlResponse>(L0_QUERY, { login });
+    const l0 = parseL0Response(data, login);
+    if (!l0) {
+      throw new GitHubSourceError('not_found', `GitHub user "${login}" not found`);
+    }
+    const evidence: EvidenceItem[] = [
+      buildSubjectEvidence(l0.subject, l0.dataWindow),
+      ...l0.repos.map(buildRepoEvidence),
+    ];
+    return { l0, evidence };
+  }
+
+  /** L1：最近提交 + 发起的 PR/Issue（失败显式标注缺失，不中断整体） */
+  async collectL1(login: string, l0: L0Data): Promise<{ l1: L1Data; evidence: EvidenceItem[]; missing: string[] }> {
+    const missing: string[] = [];
+    const l1: L1Data = { commits: [], pullRequests: [], issues: [] };
+    const evidence: EvidenceItem[] = [];
+
+    try {
+      const prs = await this.graphql<PullRequestsResponse>(PULL_REQUESTS_QUERY, {
+        login,
+        first: 50,
+      });
+      l1.pullRequests = parsePullRequests(prs, login);
+    } catch (err) {
+      missing.push('pull_requests');
+      this.log.warn(`[github-source] pull_requests failed for ${login}: ${(err as Error).message}`);
+    }
+    try {
+      const issues = await this.graphql<IssuesResponse>(ISSUES_QUERY, { login, first: 30 });
+      l1.issues = parseIssues(issues);
+    } catch (err) {
+      missing.push('issues');
+      this.log.warn(`[github-source] issues failed for ${login}: ${(err as Error).message}`);
+    }
+
+    const activeRepos = l0.repos.filter((r) => !r.isArchived).slice(0, this.maxCommitsRepos);
+    for (const repo of activeRepos) {
+      if (this.budget.exhausted) {
+        missing.push(`commits:${repo.name}`);
+        this.log.warn('[github-source] budget exhausted, stopped fetching commits');
+        break;
+      }
+      try {
+        const data = await this.graphql<RepoCommitsResponse>(REPO_COMMITS_QUERY, {
+          owner: login,
+          name: repo.name,
+          first: this.commitsPerRepo,
+        });
+        l1.commits.push(...parseRepoCommits(data, login, repo.name));
+      } catch (err) {
+        // GraphQL 失败回退 REST（带 ETag 条件请求）
+        try {
+          this.budget.recordRest();
+          const { commits } = await fetchRepoCommitsCached(
+            this.octokit,
+            this.cache,
+            login,
+            repo.name,
+            this.commitsPerRepo,
+          );
+          l1.commits.push(...commits);
+        } catch (restErr) {
+          missing.push(`commits:${repo.name}`);
+          this.log.warn(
+            `[github-source] commits failed for ${login}/${repo.name}: ${(restErr as Error).message}`,
+          );
+        }
+      }
+    }
+
+    l1.commits.sort((a, b) => a.committedAt.localeCompare(b.committedAt));
+    l1.pullRequests.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    l1.issues.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+    evidence.push(
+      ...l1.pullRequests.map(buildPullRequestEvidence),
+      ...l1.issues.map(buildIssueEvidence),
+      ...l1.commits.map((c) => buildCommitEvidence(c, login)),
+    );
+    return { l1, evidence, missing };
+  }
+
+  /** 完整采集：L0 + L1 → analyzer-core 输入 + 证据 + 元信息 */
+  async collect(login: string): Promise<GitHubCollectedData> {
+    const { l0, evidence: l0Evidence } = await this.collectL0(login);
+
+    // REST 补充：公开 email（用于 author 一致性信号；失败不阻塞）
+    let email: string | null = null;
+    try {
+      this.budget.recordRest();
+      email = await fetchUserEmailRest(this.octokit, login);
+    } catch {
+      // 账号 email 非公开时保持 null
+    }
+
+    const { l1, evidence: l1Evidence, missing } = await this.collectL1(login, l0);
+
+    const input: AnalyzerInput = {
+      subject: { ...l0.subject, email },
+      dataWindow: l0.dataWindow,
+      repos: l0.repos,
+      commits: l1.commits,
+      pullRequests: l1.pullRequests,
+      issues: l1.issues,
+      contributions: l0.contributions,
+      evidence: [...l0Evidence, ...l1Evidence],
+      missing,
+      collectedAt: new Date().toISOString(),
+    };
+
+    return {
+      input,
+      evidence: [...l0Evidence, ...l1Evidence],
+      meta: {
+        budgetUsed: this.budget.used,
+        missing,
+      },
+    };
+  }
+}

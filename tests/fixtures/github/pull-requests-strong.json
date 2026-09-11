@@ -1,0 +1,55 @@
+{
+  "data": {
+    "user": {
+      "pullRequests": {
+        "nodes": [
+          {
+            "number": 142,
+            "title": "feat: add contribution calendar aggregation",
+            "url": "https://github.com/other-org/awesome-project/pull/142",
+            "state": "MERGED",
+            "createdAt": "2026-06-15T08:00:00Z",
+            "mergedAt": "2026-06-20T12:00:00Z",
+            "repository": {
+              "nameWithOwner": "other-org/awesome-project",
+              "isFork": false
+            },
+            "additions": 210,
+            "deletions": 45,
+            "changedFiles": 6
+          },
+          {
+            "number": 57,
+            "title": "fix: migrate storage layer to Drizzle",
+            "url": "https://github.com/dev-strong/web-platform/pull/57",
+            "state": "MERGED",
+            "createdAt": "2026-05-02T09:30:00Z",
+            "mergedAt": "2026-05-03T10:00:00Z",
+            "repository": {
+              "nameWithOwner": "dev-strong/web-platform",
+              "isFork": false
+            },
+            "additions": 88,
+            "deletions": 12,
+            "changedFiles": 4
+          },
+          {
+            "number": 143,
+            "title": "docs: update README with usage examples",
+            "url": "https://github.com/other-org/awesome-project/pull/143",
+            "state": "OPEN",
+            "createdAt": "2026-09-01T07:00:00Z",
+            "mergedAt": null,
+            "repository": {
+              "nameWithOwner": "other-org/awesome-project",
+              "isFork": false
+            },
+            "additions": 30,
+            "deletions": 5,
+            "changedFiles": 2
+          }
+        ]
+      }
+    }
+  }
+}

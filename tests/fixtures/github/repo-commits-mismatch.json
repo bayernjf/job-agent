@@ -1,0 +1,41 @@
+{
+  "data": {
+    "repository": {
+      "defaultBranchRef": {
+        "target": {
+          "history": {
+            "nodes": [
+              {
+                "oid": "d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071",
+                "committedDate": "2026-01-04T10:00:00Z",
+                "messageHeadline": "Initial commit",
+                "author": {
+                  "name": "Someone Else",
+                  "email": "someone.else@example.com"
+                }
+              },
+              {
+                "oid": "e5f60718293a4b5c6d7e8f90a1b2c3d4e5f607182",
+                "committedDate": "2026-01-04T10:05:00Z",
+                "messageHeadline": "Add readme",
+                "author": {
+                  "name": "Another Person",
+                  "email": "another@example.com"
+                }
+              },
+              {
+                "oid": "f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293",
+                "committedDate": "2026-01-05T09:00:00Z",
+                "messageHeadline": "Update docs",
+                "author": {
+                  "name": "Someone Else",
+                  "email": "someone.else@example.com"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,217 @@
+{
+  "data": {
+    "user": {
+      "id": "U_STRONG_001",
+      "login": "dev-strong",
+      "name": "Dev Strong",
+      "avatarUrl": "https://avatars.example.com/dev-strong.png",
+      "url": "https://github.com/dev-strong",
+      "bio": "Full-stack developer",
+      "company": "Example Co",
+      "location": "Shanghai",
+      "createdAt": "2018-03-14T00:00:00Z",
+      "followers": {
+        "totalCount": 320
+      },
+      "following": {
+        "totalCount": 45
+      },
+      "repositories": {
+        "totalCount": 6,
+        "nodes": [
+          {
+            "name": "web-platform",
+            "url": "https://github.com/dev-strong/web-platform",
+            "isFork": false,
+            "isArchived": false,
+            "primaryLanguage": {
+              "name": "TypeScript"
+            },
+            "description": "Full-stack web platform with React and Hono",
+            "stargazerCount": 214,
+            "forkCount": 18,
+            "pushedAt": "2026-08-20T00:00:00Z",
+            "createdAt": "2022-01-10T00:00:00Z",
+            "repositoryTopics": {
+              "nodes": [
+                {
+                  "topic": {
+                    "name": "react"
+                  }
+                },
+                {
+                  "topic": {
+                    "name": "hono"
+                  }
+                },
+                {
+                  "topic": {
+                    "name": "api"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "data-pipeline",
+            "url": "https://github.com/dev-strong/data-pipeline",
+            "isFork": false,
+            "isArchived": false,
+            "primaryLanguage": {
+              "name": "Python"
+            },
+            "description": "ETL pipeline with ML inference",
+            "stargazerCount": 88,
+            "forkCount": 9,
+            "pushedAt": "2026-07-02T00:00:00Z",
+            "createdAt": "2023-05-01T00:00:00Z",
+            "repositoryTopics": {
+              "nodes": [
+                {
+                  "topic": {
+                    "name": "data"
+                  }
+                },
+                {
+                  "topic": {
+                    "name": "ml"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "go-cli-tool",
+            "url": "https://github.com/dev-strong/go-cli-tool",
+            "isFork": false,
+            "isArchived": false,
+            "primaryLanguage": {
+              "name": "Go"
+            },
+            "description": "CLI tooling for release automation",
+            "stargazerCount": 12,
+            "forkCount": 2,
+            "pushedAt": "2026-05-11T00:00:00Z",
+            "createdAt": "2024-02-18T00:00:00Z",
+            "repositoryTopics": {
+              "nodes": [
+                {
+                  "topic": {
+                    "name": "cli"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "blog",
+            "url": "https://github.com/dev-strong/blog",
+            "isFork": false,
+            "isArchived": false,
+            "primaryLanguage": {
+              "name": "TypeScript"
+            },
+            "description": "Astro blog",
+            "stargazerCount": 4,
+            "forkCount": 0,
+            "pushedAt": "2026-04-03T00:00:00Z",
+            "createdAt": "2024-08-01T00:00:00Z",
+            "repositoryTopics": {
+              "nodes": [
+                {
+                  "topic": {
+                    "name": "astro"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "drizzle-notes",
+            "url": "https://github.com/dev-strong/drizzle-notes",
+            "isFork": false,
+            "isArchived": false,
+            "primaryLanguage": {
+              "name": "TypeScript"
+            },
+            "description": "Notes and examples for Drizzle ORM",
+            "stargazerCount": 21,
+            "forkCount": 3,
+            "pushedAt": "2026-08-30T00:00:00Z",
+            "createdAt": "2025-01-15T00:00:00Z",
+            "repositoryTopics": {
+              "nodes": [
+                {
+                  "topic": {
+                    "name": "drizzle"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ops-playbook",
+            "url": "https://github.com/dev-strong/ops-playbook",
+            "isFork": false,
+            "isArchived": false,
+            "primaryLanguage": {
+              "name": "Shell"
+            },
+            "description": "DevOps playbook with GitHub Actions",
+            "stargazerCount": 2,
+            "forkCount": 1,
+            "pushedAt": "2026-01-22T00:00:00Z",
+            "createdAt": "2025-06-10T00:00:00Z",
+            "repositoryTopics": {
+              "nodes": [
+                {
+                  "topic": {
+                    "name": "devops"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "contributionsCollection": {
+        "totalCommitContributions": 486,
+        "totalPullRequestContributions": 34,
+        "totalIssueContributions": 21,
+        "totalRepositoryContributions": 4,
+        "contributionCalendar": {
+          "weeks": [
+            {
+              "contributionDays": [
+                {
+                  "date": "2026-08-24",
+                  "contributionCount": 3
+                },
+                {
+                  "date": "2026-08-25",
+                  "contributionCount": 5
+                },
+                {
+                  "date": "2026-08-26",
+                  "contributionCount": 2
+                }
+              ]
+            },
+            {
+              "contributionDays": [
+                {
+                  "date": "2026-08-31",
+                  "contributionCount": 4
+                },
+                {
+                  "date": "2026-09-01",
+                  "contributionCount": 6
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}
