@@ -5,35 +5,16 @@
  * - GET /profiles/:id：查询画像、不存在
  * - GET /health：健康检查
  *
- * 全部用内存数据库 + createApp 注入仓储，Hono app.request() 测试，不启动服务器。
+ * 全部用内存数据库 + createStorage 仓储注入 createApp，Hono app.request() 测试，不启动服务器。
  */
 
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import type { AbilityProfile } from '@jobagent/shared';
-import {
-  AnalysisJobsRepository,
-  ProfilesRepository,
-  runMigrations,
-} from '@jobagent/storage';
-import { createApp, type ApiRepos } from './index.js';
+import { createStorage, type StorageContext } from '@jobagent/storage';
+import { createApp } from './index.js';
 
-const MIGRATIONS_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations/sqlite',
-);
-
-function freshRepos(): ApiRepos {
-  const db = new Database(':memory:');
-  runMigrations(db, MIGRATIONS_DIR);
-  const orm = drizzle(db);
-  return {
-    jobs: new AnalysisJobsRepository(orm),
-    profiles: new ProfilesRepository(orm),
-  };
+async function freshRepos(): Promise<StorageContext> {
+  return createStorage({ sqlitePath: ':memory:' });
 }
 
 function sampleProfile(profileId: string, login = 'test-user'): AbilityProfile {
@@ -65,7 +46,7 @@ function sampleProfile(profileId: string, login = 'test-user'): AbilityProfile {
 
 describe('GET /health', () => {
   it('returns ok status', async () => {
-    const app = createApp({ repos: freshRepos() });
+    const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/health');
     expect(res.status).toBe(200);
     const body = await res.json() as any;
@@ -76,8 +57,8 @@ describe('GET /health', () => {
 
 describe('POST /analyze', () => {
   it('creates a new analysis job and returns jobId', async () => {
-    const repos = freshRepos();
-    const app = createApp({ repos });
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
 
     const res = await app.request('/analyze', {
       method: 'POST',
@@ -93,15 +74,15 @@ describe('POST /analyze', () => {
     expect(body.dedup).toBe(false);
 
     // 任务确实被创建
-    const job = repos.jobs.getById(body.jobId);
+    const job = await repos.jobs.getById(body.jobId);
     expect(job).toBeDefined();
     expect(job!.subjectLogin).toBe('test-user');
     expect(job!.status).toBe('queued');
   });
 
   it('returns existing jobId when user has an active job (dedup)', async () => {
-    const repos = freshRepos();
-    const app = createApp({ repos });
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
 
     // 第一次创建
     const res1 = await app.request('/analyze', {
@@ -124,14 +105,14 @@ describe('POST /analyze', () => {
     expect(body2.dedup).toBe(true);
 
     // 队列中仍然只有一个任务
-    const queued = repos.jobs.listQueued();
+    const queued = await repos.jobs.listQueued();
     expect(queued).toHaveLength(1);
     expect(queued[0]!.id).toBe(body1.jobId);
   });
 
   it('creates new job when previous job is not active (succeeded)', async () => {
-    const repos = freshRepos();
-    const app = createApp({ repos });
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
 
     // 第一次创建并标记成功
     const res1 = await app.request('/analyze', {
@@ -140,8 +121,8 @@ describe('POST /analyze', () => {
       body: JSON.stringify({ username: 'done-user' }),
     });
     const body1 = await res1.json() as any;
-    repos.jobs.claimNext('test-worker');
-    repos.jobs.succeed(body1.jobId, 'prof-001');
+    await repos.jobs.claimNext('test-worker');
+    await repos.jobs.succeed(body1.jobId, 'prof-001');
 
     // 第二次创建（同一用户，但之前的任务已成功，应该创建新任务）
     const res2 = await app.request('/analyze', {
@@ -157,7 +138,7 @@ describe('POST /analyze', () => {
   });
 
   it('rejects empty username', async () => {
-    const app = createApp({ repos: freshRepos() });
+    const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -169,7 +150,7 @@ describe('POST /analyze', () => {
   });
 
   it('rejects invalid username format', async () => {
-    const app = createApp({ repos: freshRepos() });
+    const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -179,7 +160,7 @@ describe('POST /analyze', () => {
   });
 
   it('rejects non-JSON body', async () => {
-    const app = createApp({ repos: freshRepos() });
+    const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -193,8 +174,8 @@ describe('POST /analyze', () => {
 
 describe('GET /jobs/:id', () => {
   it('returns job status for existing job', async () => {
-    const repos = freshRepos();
-    const app = createApp({ repos });
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
 
     // 创建任务
     const createRes = await app.request('/analyze', {
@@ -218,8 +199,8 @@ describe('GET /jobs/:id', () => {
   });
 
   it('returns updated status after job is claimed and succeeds', async () => {
-    const repos = freshRepos();
-    const app = createApp({ repos });
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
 
     const createRes = await app.request('/analyze', {
       method: 'POST',
@@ -229,7 +210,7 @@ describe('GET /jobs/:id', () => {
     const { jobId } = await createRes.json() as any;
 
     // Worker 认领
-    repos.jobs.claimNext('test-worker');
+    await repos.jobs.claimNext('test-worker');
     let res = await app.request(`/jobs/${jobId}`);
     let body = await res.json() as any;
     expect(body.status).toBe('running');
@@ -238,13 +219,13 @@ describe('GET /jobs/:id', () => {
     expect(body.startedAt).toBeTruthy();
 
     // 更新阶段
-    repos.jobs.updateStage(jobId, 'L1');
+    await repos.jobs.updateStage(jobId, 'L1');
     res = await app.request(`/jobs/${jobId}`);
     body = await res.json() as any;
     expect(body.stage).toBe('L1');
 
     // 成功
-    repos.jobs.succeed(jobId, 'prof-123');
+    await repos.jobs.succeed(jobId, 'prof-123');
     res = await app.request(`/jobs/${jobId}`);
     body = await res.json() as any;
     expect(body.status).toBe('succeeded');
@@ -254,7 +235,7 @@ describe('GET /jobs/:id', () => {
   });
 
   it('returns 404 for non-existent job', async () => {
-    const app = createApp({ repos: freshRepos() });
+    const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/jobs/job-nonexistent');
     expect(res.status).toBe(404);
     const body = await res.json() as any;
@@ -264,12 +245,12 @@ describe('GET /jobs/:id', () => {
 
 describe('GET /profiles/:id', () => {
   it('returns profile snapshot for existing profile', async () => {
-    const repos = freshRepos();
-    const app = createApp({ repos });
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
 
     // 插入画像
     const profile = sampleProfile('prof-001', 'profile-user');
-    repos.profiles.insert({
+    await repos.profiles.insert({
       id: 'prof-001',
       analyzerVersion: profile.analyzerVersion,
       subjectLogin: profile.subject.login,
@@ -293,7 +274,7 @@ describe('GET /profiles/:id', () => {
   });
 
   it('returns 404 for non-existent profile', async () => {
-    const app = createApp({ repos: freshRepos() });
+    const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/profiles/prof-nonexistent');
     expect(res.status).toBe(404);
     const body = await res.json() as any;
@@ -303,7 +284,7 @@ describe('GET /profiles/:id', () => {
 
 describe('404 fallback', () => {
   it('returns 404 for unknown routes', async () => {
-    const app = createApp({ repos: freshRepos() });
+    const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/unknown-route');
     expect(res.status).toBe(404);
     const body = await res.json() as any;

@@ -1,22 +1,21 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import { type AbilityProfile } from '@jobagent/shared';
-import { runMigrations } from './migrator.js';
-import { ProfilesRepository, type NewProfile } from './profiles.js';
+import { runMigrations } from './sqlite/migrator.js';
+import { openSqlite } from './sqlite/connection.js';
+import { SqliteProfilesRepository } from './sqlite/profiles-repo.js';
+import type { NewProfile } from './entities/index.js';
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../db/migrations/sqlite',
 );
 
-function freshRepo(): { repo: ProfilesRepository; db: Database.Database } {
-  const db = new Database(':memory:');
-  runMigrations(db, MIGRATIONS_DIR);
-  const orm = drizzle(db);
-  return { repo: new ProfilesRepository(orm), db };
+function freshRepo(): { repo: SqliteProfilesRepository; db: ReturnType<typeof openSqlite>['client'] } {
+  const { client, db } = openSqlite(':memory:');
+  runMigrations(client, MIGRATIONS_DIR);
+  return { repo: new SqliteProfilesRepository(db), db: client };
 }
 
 function sampleProfile(overrides: Partial<AbilityProfile> = {}): AbilityProfile {
@@ -58,13 +57,13 @@ function newProfileRow(id: string, snapshot: AbilityProfile): NewProfile {
   };
 }
 
-describe('ProfilesRepository', () => {
-  it('inserts and reads back a profile with parsed snapshot', () => {
+describe('SqliteProfilesRepository', () => {
+  it('inserts and reads back a profile with parsed snapshot', async () => {
     const { repo, db } = freshRepo();
     const profile = sampleProfile();
-    repo.insert(newProfileRow(profile.profileId, profile));
+    await repo.insert(newProfileRow(profile.profileId, profile));
 
-    const stored = repo.getById(profile.profileId);
+    const stored = await repo.getById(profile.profileId);
     expect(stored).toBeDefined();
     expect(stored!.subjectLogin).toBe('linxiaoman');
     expect(stored!.subjectClaimed).toBe(false);
@@ -75,44 +74,44 @@ describe('ProfilesRepository', () => {
     db.close();
   });
 
-  it('lists profiles by subject ordered by recency', () => {
+  it('lists profiles by subject ordered by recency', async () => {
     const { repo, db } = freshRepo();
     const base = sampleProfile();
     for (let i = 1; i <= 3; i++) {
-      repo.insert(newProfileRow(`prof_${String(i).padStart(32, '0')}`, base));
+      await repo.insert(newProfileRow(`prof_${String(i).padStart(32, '0')}`, base));
     }
-    const rows = repo.listBySubject('github', 'linxiaoman');
+    const rows = await repo.listBySubject('github', 'linxiaoman');
     expect(rows).toHaveLength(3);
     db.close();
   });
 
-  it('returns the latest profile for a subject', () => {
+  it('returns the latest profile for a subject', async () => {
     const { repo, db } = freshRepo();
     const base = sampleProfile();
-    repo.insert(newProfileRow('prof_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', base));
-    const latest = repo.latestBySubject('github', 'linxiaoman');
+    await repo.insert(newProfileRow('prof_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', base));
+    const latest = await repo.latestBySubject('github', 'linxiaoman');
     expect(latest!.id).toBe('prof_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
-    expect(repo.latestBySubject('github', 'nobody')).toBeUndefined();
+    expect(await repo.latestBySubject('github', 'nobody')).toBeUndefined();
     db.close();
   });
 
-  it('updates the snapshot status', () => {
+  it('updates the snapshot status', async () => {
     const { repo, db } = freshRepo();
     const base = sampleProfile();
-    repo.insert(newProfileRow('prof_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', base));
-    repo.updateStatus('prof_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'complete');
-    expect(repo.getById('prof_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')!.status).toBe('complete');
+    await repo.insert(newProfileRow('prof_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', base));
+    await repo.updateStatus('prof_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'complete');
+    expect((await repo.getById('prof_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'))!.status).toBe('complete');
     db.close();
   });
 
-  it('keeps an unparsable snapshot as null instead of throwing', () => {
+  it('keeps an unparsable snapshot as null instead of throwing', async () => {
     const { repo, db } = freshRepo();
     const base = sampleProfile();
     const id = 'prof_cccccccccccccccccccccccccccccccc';
-    repo.insert(newProfileRow(id, base));
+    await repo.insert(newProfileRow(id, base));
     // 直接篡改存储的 JSON，验证读取路径不抛错、以 null 呈现
     db.prepare("UPDATE profiles SET snapshot = '{broken json' WHERE id = ?").run(id);
-    const stored = repo.getById(id);
+    const stored = await repo.getById(id);
     expect(stored!.snapshot).toBeNull();
     db.close();
   });

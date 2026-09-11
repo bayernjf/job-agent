@@ -6,38 +6,19 @@
  * - runWorker：主循环认领并处理任务
  * - runWorker：无任务时等待
  *
- * 全部用内存数据库 + fake GitHubSource，不打真实 GitHub。
+ * 全部用内存数据库（createStorage :memory:）+ fake GitHubSource，不打真实 GitHub。
  */
 
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
 import type { AnalyzerInput } from '@jobagent/analyzer-core';
 import type { AbilityProfile, EvidenceItem } from '@jobagent/shared';
 import type { GitHubCollectedData } from '@jobagent/github-source';
-import {
-  AnalysisJobsRepository,
-  ProfilesRepository,
-  runMigrations,
-} from '@jobagent/storage';
+import { createStorage, type StorageContext } from '@jobagent/storage';
 import { handleJobFailure, processJob, runWorker, type WorkerRepos } from './index.js';
 
-const MIGRATIONS_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations/sqlite',
-);
-
-function freshRepos(): WorkerRepos {
-  const db = new Database(':memory:');
-  runMigrations(db, MIGRATIONS_DIR);
-  const orm = drizzle(db);
-  return {
-    jobs: new AnalysisJobsRepository(orm),
-    profiles: new ProfilesRepository(orm),
-  };
+async function freshRepos(): Promise<StorageContext> {
+  return createStorage({ sqlitePath: ':memory:' });
 }
 
 function sampleProfile(overrides: Partial<AbilityProfile> = {}): AbilityProfile {
@@ -119,17 +100,17 @@ function makeFakeSource(data?: GitHubCollectedData, shouldFail = false) {
   };
 }
 
-function createQueuedJob(repos: WorkerRepos, login = 'test-user'): string {
+async function createQueuedJob(repos: WorkerRepos, login = 'test-user'): Promise<string> {
   const id = `job-${randomUUID().slice(0, 8)}`;
-  repos.jobs.create({ id, subjectLogin: login });
+  await repos.jobs.create({ id, subjectLogin: login });
   return id;
 }
 
 describe('processJob', () => {
   it('collects, analyzes, writes profile, and marks job succeeded', async () => {
-    const repos = freshRepos();
-    const jobId = createQueuedJob(repos);
-    const job = repos.jobs.claimNext('test-worker')!;
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeFakeSource();
 
     const result = await processJob(job, repos, source);
@@ -138,13 +119,13 @@ describe('processJob', () => {
     expect(source.collect).toHaveBeenCalledWith('test-user');
 
     // 画像被写入
-    const profile = repos.profiles.getById(result.profileId);
+    const profile = await repos.profiles.getById(result.profileId);
     expect(profile).toBeDefined();
     expect(profile!.subjectLogin).toBe('test-user');
     expect(profile!.status).toBe('complete');
 
     // 任务标记成功
-    const updatedJob = repos.jobs.getById(jobId)!;
+    const updatedJob = (await repos.jobs.getById(jobId))!;
     expect(updatedJob.status).toBe('succeeded');
     expect(updatedJob.stage).toBe('complete');
     expect(updatedJob.profileId).toBe(result.profileId);
@@ -154,33 +135,33 @@ describe('processJob', () => {
   });
 
   it('updates stage to L1 after collection', async () => {
-    const repos = freshRepos();
-    createQueuedJob(repos);
-    const job = repos.jobs.claimNext('test-worker')!;
+    const repos = await freshRepos();
+    await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeFakeSource();
 
     await processJob(job, repos, source);
 
     // 最终 stage 是 complete（succeed 时设置）
-    expect(repos.jobs.getById(job.id)!.stage).toBe('complete');
+    expect((await repos.jobs.getById(job.id))!.stage).toBe('complete');
   });
 
   it('propagates collection errors to caller', async () => {
-    const repos = freshRepos();
-    createQueuedJob(repos);
-    const job = repos.jobs.claimNext('test-worker')!;
+    const repos = await freshRepos();
+    await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeFakeSource(undefined, true);
 
     await expect(processJob(job, repos, source)).rejects.toThrow('GitHub API rate limit exceeded');
 
     // 任务仍为 running（调用方决定重试或失败）
-    expect(repos.jobs.getById(job.id)!.status).toBe('running');
+    expect((await repos.jobs.getById(job.id))!.status).toBe('running');
   });
 
   it('records missing layers from collection', async () => {
-    const repos = freshRepos();
-    createQueuedJob(repos);
-    const job = repos.jobs.claimNext('test-worker')!;
+    const repos = await freshRepos();
+    await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!;
     const data = fakeCollectedData('test-user');
     data.meta.missing = ['pull_requests', 'commits:some/repo'];
     const source = makeFakeSource(data);
@@ -188,19 +169,19 @@ describe('processJob', () => {
     const result = await processJob(job, repos, source);
 
     expect(result.missing).toEqual(['pull_requests', 'commits:some/repo']);
-    expect(repos.jobs.getById(job.id)!.missing).toEqual(['pull_requests', 'commits:some/repo']);
+    expect((await repos.jobs.getById(job.id))!.missing).toEqual(['pull_requests', 'commits:some/repo']);
   });
 });
 
 describe('handleJobFailure', () => {
-  it('resets to queued when attempts < maxRetries', () => {
-    const repos = freshRepos();
-    createQueuedJob(repos);
-    const job = repos.jobs.claimNext('test-worker')!; // attempts = 1
+  it('resets to queued when attempts < maxRetries', async () => {
+    const repos = await freshRepos();
+    await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!; // attempts = 1
 
-    handleJobFailure(job, repos, new Error('temporary error'), 3);
+    await handleJobFailure(job, repos, new Error('temporary error'), 3);
 
-    const updated = repos.jobs.getById(job.id)!;
+    const updated = (await repos.jobs.getById(job.id))!;
     expect(updated.status).toBe('queued');
     expect(updated.errorMessage).toBe('temporary error');
     expect(updated.attempts).toBe(1); // 保留 attempts
@@ -210,60 +191,59 @@ describe('handleJobFailure', () => {
     expect(updated.claimedBy).toBeNull();
   });
 
-  it('marks failed when attempts >= maxRetries', () => {
-    const repos = freshRepos();
-    createQueuedJob(repos);
-    // 手动设置 attempts = 3（模拟已重试 3 次）
-    const { db } = { db: null as unknown as Database.Database };
-    // 直接用 raw SQL 设置 attempts
-    const ormDb = (repos.jobs as unknown as { db: { $client: Database.Database } }).db.$client;
-    ormDb.prepare('UPDATE analysis_jobs SET attempts = 3, status = ? WHERE id = ?').run('running', createQueuedJob(repos) || '');
+  it('marks failed when attempts >= maxRetries', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos, 'user-2');
 
-    // 重新认领一个新任务来测试
-    const jobId2 = createQueuedJob(repos, 'user-2');
-    ormDb.prepare('UPDATE analysis_jobs SET attempts = 3, status = ? WHERE id = ?').run('running', jobId2);
-    const job = repos.jobs.getById(jobId2)!;
+    // 用真实认领/重排流程构造 attempts=3、status=running 的任务
+    let job = (await repos.jobs.claimNext('test-worker'))!; // attempts 1
+    await handleJobFailure(job, repos, new Error('e1'), 3); // -> queued
+    job = (await repos.jobs.claimNext('test-worker'))!; // attempts 2
+    await handleJobFailure(job, repos, new Error('e2'), 3); // -> queued
+    job = (await repos.jobs.claimNext('test-worker'))!; // attempts 3, running
+    expect(job.attempts).toBe(3);
+    expect(job.id).toBe(jobId);
 
-    handleJobFailure(job, repos, new Error('permanent error'), 3);
+    await handleJobFailure(job, repos, new Error('permanent error'), 3);
 
-    const updated = repos.jobs.getById(jobId2)!;
+    const updated = (await repos.jobs.getById(jobId))!;
     expect(updated.status).toBe('failed');
     expect(updated.errorMessage).toBe('permanent error');
     expect(updated.finishedAt).toBeTruthy();
   });
 
-  it('requeued job can be claimed again (attempts increments)', () => {
-    const repos = freshRepos();
-    const jobId = createQueuedJob(repos);
+  it('requeued job can be claimed again (attempts increments)', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos);
 
     // 第 1 次认领 + 失败 + 重试
-    const job1 = repos.jobs.claimNext('worker-1')!;
+    const job1 = (await repos.jobs.claimNext('worker-1'))!;
     expect(job1.attempts).toBe(1);
-    handleJobFailure(job1, repos, new Error('error 1'), 3);
-    expect(repos.jobs.getById(jobId)!.status).toBe('queued');
+    await handleJobFailure(job1, repos, new Error('error 1'), 3);
+    expect((await repos.jobs.getById(jobId))!.status).toBe('queued');
 
     // 第 2 次认领
-    const job2 = repos.jobs.claimNext('worker-2')!;
+    const job2 = (await repos.jobs.claimNext('worker-2'))!;
     expect(job2.attempts).toBe(2);
     expect(job2.id).toBe(jobId);
-    handleJobFailure(job2, repos, new Error('error 2'), 3);
+    await handleJobFailure(job2, repos, new Error('error 2'), 3);
 
     // 第 3 次认领
-    const job3 = repos.jobs.claimNext('worker-3')!;
+    const job3 = (await repos.jobs.claimNext('worker-3'))!;
     expect(job3.attempts).toBe(3);
-    handleJobFailure(job3, repos, new Error('error 3'), 3);
+    await handleJobFailure(job3, repos, new Error('error 3'), 3);
 
     // 第 3 次失败后永久 failed，不能再认领
-    expect(repos.jobs.getById(jobId)!.status).toBe('failed');
-    expect(repos.jobs.claimNext('worker-4')).toBeNull();
+    expect((await repos.jobs.getById(jobId))!.status).toBe('failed');
+    expect(await repos.jobs.claimNext('worker-4')).toBeNull();
   });
 });
 
 describe('runWorker', () => {
   it('claims and processes jobs in the main loop', async () => {
-    const repos = freshRepos();
-    const jobId1 = createQueuedJob(repos, 'user-1');
-    const jobId2 = createQueuedJob(repos, 'user-2');
+    const repos = await freshRepos();
+    const jobId1 = await createQueuedJob(repos, 'user-1');
+    const jobId2 = await createQueuedJob(repos, 'user-2');
     const source = makeFakeSource();
 
     let callCount = 0;
@@ -281,13 +261,13 @@ describe('runWorker', () => {
     });
 
     expect(source.collect).toHaveBeenCalledTimes(2);
-    expect(repos.jobs.getById(jobId1)!.status).toBe('succeeded');
-    expect(repos.jobs.getById(jobId2)!.status).toBe('succeeded');
+    expect((await repos.jobs.getById(jobId1))!.status).toBe('succeeded');
+    expect((await repos.jobs.getById(jobId2))!.status).toBe('succeeded');
   });
 
   it('handles job failures with retry in the main loop', async () => {
-    const repos = freshRepos();
-    const jobId = createQueuedJob(repos, 'failing-user');
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos, 'failing-user');
 
     // 前 2 次失败，第 3 次成功
     let collectCalls = 0;
@@ -314,12 +294,12 @@ describe('runWorker', () => {
     });
 
     expect(collectCalls).toBe(3);
-    expect(repos.jobs.getById(jobId)!.status).toBe('succeeded');
-    expect(repos.jobs.getById(jobId)!.attempts).toBe(3);
+    expect((await repos.jobs.getById(jobId))!.status).toBe('succeeded');
+    expect((await repos.jobs.getById(jobId))!.attempts).toBe(3);
   });
 
   it('sleeps when no jobs are available', async () => {
-    const repos = freshRepos();
+    const repos = await freshRepos();
     const source = makeFakeSource();
     const sleep = vi.fn(async () => {});
 
