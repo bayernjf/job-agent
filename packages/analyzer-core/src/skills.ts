@@ -5,6 +5,7 @@
 
 import type { SkillTag } from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
+import { repoRef } from './input.js';
 
 interface LangStat {
   name: string;
@@ -66,9 +67,9 @@ export function computeSkillTags(input: AnalyzerInput): SkillTag[] {
       lastPush: '',
       commitCount: 0,
     };
-    stat.repoNames.push(repo.name);
-    if (repo.pushedAt > stat.lastPush) stat.lastPush = repo.pushedAt;
-    stat.commitCount += input.commits.filter((c) => c.repoName === repo.name).length;
+    stat.repoNames.push(repoRef(repo));
+    if (repo.pushedAt && repo.pushedAt > stat.lastPush) stat.lastPush = repo.pushedAt;
+    stat.commitCount += input.commits.filter((c) => c.repoName === repoRef(repo)).length;
     stats.set(repo.primaryLanguage, stat);
   }
   const now = input.collectedAt;
@@ -98,10 +99,10 @@ export function computeSkillTags(input: AnalyzerInput): SkillTag[] {
   for (const repo of input.repos) {
     const text = repoText(repo);
     for (const fw of matchTags(text, FRAMEWORK_PATTERNS)) {
-      matchedFrameworks.set(fw, [...(matchedFrameworks.get(fw) ?? []), repo.name]);
+      matchedFrameworks.set(fw, [...(matchedFrameworks.get(fw) ?? []), repoRef(repo)]);
     }
     for (const dm of matchTags(text, DOMAIN_PATTERNS)) {
-      matchedDomains.set(dm, [...(matchedDomains.get(dm) ?? []), repo.name]);
+      matchedDomains.set(dm, [...(matchedDomains.get(dm) ?? []), repoRef(repo)]);
     }
   }
   const frameworkTags: SkillTag[] = [...matchedFrameworks.entries()]

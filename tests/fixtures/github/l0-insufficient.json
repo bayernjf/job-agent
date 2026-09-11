@@ -32,6 +32,10 @@
             "createdAt": "2026-08-01T00:00:00Z",
             "repositoryTopics": {
               "nodes": []
+            },
+            "nameWithOwner": "dev-quiet/empty-repo",
+            "owner": {
+              "login": "dev-quiet"
             }
           }
         ]

@@ -5,6 +5,7 @@
 
 import type { AbilityProfile } from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
+import { repoRef } from './input.js';
 
 export function generateInterviewQuestions(
   input: AnalyzerInput,
@@ -18,14 +19,14 @@ export function generateInterviewQuestions(
     commitByRepo.set(c.repoName, (commitByRepo.get(c.repoName) ?? 0) + 1);
   }
   const topRepo = input.repos
-    .filter((r) => (commitByRepo.get(r.name) ?? 0) > 0)
-    .toSorted((a, b) => (commitByRepo.get(b.name) ?? 0) - (commitByRepo.get(a.name) ?? 0))[0];
+    .filter((r) => (commitByRepo.get(repoRef(r)) ?? 0) > 0)
+    .toSorted((a, b) => (commitByRepo.get(repoRef(b)) ?? 0) - (commitByRepo.get(repoRef(a)) ?? 0))[0];
 
-  if (topRepo && known.has(`repo:${topRepo.name}`)) {
+  if (topRepo && known.has(`repo:${repoRef(topRepo)}`)) {
     questions.push({
       question: `Describe your main contribution to ${topRepo.name} and the key design decisions behind it.`,
       intent: 'Assess depth of ownership and engineering judgment on real work',
-      basisEvidenceRef: `repo:${topRepo.name}`,
+      basisEvidenceRef: `repo:${repoRef(topRepo)}`,
     });
   }
 
@@ -45,11 +46,11 @@ export function generateInterviewQuestions(
   const topStarRepo = input.repos
     .filter((r) => r.stargazerCount >= 20)
     .toSorted((a, b) => b.stargazerCount - a.stargazerCount)[0];
-  if (topStarRepo && known.has(`repo:${topStarRepo.name}`)) {
+  if (topStarRepo && known.has(`repo:${repoRef(topStarRepo)}`)) {
     questions.push({
       question: `${topStarRepo.name} has ${topStarRepo.stargazerCount} stars. What is its core design, and what did you learn building it?`,
       intent: 'Assess system design and community impact',
-      basisEvidenceRef: `repo:${topStarRepo.name}`,
+      basisEvidenceRef: `repo:${repoRef(topStarRepo)}`,
     });
   }
 
@@ -57,11 +58,11 @@ export function generateInterviewQuestions(
   const primaryLanguage = input.repos[0]?.primaryLanguage;
   if (primaryLanguage) {
     const langRepo = input.repos.find((r) => r.primaryLanguage === primaryLanguage);
-    if (langRepo && known.has(`repo:${langRepo.name}`)) {
+    if (langRepo && known.has(`repo:${repoRef(langRepo)}`)) {
       questions.push({
         question: `What is the most complex thing you have built with ${primaryLanguage}?`,
         intent: 'Assess language depth beyond syntax familiarity',
-        basisEvidenceRef: `repo:${langRepo.name}`,
+        basisEvidenceRef: `repo:${repoRef(langRepo)}`,
       });
     }
   }

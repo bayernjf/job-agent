@@ -34,6 +34,10 @@
             "createdAt": "2024-09-01T00:00:00Z",
             "repositoryTopics": {
               "nodes": []
+            },
+            "nameWithOwner": "dev-suspicious/repo-a",
+            "owner": {
+              "login": "dev-suspicious"
             }
           },
           {
@@ -51,6 +55,10 @@
             "createdAt": "2024-09-05T00:00:00Z",
             "repositoryTopics": {
               "nodes": []
+            },
+            "nameWithOwner": "dev-suspicious/repo-b",
+            "owner": {
+              "login": "dev-suspicious"
             }
           },
           {
@@ -68,6 +76,10 @@
             "createdAt": "2024-09-08T00:00:00Z",
             "repositoryTopics": {
               "nodes": []
+            },
+            "nameWithOwner": "dev-suspicious/repo-c",
+            "owner": {
+              "login": "dev-suspicious"
             }
           }
         ]

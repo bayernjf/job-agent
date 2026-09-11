@@ -22,6 +22,7 @@ function makeInput(login: string) {
     repos: [
       {
         name: 'demo',
+        ownerLogin: login,
         url: `https://github.com/${login}/demo`,
         isFork: false,
         isArchived: false,
