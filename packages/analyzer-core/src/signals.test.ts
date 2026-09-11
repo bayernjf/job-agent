@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { computeAuthenticity, computeAuthenticitySignals } from './signals.js';
 import { SIGNAL_CODES } from './rules.js';
 import { buildInput } from './test-input.js';
-import type { AnalyzerCommit, AnalyzerInput, AnalyzerRepo } from './input.js';
+import type { AnalyzerCommit, AnalyzerInput, AnalyzerPullRequest, AnalyzerRepo } from './input.js';
 
 /** 断言所有信号的 evidenceRefs 都真实存在（无证据不下结论） */
 function expectValidRefs(input: AnalyzerInput): void {
@@ -297,5 +297,101 @@ describe('computeAuthenticity (status & confidence)', () => {
     expect(confidence).toBeGreaterThanOrEqual(0.3);
     expect(confidence).toBeLessThanOrEqual(0.95);
     expect(Number.isInteger(confidence * 100)).toBe(true);
+  });
+
+  it('flags star_to_commit_ratio warn when stars disproportionately exceed commits', () => {
+    const starRepos: AnalyzerRepo[] = [
+      {
+        name: 'popular-repo',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/popular-repo',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'TypeScript',
+        topics: [],
+        description: null,
+        stargazerCount: 5000,
+        forkCount: 100,
+        pushedAt: '2026-08-01T00:00:00Z',
+        createdAt: '2024-01-01T00:00:00Z',
+      },
+    ];
+    const fewCommits: AnalyzerCommit[] = [
+      {
+        oid: 'sc01bb02cc03dd04ee05ff06aa07bb08cc09dd0e',
+        committedAt: '2026-07-15T10:00:00Z',
+        authorName: 'Dev Strong',
+        authorEmail: 'dev.strong@example.com',
+        repoName: 'dev-strong/popular-repo',
+        messageHeadline: 'initial commit',
+      },
+    ];
+    const signals = computeAuthenticitySignals(
+      buildInput({ repos: starRepos, commits: fewCommits, pullRequests: [], issues: [] }),
+    );
+    const ratio = signals.find((s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO);
+    expect(ratio?.severity).toBe('warn');
+    expect(ratio?.detail).toContain('ratio');
+    expectValidRefs(buildInput({ repos: starRepos, commits: fewCommits }));
+  });
+
+  it('flags self_pr_ratio warn when nearly all PRs are in self-owned repos', () => {
+    const selfPRs: AnalyzerPullRequest[] = Array.from({ length: 25 }, (_, i) => ({
+      number: i + 1,
+      title: `self PR ${i + 1}`,
+      url: `https://github.com/dev-strong/repo-${i % 5}/pull/${i + 1}`,
+      state: 'MERGED' as const,
+      createdAt: `2026-0${(i % 9) + 1}-15T10:00:00Z`,
+      mergedAt: `2026-0${(i % 9) + 1}-16T10:00:00Z`,
+      repoNameWithOwner: `dev-strong/repo-${i % 5}`,
+      repoIsFork: false,
+      repoOwnerIsSelf: true,
+      additions: 10,
+      deletions: 2,
+      changedFiles: 1,
+    }));
+    const signals = computeAuthenticitySignals(buildInput({ pullRequests: selfPRs }));
+    const selfRatio = signals.find((s) => s.code === SIGNAL_CODES.SELF_PR_RATIO);
+    expect(selfRatio?.severity).toBe('warn');
+    expect(selfRatio?.detail).toContain('self-owned repos');
+  });
+
+  it('weak external contributions (1-2 PRs) add less confidence than strong (3+)', () => {
+    const oneExtPR: AnalyzerPullRequest[] = [
+      {
+        number: 1,
+        title: 'single external contribution',
+        url: 'https://github.com/other-org/project/pull/1',
+        state: 'MERGED' as const,
+        createdAt: '2026-06-15T08:00:00Z',
+        mergedAt: '2026-06-20T12:00:00Z',
+        repoNameWithOwner: 'other-org/project',
+        repoIsFork: false,
+        repoOwnerIsSelf: false,
+        additions: 50,
+        deletions: 10,
+        changedFiles: 3,
+      },
+    ];
+    const threeExtPRs: AnalyzerPullRequest[] = Array.from({ length: 3 }, (_, i) => ({
+      number: i + 1,
+      title: `external contribution ${i + 1}`,
+      url: `https://github.com/other-org/project-${i}/pull/${i + 1}`,
+      state: 'MERGED' as const,
+      createdAt: `2026-0${i + 4}-15T08:00:00Z`,
+      mergedAt: `2026-0${i + 4}-20T12:00:00Z`,
+      repoNameWithOwner: `other-org/project-${i}`,
+      repoIsFork: false,
+      repoOwnerIsSelf: false,
+      additions: 50,
+      deletions: 10,
+      changedFiles: 3,
+    }));
+    const weak = computeAuthenticity(buildInput({ pullRequests: oneExtPR, commits: [] }));
+    const strong = computeAuthenticity(buildInput({ pullRequests: threeExtPRs, commits: [] }));
+    // 弱正向 +0.05，强正向 +0.1，所以 strong confidence 应该比 weak 高 0.05
+    expect(strong.confidence).toBeGreaterThan(weak.confidence);
+    expect(weak.signals.find((s) => s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS)?.detail).toContain('weak positive signal');
+    expect(strong.signals.find((s) => s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS)?.detail).toContain('strong positive signal');
   });
 });

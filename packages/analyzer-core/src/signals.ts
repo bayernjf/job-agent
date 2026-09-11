@@ -187,6 +187,28 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
     });
   }
 
+
+  // 4b. star 与 commit 比例异常（2026-09-11 负样本校准新增）
+  // star 远多于 commit 可能是买 star、搬运项目或账号异常；仅在有一定 star 基数时触发
+  if (totalStars >= 500 && totalCommits >= 1) {
+    const ratio = totalStars / totalCommits;
+    if (ratio >= 100) {
+      signals.push({
+        code: SIGNAL_CODES.STAR_TO_COMMIT_RATIO,
+        severity: 'warn',
+        label: 'Star count disproportionately high relative to commit activity',
+        detail: `${totalStars} stars across ${totalCommits} sampled commits (ratio ${Math.round(ratio)}:1); may indicate purchased stars or forked high-profile repos`,
+        evidenceRefs: validRefs(
+          input,
+          input.repos
+            .toSorted((a, b) => b.stargazerCount - a.stargazerCount)
+            .slice(0, 3)
+            .map((r) => `repo:${repoRef(r)}`),
+        ),
+      });
+    }
+  }
+
   // 5. 行为证据不足
   const behaviorTotal = input.commits.length + input.pullRequests.length + input.issues.length;
   if (behaviorTotal < 3 && commitContributions < 10) {
@@ -215,17 +237,38 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
     }
   }
 
-  // 7. 被他人项目 merge 的贡献（强正向）
+  // 7. 被他人项目 merge 的贡献（正向信号，2026-09-11 负样本校准：按数量分级）
+  // 1-2 个外部 PR = 弱正向（可能是偶然贡献），3+ 个 = 强正向（持续被外部维护者认可）
   const externalMerged = input.pullRequests.filter((p) => !p.repoOwnerIsSelf && p.state === 'MERGED');
   if (externalMerged.length > 0) {
+    const isStrong = externalMerged.length >= 3;
     signals.push({
       code: SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS,
       severity: 'info',
-      label: 'Merged contributions to external projects',
-      detail: `${externalMerged.length} pull request(s) merged into projects not owned by the account`,
+      label: isStrong
+        ? 'Strong verified external contributions'
+        : 'Merged contributions to external projects',
+      detail: `${externalMerged.length} pull request(s) merged into projects not owned by the account (${isStrong ? 'strong positive signal' : 'weak positive signal'})`,
       evidenceRefs: validRefs(
         input,
         externalMerged.slice(0, 5).map((p) => `pr:${p.repoNameWithOwner}:${p.number}`),
+      ),
+    });
+  }
+
+  // 7b. PR 几乎全在自己 repo（2026-09-11 负样本校准新增）
+  // 大量 PR 但全在自己 repo，可能是刷 PR 数量；仅在 PR 总数较多时触发
+  const allPRs = input.pullRequests;
+  const selfPRs = allPRs.filter((p) => p.repoOwnerIsSelf);
+  if (allPRs.length >= 20 && selfPRs.length / allPRs.length >= 0.9) {
+    signals.push({
+      code: SIGNAL_CODES.SELF_PR_RATIO,
+      severity: 'warn',
+      label: 'Nearly all pull requests are in self-owned repos',
+      detail: `${selfPRs.length} of ${allPRs.length} pull requests (${Math.round((selfPRs.length / allPRs.length) * 100)}%) are in self-owned repos; may indicate inflated PR count`,
+      evidenceRefs: validRefs(
+        input,
+        selfPRs.slice(0, 3).map((p) => `pr:${p.repoNameWithOwner}:${p.number}`),
       ),
     });
   }
@@ -300,7 +343,11 @@ export function computeAuthenticity(input: AnalyzerInput): {
   for (const s of signals) {
     if (s.severity === 'risk') confidence -= 0.2;
     else if (s.severity === 'warn') confidence -= 0.08;
-    if (s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS) confidence += 0.1;
+    if (s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS) {
+      // 按数量分级：1-2 个外部 PR 弱正向 +0.05，3+ 个强正向 +0.1
+      const extCount = input.pullRequests.filter((pr) => !pr.repoOwnerIsSelf && pr.state === 'MERGED').length;
+      confidence += extCount >= 3 ? 0.1 : 0.05;
+    }
   }
   if (status === 'insufficient_data') confidence = 0.35;
   confidence = clamp(Math.round(confidence * 100) / 100, 0.3, 0.95);
