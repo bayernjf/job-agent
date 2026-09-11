@@ -1,1 +1,2 @@
 pnpm -r typecheck
+git diff --cached --check
