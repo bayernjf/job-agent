@@ -8,6 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
+    "test": "vitest run",
     "astro": "astro",
     "check:astro": "astro check"
   },
