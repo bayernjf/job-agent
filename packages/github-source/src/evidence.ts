@@ -1,0 +1,75 @@
+/**
+ * 证据生成：把采集到的结构化对象映射为 EvidenceItem。
+ * evidenceId 即 evidenceRefs 的索引键，analyzer-core 的每条结论必须指向这里。
+ */
+
+import type { AnalyzerInput } from '@jobagent/analyzer-core';
+import type { EvidenceItem } from '@jobagent/shared';
+
+export function buildSubjectEvidence(
+  subject: AnalyzerInput['subject'],
+  window: AnalyzerInput['dataWindow'],
+): EvidenceItem {
+  return {
+    evidenceId: `user:${subject.login}`,
+    sourcePlatform: 'github',
+    sourceType: 'contribution',
+    url: subject.profileUrl,
+    occurredAt: window.since,
+    layer: 'L0',
+    claim: `GitHub 账号 ${subject.login}：创建于 ${window.since.slice(0, 10)}，${subject.followers} 关注者，${subject.publicRepos} 个公开仓库`,
+    rawRef: subject.login,
+  };
+}
+
+export function buildRepoEvidence(repo: AnalyzerInput['repos'][number]): EvidenceItem {
+  return {
+    evidenceId: `repo:${repo.name}`,
+    sourcePlatform: 'github',
+    sourceType: 'repo',
+    url: repo.url,
+    occurredAt: repo.pushedAt,
+    layer: 'L0',
+    claim: `仓库 ${repo.name}${repo.primaryLanguage ? `（${repo.primaryLanguage}）` : ''}：${repo.stargazerCount} star / ${repo.forkCount} fork，最近推送 ${repo.pushedAt.slice(0, 10)}`,
+    rawRef: repo.name,
+  };
+}
+
+export function buildCommitEvidence(commit: AnalyzerInput['commits'][number], owner: string): EvidenceItem {
+  return {
+    evidenceId: `commit:${commit.repoName}:${commit.oid}`,
+    sourcePlatform: 'github',
+    sourceType: 'commit',
+    url: `https://github.com/${owner}/${commit.repoName}/commit/${commit.oid}`,
+    occurredAt: commit.committedAt,
+    layer: 'L1',
+    claim: commit.messageHeadline || `提交 ${commit.oid.slice(0, 7)}（${commit.repoName}）`,
+    rawRef: `${commit.repoName}#${commit.oid}`,
+  };
+}
+
+export function buildPullRequestEvidence(pr: AnalyzerInput['pullRequests'][number]): EvidenceItem {
+  return {
+    evidenceId: `pr:${pr.repoNameWithOwner}:${pr.number}`,
+    sourcePlatform: 'github',
+    sourceType: 'pr',
+    url: pr.url,
+    occurredAt: pr.createdAt,
+    layer: 'L1',
+    claim: `PR「${pr.title}」（${pr.repoNameWithOwner}#${pr.number}）`,
+    rawRef: `${pr.repoNameWithOwner}#${pr.number}`,
+  };
+}
+
+export function buildIssueEvidence(issue: AnalyzerInput['issues'][number]): EvidenceItem {
+  return {
+    evidenceId: `issue:${issue.repoNameWithOwner}:${issue.number}`,
+    sourcePlatform: 'github',
+    sourceType: 'issue',
+    url: issue.url,
+    occurredAt: issue.createdAt,
+    layer: 'L1',
+    claim: `Issue「${issue.title}」（${issue.repoNameWithOwner}#${issue.number}）`,
+    rawRef: `${issue.repoNameWithOwner}#${issue.number}`,
+  };
+}
