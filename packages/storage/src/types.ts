@@ -4,7 +4,7 @@ import type {
   IProfilesRepository,
   IWaitlistRepository,
 } from './repositories/index.js';
-import type { RunMigrationsResult } from './sqlite/migrator.js';
+import type { RunMigrationsResult } from './migrations-fs.js';
 
 export type StorageDriver = 'sqlite' | 'postgres';
 
