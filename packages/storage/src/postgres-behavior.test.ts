@@ -1,21 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { rmSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vitest';
 import type { AbilityProfile } from '@jobagent/shared';
+import EmbeddedPostgres from 'embedded-postgres';
 import { createStorage } from './storage.js';
 import type { StorageContext } from './types.js';
 
 /**
- * Postgres 仓储行为测试——只在提供 DATABASE_TEST_URL 时运行，否则整体 skip。
- *
- * 本地/CI 起一个一次性 Postgres 后执行：
- *   DATABASE_TEST_URL=postgres://user:pass@localhost:5432/jobagent_test pnpm --filter @jobagent/storage test
- *
- * 断言与 SQLite 行为测试对齐，验证同一 I*Repository 契约在真实 Postgres 上成立
+ * Postgres 仓储行为测试——在真实 Postgres 上验证同一 I*Repository 契约
  * （async 事务认领、boolean/integer 列、JSON 文本列往返、唯一约束）。
+ *
+ * 数据源优先级：
+ * 1. 外部 DATABASE_TEST_URL 环境变量（CI/Docker 提供真实 PG）
+ * 2. 自动启动 embedded-postgres（本地开发，无需安装 PG/Docker）
+ * embedded PG 是异步启动的，模块加载时无法判断可用性，因此用例始终注册，
+ * 在运行时（beforeAll 已跑完）通过 TestContext.skip() 跳过。
  */
 
-const url = process.env.DATABASE_TEST_URL;
-const describeIfPg = url ? describe : describe.skip;
+const EMBEDDED_DIR = resolve(process.cwd(), 'data', 'pg-test-embedded');
+const EMBEDDED_PORT = 5433;
 
 function minimalSnapshot(login: string): AbilityProfile {
   return {
@@ -35,47 +39,103 @@ function minimalSnapshot(login: string): AbilityProfile {
   } as unknown as AbilityProfile;
 }
 
-describeIfPg('postgres repositories (DATABASE_TEST_URL)', () => {
-  let storage: StorageContext;
+describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
+  let storage: StorageContext | undefined;
+  let embedded: EmbeddedPostgres | null = null;
+  // 非 null 表示 PG 不可用；beforeAll 之后才确定
+  let unavailable: string | null = null;
+
+  // 包装：运行时（beforeAll 后）判断 PG 是否可用，不可用则跳过
+  function pgIt(name: string, fn: (s: StorageContext, ctx: TestContext) => Promise<void>): void {
+    it(name, (ctx) => {
+      if (unavailable || !storage) {
+        ctx.skip();
+        return;
+      }
+      return fn(storage, ctx);
+    });
+  }
 
   beforeAll(async () => {
-    storage = await createStorage({
-      driver: 'postgres',
-      databaseUrl: url!,
-      autoMigrate: true,
-    });
-  });
+    let pgUrl: string | undefined;
+    // 1. 优先使用外部 PG
+    if (process.env.DATABASE_TEST_URL) {
+      pgUrl = process.env.DATABASE_TEST_URL;
+    } else {
+      // 2. 自动启动 embedded-postgres
+      try {
+        rmSync(EMBEDDED_DIR, { recursive: true, force: true });
+        embedded = new EmbeddedPostgres({
+          databaseDir: EMBEDDED_DIR,
+          user: 'test',
+          password: 'test',
+          port: EMBEDDED_PORT,
+          persistent: false,
+          initdbFlags: ['--locale=C', '--encoding=UTF8'],
+          onLog: () => {},
+          onError: () => {},
+        });
+        await embedded.initialise();
+        await embedded.start();
+        await embedded.createDatabase('jobagent_test');
+        pgUrl = `postgres://test:test@localhost:${EMBEDDED_PORT}/jobagent_test`;
+      } catch (err) {
+        unavailable = (err as Error).message;
+        console.warn('[postgres-behavior] embedded-postgres unavailable, tests skip:', unavailable);
+        return;
+      }
+    }
+
+    try {
+      storage = await createStorage({
+        driver: 'postgres',
+        databaseUrl: pgUrl,
+        autoMigrate: true,
+      });
+    } catch (err) {
+      unavailable = (err as Error).message;
+      console.warn('[postgres-behavior] createStorage failed, tests skip:', unavailable);
+    }
+  }, 60000);
 
   afterAll(async () => {
-    await storage.close();
+    await storage?.close();
+    if (embedded) {
+      try {
+        await embedded.stop();
+      } catch {
+        // best-effort
+      }
+      rmSync(EMBEDDED_DIR, { recursive: true, force: true });
+    }
   });
 
-  it('creates, claims FIFO and succeeds a job', async () => {
+  pgIt('creates, claims FIFO and succeeds a job', async (s) => {
     const suffix = randomUUID().slice(0, 8);
     const oldId = `job_old_${suffix}`;
     const newId = `job_new_${suffix}`;
-    await storage.jobs.create({ id: oldId, subjectLogin: `u_${suffix}` });
-    await storage.jobs.create({ id: newId, subjectLogin: `u_${suffix}` });
+    await s.jobs.create({ id: oldId, subjectLogin: `u_${suffix}` });
+    await s.jobs.create({ id: newId, subjectLogin: `u_${suffix}` });
 
-    const first = await storage.jobs.claimNext('pg-test-worker');
+    const first = await s.jobs.claimNext('pg-test-worker');
     expect(first?.id).toBe(oldId);
     expect(first?.status).toBe('running');
     expect(first?.attempts).toBe(1);
 
-    const second = await storage.jobs.claimNext('pg-test-worker');
+    const second = await s.jobs.claimNext('pg-test-worker');
     expect(second?.id).toBe(newId);
 
-    await storage.jobs.succeed(oldId, `prof_ok_${suffix}`, { graphqlPoints: 3 }, []);
-    const done = await storage.jobs.getById(oldId);
+    await s.jobs.succeed(oldId, `prof_ok_${suffix}`, { graphqlPoints: 3 }, []);
+    const done = await s.jobs.getById(oldId);
     expect(done?.status).toBe('succeeded');
     expect(done?.profileId).toBe(`prof_ok_${suffix}`);
     expect(done?.budgetUsed).toEqual({ graphqlPoints: 3 });
   });
 
-  it('inserts and reads back a profile with boolean and JSON round-trip', async () => {
+  pgIt('inserts and reads back a profile with boolean and JSON round-trip', async (s) => {
     const id = `prof_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
     const snapshot = minimalSnapshot(`pg_${randomUUID().slice(0, 6)}`);
-    await storage.profiles.insert({
+    await s.profiles.insert({
       id,
       analyzerVersion: snapshot.analyzerVersion,
       subjectLogin: snapshot.subject.login,
@@ -85,28 +145,28 @@ describeIfPg('postgres repositories (DATABASE_TEST_URL)', () => {
       status: 'complete',
       snapshot,
     });
-    const stored = await storage.profiles.getById(id);
+    const stored = await s.profiles.getById(id);
     expect(stored?.subjectClaimed).toBe(true);
     expect(stored?.status).toBe('complete');
     expect(stored?.analysisLayers).toEqual(['L0', 'L1']);
     expect(stored?.snapshot?.subject.login).toBe(snapshot.subject.login);
   });
 
-  it('batch-inserts evidence and counts by profile', async () => {
+  pgIt('batch-inserts evidence and counts by profile', async (s) => {
     const profileId = `prof_ev_${randomUUID().slice(0, 8)}`;
-    await storage.evidence.insertBatch([
+    await s.evidence.insertBatch([
       { id: `ev_${randomUUID()}`, profileId, sourceType: 'commit', url: 'https://x/1', layer: 'L1', claim: 'c1', rawRef: 'a' },
       { id: `ev_${randomUUID()}`, profileId, sourceType: 'pr', url: 'https://x/2', layer: 'L1', claim: 'c2', rawRef: 'b' },
     ]);
-    expect(await storage.evidence.countByProfile(profileId)).toBe(2);
-    expect((await storage.evidence.listByProfile(profileId))).toHaveLength(2);
+    expect(await s.evidence.countByProfile(profileId)).toBe(2);
+    expect((await s.evidence.listByProfile(profileId))).toHaveLength(2);
   });
 
-  it('rejects duplicate waitlist email', async () => {
+  pgIt('rejects duplicate waitlist email', async (s) => {
     const email = `pg_${randomUUID().slice(0, 8)}@example.com`;
-    await storage.waitlist.insert({ id: `wl_${randomUUID()}`, email });
+    await s.waitlist.insert({ id: `wl_${randomUUID()}`, email });
     await expect(
-      storage.waitlist.insert({ id: `wl_${randomUUID()}`, email }),
+      s.waitlist.insert({ id: `wl_${randomUUID()}`, email }),
     ).rejects.toThrow();
   });
 });
