@@ -28,7 +28,7 @@ JobAgent 当前状态，截至 2026-09-11。
 
 ## 当前状态
 
-- 阶段：**M1·W3 服务化进行中**（W3-1 analysis_jobs 表+仓储已完成，typecheck/test/build/check-migrations 全绿；下一步 W3-2 worker 核心逻辑）。M1·W2 代码交付已完成（`github-source` + `analyzer-core` + `cli`，真实账号冒烟通过），#8 去风险实验待 GITHUB_TOKEN。
+- 阶段：**M1·W3 服务化完成**（W3-1~W3-5 全部完成：analysis_jobs/evidence/waitlist 4 个表+仓储、worker 核心逻辑、api Hono 接口，全仓 typecheck/test/build/check-migrations 全绿；W3-6 Postgres 适配可延后，SQLite 足够 MVP）。下一步 M1·W4 报告与分享（Astro 报告页 + React islands + 只读分享 + 接落地页 demo）。M1·W2 代码交付已完成，#8 去风险实验待 GITHUB_TOKEN。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
