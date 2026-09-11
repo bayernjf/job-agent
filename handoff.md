@@ -1,6 +1,6 @@
 # Handoff
 
-JobAgent 当前状态，截至 2026-09-11。
+JobAgent 当前状态，截至 2026-09-12。
 
 > 本文件只保留「项目当前状态 + 活跃任务 + 最近变更 + 文档索引」，是接手（人或 AI agent）的第一入口；**只写状态与结论，明细一律放进对应文档并在此给链接，不在本文件展开**。
 > 设计/结论全文放 [docs/](docs/)；缓做事项放 [docs/deferred-items.md](docs/deferred-items.md)；场景化导航见 [docs/README.md](docs/README.md)。
@@ -26,10 +26,11 @@ JobAgent 当前状态，截至 2026-09-11。
 - [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) — i18n 设计：自研 `t()` + 中英 JSON 字典、key 对齐守护、分享链接语言固定、不翻译边界（现行）
 - [docs/design-tokens-20260910.md](docs/design-tokens-20260910.md) — 设计 token 设计：`--ja-*` 三层变量体系、组件禁 hex、与落地页 `--lui-*` 互不约束（现行）
 - [docs/design-storage-dual-dialect-20260911.md](docs/design-storage-dual-dialect-20260911.md) — 持久化层 SQLite/Postgres 双方言适配设计：统一 async 仓储接口、双 schema/双实现、对称迁移目录、createStorage 工厂（现行）
+- [docs/API.md](docs/API.md) — HTTP API 接口文档：POST /analyze（含画像缓存语义）、GET /jobs/:id、GET /profiles/:id、GET /health、错误码（现行）
 
 ## 当前状态
 
-- 阶段：**M1·W4 报告与分享完成**（W4-1~W4-6 全部完成：Astro 5 SSR 报告应用 + 设计 token + 中英 i18n + 首页/报告页 + React islands + 只读分享链接 + 落地页 demo 接线，astro check/build 全绿、i18n 14 测试全绿、standalone 冒烟中英报告页通过、落地页 build 双模式验证通过）。**M1·W3-6 持久化 SQLite/Postgres 双方言适配已完成**（统一 async 仓储 + createStorage 工厂，业务零感知方言，见最近变更）。M1 剩余：真实性算法双向校准（需 suspicious/fake 负样本，当前 11 个 authentic 正样本准确率 100%）、可用 `DB_DRIVER=postgres` 验证生产形态。M1 核心开发（W1~W4 + W3-6 双方言 + #8 去风险 + 端到端联调 + 真实性 S3 校准）已全部完成。
+- 阶段：**M1 核心开发 + 工程化补全完成，进入 P1 前稳定期**。M1·W1~W4、W3-6 SQLite/Postgres 双方言、#8 去风险、端到端联调、真实性三轮校准均已完成。**2026-09-12 一次性完成 10 项工程化补全**（见活跃待办 item 10）：Playwright E2E 主链路（顺带修复两个 React island 缺 `client:load` 致浏览器内无交互的真实 bug）、Dockerfile/docker-compose、embedded-postgres 真实 PG 行为测试、pre-commit 卡死修复、画像缓存、CLI markdown/html 导出、docs/API.md、report i18n 测试补齐增强（waitlist CLI 查看未完成，见 item 10 #9）。**真实性第三轮双向校准完成**：标注账号扩到 26 个（22 正 + 4 负），真实账号 0 误报为 suspicious、可疑账号 0 漏报为 likely_authentic，analyzer-core 32 测试。全仓 typecheck/test/build 三件套全绿。**下一步：P1·Chrome 扩展一键填充（决策 #15）**。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
@@ -42,7 +43,7 @@ JobAgent 当前状态，截至 2026-09-11。
 2. ~~M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。~~ ✅ 已完成（2026-09-11，见最近变更）
 3. ~~#8 去风险实验·S1/S2 spike：5 个真实账号批量跑，暴露 3 个 bug（org 仓库 owner 穿透致 L1 404 / 空仓库 pushedAt=null 崩溃 / 组织账号 NOT_FOUND 未归一）~~ ✅ 已完成（2026-09-11）
 4. ~~修复 spike 暴露的 3 个 bug + 回归测试（commit `b77ec11`，18 files）~~ ✅ 已完成（2026-09-11）
-5. ~~**#8 去风险实验·重新批量验证**~~ ✅ 已完成（2026-09-11）：用修复后 CLI + GITHUB_TOKEN 重跑 5 个账号——torvalds（likely_authentic, conf 0.9, 10 tags）、sindresorhus（conf 0.8, 13 tags）、tj（conf 0.62, 11 tags）、bayernjf（conf 0.72, 14 tags）4 个成功无崩溃；github 组织账号优雅失败（`Could not resolve to a User`，符合预期——CLI 仅支持 user，组织需单独 organization 查询）。证据链对齐：authenticity 信号均挂 evidenceRefs（commit/PR 指针）。**S3 校准已完成**（2026-09-11，commit `46e8157`）：11 个 authentic 账号准确率 73%→100%，误报率 27%→0%（详见最近变更）。**S3 正样本校准完成**（11 个 authentic，准确率 100%）+ **负样本校准完成**（4 个可疑账号，发现 3 个算法局限）。**下一步**：①实施负样本暴露的算法改进（star_to_commit_ratio 信号、external_contributions 按数量分级、self_pr_ratio 信号）；②扩到 20-50 标注账号进一步验证；③followers 异常检测留待 L2/P2；通过后进 P2 系统层。
+5. ~~**#8 去风险实验·重新批量验证**~~ ✅ 已完成（2026-09-11）：用修复后 CLI + GITHUB_TOKEN 重跑 5 个账号——torvalds（likely_authentic, conf 0.9, 10 tags）、sindresorhus（conf 0.8, 13 tags）、tj（conf 0.62, 11 tags）、bayernjf（conf 0.72, 14 tags）4 个成功无崩溃；github 组织账号优雅失败（`Could not resolve to a User`，符合预期——CLI 仅支持 user，组织需单独 organization 查询）。证据链对齐：authenticity 信号均挂 evidenceRefs（commit/PR 指针）。**S3 校准已完成**（2026-09-11，commit `46e8157`）：11 个 authentic 账号准确率 73%→100%，误报率 27%→0%（详见最近变更）。**S3 正样本校准完成**（11 个 authentic，准确率 100%）+ **负样本校准完成**（4 个可疑账号，发现 3 个算法局限）。①负样本暴露的算法改进（star_to_commit_ratio / self_pr_ratio / external 按数量分级）已实施（commit `13e4f5e`/`70505c5`）；②**扩样本 + 第三轮双向校准已完成（2026-09-12）**：标注账号扩到 26 个（新增 11 国际 OSS 正样本 antirez/mitsuhiko/dhh/jashkenas/mdo/fabpot/taylorotwell/leerob/shadcn/wycats/steipete + 第一批 11 正样本回归 + 4 负样本），最终 22 正样本 0 误报为 suspicious（18 likely_authentic + 4 mixed_signals 灰区）、4 负样本 0 漏报为 likely_authentic（1 suspicious + 2 mixed + 1 insufficient），新增"账号成熟度豁免 / 短窗口薄证据降级"，analyzer-core 增至 32 测试；③followers 异常检测仍留 L2/P2。
 6. **M1·W3 服务化**（已完成，W3-1~W3-6）：
    - ~~W3-1：`analysis_jobs` 表迁移(002) + schema + AnalysisJobsRepository（create/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus）+ 12 测试~~ ✅ 已完成（2026-09-11）
    - ~~W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次~~ ✅ 已完成（2026-09-11）
@@ -62,10 +63,27 @@ JobAgent 当前状态，截至 2026-09-11。
 9. **P1·Chrome 扩展一键填充**（决策 #15，2026-09-11 拍板）：画像验证通过后启动，支持 Workday/Greenhouse/Lever 三大 ATS，填充数据来自可信画像；只做用户主动触发的一键填充，不做全自动后台投递。前置：packages/shared 预留可导出画像数据结构。
 9. **P2·职位聚合（岗位搜集）**（决策 #16，2026-09-11 拍板）：按原计划 P2 启动，先聚焦海外技术岗数据源（Wellfound/YC Jobs/RemoteOK 等），轻量爬虫+公开 API，日更增量；是匹配/投递的前置基础设施。当前只做准备：JobPosting 类型预留 + 1-2 天 Spike 验证。
 
+10. ~~**工程化补全 10 项（2026-09-12 一口气完成，改动未 commit）**~~ ✅ 已完成（2026-09-12）：
+   - ~~#1 Playwright E2E~~ ✅：根目录 @playwright/test + chromium，`e2e/` globalSetup 预置临时 SQLite fixture，home-flow(7)+report-render(3) 共 10 用例全绿（约 44s）；**修复真实产品 bug**：AnalyzeForm/ShareButton 两个 React island 在 .astro 缺 `client:load`，浏览器里只输出静态 HTML、表单按钮永久 disabled，已补；并写 waitForHydrated（探测 React 19 容器 fiber key）解决 hydration 竞态。
+   - ~~#2 Docker 化~~ ✅（**已编写、未实跑验证**，本机无 docker）：多阶段 Dockerfile（final targets api/worker/report）+ docker-compose.yml（可选 with-pg profile 起 Postgres）+ .dockerignore；待有 Docker 环境验证 build（better-sqlite3 原生模块、Astro standalone 入口、workspace 拷贝）。
+   - ~~#3 真实 Postgres 行为测试~~ ✅：embedded-postgres 测试内自管生命周期（Windows 必带 `--locale=C`/`--encoding=UTF8`），`pgIt()` 在无 DATABASE_TEST_URL 时 skip；顺带修复 splitStatements 被 `--` 注释/字符串内分号截断的 bug（重写为字符级状态机）；storage 54 测试（含 4 真实 PG）。
+   - ~~#4 pre-commit 卡死~~ ✅：astro check 挂起，改为 tsc 类型检查（commit `b338fbf`，已提交）。
+   - ~~#6 画像缓存~~ ✅：POST /analyze 在 job 去重前先查未过期画像快照（PROFILE_CACHE_TTL_MS 默认 24h），命中返回 cached:true；api 15 测试。
+   - ~~#7 CLI 报告导出~~ ✅：纯函数 report-format.ts（toMarkdown/toHtml，含 XSS 转义），CLI analyze 加 `--format json|markdown|html`；cli 12 测试。
+   - ~~#8 API 文档~~ ✅：新增 docs/API.md（接口、请求/响应、缓存语义、错误码）。
+   - ~~#9 waitlist 查看~~ ❌ 未完成：方案已定（MVP 无认证、不暴露 admin HTTP，改在 CLI 加 `waitlist` 只读子命令 --status/--limit/--count），子命令尚未实现；本次仅清掉了误写的 usage 文案与未使用 import。
+   - ~~#10 i18n 测试增强~~ ✅：apps/report 原有 i18n.test.ts 却缺 test 脚本/vitest 配置（从未运行），补齐并增强到 22 测试、79 key 中英对齐守护。
+
+
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
 
+- 2026-09-12：**工程化补全 10 项 + 真实性第三轮双向校准（本批改动均未 commit）**。
+  - **真实性第三轮校准**：标注账号从 15 扩到 26（新增 11 国际知名 OSS 正样本 + 第一批 11 正样本回归 + 4 负样本）。校准中先发现新 risk 阈值误伤 10/11 名人（"项目高 star + 本人采样 commit 少"本是高声望维护者特征），两步修正：①把 star_to_commit_ratio risk 纳入"外部贡献抵消"；②叠加账号成熟度豁免（活跃 ≥24 月 / merged PR ≥10 / 行为总量 ≥150 时极端比例只判 warn），并新增"短窗口薄证据降级"（活跃 <4 月且行为 <60 且外部 merged <3 → mixed_signals、置信度上限 0.6）。最终：22 正样本 0 误报为 suspicious（18 likely_authentic；wycats/sindresorhus/bayernjf/kentcdodds 4 个组织核心/高 star 自建库型保守落 mixed_signals 灰区），4 负样本 0 漏报为 likely_authentic（MSNightmare suspicious、GodzillaYellowQuestan insufficient、holilayet/ByteBunny777 mixed）。analyzer-core 28→32 测试。
+  - **Playwright E2E**：10 用例覆盖首页双语/非法校验/分析轮询跳转/报告全区块渲染/未知 id 重定向；修复 AnalyzeForm、ShareButton 缺 `client:load` 的真实交互 bug 与 hydration 竞态（waitForHydrated 探测 React 19 容器 fiber key）。
+  - **真实 Postgres 测试**：embedded-postgres 自管生命周期跑通 4 个真实 PG 行为用例（Windows locale 坑）；修复迁移 SQL 分割器被 `--` 注释/字符串内分号截断的 bug（重写为字符级状态机）。
+  - 其余：POST /analyze 画像缓存（24h，cached:true）、CLI markdown/html 导出（XSS 转义）、docs/API.md、report i18n 测试补齐（22 测试/79 key）、Dockerfile/compose/.dockerignore（未实跑）。全仓 typecheck/test/build 全绿（analyzer-core 32、storage 54、api 15、cli 12、worker 10、report i18n 22、E2E 10）。
 - 2026-09-11：**真实性算法负样本校准改进完成（3 个新信号）**——基于 4 个可疑账号的校准发现，实施 3 项算法改进（commit `13e4f5e`）：①新增 star_to_commit_ratio 信号（star/commit >= 100:1 且 >=500 stars 时 warn），成功检测 MSNightmare 异常（4971 stars/33 commits=151:1，conf 0.8→0.72）；②新增 self_pr_ratio 信号（>=20 PR 且 >=90% 在自己 repo 时 warn），成功检测 holilayet 刷 PR（47/47=100% self-repo，从 likely_authentic 降级为 mixed_signals）；③external_contributions 按数量分级（1-2 个弱正向 +0.05，3+ 个强正向 +0.1），修正 ByteBunny777 过度自信（0.9→0.85）。验证：28 个单测全绿（新增 3 个），全仓 typecheck/build/test 全绿，正样本 gaearon 仍为 likely_authentic（0.74）。**局限**：followers 异常检测（买粉丝）仍需 L2/P2 数据；当前 4 个负样本标注存在主观性。
 
 - 2026-09-11：**真实性算法负样本校准完成（4 个可疑账号）**——搜索并分析 4 个特征可疑的账号：①MSNightmare（2026-06 注册，3700 followers，4971 stars，33 commits，3 个月活跃）→ likely_authentic(0.8)；②GodzillaYellowQuestan（75 repos 全是 fork，0 commits，0 stars）→ insufficient_data(0.35)，判定合理；③holilayet（2026-04 注册，2322 followers，2 个月内 77 commits+47 PR 全在自己 repo，bio "FFFFFFFFFF"）→ likely_authentic(0.72)，仅 commit_burst warn；④ByteBunny777（2026-04 注册，3288 followers，1 个月活跃，1 个外部 PR）→ likely_authentic(0.9)，external_contributions 正向信号推高 confidence。**关键发现**：当前算法基于 L0+L1 行为数据，能检测"行为不一致"（author 不匹配、高 star 低 commit、批量 commit），但**无法检测"买粉丝/买 star"外部欺诈**（followers 不是输入特征）；star_activity 阈值（>=2000 stars & <10 commits）对 MSNightmare（4971 stars/33 commits）不触发；external_contributions 正向信号可能过强（1 个外部 PR 即 conf 0.9）；"PR 全在自己 repo"刷活跃度模式未检测。**局限**：无法确定这些账号是真的假账号，负样本标注存在主观性；检测买粉丝需要 L2/L3 数据（followers 增长曲线、followers 质量），超出当前 MVP 范围。**建议**：①新增 star_to_commit_ratio 信号（star/commit > 100:1 时 warn）；②external_contributions 按数量分级（1-2 个弱正向，3+ 个强正向）；③新增 self_pr_ratio 信号（自己 repo PR 占比 >90% 时 warn）；④followers 异常检测留待 L2/P2。
@@ -114,9 +132,12 @@ JobAgent 当前状态，截至 2026-09-11。
 ## 已知限制 / 待核实
 
 - 启动前决策 #1–#8 已于 2026-09-10 拍板；#9–#14 保持延后（见待拍板决策清单），不得把"助手建议"当作"已决策"实现。
+- **Docker 产物未实跑验证**：本机无 docker，Dockerfile/docker-compose 仅编写完成，需在有 Docker 的环境验证 build（better-sqlite3 原生编译、Astro standalone 入口 apps/report/dist/server/entry.mjs、pnpm workspace 拷贝路径）；生产部署目标（服务器/云平台）未定，compose 暂按本地/staging 写。
+- **真实性算法已知边界**：wycats/sindresorhus/bayernjf/kentcdodds 这类"组织核心维护者/高 star 自建库、个人外部 PR 少"的账号会保守落 mixed_signals（而非 suspicious），要进一步降到 likely_authentic 需 L2 组织成员关系数据（MVP 不做）；买粉丝 / followers 增长曲线检测留 L2/P2。CI workflow 尚未补 report typecheck、Playwright E2E、Docker build 步骤。
 - GitHub API 限额为 2026-09-10 官方文档核实值，开工前需复核非企业 GitHub App 精确额度（来源见技术选型文档）。
 - 托管价格、LLM 厂商/单价待当期 spike；本机访问 GitHub 直连不稳定（全局代理 127.0.0.1:7897 常未开启，需临时直连重试，勿改全局配置）。
 
 ## Git 状态
 
 - 当前工作分支：`dev`（track `origin/dev`）；分支策略：日常改动直接在 `dev` 提交，`main` 仍需 PR（细节见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)）。
+- **2026-09-12 工程化补全批次（#1~#10 + 第三轮校准）全部改动尚未 commit**：17 个 modified + 新增 `e2e/`、`playwright.config.ts`、`Dockerfile`、`docker-compose.yml`、`.dockerignore`、`docs/API.md`、`apps/cli/src/report-format.{ts,test.ts}`、`apps/report/vitest.config.ts`。按约定不擅自 commit；需用户明确要求后按原子提交拆分（英文 Conventional Commit、无 AI co-author）。
