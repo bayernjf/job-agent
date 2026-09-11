@@ -1,0 +1,116 @@
+---
+/**
+ * 首页 /[locale]/——输入 GitHub 用户名，触发分析。
+ * 客户端交互（创建任务、轮询状态、跳转）由 AnalyzeForm React island 处理。
+ */
+import Layout from '../../layouts/Layout.astro';
+import AnalyzeForm from '../../components/AnalyzeForm.tsx';
+import { isLocale, type Locale } from '../../i18n/index.js';
+import { createTranslator } from '../../i18n/index.js';
+
+const { locale: rawLocale } = Astro.params;
+if (!isLocale(rawLocale)) {
+  return Astro.redirect('/en/');
+}
+const locale: Locale = rawLocale;
+const t = createTranslator(locale);
+
+// API 地址：服务端环境变量或同源（MVP 默认同源）
+const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
+---
+
+<Layout locale={locale} titleKey="home.title">
+  <div class="ja-container">
+    <section class="hero">
+      <h1>{t('home.title')}</h1>
+      <p class="ja-muted subtitle">{t('home.subtitle')}</p>
+
+      <div class="ja-card form-card">
+        <AnalyzeForm
+          locale={locale}
+          apiBase={apiBase}
+          placeholder={t('home.placeholder')}
+          analyzeLabel={t('home.analyze')}
+          analyzingLabel={t('home.analyzing')}
+          invalidLabel={t('home.invalidUsername')}
+          queuedLabel={t('job.queued')}
+          runningLabel={t('job.running')}
+          failedLabel={t('job.failed')}
+          stageL0Label={t('job.stage.L0')}
+          stageL1Label={t('job.stage.L1')}
+          pollingLabel={t('job.polling')}
+          retryLabel={t('job.retry')}
+          attemptsLabel={t('job.attempts')}
+        />
+      </div>
+    </section>
+
+    <section class="how-it-works">
+      <h2>{t('home.howItWorks')}</h2>
+      <div class="steps">
+        <div class="ja-card step">
+          <h3>{t('home.step1.title')}</h3>
+          <p class="ja-muted">{t('home.step1.desc')}</p>
+        </div>
+        <div class="ja-card step">
+          <h3>{t('home.step2.title')}</h3>
+          <p class="ja-muted">{t('home.step2.desc')}</p>
+        </div>
+        <div class="ja-card step">
+          <h3>{t('home.step3.title')}</h3>
+          <p class="ja-muted">{t('home.step3.desc')}</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</Layout>
+
+<style>
+  .hero {
+    text-align: center;
+    padding: var(--ja-space-8) 0 var(--ja-space-6);
+  }
+
+  .hero h1 {
+    max-width: 600px;
+    margin: 0 auto var(--ja-space-4);
+  }
+
+  .subtitle {
+    max-width: 520px;
+    margin: 0 auto var(--ja-space-6);
+    font-size: var(--ja-text-lg);
+  }
+
+  .form-card {
+    max-width: 480px;
+    margin: 0 auto;
+    text-align: left;
+  }
+
+  .how-it-works {
+    margin-top: var(--ja-space-8);
+  }
+
+  .how-it-works h2 {
+    text-align: center;
+    margin-bottom: var(--ja-space-5);
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--ja-space-4);
+  }
+
+  .step h3 {
+    margin-bottom: var(--ja-space-2);
+    font-size: var(--ja-text-base);
+  }
+
+  @media (max-width: 640px) {
+    .steps {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

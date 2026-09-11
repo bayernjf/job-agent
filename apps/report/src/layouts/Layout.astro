@@ -1,0 +1,125 @@
+---
+/**
+ * 基础布局——全局引入设计 token 和样式，设置 HTML lang，提供导航和语言切换。
+ * 所有页面共享此布局。
+ */
+import '../styles/tokens.css';
+import '../styles/global.css';
+import { createTranslator, type Locale, type MessageKey } from '../i18n/index.js';
+
+interface Props {
+  locale: Locale;
+  titleKey?: MessageKey;
+  title?: string;
+}
+
+const { locale, titleKey, title } = Astro.props;
+const t = createTranslator(locale);
+const otherLocale: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
+
+const pageTitle = title
+  ? `${title} · ${t('app.name')}`
+  : titleKey
+    ? `${t(titleKey)} · ${t('app.name')}`
+    : `${t('app.name')} · ${t('app.tagline')}`;
+
+// 当前路径用于语言切换（替换语言段）
+const currentPath = Astro.url.pathname;
+const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) || `/${otherLocale}/`;
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={t('app.tagline')} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{pageTitle}</title>
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-inner">
+        <a href={`/${locale}/`} class="logo">
+          <strong>{t('app.name')}</strong>
+        </a>
+        <nav class="nav">
+          <a href={`/${locale}/`}>{t('nav.home')}</a>
+          <a href={langSwitchPath} class="lang-switch">{t('nav.language')}</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main">
+      <slot />
+    </main>
+
+    <footer class="footer">
+      <div class="ja-container">
+        <p class="ja-muted">{t('app.name')} · {t('app.tagline')}</p>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  .header {
+    background: var(--ja-color-surface);
+    border-bottom: 1px solid var(--ja-color-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .header-inner {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--ja-space-3) var(--ja-space-5);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-size: var(--ja-text-lg);
+    color: var(--ja-color-fg);
+    text-decoration: none;
+  }
+
+  .logo:hover {
+    text-decoration: none;
+    color: var(--ja-color-accent);
+  }
+
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: var(--ja-space-4);
+  }
+
+  .nav a {
+    font-size: var(--ja-text-sm);
+    color: var(--ja-color-fg-muted);
+  }
+
+  .nav a:hover {
+    color: var(--ja-color-accent);
+  }
+
+  .lang-switch {
+    padding: var(--ja-space-1) var(--ja-space-3);
+    border: 1px solid var(--ja-color-border);
+    border-radius: var(--ja-radius-md);
+  }
+
+  .main {
+    min-height: calc(100vh - 120px);
+  }
+
+  .footer {
+    border-top: 1px solid var(--ja-color-border);
+    padding: var(--ja-space-5) 0;
+    margin-top: var(--ja-space-8);
+    text-align: center;
+  }
+</style>
