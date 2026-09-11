@@ -1,0 +1,50 @@
+{
+  "data": {
+    "user": {
+      "id": "U_QUIET_001",
+      "login": "dev-quiet",
+      "name": null,
+      "avatarUrl": "https://avatars.example.com/dev-quiet.png",
+      "url": "https://github.com/dev-quiet",
+      "bio": null,
+      "company": null,
+      "location": null,
+      "createdAt": "2026-08-01T00:00:00Z",
+      "followers": {
+        "totalCount": 0
+      },
+      "following": {
+        "totalCount": 0
+      },
+      "repositories": {
+        "totalCount": 1,
+        "nodes": [
+          {
+            "name": "empty-repo",
+            "url": "https://github.com/dev-quiet/empty-repo",
+            "isFork": false,
+            "isArchived": false,
+            "primaryLanguage": null,
+            "description": null,
+            "stargazerCount": 0,
+            "forkCount": 0,
+            "pushedAt": "2026-08-01T00:00:00Z",
+            "createdAt": "2026-08-01T00:00:00Z",
+            "repositoryTopics": {
+              "nodes": []
+            }
+          }
+        ]
+      },
+      "contributionsCollection": {
+        "totalCommitContributions": 0,
+        "totalPullRequestContributions": 0,
+        "totalIssueContributions": 0,
+        "totalRepositoryContributions": 0,
+        "contributionCalendar": {
+          "weeks": []
+        }
+      }
+    }
+  }
+}

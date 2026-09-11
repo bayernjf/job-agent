@@ -1,0 +1,20 @@
+[
+  {
+    "sha": "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4",
+    "html_url": "https://github.com/dev-strong/web-platform/commit/0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4",
+    "commit": {
+      "message": "fix: REST fallback for commit history",
+      "author": { "name": "Dev Strong", "email": "dev.strong@example.com", "date": "2026-08-25T16:00:00Z" },
+      "committer": { "date": "2026-08-25T16:00:00Z" }
+    }
+  },
+  {
+    "sha": "1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5",
+    "html_url": "https://github.com/dev-strong/web-platform/commit/1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5",
+    "commit": {
+      "message": "chore: bump deps",
+      "author": { "name": "Dev Strong", "email": "dev.strong@example.com", "date": "2026-08-26T09:00:00Z" },
+      "committer": { "date": "2026-08-26T09:00:00Z" }
+    }
+  }
+]
