@@ -188,16 +188,38 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
   }
 
 
-  // 4b. star 与 commit 比例异常（2026-09-11 负样本校准新增）
-  // star 远多于 commit 可能是买 star、搬运项目或账号异常；仅在有一定 star 基数时触发
-  if (totalStars >= 500 && totalCommits >= 1) {
+  // 4b. star 与 commit 比例异常（2026-09-11 负样本校准；batch2/v3 校准叠加账号成熟度）
+  // star 远多于 commit 可能是买 star、搬运高星项目，但也可能是高声望维护者
+  //（项目 star 高、本人采样 commit 少）。区分关键是账号成熟度与协作痕迹：
+  // 长期活跃(≥24 月)/大量 merged PR(≥10)/行为总量大(≥150) 的账号判 warn 留人工复核，
+  // 只有"短历史、无协作"同时满足时极端比例才升 risk（如 3 个月、0 PR 的买星号）。
+  if (totalCommits >= 1) {
     const ratio = totalStars / totalCommits;
-    if (ratio >= 100) {
+    const behaviorHere = input.commits.length + input.pullRequests.length + input.issues.length;
+    const mergedPrCount = input.pullRequests.filter((p) => p.state === "MERGED").length;
+    const spanMonths =
+      dates.length > 0
+        ? (Date.parse(input.collectedAt) -
+            Math.min(...dates.map((d) => Date.parse(d)))) /
+          (30.44 * 86_400_000)
+        : null;
+    const established =
+      (spanMonths !== null && spanMonths >= 24) ||
+      mergedPrCount >= 10 ||
+      behaviorHere >= 150;
+    const rawExtreme = totalStars >= 2000 && ratio >= 50;
+    const isRisk = rawExtreme && !established;
+    const isWarn = !isRisk && (rawExtreme || (totalStars >= 500 && ratio >= 100));
+    if (isRisk || isWarn) {
       signals.push({
         code: SIGNAL_CODES.STAR_TO_COMMIT_RATIO,
-        severity: 'warn',
-        label: 'Star count disproportionately high relative to commit activity',
-        detail: `${totalStars} stars across ${totalCommits} sampled commits (ratio ${Math.round(ratio)}:1); may indicate purchased stars or forked high-profile repos`,
+        severity: isRisk ? 'risk' : 'warn',
+        label: isRisk
+          ? 'Star count grossly disproportionate to commit activity'
+          : 'Star count disproportionately high relative to commit activity',
+        detail: isRisk
+          ? `${totalStars} stars across ${totalCommits} sampled commits (ratio ${Math.round(ratio)}:1) with a short history and no collaboration record; strongly suggests purchased stars or a carried-over high-profile repository`
+          : `${totalStars} stars across ${totalCommits} sampled commits (ratio ${Math.round(ratio)}:1); ${established ? "high but the account is long-lived with real collaboration, so treat as a maintainer profile and review manually" : "may indicate purchased stars or forked high-profile repos"}`,
         evidenceRefs: validRefs(
           input,
           input.repos
@@ -290,10 +312,12 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
     }
   }
 
-  // 9. 正向信号抵消（2026-09-11 S3 校准）：有外部项目合并的 PR 时，
-  // author_inconsistency 和 star_activity_mismatch 的 risk 降级为 warn。
-  // 能被外部维护者合并 PR 的开发者身份真实性很高：author 不一致多为公司邮箱/旧邮箱，
-  // star 多 commit 少多为 OSS 名人做管理/架构/演讲，均不构成可疑。
+  // 9. 正向信号抵消（2026-09-11 S3 校准；batch2 校准扩展到 star_to_commit_ratio）：
+  // 有外部项目合并的 PR 时，author_inconsistency / star_activity_mismatch /
+  // star_to_commit_ratio 的 risk 降级为 warn。
+  // 被外部维护者 merge PR 是难以伪造的真实协作证据：author 不一致多为公司/旧邮箱，
+  // 高 star 低个人 commit 多为 OSS 名人做管理/架构（项目 star 高、本人采样 commit 少）。
+  // 反之，买 star/搬运账号（如 MSNightmare）externalMerged=0，不满足抵消、保持 risk。
   const hasExternalContributions = signals.some(
     (sig) => sig.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS,
   );
@@ -301,7 +325,8 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
     for (const sig of signals) {
       if (
         (sig.code === SIGNAL_CODES.AUTHOR_INCONSISTENCY ||
-          sig.code === SIGNAL_CODES.STAR_ACTIVITY_MISMATCH) &&
+          sig.code === SIGNAL_CODES.STAR_ACTIVITY_MISMATCH ||
+          sig.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO) &&
         sig.severity === 'risk'
       ) {
         sig.severity = 'warn';
@@ -328,11 +353,28 @@ export function computeAuthenticity(input: AnalyzerInput): {
     (p) => !p.repoOwnerIsSelf && p.state === 'MERGED',
   ).length;
 
+  // 观察窗口跨度（月）。窗口极短且行为证据总量少、又缺少强外部背书时，
+  // 即便没有负面信号也不足以支撑"真实"结论（2026-09-11 batch2 校准）。
+  const allDates = validDates(input);
+  const longevityMonths =
+    allDates.length > 0
+      ? (Date.parse(input.collectedAt) -
+          Math.min(...allDates.map((d) => Date.parse(d)))) /
+        (30.44 * 86_400_000)
+      : null;
+  const thinEvidence =
+    longevityMonths !== null &&
+    longevityMonths < 4 &&
+    behaviorTotal < 60 &&
+    externalMerged < 3;
+
   let status: AuthenticityStatus;
   if (behaviorTotal < 5 && input.contributions.totalCommitContributions < 20 && externalMerged === 0) {
     status = 'insufficient_data';
   } else if (risks.length > 0) {
     status = 'suspicious';
+  } else if (thinEvidence) {
+    status = 'mixed_signals';
   } else if (warns.length >= 2 && positives.length === 0) {
     status = 'mixed_signals';
   } else {
@@ -350,6 +392,7 @@ export function computeAuthenticity(input: AnalyzerInput): {
     }
   }
   if (status === 'insufficient_data') confidence = 0.35;
+  if (thinEvidence && status === 'mixed_signals') confidence = Math.min(confidence, 0.6);
   confidence = clamp(Math.round(confidence * 100) / 100, 0.3, 0.95);
 
   return { status, confidence, signals };
