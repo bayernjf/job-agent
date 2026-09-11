@@ -30,7 +30,7 @@ JobAgent 当前状态，截至 2026-09-11。
 - 阶段：**M1·W2 代码交付完成**（`github-source` 采集 + `analyzer-core` 纯函数内核 + `cli` 命令行出画像，typecheck/test/build/check-migrations 全绿，真实账号冒烟通过），下一步是 #8 去风险实验与 W3 系统层。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
-- 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 → 系统层）。
+- 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
 
 ## 活跃待办（下一步）
 
@@ -38,13 +38,17 @@ JobAgent 当前状态，截至 2026-09-11。
 
 1. ~~M1·W1：建持久化抽象层与首个迁移 `db/migrations/001_*.sql`（遵循 MIGRATION_CONVENTION，补 check/down/migrations.test）。~~ ✅ 已完成（2026-09-11）
 2. ~~M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。~~ ✅ 已完成（2026-09-11，见最近变更）
-2. M1·W2–W3：用 CLI 跑已拍板的去风险实验（#8 模板，20–50 标注账号，标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
-3. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
-4. M1·W4（与第 3 项同批）：报告页落地即执行 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md)（落地页不在本仓范围）。
+3. ~~#8 去风险实验·S1/S2 spike：5 个真实账号批量跑，暴露 3 个 bug（org 仓库 owner 穿透致 L1 404 / 空仓库 pushedAt=null 崩溃 / 组织账号 NOT_FOUND 未归一）~~ ✅ 已完成（2026-09-11）
+4. ~~修复 spike 暴露的 3 个 bug + 回归测试（commit `b77ec11`，18 files）~~ ✅ 已完成（2026-09-11）
+5. **#8 去风险实验·重新批量验证（进行中）**：用修复后 CLI 重跑 5 个账号确认无崩溃、证据链对齐；通过后扩到 20–50 标注账号（标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
+6. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
+7. M1·W4（与第 6 项同批）：报告页落地即执行 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md)（落地页不在本仓范围）。
 
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**#8 去风险实验 spike + bug 修复**——5 个真实账号批量跑暴露 3 个 bug：①`user.repositories` 含组织仓库（节点 name='vitest' 但真实 owner 是 vitest-dev），L1 用 owner=本人 login 查 commits 必然 404；②空仓库 `pushedAt=null` 致 `.slice()`/`localeCompare` 崩溃；③组织账号 user 查询返回 NOT_FOUND 未归一为 not_found。修复贯穿 analyzer-core（新增 `ownerLogin` 契约 + `repoRef()` 统一证据引用 + null 安全排序/过滤）与 github-source（真实 owner 贯穿 L0→L1 + NOT_FOUND 归一化 + 证据构造）；新增 3 个回归测试（org owner 穿透、null pushedAt、org NOT_FOUND），更新全部 4 个 L0 夹具补 nameWithOwner/owner；commit `b77ec11`，typecheck/test/build/check-migrations 全绿。
 
 - 2026-09-11：**M1·W2 交付**——`github-source`（Octokit + 限频/重试 + 单画像预算 + ETag 缓存 + L0/L1 采集）、`analyzer-core`（纯函数内核：四态真实性 + 置信度、技能标签、资历提示、模板面试题）、`cli`（analyze/batch，JSONL 输出）；4 个原子提交 `c663594`/`d1585f2`/`ccda43f`/`01c26c6`，53 测试全绿，真实账号 bayernjf 冒烟通过（likely_authentic 0.72）。真实冒烟校准两点：①GraphQL 响应无 `x-ratelimit-cost` 头，预算改为每次至少记 1 点；②仅 email 不一致降级 warn（noreply 常见），email+name 双重不一致才 risk，避免强工程师误判可疑。
 - 2026-09-11：M1·W1 持久化层等 4 个提交已 push 至 `origin/dev`；`fix(storage)` 排除测试文件出构建产物（`tsconfig.build.json` + vitest exclude `dist/`），修复 vitest 双跑问题（20 → 10）。
