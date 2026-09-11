@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前处于**产品定义完成、工程尚未起步**的 MVP 准备阶段。工程惯例与 `agent-world` 对齐。
+AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前处于 **M1（MVP）进行中、W1 已完成**：pnpm workspaces 骨架、`packages/shared` 契约与 `packages/storage` 持久化层（含首个迁移）已落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -8,9 +8,9 @@ AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（
 - 按场景找文档看 [docs/README.md](docs/README.md)；刻意缓做的事项看 [docs/deferred-items.md](docs/deferred-items.md)。
 - 在本仓库写代码前必读 [AGENTS.md](AGENTS.md)（工程约定单一事实源）；参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## 当前阶段（M1 之前）
+## 当前阶段（M1 进行中）
 
-- 仓库目前以产品与工程文档为主，**代码骨架尚未初始化**。
+- **M1·W1 已完成**：pnpm workspaces 骨架 + `packages/shared`（PRD 第 8 章 Zod 契约）+ `packages/storage`（Drizzle + SQLite 持久化层：迁移器/回滚、profiles 仓储、`db/migrations/001`）；下一步是 `github-source` + `analyzer-core` + `cli`（进度见 [handoff.md](handoff.md)）。
 - MVP（M1）最小闭环：输入 GitHub 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
 
@@ -20,10 +20,13 @@ AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（
 | --- | --- |
 | [docs/PRD.md](docs/PRD.md) | 产品需求：范围、F1–F9、数据契约、指标、风险 |
 | [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) | 技术栈、架构、工程结构与 M1 落地顺序 |
-| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#14，#1–#4 启动前阻塞） |
+| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#8 已拍板，#9–#14 延后） |
 | [docs/讨论记录-01-切入口与MVP收敛-20260910.md](docs/讨论记录-01-切入口与MVP收敛-20260910.md) | 关键产品判断的讨论过程与依据 |
 | [docs/产品构想-以GitHub为桥梁的招聘系统.md](docs/产品构想-以GitHub为桥梁的招聘系统.md) | 最初的产品构想与市场背景 |
 | [docs/deferred-items.md](docs/deferred-items.md) | 缓做/低优事项 + 重启触发条件 |
+| [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) | AI 求职赛道市场格局、代表性产品画像与跟进建议 |
+| [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) | 用户可见文案双语与 i18n 落地约定 |
+| [docs/design-tokens-20260910.md](docs/design-tokens-20260910.md) | 设计 token 体系与禁 hex 约定 |
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
 | [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md) | 数据库迁移规范（`db/migrations/NNN_*.sql`） |
