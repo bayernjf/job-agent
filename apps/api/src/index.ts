@@ -37,7 +37,7 @@ import {
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations',
+  '../../../db/migrations/sqlite',
 );
 
 // ─── 类型 ───────────────────────────────────────────────────────────────

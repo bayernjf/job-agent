@@ -9,7 +9,7 @@ import { EvidenceRepository, type NewEvidence } from './evidence.js';
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations',
+  '../../../db/migrations/sqlite',
 );
 
 function freshRepo(): EvidenceRepository {

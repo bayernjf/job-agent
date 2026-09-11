@@ -10,7 +10,7 @@ AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（
 
 ## 当前阶段（M1 进行中）
 
-- **M1·W1 已完成**：pnpm workspaces 骨架 + `packages/shared`（PRD 第 8 章 Zod 契约）+ `packages/storage`（Drizzle + SQLite 持久化层：迁移器/回滚、profiles 仓储、`db/migrations/001`）；下一步是 `github-source` + `analyzer-core` + `cli`（进度见 [handoff.md](handoff.md)）。
+- **M1·W1 已完成**：pnpm workspaces 骨架 + `packages/shared`（PRD 第 8 章 Zod 契约）+ `packages/storage`（Drizzle + SQLite 持久化层：迁移器/回滚、profiles 仓储、`db/migrations/sqlite/001`）；下一步是 `github-source` + `analyzer-core` + `cli`（进度见 [handoff.md](handoff.md)）。
 - MVP（M1）最小闭环：输入 GitHub 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
 

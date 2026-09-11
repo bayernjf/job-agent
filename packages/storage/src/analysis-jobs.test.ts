@@ -8,7 +8,7 @@ import { AnalysisJobsRepository, type NewAnalysisJob } from './analysis-jobs.js'
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations',
+  '../../../db/migrations/sqlite',
 );
 
 function freshRepo(): { repo: AnalysisJobsRepository; db: Database.Database } {

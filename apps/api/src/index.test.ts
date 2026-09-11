@@ -23,7 +23,7 @@ import { createApp, type ApiRepos } from './index.js';
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations',
+  '../../../db/migrations/sqlite',
 );
 
 function freshRepos(): ApiRepos {

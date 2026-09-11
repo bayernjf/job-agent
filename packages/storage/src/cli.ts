@@ -11,7 +11,7 @@ import { runMigrations, rollbackLatestMigration } from './migrator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DB_PATH = path.resolve(__dirname, '../../../data/job-agent.db');
-const MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations');
+const MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations/sqlite');
 
 function openDb(dbPath: string): Database.Database {
   return new Database(dbPath);

@@ -32,8 +32,8 @@ DIR="${1:-}"
 if [ -z "$DIR" ]; then
   if [ -d "$ROOT/supabase/migrations" ]; then
     DIR="$ROOT/supabase/migrations"
-  elif [ -d "$ROOT/db/migrations" ]; then
-    DIR="$ROOT/db/migrations"
+  elif [ -d "$ROOT/db/migrations/sqlite" ]; then
+    DIR="$ROOT/db/migrations/sqlite"
   else
     echo "x No migration directory found (supabase/migrations or db/migrations)."
     exit 1

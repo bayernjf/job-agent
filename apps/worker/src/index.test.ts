@@ -27,7 +27,7 @@ import { handleJobFailure, processJob, runWorker, type WorkerRepos } from './ind
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations',
+  '../../../db/migrations/sqlite',
 );
 
 function freshRepos(): WorkerRepos {
