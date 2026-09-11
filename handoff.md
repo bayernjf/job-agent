@@ -28,7 +28,7 @@ JobAgent 当前状态，截至 2026-09-10。
 ## 当前状态
 
 - 阶段：**M1·W1 已完成**（pnpm workspaces 骨架 + `packages/shared` 契约 + `packages/storage` 持久化层 + `db/migrations/001`，typecheck/test/build/check-migrations 全绿），下一步是 `github-source` + `analyzer-core` + `cli`。
-- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架与 CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场等均已 push 至 `origin/dev`，本地 `dev` 领先 3 个未推送提交（持久化层 `73f5172`、规范文档 `86f6d86`、本 handoff 更新 `d10fa4a`）。
+- 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 → 系统层）。
 
@@ -46,6 +46,7 @@ JobAgent 当前状态，截至 2026-09-10。
 
 ## 最近变更
 
+- 2026-09-11：M1·W1 持久化层等 4 个提交已 push 至 `origin/dev`；`fix(storage)` 排除测试文件出构建产物（`tsconfig.build.json` + vitest exclude `dist/`），修复 vitest 双跑问题（20 → 10）。
 - 2026-09-11：M1·W1 持久化层落地——`packages/storage`（Drizzle + better-sqlite3：迁移器/回滚、profiles 仓储、CLI `migrate up/down/status`）、`db/migrations/001_create_profiles.sql`（含 down 段）、`scripts/migrate-down`、根 `migrate:*` 命令与 `data/` 忽略；typecheck/test/build/check-migrations 全绿，CLI 冒烟通过。
 - 2026-09-11：市场调研文档定稿并落库（`docs/市场调研-AI求职赛道-20260910.md`，经多轮脱敏：量级口径、去头部点名、删纯商业描述），docs/README 补入口。
 - 2026-09-10：分支策略放宽为「日常改动直接在 `dev` 提交，`main` 仍需 PR」，已同步 AGENTS / PULL_REQUEST_WORKFLOW / CONTRIBUTING / README（细节见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)）。
