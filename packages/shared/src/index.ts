@@ -137,3 +137,81 @@ export function parseAbilityProfile(input: unknown): AbilityProfile | null {
   const result = AbilityProfileSchema.safeParse(input);
   return result.success ? result.data : null;
 }
+
+/**
+ * 可导出画像投影（v0.1，对应决策 #15：Chrome 扩展一键填充的消费契约）。
+ *
+ * 设计原则：
+ * - **只含画像已证实字段**：displayName / login / profileUrl / skills / authenticity；
+ *   email、教育、工作经历 GitHub 画像不提供，**不进本契约**，由扩展端引导用户补填并本地保存。
+ * - **差异化保留证据**：每条技能携带 evidenceRefs，扩展可展示"每条技能都可回溯到 GitHub 证据"，
+ *   而非只填一个技能名字符串。
+ * - **可溯源**：profileId / generatedAt / analyzerVersion / schemaVersion 齐全，扩展可向用户展示画像生成时间与版本。
+ * - 本投影是纯函数映射（无 I/O），消费方为 P1 Chrome 扩展；远期与投递工具互操作（讨论记录-02 决策 3）可复用。
+ */
+
+export const ExportableProfileSchema = z.object({
+  schemaVersion: z.string().min(1), // 与 SCHEMA_VERSION 同步（见 toExportableProfile）
+  profileId: z.string().min(1),
+  generatedAt: z.string().datetime(),
+  analyzerVersion: z.string().min(1),
+  subject: z.object({
+    platform: z.literal('github'),
+    login: z.string().min(1),
+    displayName: z.string().optional(), // 缺省时扩展可回退显示 login
+    avatarUrl: z.string().url().optional(),
+    profileUrl: z.string().url(),
+    claimed: z.boolean(), // 是否经本人 OAuth 认领（扩展可据此提示"本人已验证"）
+  }),
+  headline: z.string().min(1), // 一句话定位，可用于自我介绍字段
+  skills: z.array(
+    z.object({
+      name: z.string().min(1),
+      kind: SkillTagKindSchema,
+      depth: SkillTagDepthSchema,
+      confidence: z.number().min(0).max(1),
+      evidenceRefs: z.array(z.string().min(1)),
+    }),
+  ),
+  authenticity: z.object({
+    status: AuthenticityStatusSchema,
+    confidence: z.number().min(0).max(1),
+  }),
+});
+export type ExportableProfile = z.infer<typeof ExportableProfileSchema>;
+
+/** 从完整画像投影出可导出结构（纯函数，无 I/O） */
+export function toExportableProfile(profile: AbilityProfile): ExportableProfile {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    profileId: profile.profileId,
+    generatedAt: profile.generatedAt,
+    analyzerVersion: profile.analyzerVersion,
+    subject: {
+      platform: profile.subject.platform,
+      login: profile.subject.login,
+      ...(profile.subject.displayName !== undefined ? { displayName: profile.subject.displayName } : {}),
+      ...(profile.subject.avatarUrl !== undefined ? { avatarUrl: profile.subject.avatarUrl } : {}),
+      profileUrl: profile.subject.profileUrl,
+      claimed: profile.subject.claimed,
+    },
+    headline: profile.summary.headline,
+    skills: profile.skillTags.map((skill) => ({
+      name: skill.name,
+      kind: skill.kind,
+      depth: skill.depth,
+      confidence: skill.confidence,
+      evidenceRefs: skill.evidenceRefs,
+    })),
+    authenticity: {
+      status: profile.authenticity.status,
+      confidence: profile.authenticity.confidence,
+    },
+  };
+}
+
+/** 解析可导出画像（对外统一入口；失败返回 null，由调用方决定降级策略） */
+export function parseExportableProfile(input: unknown): ExportableProfile | null {
+  const result = ExportableProfileSchema.safeParse(input);
+  return result.success ? result.data : null;
+}
