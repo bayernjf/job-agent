@@ -25,6 +25,7 @@ JobAgent 当前状态，截至 2026-09-11。
 - [docs/deferred-items.md](docs/deferred-items.md) — 缓做/低优事项登记表（挂起项 + 触发条件的单一事实源）
 - [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) — i18n 设计：自研 `t()` + 中英 JSON 字典、key 对齐守护、分享链接语言固定、不翻译边界（现行）
 - [docs/design-tokens-20260910.md](docs/design-tokens-20260910.md) — 设计 token 设计：`--ja-*` 三层变量体系、组件禁 hex、与落地页 `--lui-*` 互不约束（现行）
+- [docs/design-storage-dual-dialect-20260911.md](docs/design-storage-dual-dialect-20260911.md) — 持久化层 SQLite/Postgres 双方言适配设计：统一 async 仓储接口、双 schema/双实现、对称迁移目录、createStorage 工厂（现行）
 
 ## 当前状态
 
@@ -48,7 +49,7 @@ JobAgent 当前状态，截至 2026-09-11。
    - ~~W3-3：api Hono 接口——POST /analyze（创建 job，去重：同一用户有 active job 则返回现有 jobId）、GET /jobs/:id（查询状态）、GET /profiles/:id（查询画像快照）~~ ✅ 已完成（2026-09-11）
    - ~~W3-4：evidence 表迁移(003) + schema + 仓储（证据索引，关联 profile_id）~~ ✅ 已完成（2026-09-11）
    - ~~W3-5：waitlist 表迁移(004) + schema + 仓储（落地页留资）~~ ✅ 已完成（2026-09-11）
-   - W3-6：Postgres 方言适配（storage 双轨：SQLite 本地/实验 + Postgres 生产，Drizzle 方言隔离）
+   - W3-6：Postgres 方言适配（storage 双轨：SQLite 本地/实验 + Postgres 生产，Drizzle 方言隔离）——**进行中（2026-09-11）**：设计文档已落地 `docs/design-storage-dual-dialect-20260911.md`，实施序列：①迁移目录对称化 → ②仓储全链路 async 化（纯重构）→ ③postgres 方言+createStorage 工厂 → ④脚本/环境变量/双目录校验；3 项待拍板（迁移目录形态/是否本次跑真实 PG/列类型是否用 JSONB）默认按文档方案执行
 7. **M1·W4 报告与分享**（进行中）：
    - ~~W4-1：Astro 项目初始化——apps/report 从 TS 库改造为 Astro 5 SSR 应用（@astrojs/node standalone + @astrojs/react islands，端口 4321/REPORT_PORT），删除旧占位 index.ts~~ ✅ 已完成（2026-09-11）
    - ~~W4-2：设计 token——src/styles/tokens.css（primitive/semantic 两层 + dark 覆盖，--ja- 前缀，四态色映射 authenticity 枚举）+ global.css（reset + 工具类，全 var 无 hex）~~ ✅ 已完成（2026-09-11）
@@ -63,6 +64,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**M1·W3-6 Postgres 双方言适配启动，设计方案落地**——新增 `docs/design-storage-dual-dialect-20260911.md`（现行）。核心方案：仓储接口统一 async（postgres-js 全异步）、entities 共享领域纯逻辑 + sqlite/postgres 双 schema 双仓储实现、`createStorage()` 工厂按 `DB_DRIVER` 装配（业务零感知方言，对齐 Spike S6）、迁移目录对称化为 `db/migrations/{sqlite,postgres}`（git mv 不改内容）、PG 列类型 MVP 对齐 SQLite（TEXT/BOOLEAN，JSONB/TIMESTAMPTZ 缓做）、四层测试（SQLite 行为 + schema 一致性 + 迁移文本一致性 + `DATABASE_TEST_URL` 条件 PG 实库）。docs/README 补场景入口。代码实施按文档 §7 原子序列推进中。
 
 - 2026-09-11：**M1·W4-6 落地页 demo 接线，W4 报告与分享全部完成**——改造独立工程 `job-agent-landing` 的 `src/components/Demo.astro`：构建时环境变量 `PUBLIC_API_BASE`/`PUBLIC_REPORT_BASE` 驱动，配置后走真实分析流程（GitHub 用户名校验→POST /analyze→2s 轮询 /jobs/:id→跳转 `{reportBase}/{en|zh-CN}/report/{profileId}`），未配置（当前生产）回退原 localStorage waitlist，已上线静态站点行为不变；新增 5 组中英 i18n key（queued/running/failed/invalid/analyze 按钮，文案经 data-* 传 JS 不硬编码），新增 .env.example。落地页 astro build 双模式验证：未配置时按钮 Join Beta/预约内测、data-api-base 空走 waitlist；配置后按钮 Generate profile/生成能力画像、data-api-base 有值走真实流程。落地页 commit `ba90d25`（dev，未 push）。**至此 M1·W4 全部完成（W4-1~W4-6）**。
 
