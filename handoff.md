@@ -46,8 +46,8 @@ JobAgent 当前状态，截至 2026-09-11。
    - ~~W3-1：`analysis_jobs` 表迁移(002) + schema + AnalysisJobsRepository（create/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus）+ 12 测试~~ ✅ 已完成（2026-09-11）
    - ~~W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次~~ ✅ 已完成（2026-09-11）
    - ~~W3-3：api Hono 接口——POST /analyze（创建 job，去重：同一用户有 active job 则返回现有 jobId）、GET /jobs/:id（查询状态）、GET /profiles/:id（查询画像快照）~~ ✅ 已完成（2026-09-11）
-   - W3-4：evidence 表迁移(003) + schema + 仓储（证据索引，关联 profile_id）
-   - W3-5：waitlist 表迁移(004) + schema + 仓储（落地页留资）
+   - ~~W3-4：evidence 表迁移(003) + schema + 仓储（证据索引，关联 profile_id）~~ ✅ 已完成（2026-09-11）
+   - ~~W3-5：waitlist 表迁移(004) + schema + 仓储（落地页留资）~~ ✅ 已完成（2026-09-11）
    - W3-6：Postgres 方言适配（storage 双轨：SQLite 本地/实验 + Postgres 生产，Drizzle 方言隔离）
 7. **M1·W4 报告与分享**：Astro 报告页 + React islands + 只读分享链接 + 接落地页 demo（落地即执行 i18n 与设计 token）。
 
@@ -57,6 +57,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**M1·W3-4 evidence 表 + W3-5 waitlist 表落地**——新增 `db/migrations/003_create_evidence.sql`（evidence 表：id/profile_id/source_platform/source_type/url/occurred_at/layer/claim/raw_ref/created_at，两个索引，含 down 段）和 `db/migrations/004_create_waitlist.sql`（waitlist 表：id/email(UNIQUE)/name/github_username/source/status/notes/created_at/updated_at，两个索引，含 down 段）；`packages/storage/src/schema.ts` 新增 evidence 和 waitlist Drizzle 表定义；`packages/storage/src/evidence.ts` 实现 EvidenceRepository（insert/insertBatch/importFromProfile/getById/listByProfile/listBySource/countByProfile）；`packages/storage/src/waitlist.ts` 实现 WaitlistRepository（insert/getById/getByEmail/listByStatus/listAll/updateStatus/updateNotes/countByStatus，email 唯一去重，状态机 pending→contacted→converted/archived）；storage index.ts 新增导出；migrations.test.ts 适配 003/004（四步回滚验证）；evidence 8 测试 + waitlist 9 测试；全仓 typecheck/build 全绿，storage 39 测试全绿，check-migrations 通过。
 
 - 2026-09-11：**M1·W3-3 API Hono 接口落地**——`apps/api/src/index.ts` 实现完整 REST API：POST /analyze（Zod 校验 username，去重：同一用户有 active queued/running 任务则返回现有 jobId，否则创建新任务返回 201）、GET /jobs/:id（查询任务状态含 stage/attempts/profileId/error/budget/missing/时间戳）、GET /profiles/:id（查询完整画像快照）、GET /health（健康检查）、404 兜底、全局错误处理、CORS 开放（MVP 阶段）；createApp 可注入仓储便于测试，initRepos 初始化数据库+迁移+仓储；api package.json 添加 hono、@hono/node-server、zod、@jobagent/storage、better-sqlite3、drizzle-orm 依赖；13 个集成测试覆盖 /analyze 成功/去重/非活跃后新建/空 username/无效格式/非 JSON body、/jobs 查询/状态流转/404、/profiles 查询/404、/health、404 兜底；全仓 typecheck/build 全绿，api 13 测试全绿。
 

@@ -6,3 +6,13 @@ export { profiles as profilesTable, analysisJobs as analysisJobsTable } from './
 export type { ProfileInsert, ProfileSelect, AnalysisJobInsert, AnalysisJobSelect } from './schema.js';
 export { AnalysisJobsRepository } from './analysis-jobs.js';
 export type { NewAnalysisJob, StoredAnalysisJob, JobStatus, JobStage } from './analysis-jobs.js';
+
+export { EvidenceRepository } from './evidence.js';
+export type { NewEvidence, StoredEvidence } from './evidence.js';
+export { evidence as evidenceTable } from './schema.js';
+export type { EvidenceInsert, EvidenceSelect } from './schema.js';
+
+export { WaitlistRepository } from './waitlist.js';
+export type { NewWaitlist, StoredWaitlist, WaitlistStatus, WaitlistSource } from './waitlist.js';
+export { waitlist as waitlistTable } from './schema.js';
+export type { WaitlistInsert, WaitlistSelect } from './schema.js';

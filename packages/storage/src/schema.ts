@@ -82,3 +82,67 @@ export const analysisJobs = sqliteTable(
 
 export type AnalysisJobInsert = typeof analysisJobs.$inferInsert;
 export type AnalysisJobSelect = typeof analysisJobs.$inferSelect;
+
+
+/**
+ * evidence 表——单独证据项索引（PRD 第 8 章 EvidenceItem 契约）。
+ * 证据项同时存储在 profiles.snapshot JSON 中；本表提供单独索引用于
+ * 按证据查询、跨画像关联、审计追溯。
+ * 必须与 db/migrations/003_create_evidence.sql 保持一致。
+ */
+export const evidence = sqliteTable(
+  'evidence',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    sourcePlatform: text('source_platform').notNull().default('github'),
+    sourceType: text('source_type').notNull(),
+    url: text('url').notNull(),
+    occurredAt: text('occurred_at'),
+    layer: text('layer').notNull(),
+    claim: text('claim').notNull(),
+    rawRef: text('raw_ref').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_evidence_profile_id').on(table.profileId),
+    index('idx_evidence_source').on(table.sourcePlatform, table.sourceType),
+  ],
+);
+
+export type EvidenceInsert = typeof evidence.$inferInsert;
+export type EvidenceSelect = typeof evidence.$inferSelect;
+
+
+/**
+ * waitlist 表——落地页留资（PRD F7）。
+ * 存储早期用户注册信息，email 唯一去重。
+ * 必须与 db/migrations/004_create_waitlist.sql 保持一致。
+ */
+export const waitlist = sqliteTable(
+  'waitlist',
+  {
+    id: text('id').primaryKey(),
+    email: text('email').notNull().unique(),
+    name: text('name'),
+    githubUsername: text('github_username'),
+    source: text('source').notNull().default('landing_page'),
+    status: text('status').notNull().default('pending'),
+    notes: text('notes'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_waitlist_email').on(table.email),
+    index('idx_waitlist_status_created').on(table.status, table.createdAt),
+  ],
+);
+
+export type WaitlistInsert = typeof waitlist.$inferInsert;
+export type WaitlistSelect = typeof waitlist.$inferSelect;
