@@ -310,7 +310,7 @@ describe('computeAuthenticity (status & confidence)', () => {
         primaryLanguage: 'TypeScript',
         topics: [],
         description: null,
-        stargazerCount: 5000,
+        stargazerCount: 800,
         forkCount: 100,
         pushedAt: '2026-08-01T00:00:00Z',
         createdAt: '2024-01-01T00:00:00Z',
@@ -333,6 +333,207 @@ describe('computeAuthenticity (status & confidence)', () => {
     expect(ratio?.severity).toBe('warn');
     expect(ratio?.detail).toContain('ratio');
     expectValidRefs(buildInput({ repos: starRepos, commits: fewCommits }));
+  });
+
+  it('elevates extreme star-to-commit ratio (>=2000 stars, >=50:1) to risk and overall suspicious', () => {
+    // 复现负样本 MSNightmare：约 5k star、仅 33 个采样 commit、0 PR、窗口短
+    const viralRepos: AnalyzerRepo[] = [
+      {
+        name: 'viral-repo',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/viral-repo',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'JavaScript',
+        topics: [],
+        description: null,
+        stargazerCount: 4971,
+        forkCount: 1646,
+        pushedAt: '2026-08-01T00:00:00Z',
+        createdAt: '2026-06-01T00:00:00Z',
+      },
+    ];
+    const fewCommits: AnalyzerCommit[] = Array.from({ length: 33 }, (_, i) => ({
+      oid: `ec${String(i).padStart(38, '0')}`,
+      committedAt: '2026-07-15T10:00:00Z',
+      authorName: 'Dev Strong',
+      authorEmail: 'dev.strong@example.com',
+      repoName: 'dev-strong/viral-repo',
+      messageHeadline: `commit ${i}`,
+    }));
+    const { status, signals } = computeAuthenticity(
+      buildInput({ repos: viralRepos, commits: fewCommits, pullRequests: [], issues: [] }),
+    );
+    const ratio = signals.find((s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO);
+    expect(ratio?.severity).toBe('risk');
+    expect(status).toBe('suspicious');
+  });
+
+  it('mitigates extreme star-to-commit ratio risk when the account has externally merged PRs', () => {
+    // 高声望维护者：项目 star 极高、本人采样 commit 少，但有被外部项目 merge 的 PR，
+    // 难以伪造的协作证据应抵消 ratio risk（区别于 0 外部 PR 的买 star 账号）。
+    const viralRepos: AnalyzerRepo[] = [
+      {
+        name: 'framework',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/framework',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'Ruby',
+        topics: [],
+        description: null,
+        stargazerCount: 50000,
+        forkCount: 12000,
+        pushedAt: '2026-08-01T00:00:00Z',
+        createdAt: '2020-01-01T00:00:00Z',
+      },
+    ];
+    const fewCommits: AnalyzerCommit[] = Array.from({ length: 40 }, (_, i) => ({
+      oid: `mx${String(i).padStart(38, '0')}`,
+      committedAt: '2026-07-15T10:00:00Z',
+      authorName: 'Dev Strong',
+      authorEmail: 'dev.strong@example.com',
+      repoName: 'dev-strong/framework',
+      messageHeadline: `commit ${i}`,
+    }));
+    const extPRs: AnalyzerPullRequest[] = [
+      {
+        number: 7,
+        title: 'upstream fix merged elsewhere',
+        url: 'https://github.com/other-org/stack/pull/7',
+        state: 'MERGED' as const,
+        createdAt: '2026-07-01T08:00:00Z',
+        mergedAt: '2026-07-03T12:00:00Z',
+        repoNameWithOwner: 'other-org/stack',
+        repoIsFork: false,
+        repoOwnerIsSelf: false,
+        additions: 30,
+        deletions: 8,
+        changedFiles: 2,
+      },
+    ];
+    const { status, signals } = computeAuthenticity(
+      buildInput({ repos: viralRepos, commits: fewCommits, pullRequests: extPRs, issues: [] }),
+    );
+    const ratio = signals.find((s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO);
+    expect(ratio?.severity).toBe('warn');
+    expect(status).not.toBe('suspicious');
+  });
+
+  it('treats extreme ratio of a long-lived maintainer as warn rather than risk (wycats case)', () => {
+    // 组织核心维护者：5w+ star、个人采样 commit 少、PR 多在自己是成员的组织仓库，
+    // 但账号活跃多年、merged PR 多、行为总量大——不应判 suspicious。
+    const bigRepos: AnalyzerRepo[] = [
+      {
+        name: 'framework',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/framework',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'JavaScript',
+        topics: [],
+        description: null,
+        stargazerCount: 53011,
+        forkCount: 6564,
+        pushedAt: '2026-08-01T00:00:00Z',
+        createdAt: '2019-01-01T00:00:00Z',
+      },
+    ];
+    // 283 个近期 commit + 1 个 2020 年的早期 commit，把活动跨度拉到 6 年以上
+    const commits: AnalyzerCommit[] = [
+      ...Array.from({ length: 283 }, (_, i) => ({
+        oid: `lf${String(i).padStart(38, '0')}`,
+        committedAt: '2026-08-01T10:00:00Z',
+        authorName: 'Dev Strong',
+        authorEmail: 'dev.strong@example.com',
+        repoName: 'dev-strong/framework',
+        messageHeadline: `c ${i}`,
+      })),
+      {
+        oid: 'lf0000000000000000000000000000000000old',
+        committedAt: '2020-03-01T10:00:00Z',
+        authorName: 'Dev Strong',
+        authorEmail: 'dev.strong@example.com',
+        repoName: 'dev-strong/framework',
+        messageHeadline: 'early commit',
+      },
+    ];
+    const selfPRs: AnalyzerPullRequest[] = Array.from({ length: 47 }, (_, i) => ({
+      number: i + 1,
+      title: `self merged PR ${i + 1}`,
+      url: `https://github.com/dev-strong/framework/pull/${i + 1}`,
+      state: 'MERGED' as const,
+      createdAt: '2026-07-01T08:00:00Z',
+      mergedAt: '2026-07-02T08:00:00Z',
+      repoNameWithOwner: 'dev-strong/framework',
+      repoIsFork: false,
+      repoOwnerIsSelf: true,
+      additions: 10,
+      deletions: 2,
+      changedFiles: 1,
+    }));
+    const { status, signals } = computeAuthenticity(
+      buildInput({ repos: bigRepos, commits, pullRequests: selfPRs, issues: [] }),
+    );
+    const ratioSignal = signals.find((s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO);
+    expect(ratioSignal?.severity).toBe('warn');
+    expect(status).not.toBe('suspicious');
+  });
+
+  it('downgrades short-window thin evidence to mixed_signals even with one weak external PR', () => {
+    // 复现负样本 ByteBunny777：少量活动、窗口仅 1-3 个月、仅 1 个外部 merged PR，
+    // 不应给 likely_authentic 高置信度结论。
+    const recentCommits: AnalyzerCommit[] = Array.from({ length: 38 }, (_, i) => ({
+      oid: `tb${String(i).padStart(38, '0')}`,
+      committedAt: '2026-08-10T10:00:00Z',
+      authorName: 'Dev Strong',
+      authorEmail: 'dev.strong@example.com',
+      repoName: 'dev-strong/web-platform',
+      messageHeadline: `commit ${i}`,
+    }));
+    // 仓库也都是近期的（窗口约 1 个月），避免默认仓库的历史 pushedAt 拉长窗口
+    const recentRepos: AnalyzerRepo[] = [
+      {
+        name: 'web-platform',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/web-platform',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'TypeScript',
+        topics: [],
+        description: null,
+        stargazerCount: 262,
+        forkCount: 6,
+        pushedAt: '2026-08-20T00:00:00Z',
+        createdAt: '2026-07-01T00:00:00Z',
+      },
+    ];
+    const oneExtPR: AnalyzerPullRequest[] = [
+      {
+        number: 1,
+        title: 'single external contribution',
+        url: 'https://github.com/other-org/project/pull/1',
+        state: 'MERGED' as const,
+        createdAt: '2026-08-12T08:00:00Z',
+        mergedAt: '2026-08-14T12:00:00Z',
+        repoNameWithOwner: 'other-org/project',
+        repoIsFork: false,
+        repoOwnerIsSelf: false,
+        additions: 20,
+        deletions: 5,
+        changedFiles: 2,
+      },
+    ];
+    const { status, confidence } = computeAuthenticity(
+      buildInput({
+        repos: recentRepos,
+        commits: recentCommits,
+        pullRequests: oneExtPR,
+        issues: [],
+      }),
+    );
+    expect(status).toBe('mixed_signals');
+    expect(confidence).toBeLessThanOrEqual(0.6);
   });
 
   it('flags self_pr_ratio warn when nearly all PRs are in self-owned repos', () => {
