@@ -42,7 +42,7 @@ JobAgent 当前状态，截至 2026-09-11。
 2. ~~M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。~~ ✅ 已完成（2026-09-11，见最近变更）
 3. ~~#8 去风险实验·S1/S2 spike：5 个真实账号批量跑，暴露 3 个 bug（org 仓库 owner 穿透致 L1 404 / 空仓库 pushedAt=null 崩溃 / 组织账号 NOT_FOUND 未归一）~~ ✅ 已完成（2026-09-11）
 4. ~~修复 spike 暴露的 3 个 bug + 回归测试（commit `b77ec11`，18 files）~~ ✅ 已完成（2026-09-11）
-5. **#8 去风险实验·重新批量验证（进行中，待 GITHUB_TOKEN）**：bug 修复已完成（commit `b77ec11`），需设置 `GITHUB_TOKEN` 后用修复后 CLI 重跑 5 个账号（建议：torvalds / 2 位 OSS 维护者 / github 组织账号 / 1 个普通账号）确认无崩溃、证据链对齐；通过后扩到 20–50 标注账号（标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
+5. ~~**#8 去风险实验·重新批量验证**~~ ✅ 已完成（2026-09-11）：用修复后 CLI + GITHUB_TOKEN 重跑 5 个账号——torvalds（likely_authentic, conf 0.9, 10 tags）、sindresorhus（conf 0.8, 13 tags）、tj（conf 0.62, 11 tags）、bayernjf（conf 0.72, 14 tags）4 个成功无崩溃；github 组织账号优雅失败（`Could not resolve to a User`，符合预期——CLI 仅支持 user，组织需单独 organization 查询）。证据链对齐：authenticity 信号均挂 evidenceRefs（commit/PR 指针）。**下一步**：扩到 20–50 标注账号（标注人/判定人届时落实），校准真实性信号；通过后进 P2 系统层。
 6. **M1·W3 服务化**（已完成，W3-1~W3-6）：
    - ~~W3-1：`analysis_jobs` 表迁移(002) + schema + AnalysisJobsRepository（create/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus）+ 12 测试~~ ✅ 已完成（2026-09-11）
    - ~~W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次~~ ✅ 已完成（2026-09-11）
@@ -64,6 +64,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**#8 去风险实验·重新批量验证完成**——用修复后 CLI + GITHUB_TOKEN 重跑 5 个账号：torvalds/sindresorhus/tj/bayernjf 4 个成功无崩溃（均 L0+L1 完整、有 skillTags 和 authenticity 信号+evidenceRefs），github 组织账号优雅失败（符合预期）。确认 spike 暴露的 3 个 bug（org 仓库 owner 穿透致 L1 404 / 空仓库 pushedAt=null 崩溃 / 组织账号 NOT_FOUND 未归一）全部修复有效。输出文件在 apps/cli/data/spike-*.json（gitignore 忽略）。
 
 - 2026-09-11：**PR #13 合并到 main + 落地页 push 完成**——PR #13（dev→main，21 commits，+11,390/-1,165，111 files）已合并（merge commit `a35940d`），包含 M1 全部成果：#8 去风险实验修复、W3 服务化（4 表+仓储+worker+api）、W3-6 双方言持久化（SQLite/Postgres）、W4 报告与分享（Astro 7 SSR+i18n+设计 token+只读分享+落地页接线）、CI audit 修复（astro v5→v7）。落地页独立仓库 commit `ba90d25`（demo 环境变量驱动接线）已 push 到 origin/dev，Cloudflare Pages 自动部署（线上仍走 waitlist 回退，未配置 PUBLIC_API_BASE）。
 
