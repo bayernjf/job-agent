@@ -45,7 +45,7 @@ JobAgent 当前状态，截至 2026-09-11。
 6. **M1·W3 服务化**（进行中）：
    - ~~W3-1：`analysis_jobs` 表迁移(002) + schema + AnalysisJobsRepository（create/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus）+ 12 测试~~ ✅ 已完成（2026-09-11）
    - ~~W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次~~ ✅ 已完成（2026-09-11）
-   - W3-3：api Hono 接口——POST /analyze（创建 job，去重：同一用户有 active job 则返回现有 jobId）、GET /jobs/:id（查询状态）、GET /profiles/:id（查询画像快照）
+   - ~~W3-3：api Hono 接口——POST /analyze（创建 job，去重：同一用户有 active job 则返回现有 jobId）、GET /jobs/:id（查询状态）、GET /profiles/:id（查询画像快照）~~ ✅ 已完成（2026-09-11）
    - W3-4：evidence 表迁移(003) + schema + 仓储（证据索引，关联 profile_id）
    - W3-5：waitlist 表迁移(004) + schema + 仓储（落地页留资）
    - W3-6：Postgres 方言适配（storage 双轨：SQLite 本地/实验 + Postgres 生产，Drizzle 方言隔离）
@@ -57,6 +57,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**M1·W3-3 API Hono 接口落地**——`apps/api/src/index.ts` 实现完整 REST API：POST /analyze（Zod 校验 username，去重：同一用户有 active queued/running 任务则返回现有 jobId，否则创建新任务返回 201）、GET /jobs/:id（查询任务状态含 stage/attempts/profileId/error/budget/missing/时间戳）、GET /profiles/:id（查询完整画像快照）、GET /health（健康检查）、404 兜底、全局错误处理、CORS 开放（MVP 阶段）；createApp 可注入仓储便于测试，initRepos 初始化数据库+迁移+仓储；api package.json 添加 hono、@hono/node-server、zod、@jobagent/storage、better-sqlite3、drizzle-orm 依赖；13 个集成测试覆盖 /analyze 成功/去重/非活跃后新建/空 username/无效格式/非 JSON body、/jobs 查询/状态流转/404、/profiles 查询/404、/health、404 兜底；全仓 typecheck/build 全绿，api 13 测试全绿。
 
 - 2026-09-11：**M1·W3-2 worker 核心逻辑落地**——`apps/worker/src/index.ts` 实现完整 Worker：initRepos（数据库连接+迁移+仓储）、processJob（采集→更新 stage→分析→写画像→标记成功，纯逻辑可单测）、handleJobFailure（attempts<maxRetries 时 resetToQueued 重试，否则永久 failed）、runWorker（主循环：claimNext 原子认领→processJob→成功/失败处理，无任务时 sleep，支持优雅关闭 SIGINT/SIGTERM）；AnalysisJobsRepository 新增 resetToQueued 方法（失败重试时重置状态，保留 attempts 计数，清空 stage/startedAt/finishedAt/claimedBy）；worker package.json 添加 @jobagent/storage、@jobagent/github-source、@jobagent/analyzer-core、better-sqlite3、drizzle-orm 依赖；10 个测试覆盖 processJob 成功/失败/缺失层、handleJobFailure 重试/永久失败/重试后可再认领、runWorker 主循环/失败重试/空轮询 sleep；全仓 typecheck/build 全绿，worker 10 测试全绿。
 
