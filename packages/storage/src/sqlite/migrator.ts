@@ -1,30 +1,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
+import {
+  listMigrationFiles,
+  parseMigrationFile,
+  type RollbackResult,
+  type RunMigrationsResult,
+} from '../migrations-fs.js';
 
 /**
- * 迁移器（MIGRATION_CONVENTION 第 5 节）。
+ * SQLite 迁移器（MIGRATION_CONVENTION 第 5 节），同步执行（better-sqlite3 驱动同步）。
  *
- * - 按 NNN 顺序应用 `db/migrations/<dialect>/*.sql`，在 `schema_migrations` 记录已应用版本。
+ * - 按 NNN 顺序应用 `db/migrations/sqlite/*.sql`，在 `schema_migrations` 记录已应用版本。
  * - 迁移文件可在末尾携带 `-- DOWN BEGIN ... -- DOWN END` 段；up 只执行段外部分，
  *   down 段仅由 rollbackLatestMigration 使用（无 down 段的迁移不可回滚）。
- * - 本模块位于持久化层内部，直接执行 DDL 属于该层实现细节，不违反「业务模块禁裸 SQL」。
+ * - 文件枚举/段解析/结果类型复用方言无关的 migrations-fs；本模块只负责在 SQLite 连接上执行。
  */
 
-export interface ParsedMigration {
-  up: string;
-  down: string | null;
-}
-
-/** 解析迁移文件：提取 up 段与可选 down 段 */
-export function parseMigrationFile(sql: string): ParsedMigration {
-  const downMatch = sql.match(/--\s*DOWN\s*BEGIN([\s\S]*?)--\s*DOWN\s*END/);
-  if (!downMatch) return { up: sql, down: null };
-  return {
-    up: sql.slice(0, downMatch.index ?? sql.length),
-    down: downMatch[1]!.trim(),
-  };
-}
+export { parseMigrationFile, listMigrationFiles } from '../migrations-fs.js';
+export type {
+  ParsedMigration,
+  RunMigrationsResult,
+  RollbackResult,
+} from '../migrations-fs.js';
 
 export function createSchemaMigrationsTable(db: Database): void {
   db.exec(`
@@ -35,20 +33,7 @@ export function createSchemaMigrationsTable(db: Database): void {
   `);
 }
 
-/** 列出迁移目录内合法的 NNN_verb_snake_case.sql，按编号排序 */
-export function listMigrationFiles(migrationsDir: string): string[] {
-  return fs
-    .readdirSync(migrationsDir)
-    .filter((f) => /^\d{3}_[a-z][a-z0-9_]*\.sql$/.test(f))
-    .sort();
-}
-
-export interface RunMigrationsResult {
-  applied: string[];
-  total: number;
-}
-
-/** 在给定连接上按序应用未应用的迁移，返回本次新应用的版本号列表 */
+/** 在给定连接上按序应用未应用的迁移，返回本次新应用的文件名列表 */
 export function runMigrations(db: Database, migrationsDir: string): RunMigrationsResult {
   createSchemaMigrationsTable(db);
   const appliedVersions = new Set(
@@ -71,11 +56,6 @@ export function runMigrations(db: Database, migrationsDir: string): RunMigration
   }
 
   return { applied, total: files.length };
-}
-
-export interface RollbackResult {
-  version: string;
-  file: string;
 }
 
 /** 回滚最新一个迁移；无 down 段时拒绝（MIGRATION_CONVENTION 第 5 节） */
