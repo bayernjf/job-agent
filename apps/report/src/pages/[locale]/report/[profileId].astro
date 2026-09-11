@@ -1,0 +1,388 @@
+---
+/**
+ * 报告页 /[locale]/report/[profileId]——SSR 读取画像快照并渲染。
+ * 分享链接固定指向此路由，语言段随链接固定（i18n 设计第 4 节）。
+ */
+import Layout from '../../../layouts/Layout.astro';
+import ShareButton from '../../../components/ShareButton.tsx';
+import { loadProfile } from '../../../lib/db';
+import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
+import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
+import type { SkillTagKind } from '@jobagent/shared';
+
+const { locale: rawLocale, profileId } = Astro.params;
+if (!isLocale(rawLocale)) {
+  return Astro.redirect('/en/');
+}
+const locale: Locale = rawLocale;
+const t = createTranslator(locale);
+
+const profile = profileId ? loadProfile(profileId) : null;
+
+// 画像不存在：渲染 404 状态页
+if (!profile) {
+  return Astro.redirect(`/${locale}/?notfound=1`);
+}
+
+// 真实性状态文案 key
+const authLabelKey = `report.authenticity.${profile.authenticity.status}` as MessageKey;
+const authClass = authenticityClass(profile.authenticity.status);
+
+// 能力标签按 kind 分组
+const skillGroups: Record<SkillTagKind, typeof profile.skillTags> = {
+  language: profile.skillTags.filter((s) => s.kind === 'language'),
+  framework: profile.skillTags.filter((s) => s.kind === 'framework'),
+  domain: profile.skillTags.filter((s) => s.kind === 'domain'),
+};
+
+const shareUrl = Astro.url.href;
+const generatedAt = formatDateTime(profile.generatedAt, locale);
+const since = formatDateTime(profile.dataWindow.since, locale);
+const until = formatDateTime(profile.dataWindow.until, locale);
+---
+
+<Layout locale={locale} title={profile.subject.login}>
+  <div class="ja-container">
+    <!-- 头部：账号信息 + 真实性徽章 + 分享 -->
+    <section class="ja-card profile-header">
+      <div class="profile-id">
+        {
+          profile.subject.avatarUrl && (
+            <img src={profile.subject.avatarUrl} alt={profile.subject.login} class="avatar" width="64" height="64" />
+          )
+        }
+        <div>
+          <h1 class="login">{profile.subject.displayName ?? profile.subject.login}</h1>
+          <a href={profile.subject.profileUrl} target="_blank" rel="noopener noreferrer" class="ja-muted">
+            @{profile.subject.login}
+          </a>
+        </div>
+      </div>
+      <div class="header-meta">
+        <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
+        <ShareButton
+          url={shareUrl}
+          copyLabel={t('report.copyLink')}
+          copiedLabel={t('report.shareCopied')}
+        />
+      </div>
+    </section>
+
+    <!-- 元信息：生成时间 / 版本 / 时间窗 -->
+    <section class="meta-bar">
+      <span class="ja-muted">{t('report.generatedAt')}: {generatedAt}</span>
+      <span class="ja-muted">{t('report.analyzerVersion')}: {profile.analyzerVersion}</span>
+      <span class="ja-muted">{t('report.dataWindow')}: {since} – {until}</span>
+    </section>
+
+    <!-- 概述 -->
+    <section class="ja-card">
+      <h2>{t('report.summary.title')}</h2>
+      <p class="headline">{profile.summary.headline}</p>
+    </section>
+
+    <!-- 真实性评估 -->
+    <section class="ja-card">
+      <div class="ja-flex-between">
+        <h2>{t('report.authenticity.title')}</h2>
+        <span class="ja-muted">
+          {t('report.authenticity.confidence')}: {formatPercent(profile.authenticity.confidence, locale)}
+        </span>
+      </div>
+      <div class="ja-stack-2 signals">
+        {
+          profile.authenticity.signals.map((signal) => (
+            <div class={`signal signal--${signal.severity}`}>
+              <div class="ja-flex-between">
+                <strong>{signal.label}</strong>
+                <span class="ja-muted signal-code">{signal.code}</span>
+              </div>
+              <p>{signal.detail}</p>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+
+    <!-- 能力标签 -->
+    {
+      profile.skillTags.length > 0 && (
+        <section class="ja-card">
+          <h2>{t('report.skills.title')}</h2>
+          <div class="ja-stack-3">
+            {(Object.keys(skillGroups) as SkillTagKind[]).map((kind) =>
+              skillGroups[kind].length > 0 ? (
+                <div>
+                  <h3 class="kind-label">{t(`report.skills.kind.${kind}` as MessageKey)}</h3>
+                  <div class="tag-list">
+                    {skillGroups[kind].map((tag) => (
+                      <span class={`skill-tag skill-tag--${tag.depth}`}>
+                        {tag.name}
+                        <span class="depth-mark">{t(`report.skills.depth.${tag.depth}` as MessageKey)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null,
+            )}
+          </div>
+        </section>
+      )
+    }
+
+    <!-- 活跃度 -->
+    <section class="ja-card">
+      <h2>{t('report.activity.title')}</h2>
+      <div class="ja-stack-2">
+        {profile.activity.longevityMonths !== undefined && (
+          <div class="ja-flex-between">
+            <span class="ja-muted">{t('report.activity.longevityMonths')}</span>
+            <strong>{t('report.activity.months', { count: profile.activity.longevityMonths })}</strong>
+          </div>
+        )}
+        {profile.activity.cadenceSummary && (
+          <div class="ja-flex-between">
+            <span class="ja-muted">{t('report.activity.cadence')}</span>
+            <strong>{profile.activity.cadenceSummary}</strong>
+          </div>
+        )}
+        {profile.activity.metrics && Object.keys(profile.activity.metrics).length > 0 && (
+          <div class="metrics-grid">
+            {Object.entries(profile.activity.metrics).map(([key, value]) => (
+              <div class="metric">
+                <span class="metric-value">{formatNumber(value, locale)}</span>
+                <span class="ja-muted metric-key">{key}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+
+    <!-- 协作度 -->
+    {
+      (profile.collaboration.prSummary ||
+        (profile.collaboration.externalMergedContributions &&
+          profile.collaboration.externalMergedContributions.length > 0)) && (
+        <section class="ja-card">
+          <h2>{t('report.collaboration.title')}</h2>
+          <div class="ja-stack-2">
+            {profile.collaboration.prSummary && <p>{profile.collaboration.prSummary}</p>}
+            {profile.collaboration.externalMergedContributions &&
+              profile.collaboration.externalMergedContributions.length > 0 && (
+                <div>
+                  <h3 class="kind-label">{t('report.collaboration.externalMerged')}</h3>
+                  <ul class="merged-list">
+                    {profile.collaboration.externalMergedContributions.map((repo) => (
+                      <li>{repo}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+          </div>
+        </section>
+      )
+    }
+
+    <!-- 面试题 -->
+    {
+      profile.interviewQuestions.length > 0 && (
+        <section class="ja-card">
+          <h2>{t('report.interview.title')}</h2>
+          <div class="ja-stack-3">
+            {profile.interviewQuestions.map((iq) => (
+              <div class="interview-item">
+                <p class="question">{iq.question}</p>
+                <p class="ja-muted intent">
+                  {t('report.interview.intent')}: {iq.intent}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )
+    }
+
+    <!-- 局限与说明 -->
+    {
+      profile.caveats.length > 0 && (
+        <section class="ja-card caveats">
+          <h2>{t('report.caveats.title')}</h2>
+          <ul class="ja-stack-1">
+            {profile.caveats.map((caveat) => (
+              <li>{caveat}</li>
+            ))}
+          </ul>
+        </section>
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .profile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ja-space-4);
+    flex-wrap: wrap;
+  }
+
+  .profile-id {
+    display: flex;
+    align-items: center;
+    gap: var(--ja-space-4);
+  }
+
+  .avatar {
+    border-radius: var(--ja-radius-lg);
+    border: 1px solid var(--ja-color-border);
+  }
+
+  .login {
+    font-size: var(--ja-text-xl);
+    margin-bottom: var(--ja-space-1);
+  }
+
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--ja-space-3);
+  }
+
+  .meta-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ja-space-4);
+    padding: var(--ja-space-3) var(--ja-space-2);
+  }
+
+  .headline {
+    margin-top: var(--ja-space-3);
+    font-size: var(--ja-text-lg);
+  }
+
+  h2 {
+    font-size: var(--ja-text-lg);
+    margin-bottom: var(--ja-space-3);
+  }
+
+  h3 {
+    font-size: var(--ja-text-base);
+  }
+
+  .signal {
+    padding: var(--ja-space-3);
+    border-radius: var(--ja-radius-md);
+    border-left: 3px solid var(--ja-color-border);
+    background: var(--ja-color-surface-muted);
+  }
+
+  .signal--info {
+    border-left-color: var(--ja-color-info);
+  }
+
+  .signal--warn {
+    border-left-color: var(--ja-color-warning);
+  }
+
+  .signal--risk {
+    border-left-color: var(--ja-color-danger);
+  }
+
+  .signal p {
+    margin-top: var(--ja-space-1);
+    font-size: var(--ja-text-sm);
+  }
+
+  .signal-code {
+    font-family: var(--ja-font-mono);
+    font-size: var(--ja-text-xs);
+  }
+
+  .kind-label {
+    margin-bottom: var(--ja-space-2);
+    color: var(--ja-color-fg-muted);
+    font-size: var(--ja-text-sm);
+  }
+
+  .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ja-space-2);
+  }
+
+  .skill-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ja-space-2);
+    padding: var(--ja-space-1) var(--ja-space-3);
+    border-radius: var(--ja-radius-md);
+    background: var(--ja-color-surface-muted);
+    font-size: var(--ja-text-sm);
+  }
+
+  .skill-tag--proficient {
+    background: var(--ja-color-accent-subtle);
+    color: var(--ja-color-accent);
+    font-weight: 500;
+  }
+
+  .depth-mark {
+    font-size: var(--ja-text-xs);
+    opacity: 0.7;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--ja-space-3);
+  }
+
+  .metric {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-1);
+    padding: var(--ja-space-3);
+    background: var(--ja-color-surface-muted);
+    border-radius: var(--ja-radius-md);
+  }
+
+  .metric-value {
+    font-size: var(--ja-text-xl);
+    font-weight: 600;
+  }
+
+  .metric-key {
+    font-size: var(--ja-text-xs);
+    font-family: var(--ja-font-mono);
+  }
+
+  .merged-list {
+    padding-left: var(--ja-space-5);
+  }
+
+  .interview-item {
+    padding: var(--ja-space-3);
+    background: var(--ja-color-surface-muted);
+    border-radius: var(--ja-radius-md);
+  }
+
+  .question {
+    font-weight: 500;
+  }
+
+  .intent {
+    margin-top: var(--ja-space-1);
+    font-size: var(--ja-text-sm);
+  }
+
+  .caveats ul {
+    padding-left: var(--ja-space-5);
+  }
+
+  .caveats li {
+    font-size: var(--ja-text-sm);
+    color: var(--ja-color-fg-muted);
+  }
+</style>

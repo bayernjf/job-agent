@@ -28,7 +28,7 @@ JobAgent 当前状态，截至 2026-09-11。
 
 ## 当前状态
 
-- 阶段：**M1·W3 服务化完成**（W3-1~W3-5 全部完成：analysis_jobs/evidence/waitlist 4 个表+仓储、worker 核心逻辑、api Hono 接口，全仓 typecheck/test/build/check-migrations 全绿；W3-6 Postgres 适配可延后，SQLite 足够 MVP）。下一步 M1·W4 报告与分享（Astro 报告页 + React islands + 只读分享 + 接落地页 demo）。M1·W2 代码交付已完成，#8 去风险实验待 GITHUB_TOKEN。
+- 阶段：**M1·W4 报告与分享进行中**（W4-1~W4-5 已完成：Astro 5 SSR 应用 + 设计 token + 中英 i18n + 首页/报告页 + React islands + 只读分享链接，astro check/build 全绿、i18n 14 测试全绿，standalone 服务器冒烟验证中英报告页 SSR 渲染通过；下一步 W4-6 接落地页 demo）。M1·W3 服务化已完成（4 表+仓储、worker、api），W3-6 Postgres 适配可延后。#8 去风险实验待 GITHUB_TOKEN。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
@@ -49,7 +49,13 @@ JobAgent 当前状态，截至 2026-09-11。
    - ~~W3-4：evidence 表迁移(003) + schema + 仓储（证据索引，关联 profile_id）~~ ✅ 已完成（2026-09-11）
    - ~~W3-5：waitlist 表迁移(004) + schema + 仓储（落地页留资）~~ ✅ 已完成（2026-09-11）
    - W3-6：Postgres 方言适配（storage 双轨：SQLite 本地/实验 + Postgres 生产，Drizzle 方言隔离）
-7. **M1·W4 报告与分享**：Astro 报告页 + React islands + 只读分享链接 + 接落地页 demo（落地即执行 i18n 与设计 token）。
+7. **M1·W4 报告与分享**（进行中）：
+   - ~~W4-1：Astro 项目初始化——apps/report 从 TS 库改造为 Astro 5 SSR 应用（@astrojs/node standalone + @astrojs/react islands，端口 4321/REPORT_PORT），删除旧占位 index.ts~~ ✅ 已完成（2026-09-11）
+   - ~~W4-2：设计 token——src/styles/tokens.css（primitive/semantic 两层 + dark 覆盖，--ja- 前缀，四态色映射 authenticity 枚举）+ global.css（reset + 工具类，全 var 无 hex）~~ ✅ 已完成（2026-09-11）
+   - ~~W4-3：i18n 基础设施——zh-CN.json 单一事实源（约 70 key）+ en.json 同构 + index.ts（t()/createTranslator/negotiateLocale，{name} 插值，缺 key 渲染 [missing:]）+ 14 个 key 对齐测试全绿~~ ✅ 已完成（2026-09-11）
+   - ~~W4-4：报告页 Layout + 页面——Layout.astro（导航/语言切换/页脚）、根路径按 Accept-Language 重定向、/[locale]/ 首页（三步说明）、/[locale]/report/[profileId] SSR 报告页（概述/真实性信号/能力标签分组/活跃度/协作度/面试题/局限），React islands：AnalyzeForm（创建任务+轮询+跳转）、ShareButton（复制链接）~~ ✅ 已完成（2026-09-11）
+   - ~~W4-5：只读分享链接——/[locale]/report/[profileId] SSR 路由，语言段随链接固定；src/lib/db.ts readonly 单例读 profiles 快照，format.ts 用 Intl 按 locale 格式化~~ ✅ 已完成（2026-09-11，冒烟验证中英双语渲染通过）
+   - W4-6：接落地页 demo——独立工程 `../job-agent-landing`（已上线 https://job-agent.bayjf.com）的 #demo 从 localStorage 演示改为调真实 API（POST /analyze → 轮询 → 跳报告页）
 
 8. **P1·Chrome 扩展一键填充**（决策 #15，2026-09-11 拍板）：画像验证通过后启动，支持 Workday/Greenhouse/Lever 三大 ATS，填充数据来自可信画像；只做用户主动触发的一键填充，不做全自动后台投递。前置：packages/shared 预留可导出画像数据结构。
 9. **P2·职位聚合（岗位搜集）**（决策 #16，2026-09-11 拍板）：按原计划 P2 启动，先聚焦海外技术岗数据源（Wellfound/YC Jobs/RemoteOK 等），轻量爬虫+公开 API，日更增量；是匹配/投递的前置基础设施。当前只做准备：JobPosting 类型预留 + 1-2 天 Spike 验证。
@@ -57,6 +63,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**M1·W4-1~W4-5 报告页主体落地**——apps/report 从 TS 占位库改造为 Astro 5 SSR 应用（@astrojs/node standalone + @astrojs/react 19 islands）。设计 token：`styles/tokens.css`（primitive/semantic 两层 + dark 覆盖，--ja- 前缀，真实性四态色映射 analyzer 枚举）+ `styles/global.css`（reset/工具类/组件样式，全 var 无 hex）。i18n：`i18n/messages/zh-CN.json`（约 70 key 单一事实源）+ `en.json` 同构 + `index.ts`（t/createTranslator/negotiateLocale，{name} 插值，缺 key 渲染可见 [missing:]）+ 14 key 对齐测试。页面：`Layout.astro`、根路径 Accept-Language 重定向、`[locale]/index.astro` 首页、`[locale]/report/[profileId].astro` SSR 报告页（概述/真实性信号/能力标签按 kind 分组/活跃度指标/协作度/面试题/局限全区块）；React islands：`AnalyzeForm.tsx`（正则校验→POST /analyze→2s 轮询→跳报告页）、`ShareButton.tsx`（剪贴板复制+兜底）。`lib/db.ts` readonly 单例读 profiles 快照，`lib/format.ts` Intl 按 locale 格式化。配套：shared 补导出 SkillTagKind/SkillTagDepth 类型，storage 清理未用 isNull import。**踩坑**：readonly 连接不能执行 PRAGMA journal_mode=WAL（报 attempt to write a readonly database，被 catch 吞掉致报告页 302），删除该 pragma 后正常。astro check 0 error、build 无 warning、i18n 14 测试全绿；standalone 服务器构造测试画像冒烟：英文页显示 Likely authentic/Interview Questions、中文页显示可信度较高/面试题，账号名/标签/指标正确，无缺失文案标记。
 
 - 2026-09-11：**M1·W3-4 evidence 表 + W3-5 waitlist 表落地**——新增 `db/migrations/003_create_evidence.sql`（evidence 表：id/profile_id/source_platform/source_type/url/occurred_at/layer/claim/raw_ref/created_at，两个索引，含 down 段）和 `db/migrations/004_create_waitlist.sql`（waitlist 表：id/email(UNIQUE)/name/github_username/source/status/notes/created_at/updated_at，两个索引，含 down 段）；`packages/storage/src/schema.ts` 新增 evidence 和 waitlist Drizzle 表定义；`packages/storage/src/evidence.ts` 实现 EvidenceRepository（insert/insertBatch/importFromProfile/getById/listByProfile/listBySource/countByProfile）；`packages/storage/src/waitlist.ts` 实现 WaitlistRepository（insert/getById/getByEmail/listByStatus/listAll/updateStatus/updateNotes/countByStatus，email 唯一去重，状态机 pending→contacted→converted/archived）；storage index.ts 新增导出；migrations.test.ts 适配 003/004（四步回滚验证）；evidence 8 测试 + waitlist 9 测试；全仓 typecheck/build 全绿，storage 39 测试全绿，check-migrations 通过。
 
