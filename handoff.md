@@ -28,7 +28,7 @@ JobAgent 当前状态，截至 2026-09-11。
 
 ## 当前状态
 
-- 阶段：**M1·W4 报告与分享进行中**（W4-1~W4-5 已完成：Astro 5 SSR 应用 + 设计 token + 中英 i18n + 首页/报告页 + React islands + 只读分享链接，astro check/build 全绿、i18n 14 测试全绿，standalone 服务器冒烟验证中英报告页 SSR 渲染通过；下一步 W4-6 接落地页 demo）。M1·W3 服务化已完成（4 表+仓储、worker、api），W3-6 Postgres 适配可延后。#8 去风险实验待 GITHUB_TOKEN。
+- 阶段：**M1·W4 报告与分享完成**（W4-1~W4-6 全部完成：Astro 5 SSR 报告应用 + 设计 token + 中英 i18n + 首页/报告页 + React islands + 只读分享链接 + 落地页 demo 接线，astro check/build 全绿、i18n 14 测试全绿、standalone 冒烟中英报告页通过、落地页 build 双模式验证通过）。M1 剩余：W3-6 Postgres 适配（可延后，SQLite 足够 MVP）、#8 去风险实验重新批量验证（待 GITHUB_TOKEN）、端到端联调（api+worker+report 同时启动跑通主链路）。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
@@ -55,7 +55,7 @@ JobAgent 当前状态，截至 2026-09-11。
    - ~~W4-3：i18n 基础设施——zh-CN.json 单一事实源（约 70 key）+ en.json 同构 + index.ts（t()/createTranslator/negotiateLocale，{name} 插值，缺 key 渲染 [missing:]）+ 14 个 key 对齐测试全绿~~ ✅ 已完成（2026-09-11）
    - ~~W4-4：报告页 Layout + 页面——Layout.astro（导航/语言切换/页脚）、根路径按 Accept-Language 重定向、/[locale]/ 首页（三步说明）、/[locale]/report/[profileId] SSR 报告页（概述/真实性信号/能力标签分组/活跃度/协作度/面试题/局限），React islands：AnalyzeForm（创建任务+轮询+跳转）、ShareButton（复制链接）~~ ✅ 已完成（2026-09-11）
    - ~~W4-5：只读分享链接——/[locale]/report/[profileId] SSR 路由，语言段随链接固定；src/lib/db.ts readonly 单例读 profiles 快照，format.ts 用 Intl 按 locale 格式化~~ ✅ 已完成（2026-09-11，冒烟验证中英双语渲染通过）
-   - W4-6：接落地页 demo——独立工程 `../job-agent-landing`（已上线 https://job-agent.bayjf.com）的 #demo 从 localStorage 演示改为调真实 API（POST /analyze → 轮询 → 跳报告页）
+   - ~~W4-6：接落地页 demo——独立工程 `../job-agent-landing` 的 #demo 改造为环境变量驱动：构建时配置 PUBLIC_API_BASE/PUBLIC_REPORT_BASE 即走真实流程（校验→POST /analyze→2s 轮询→跳报告页 {en|zh-CN}/report/:id），未配置则回退原 localStorage waitlist，保证已上线站点行为不变；落地页独立仓库 commit `ba90d25`（dev 分支，未 push）~~ ✅ 已完成（2026-09-11）
 
 8. **P1·Chrome 扩展一键填充**（决策 #15，2026-09-11 拍板）：画像验证通过后启动，支持 Workday/Greenhouse/Lever 三大 ATS，填充数据来自可信画像；只做用户主动触发的一键填充，不做全自动后台投递。前置：packages/shared 预留可导出画像数据结构。
 9. **P2·职位聚合（岗位搜集）**（决策 #16，2026-09-11 拍板）：按原计划 P2 启动，先聚焦海外技术岗数据源（Wellfound/YC Jobs/RemoteOK 等），轻量爬虫+公开 API，日更增量；是匹配/投递的前置基础设施。当前只做准备：JobPosting 类型预留 + 1-2 天 Spike 验证。
@@ -63,6 +63,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**M1·W4-6 落地页 demo 接线，W4 报告与分享全部完成**——改造独立工程 `job-agent-landing` 的 `src/components/Demo.astro`：构建时环境变量 `PUBLIC_API_BASE`/`PUBLIC_REPORT_BASE` 驱动，配置后走真实分析流程（GitHub 用户名校验→POST /analyze→2s 轮询 /jobs/:id→跳转 `{reportBase}/{en|zh-CN}/report/{profileId}`），未配置（当前生产）回退原 localStorage waitlist，已上线静态站点行为不变；新增 5 组中英 i18n key（queued/running/failed/invalid/analyze 按钮，文案经 data-* 传 JS 不硬编码），新增 .env.example。落地页 astro build 双模式验证：未配置时按钮 Join Beta/预约内测、data-api-base 空走 waitlist；配置后按钮 Generate profile/生成能力画像、data-api-base 有值走真实流程。落地页 commit `ba90d25`（dev，未 push）。**至此 M1·W4 全部完成（W4-1~W4-6）**。
 
 - 2026-09-11：**M1·W4-1~W4-5 报告页主体落地**——apps/report 从 TS 占位库改造为 Astro 5 SSR 应用（@astrojs/node standalone + @astrojs/react 19 islands）。设计 token：`styles/tokens.css`（primitive/semantic 两层 + dark 覆盖，--ja- 前缀，真实性四态色映射 analyzer 枚举）+ `styles/global.css`（reset/工具类/组件样式，全 var 无 hex）。i18n：`i18n/messages/zh-CN.json`（约 70 key 单一事实源）+ `en.json` 同构 + `index.ts`（t/createTranslator/negotiateLocale，{name} 插值，缺 key 渲染可见 [missing:]）+ 14 key 对齐测试。页面：`Layout.astro`、根路径 Accept-Language 重定向、`[locale]/index.astro` 首页、`[locale]/report/[profileId].astro` SSR 报告页（概述/真实性信号/能力标签按 kind 分组/活跃度指标/协作度/面试题/局限全区块）；React islands：`AnalyzeForm.tsx`（正则校验→POST /analyze→2s 轮询→跳报告页）、`ShareButton.tsx`（剪贴板复制+兜底）。`lib/db.ts` readonly 单例读 profiles 快照，`lib/format.ts` Intl 按 locale 格式化。配套：shared 补导出 SkillTagKind/SkillTagDepth 类型，storage 清理未用 isNull import。**踩坑**：readonly 连接不能执行 PRAGMA journal_mode=WAL（报 attempt to write a readonly database，被 catch 吞掉致报告页 302），删除该 pragma 后正常。astro check 0 error、build 无 warning、i18n 14 测试全绿；standalone 服务器构造测试画像冒烟：英文页显示 Likely authentic/Interview Questions、中文页显示可信度较高/面试题，账号名/标签/指标正确，无缺失文案标记。
 
