@@ -16,7 +16,7 @@ export function computeActivity(
     ...input.pullRequests.map((p) => p.createdAt),
     ...input.issues.map((i) => i.createdAt),
     ...input.repos.map((r) => r.pushedAt),
-  ].filter((d) => Number.isFinite(Date.parse(d)));
+  ].filter((d): d is string => d != null && Number.isFinite(Date.parse(d)));
 
   const earliest = dates.length > 0 ? dates.reduce((a, b) => (a < b ? a : b)) : input.collectedAt;
   const latest = dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : input.collectedAt;

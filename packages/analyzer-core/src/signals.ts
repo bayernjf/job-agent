@@ -6,6 +6,7 @@
 
 import type { AuthenticitySignal, AuthenticityStatus } from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
+import { repoRef } from './input.js';
 import { SIGNAL_CODES } from './rules.js';
 
 function normalize(s: string): string {
@@ -24,7 +25,7 @@ function validDates(input: AnalyzerInput): string[] {
     ...input.commits.map((c) => c.committedAt),
     ...input.pullRequests.map((p) => p.createdAt),
     ...input.issues.map((i) => i.createdAt),
-  ].filter((d) => Number.isFinite(Date.parse(d)));
+  ].filter((d): d is string => d != null && Number.isFinite(Date.parse(d)));
   return [...new Set(dates)];
 }
 
@@ -131,9 +132,9 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         evidenceRefs: validRefs(
           input,
           input.repos
-            .toSorted((a, b) => b.pushedAt.localeCompare(a.pushedAt))
+            .toSorted((a, b) => (b.pushedAt ?? '').localeCompare(a.pushedAt ?? ''))
             .slice(0, 3)
-            .map((r) => `repo:${r.name}`),
+            .map((r) => `repo:${repoRef(r)}`),
         ),
       });
     } else if (days > 90) {
@@ -145,9 +146,9 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         evidenceRefs: validRefs(
           input,
           input.repos
-            .toSorted((a, b) => b.pushedAt.localeCompare(a.pushedAt))
+            .toSorted((a, b) => (b.pushedAt ?? '').localeCompare(a.pushedAt ?? ''))
             .slice(0, 3)
-            .map((r) => `repo:${r.name}`),
+            .map((r) => `repo:${repoRef(r)}`),
         ),
       });
     }
@@ -167,7 +168,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         input.repos
           .toSorted((a, b) => b.stargazerCount - a.stargazerCount)
           .slice(0, 3)
-          .map((r) => `repo:${r.name}`),
+          .map((r) => `repo:${repoRef(r)}`),
       ),
     });
   } else if (totalStars >= 200 && commitContributions < 60) {
@@ -181,7 +182,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         input.repos
           .toSorted((a, b) => b.stargazerCount - a.stargazerCount)
           .slice(0, 3)
-          .map((r) => `repo:${r.name}`),
+          .map((r) => `repo:${repoRef(r)}`),
       ),
     });
   }
@@ -240,7 +241,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         detail: `${input.repos.length} repos but only ${languages.size === 0 ? 'no declared' : [...languages].join(', ')} primary language`,
         evidenceRefs: validRefs(
           input,
-          input.repos.slice(0, 3).map((r) => `repo:${r.name}`),
+          input.repos.slice(0, 3).map((r) => `repo:${repoRef(r)}`),
         ),
       });
     }

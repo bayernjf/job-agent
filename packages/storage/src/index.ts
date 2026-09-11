@@ -1,6 +1,67 @@
-export { parseMigrationFile, runMigrations, rollbackLatestMigration } from './migrator.js';
-export type { ParsedMigration, RunMigrationsResult, RollbackResult } from './migrator.js';
-export { ProfilesRepository } from './profiles.js';
-export type { NewProfile, ProfileStatus, StoredProfile } from './profiles.js';
-export { profiles as profilesTable } from './schema.js';
-export type { ProfileInsert, ProfileSelect } from './schema.js';
+/**
+ * @jobagent/storage 公共入口。
+ *
+ * 业务模块（apps/api、apps/worker、apps/report）只允许从这里导入：
+ * - createStorage 工厂与 StorageContext/仓储接口（不感知 SQLite/Postgres 方言）；
+ * - 实体领域类型与状态枚举；
+ * - 迁移函数（CLI/脚本/测试使用）。
+ *
+ * 方言实现（sqlite/、postgres/）与 Drizzle 表对象不对外导出，避免业务绕过抽象层。
+ */
+
+// 装配工厂与配置类型
+export { createStorage } from './storage.js';
+export type { StorageConfig, StorageContext, StorageDriver } from './types.js';
+
+// 仓储接口（业务侧依赖类型，不依赖具体实现）
+export type { IProfilesRepository } from './repositories/profiles.js';
+export type { IAnalysisJobsRepository } from './repositories/analysis-jobs.js';
+export type { IEvidenceRepository } from './repositories/evidence.js';
+export type { IWaitlistRepository } from './repositories/waitlist.js';
+
+// 实体领域类型
+export type {
+  ProfileStatus,
+  StoredProfile,
+  NewProfile,
+} from './entities/profile.js';
+export type {
+  JobStatus,
+  JobStage,
+  StoredAnalysisJob,
+  NewAnalysisJob,
+} from './entities/analysis-job.js';
+export type { StoredEvidence, NewEvidence } from './entities/evidence.js';
+export type {
+  WaitlistStatus,
+  WaitlistSource,
+  StoredWaitlist,
+  NewWaitlist,
+} from './entities/waitlist.js';
+
+// 状态枚举与纯映射（测试/工具可用）
+export {
+  PROFILE_STATUSES,
+  JOB_STATUSES,
+  JOB_STAGES,
+  WAITLIST_STATUSES,
+  toStoredProfile,
+  toStoredJob,
+  toStoredEvidence,
+  toStoredWaitlist,
+  parseJson,
+} from './entities/index.js';
+
+// 迁移（CLI/脚本/测试）
+export {
+  parseMigrationFile,
+  createSchemaMigrationsTable,
+  listMigrationFiles,
+  runMigrations,
+  rollbackLatestMigration,
+} from './sqlite/migrator.js';
+export type {
+  ParsedMigration,
+  RunMigrationsResult,
+  RollbackResult,
+} from './sqlite/migrator.js';

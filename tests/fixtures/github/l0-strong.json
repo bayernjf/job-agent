@@ -50,6 +50,10 @@
                   }
                 }
               ]
+            },
+            "nameWithOwner": "dev-strong/web-platform",
+            "owner": {
+              "login": "dev-strong"
             }
           },
           {
@@ -78,6 +82,10 @@
                   }
                 }
               ]
+            },
+            "nameWithOwner": "dev-strong/data-pipeline",
+            "owner": {
+              "login": "dev-strong"
             }
           },
           {
@@ -101,6 +109,10 @@
                   }
                 }
               ]
+            },
+            "nameWithOwner": "dev-strong/go-cli-tool",
+            "owner": {
+              "login": "dev-strong"
             }
           },
           {
@@ -124,6 +136,10 @@
                   }
                 }
               ]
+            },
+            "nameWithOwner": "dev-strong/blog",
+            "owner": {
+              "login": "dev-strong"
             }
           },
           {
@@ -147,6 +163,10 @@
                   }
                 }
               ]
+            },
+            "nameWithOwner": "dev-strong/drizzle-notes",
+            "owner": {
+              "login": "dev-strong"
             }
           },
           {
@@ -170,6 +190,10 @@
                   }
                 }
               ]
+            },
+            "nameWithOwner": "dev-strong/ops-playbook",
+            "owner": {
+              "login": "dev-strong"
             }
           }
         ]

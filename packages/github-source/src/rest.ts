@@ -39,7 +39,7 @@ export function parseRestCommits(rows: RestCommitRow[], owner: string, repo: str
       committedAt: r.commit?.author?.date ?? r.commit?.committer?.date ?? '',
       authorName: r.commit?.author?.name ?? null,
       authorEmail: r.commit?.author?.email ?? null,
-      repoName: repo,
+      repoName: `${owner}/${repo}`,
       messageHeadline: (r.commit?.message ?? '').split('\n')[0] ?? '',
     }));
 }

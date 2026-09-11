@@ -40,6 +40,18 @@ describe('parseL0Response', () => {
     expect(l0!.dataWindow.since).toBe('2018-03-14T00:00:00Z');
   });
 
+  it('keeps real org owner and tolerates null pushedAt on empty repos', () => {
+    const raw = loadData<L0GraphqlResponse>('l0-strong.json');
+    const first = raw.user!.repositories.nodes[0]!;
+    first.owner.login = 'some-org';
+    first.nameWithOwner = 'some-org/' + first.name;
+    first.pushedAt = null; // 空仓库从未推送
+    const l0 = parseL0Response(raw, 'dev-strong');
+    expect(l0!.repos[0]!.ownerLogin).toBe('some-org');
+    expect(l0!.repos[0]!.pushedAt).toBeNull();
+    expect(l0!.dataWindow.until).toBeTruthy(); // 仍由其他仓库/createdAt 兜底
+  });
+
   it('returns null when the account does not exist', () => {
     const raw = loadData<L0GraphqlResponse>('l0-notfound.json');
     expect(parseL0Response(raw, 'ghost')).toBeNull();
@@ -81,16 +93,16 @@ describe('aggregateContributionMonths', () => {
 describe('parseRepoCommits', () => {
   it('maps GraphQL commit history to AnalyzerCommit', () => {
     const raw = loadData<RepoCommitsResponse>('repo-commits-strong.json');
-    const commits = parseRepoCommits(raw, 'dev-strong', 'web-platform');
+    const commits = parseRepoCommits(raw, 'dev-strong/web-platform');
     expect(commits).toHaveLength(3);
     expect(commits[0]!.authorName).toBe('Dev Strong');
-    expect(commits[0]!.repoName).toBe('web-platform');
+    expect(commits[0]!.repoName).toBe('dev-strong/web-platform');
     expect(commits[0]!.oid).toHaveLength(40);
   });
 
   it('returns empty array for a repo without default branch', () => {
     const raw: RepoCommitsResponse = { repository: { defaultBranchRef: null } };
-    expect(parseRepoCommits(raw, 'dev-strong', 'empty-repo')).toEqual([]);
+    expect(parseRepoCommits(raw, 'dev-strong/empty-repo')).toEqual([]);
   });
 });
 

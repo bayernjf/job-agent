@@ -1,64 +1,127 @@
+#!/usr/bin/env node
+/**
+ * 迁移 CLI（本地开发工具），支持 SQLite 与 Postgres 双方言。
+ *
+ * 用法：
+ *   SQLite（默认）：
+ *     tsx src/cli.ts up|down|status [dbPath] [migrationsDir]
+ *   Postgres（连接串取 DATABASE_URL）：
+ *     tsx src/cli.ts up|down|status --driver postgres
+ *     或 DB_DRIVER=postgres tsx src/cli.ts up
+ *
+ * 默认目录：sqlite → db/migrations/sqlite；postgres → db/migrations/postgres。
+ */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
-import { runMigrations, rollbackLatestMigration } from './migrator.js';
-
-/**
- * storage CLI：migrate up / down / status。
- * 用法：node dist/cli.js migrate <up|down|status> [--db <path>]
- * 默认数据库文件：<repo>/data/job-agent.db（data/ 已 gitignore）。
- */
+import {
+  createSchemaMigrationsTable,
+  listMigrationFiles,
+  rollbackLatestMigration,
+  runMigrations,
+} from './sqlite/migrator.js';
+import { openPostgres } from './postgres/connection.js';
+import { rollbackPgMigration, runPgMigrations } from './postgres/migrator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_DB_PATH = path.resolve(__dirname, '../../../data/job-agent.db');
-const MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations');
+const SQLITE_DEFAULT_DB = path.resolve(__dirname, '../../../data/job-agent.db');
+const SQLITE_DIR = path.resolve(__dirname, '../../../db/migrations/sqlite');
+const POSTGRES_DIR = path.resolve(__dirname, '../../../db/migrations/postgres');
 
-function openDb(dbPath: string): Database.Database {
-  return new Database(dbPath);
+// 解析 --driver（--driver=postgres 或 --driver postgres），其余作为位置参数
+const rawArgs = process.argv.slice(2);
+let driver = process.env.DB_DRIVER ?? 'sqlite';
+const positional: string[] = [];
+for (let i = 0; i < rawArgs.length; i += 1) {
+  const arg = rawArgs[i]!;
+  if (arg.startsWith('--driver=')) driver = arg.slice('--driver='.length);
+  else if (arg === '--driver') driver = rawArgs[(i += 1)]!;
+  else positional.push(arg);
 }
 
-function printStatus(db: Database.Database): void {
-  const rows = db
-    .prepare('SELECT version FROM schema_migrations ORDER BY version')
-    .all() as Array<{ version: string }>;
-  const files = runMigrations(db, MIGRATIONS_DIR);
-  // runMigrations 已把未应用的全部应用；这里只需报告 applied 列表
-  if (files.applied.length > 0) {
-    console.log(`Applied ${files.applied.length} migration(s): ${files.applied.join(', ')}`);
-  }
-  const all = rows.map((r) => r.version);
-  console.log(`Applied versions: ${all.length > 0 ? all.join(', ') : '(none)'}`);
-  console.log(`Total migration files: ${files.total}`);
-}
+const command = positional[0] ?? 'status';
 
-function main(argv: string[]): void {
-  const [command, sub, ...rest] = argv;
-  if (command !== 'migrate' || !['up', 'down', 'status'].includes(sub ?? '')) {
-    console.error('Usage: node dist/cli.js migrate <up|down|status> [--db <path>]');
-    process.exit(2);
-  }
-
-  const dbIndex = rest.indexOf('--db');
-  const dbPath = dbIndex >= 0 && rest[dbIndex + 1] ? rest[dbIndex + 1]! : DEFAULT_DB_PATH;
-  const db = openDb(dbPath);
-
+async function runSqlite(): Promise<void> {
+  const dbPath = positional[1] ?? SQLITE_DEFAULT_DB;
+  const migrationsDir = positional[2] ?? SQLITE_DIR;
+  const db = new Database(dbPath);
   try {
-    if (sub === 'up') {
-      const result = runMigrations(db, MIGRATIONS_DIR);
-      console.log(
-        result.applied.length > 0
-          ? `Applied: ${result.applied.join(', ')}`
-          : 'Nothing to apply (up to date).',
+    if (command === 'up') {
+      const result = runMigrations(db, migrationsDir);
+      if (result.applied.length === 0) {
+        console.log('No pending migrations. Total:', result.total);
+      } else {
+        console.log(`Applied ${result.applied.length} migration(s):`);
+        for (const file of result.applied) console.log(`  - ${file}`);
+      }
+    } else if (command === 'down') {
+      try {
+        const result = rollbackLatestMigration(db, migrationsDir);
+        console.log(`Rolled back ${result.version} (${result.file})`);
+      } catch (error) {
+        console.log((error as Error).message);
+      }
+    } else if (command === 'status') {
+      createSchemaMigrationsTable(db);
+      const files = listMigrationFiles(migrationsDir);
+      const applied = new Set(
+        (db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: string }>).map(
+          (r) => r.version,
+        ),
       );
-    } else if (sub === 'down') {
-      const result = rollbackLatestMigration(db, MIGRATIONS_DIR);
-      console.log(`Rolled back ${result.version} (${result.file}).`);
+      console.log('Migration status (', dbPath, '):');
+      for (const file of files) {
+        const mark = applied.has(file.slice(0, 3)) ? '[applied]' : '[pending]';
+        console.log(`  ${mark} ${file}`);
+      }
     } else {
-      printStatus(db);
+      console.error(`Unknown command: ${command}. Use up | down | status.`);
+      process.exitCode = 1;
     }
   } finally {
     db.close();
   }
 }
 
-main(process.argv.slice(2));
+async function runPostgres(): Promise<void> {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error('DB_DRIVER=postgres requires DATABASE_URL for the migration CLI.');
+  const { client } = openPostgres(url);
+  try {
+    if (command === 'up') {
+      const result = await runPgMigrations(client, POSTGRES_DIR);
+      if (result.applied.length === 0) {
+        console.log('No pending migrations. Total:', result.total);
+      } else {
+        console.log(`Applied ${result.applied.length} migration(s):`);
+        for (const file of result.applied) console.log(`  - ${file}`);
+      }
+    } else if (command === 'down') {
+      try {
+        const result = await rollbackPgMigration(client, POSTGRES_DIR);
+        console.log(`Rolled back ${result.version} (${result.file})`);
+      } catch (error) {
+        console.log((error as Error).message);
+      }
+    } else if (command === 'status') {
+      const files = listMigrationFiles(POSTGRES_DIR);
+      const rows = await client<Array<{ version: string }>>`SELECT version FROM schema_migrations`;
+      const applied = new Set(rows.map((r) => r.version));
+      console.log('Migration status (postgres):');
+      for (const file of files) {
+        const mark = applied.has(file.slice(0, 3)) ? '[applied]' : '[pending]';
+        console.log(`  ${mark} ${file}`);
+      }
+    } else {
+      console.error(`Unknown command: ${command}. Use up | down | status.`);
+      process.exitCode = 1;
+    }
+  } finally {
+    await client.end({ timeout: 5 });
+  }
+}
+
+(driver === 'postgres' ? runPostgres() : runSqlite()).catch((error: unknown) => {
+  console.error((error as Error).message);
+  process.exitCode = 1;
+});
