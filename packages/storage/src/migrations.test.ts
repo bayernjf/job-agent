@@ -6,7 +6,7 @@ import {
   listMigrationFiles,
   rollbackLatestMigration,
   runMigrations,
-} from './migrator.js';
+} from './sqlite/migrator.js';
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

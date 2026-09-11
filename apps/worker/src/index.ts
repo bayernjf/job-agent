@@ -7,13 +7,16 @@
  * - claimNext 原子事务保证只认领最老的一行，attempts<3 防无限重试
  * - 失败可重试（resetToQueued），超过 3 次标记 failed
  * - 采集→分析→写库全链路，任一层失败显式标注，禁止输出"看似完整"的报告
+ * - 仓储统一 async、经 createStorage 选择方言，业务代码不感知 SQLite/Postgres
  *
  * 用法：
  *   pnpm --filter @jobagent/worker start
  *
  * 环境变量：
  *   GITHUB_TOKEN   — GitHub PAT（必填，public repo read-only 即可）
+ *   DB_DRIVER      — sqlite（默认）| postgres
  *   DB_PATH        — SQLite 数据库路径（默认 data/job-agent.db）
+ *   DATABASE_URL   — Postgres 连接串（DB_DRIVER=postgres 时）
  *   WORKER_ID      — Worker 标识（默认 worker-<随机8位>）
  *   POLL_INTERVAL_MS — 轮询间隔毫秒（默认 5000）
  *   MAX_RETRIES    — 最大重试次数（默认 3）
@@ -22,34 +25,27 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { analyze, type AnalyzerInput } from '@jobagent/analyzer-core';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
 import type { AbilityProfile } from '@jobagent/shared';
 import {
-  AnalysisJobsRepository,
-  ProfilesRepository,
-  runMigrations,
+  createStorage,
+  type IAnalysisJobsRepository,
+  type IProfilesRepository,
   type StoredAnalysisJob,
 } from '@jobagent/storage';
-
-const MIGRATIONS_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../../db/migrations/sqlite',
-);
 
 // ─── 类型 ───────────────────────────────────────────────────────────────
 
 export interface WorkerRepos {
-  jobs: AnalysisJobsRepository;
-  profiles: ProfilesRepository;
+  jobs: IAnalysisJobsRepository;
+  profiles: IProfilesRepository;
 }
 
 export interface WorkerDeps {
   /** 注入 GitHubSource（测试用 fake；生产默认 new GitHubSource） */
   source?: { collect(login: string): Promise<GitHubCollectedData> };
-  /** 注入仓储（测试用内存库；生产默认 initRepos） */
+  /** 注入仓储（测试用内存库；生产默认 createStorage） */
   repos?: WorkerRepos;
   /** 注入 GITHUB_TOKEN（生产从环境变量读） */
   token?: string;
@@ -72,19 +68,6 @@ export interface ProcessJobResult {
   profile: AbilityProfile;
   budgetUsed: GitHubCollectedData['meta']['budgetUsed'];
   missing: string[];
-}
-
-// ─── 初始化 ─────────────────────────────────────────────────────────────
-
-/** 初始化数据库连接 + 运行迁移 + 创建仓储 */
-export function initRepos(dbPath: string): WorkerRepos {
-  const db = new Database(dbPath);
-  runMigrations(db, MIGRATIONS_DIR);
-  const orm = drizzle(db);
-  return {
-    jobs: new AnalysisJobsRepository(orm),
-    profiles: new ProfilesRepository(orm),
-  };
 }
 
 function makeSource(deps: WorkerDeps): { collect(login: string): Promise<GitHubCollectedData> } {
@@ -123,7 +106,7 @@ export async function processJob(
   );
 
   // 2. 更新进度阶段
-  repos.jobs.updateStage(job.id, 'L1');
+  await repos.jobs.updateStage(job.id, 'L1');
 
   // 3. 分析（纯函数，无 I/O）
   const profileId = randomUUID();
@@ -137,7 +120,7 @@ export async function processJob(
   );
 
   // 4. 写入不可变画像快照
-  repos.profiles.insert({
+  await repos.profiles.insert({
     id: profileId,
     analyzerVersion: profile.analyzerVersion,
     subjectPlatform: profile.subject.platform,
@@ -151,7 +134,7 @@ export async function processJob(
   });
 
   // 5. 标记任务成功
-  repos.jobs.succeed(job.id, profileId, collected.meta.budgetUsed, collected.meta.missing);
+  await repos.jobs.succeed(job.id, profileId, collected.meta.budgetUsed, collected.meta.missing);
   logger.info(`[worker] job ${job.id} succeeded: profile ${profileId}`);
 
   return { profileId, profile, budgetUsed: collected.meta.budgetUsed, missing: collected.meta.missing };
@@ -162,21 +145,21 @@ export async function processJob(
  * - attempts < maxRetries：resetToQueued 等待下次认领
  * - attempts >= maxRetries：fail 永久标记失败
  */
-export function handleJobFailure(
+export async function handleJobFailure(
   job: StoredAnalysisJob,
   repos: WorkerRepos,
   error: Error,
   maxRetries: number,
   logger: Pick<Console, 'info' | 'warn' | 'error'> = console,
-): void {
+): Promise<void> {
   const message = error.message;
   if (job.attempts < maxRetries) {
-    repos.jobs.resetToQueued(job.id, message);
+    await repos.jobs.resetToQueued(job.id, message);
     logger.warn(
       `[worker] job ${job.id} failed (attempt ${job.attempts}/${maxRetries}), requeued: ${message}`,
     );
   } else {
-    repos.jobs.fail(job.id, message);
+    await repos.jobs.fail(job.id, message);
     logger.error(`[worker] job ${job.id} failed permanently (attempt ${job.attempts}): ${message}`);
   }
 }
@@ -197,13 +180,13 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
   const sleep = deps.sleep ?? defaultSleep;
   const shouldContinue = deps.shouldContinue ?? (() => true);
 
-  const repos = deps.repos ?? initRepos(process.env.DB_PATH ?? 'data/job-agent.db');
+  const repos = deps.repos ?? (await createStorage());
   const source = makeSource(deps);
 
   logger.info(`[worker] ${workerId} started (poll=${pollIntervalMs}ms, maxRetries=${maxRetries})`);
 
   while (shouldContinue()) {
-    const job = repos.jobs.claimNext(workerId);
+    const job = await repos.jobs.claimNext(workerId);
     if (!job) {
       await sleep(pollIntervalMs);
       continue;
@@ -212,7 +195,7 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
     try {
       await processJob(job, repos, source, logger);
     } catch (err) {
-      handleJobFailure(job, repos, err as Error, maxRetries, logger);
+      await handleJobFailure(job, repos, err as Error, maxRetries, logger);
     }
   }
 

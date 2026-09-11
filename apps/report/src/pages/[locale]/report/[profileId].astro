@@ -17,7 +17,7 @@ if (!isLocale(rawLocale)) {
 const locale: Locale = rawLocale;
 const t = createTranslator(locale);
 
-const profile = profileId ? loadProfile(profileId) : null;
+const profile = profileId ? await loadProfile(profileId) : null;
 
 // 画像不存在：渲染 404 状态页
 if (!profile) {
