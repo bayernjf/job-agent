@@ -24,23 +24,23 @@ export function buildSubjectEvidence(
 
 export function buildRepoEvidence(repo: AnalyzerInput['repos'][number]): EvidenceItem {
   return {
-    evidenceId: `repo:${repo.name}`,
+    evidenceId: `repo:${repo.ownerLogin}/${repo.name}`,
     sourcePlatform: 'github',
     sourceType: 'repo',
     url: repo.url,
-    occurredAt: repo.pushedAt,
+    occurredAt: repo.pushedAt ?? undefined,
     layer: 'L0',
-    claim: `仓库 ${repo.name}${repo.primaryLanguage ? `（${repo.primaryLanguage}）` : ''}：${repo.stargazerCount} star / ${repo.forkCount} fork，最近推送 ${repo.pushedAt.slice(0, 10)}`,
-    rawRef: repo.name,
+    claim: `仓库 ${repo.ownerLogin}/${repo.name}${repo.primaryLanguage ? `（${repo.primaryLanguage}）` : ''}：${repo.stargazerCount} star / ${repo.forkCount} fork，最近推送 ${repo.pushedAt ? repo.pushedAt.slice(0, 10) : '无'}`,
+    rawRef: `${repo.ownerLogin}/${repo.name}`,
   };
 }
 
-export function buildCommitEvidence(commit: AnalyzerInput['commits'][number], owner: string): EvidenceItem {
+export function buildCommitEvidence(commit: AnalyzerInput['commits'][number]): EvidenceItem {
   return {
     evidenceId: `commit:${commit.repoName}:${commit.oid}`,
     sourcePlatform: 'github',
     sourceType: 'commit',
-    url: `https://github.com/${owner}/${commit.repoName}/commit/${commit.oid}`,
+    url: `https://github.com/${commit.repoName}/commit/${commit.oid}`,
     occurredAt: commit.committedAt,
     layer: 'L1',
     claim: commit.messageHeadline || `提交 ${commit.oid.slice(0, 7)}（${commit.repoName}）`,

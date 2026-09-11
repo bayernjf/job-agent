@@ -1,0 +1,9 @@
+---
+/**
+ * 根路径：根据 Accept-Language 协商语言并重定向。
+ * / → /zh-CN/ 或 /en/
+ */
+import { negotiateLocale } from '../i18n/index.js';
+
+return Astro.redirect(`/${negotiateLocale(Astro.request.headers.get('accept-language'))}/`);
+---

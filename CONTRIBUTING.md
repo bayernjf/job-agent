@@ -38,7 +38,7 @@ pnpm --filter <pkg> test  # 只跑某个包的测试
 
 ## 5. 数据库迁移
 
-结构变更必须新增 `db/migrations/NNN_verb_snake_case.sql`，规则见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。提交前运行 `bash tools/check-migrations.sh`，并保证迁移测试通过。所有 DB 访问走持久化抽象层，不在业务模块写裸 SQL。
+结构变更必须在 `db/migrations/sqlite/` 与 `db/migrations/postgres/` 各新增一份同编号、同文件名的 `NNN_verb_snake_case.sql`（规则见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)，双方言设计见 [docs/design-storage-dual-dialect-20260911.md](docs/design-storage-dual-dialect-20260911.md)）。提交前运行 `bash tools/check-migrations.sh`，并保证迁移测试通过。所有 DB 访问走持久化抽象层，不在业务模块写裸 SQL。
 
 ## 6. 提交信息
 

@@ -51,7 +51,9 @@ export const AuthenticitySignalSchema = z.object({
 export type AuthenticitySignal = z.infer<typeof AuthenticitySignalSchema>;
 
 export const SkillTagKindSchema = z.enum(['language', 'framework', 'domain']);
+export type SkillTagKind = z.infer<typeof SkillTagKindSchema>;
 export const SkillTagDepthSchema = z.enum(['used', 'proficient']); // 区分"用过"与"有深度"
+export type SkillTagDepth = z.infer<typeof SkillTagDepthSchema>;
 
 export const SkillTagSchema = z.object({
   name: z.string().min(1),

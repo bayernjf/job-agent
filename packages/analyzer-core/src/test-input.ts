@@ -31,6 +31,7 @@ export interface InputSeed {
 const defaultRepos: AnalyzerRepo[] = [
   {
     name: 'web-platform',
+    ownerLogin: 'dev-strong',
     url: 'https://github.com/dev-strong/web-platform',
     isFork: false,
     isArchived: false,
@@ -44,6 +45,7 @@ const defaultRepos: AnalyzerRepo[] = [
   },
   {
     name: 'data-pipeline',
+    ownerLogin: 'dev-strong',
     url: 'https://github.com/dev-strong/data-pipeline',
     isFork: false,
     isArchived: false,
@@ -57,6 +59,7 @@ const defaultRepos: AnalyzerRepo[] = [
   },
   {
     name: 'blog',
+    ownerLogin: 'dev-strong',
     url: 'https://github.com/dev-strong/blog',
     isFork: false,
     isArchived: false,
@@ -70,6 +73,7 @@ const defaultRepos: AnalyzerRepo[] = [
   },
   {
     name: 'go-cli-tool',
+    ownerLogin: 'dev-strong',
     url: 'https://github.com/dev-strong/go-cli-tool',
     isFork: false,
     isArchived: false,
@@ -92,7 +96,7 @@ function defaultCommits(login: string, displayName: string): AnalyzerCommit[] {
     committedAt: `${m}-15T10:00:00Z`,
     authorName: displayName,
     authorEmail: email,
-    repoName: i % 2 === 0 ? 'web-platform' : 'data-pipeline',
+    repoName: i % 2 === 0 ? 'dev-strong/web-platform' : 'dev-strong/data-pipeline',
     messageHeadline: `feat: change ${i + 1}`,
   }));
 }
@@ -144,7 +148,7 @@ function commitEvidence(c: AnalyzerCommit): EvidenceItem {
     evidenceId: `commit:${c.repoName}:${c.oid}`,
     sourcePlatform: 'github',
     sourceType: 'commit',
-    url: `https://github.com/dev-strong/${c.repoName}/commit/${c.oid}`,
+    url: `https://github.com/${c.repoName}/commit/${c.oid}`,
     occurredAt: c.committedAt,
     layer: 'L1',
     claim: c.messageHeadline,
@@ -211,14 +215,14 @@ export function buildInput(seed: InputSeed = {}): AnalyzerInput {
       rawRef: login,
     },
     ...repos.map((r) => ({
-      evidenceId: `repo:${r.name}`,
+      evidenceId: `repo:${r.ownerLogin}/${r.name}`,
       sourcePlatform: 'github',
       sourceType: 'repo' as const,
       url: r.url,
-      occurredAt: r.pushedAt,
+      occurredAt: r.pushedAt ?? undefined,
       layer: 'L0' as const,
       claim: `仓库 ${r.name}`,
-      rawRef: r.name,
+      rawRef: `${r.ownerLogin}/${r.name}`,
     })),
     ...commits.map(commitEvidence),
     ...pullRequests.map(prEvidence),

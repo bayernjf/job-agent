@@ -1,0 +1,252 @@
+/**
+ * 全局基础样式——reset + 排版，全部使用设计 token。
+ * 在 Layout.astro 中引入一次。
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: var(--ja-font-sans);
+  font-size: 16px;
+  line-height: var(--ja-leading-normal);
+  color: var(--ja-color-fg);
+  background-color: var(--ja-color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--ja-color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--ja-color-accent-hover);
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  font-size: var(--ja-text-base);
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input {
+  font-family: inherit;
+  font-size: var(--ja-text-base);
+}
+
+code,
+pre {
+  font-family: var(--ja-font-mono);
+}
+
+h1, h2, h3, h4 {
+  line-height: var(--ja-leading-tight);
+  font-weight: 600;
+}
+
+h1 { font-size: var(--ja-text-3xl); }
+h2 { font-size: var(--ja-text-2xl); }
+h3 { font-size: var(--ja-text-xl); }
+h4 { font-size: var(--ja-text-lg); }
+
+/* ─── 通用工具类（基于 token） ──────────────────────────────────────── */
+
+.ja-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--ja-space-6) var(--ja-space-5);
+}
+
+.ja-card {
+  background: var(--ja-color-surface);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-lg);
+  padding: var(--ja-space-5);
+  box-shadow: var(--ja-shadow-card);
+}
+
+.ja-card + .ja-card {
+  margin-top: var(--ja-space-4);
+}
+
+.ja-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ja-space-1);
+  padding: var(--ja-space-1) var(--ja-space-3);
+  border-radius: var(--ja-radius-sm);
+  font-size: var(--ja-text-sm);
+  font-weight: 500;
+}
+
+.ja-badge--likely {
+  background: var(--ja-color-auth-likely-bg);
+  color: var(--ja-color-auth-likely);
+}
+
+.ja-badge--mixed {
+  background: var(--ja-color-auth-mixed-bg);
+  color: var(--ja-color-auth-mixed);
+}
+
+.ja-badge--suspicious {
+  background: var(--ja-color-auth-suspicious-bg);
+  color: var(--ja-color-auth-suspicious);
+}
+
+.ja-badge--insufficient {
+  background: var(--ja-color-auth-insufficient-bg);
+  color: var(--ja-color-auth-insufficient);
+}
+
+.ja-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ja-space-2);
+  padding: var(--ja-space-3) var(--ja-space-5);
+  border-radius: var(--ja-radius-md);
+  font-size: var(--ja-text-base);
+  font-weight: 500;
+  background: var(--ja-color-accent);
+  color: var(--ja-color-accent-fg);
+  transition: background-color 0.15s ease;
+}
+
+.ja-btn:hover {
+  background: var(--ja-color-accent-hover);
+  text-decoration: none;
+}
+
+.ja-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ja-input {
+  width: 100%;
+  padding: var(--ja-space-3) var(--ja-space-4);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-base);
+}
+
+.ja-input:focus {
+  outline: 2px solid var(--ja-color-accent);
+  outline-offset: -1px;
+}
+
+.ja-muted {
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-sm);
+}
+
+.ja-stack-1 > * + * { margin-top: var(--ja-space-1); }
+.ja-stack-2 > * + * { margin-top: var(--ja-space-2); }
+.ja-stack-3 > * + * { margin-top: var(--ja-space-3); }
+.ja-stack-4 > * + * { margin-top: var(--ja-space-4); }
+.ja-stack-5 > * + * { margin-top: var(--ja-space-5); }
+
+.ja-flex {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-3);
+}
+
+.ja-flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-3);
+}
+
+/* ─── AnalyzeForm React island ─────────────────────────────────────── */
+
+.analyze-form .input-row {
+  display: flex;
+  gap: var(--ja-space-3);
+}
+
+.analyze-form .input-row .ja-input {
+  flex: 1;
+}
+
+.analyze-form .status {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  margin-top: var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.analyze-form .spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ja-color-border);
+  border-top-color: var(--ja-color-accent);
+  border-radius: 50%;
+  animation: ja-spin 0.7s linear infinite;
+}
+
+@keyframes ja-spin {
+  to { transform: rotate(360deg); }
+}
+
+.analyze-form .error-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-3);
+  margin-top: var(--ja-space-3);
+  padding: var(--ja-space-3);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-auth-suspicious-bg);
+  color: var(--ja-color-danger);
+  font-size: var(--ja-text-sm);
+}
+
+.analyze-form .retry-btn {
+  color: var(--ja-color-accent);
+  font-size: var(--ja-text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ─── ShareButton React island ─────────────────────────────────────── */
+
+.share-btn {
+  padding: var(--ja-space-2) var(--ja-space-4);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.share-btn:hover {
+  border-color: var(--ja-color-accent);
+  color: var(--ja-color-accent);
+}
+
+.share-btn--copied {
+  border-color: var(--ja-color-success);
+  color: var(--ja-color-success);
+}

@@ -18,7 +18,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
 - 后端：Hono + Zod；分析任务由独立 Worker 消费
-- 数据库：PostgreSQL + Drizzle ORM（**Drizzle 仅在持久化模块内部用**，见下；MVP 不引入 Redis）
+- 数据库：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（**Drizzle 与方言差异只允许出现在 `packages/storage` 内部**，业务只依赖统一 async 仓储接口与 `createStorage()` 工厂、按 `DB_DRIVER` 切换，见下；MVP 不引入 Redis）
 - GitHub 采集：官方 Octokit，GraphQL 批量优先、REST 补；生产用 GitHub App
 - 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`
 - 测试：Vitest（就近单元）+ Playwright（E2E）
@@ -32,7 +32,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 job-agent/
 ├─ packages/
 │  ├─ shared/         # AbilityProfile/EvidenceItem 类型 + Zod 契约（单一事实源）
-│  ├─ storage/        # 持久化抽象层：Drizzle 表定义 + 迁移器/回滚 + profiles 仓储（业务模块禁裸 SQL；MVP 方言 SQLite）
+│  ├─ storage/        # 持久化抽象层：仓储接口（统一 async）+ entities 共享 + sqlite/postgres 双实现 + 迁移器（业务模块禁裸 SQL；设计见 docs/design-storage-dual-dialect-20260911.md）
 │  ├─ github-source/  # Octokit、GraphQL 查询、L0/L1 采集、限频/缓存（首个 EvidenceSource）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
 │  └─ llm/            # LLM 端口 + 结构化输出校验（P1 才启用，见 deferred）
@@ -41,7 +41,8 @@ job-agent/
 │  ├─ worker/         # 消费 analysis_jobs，调用 github-source + analyzer-core
 │  ├─ cli/            # 本地批量分析，导出 JSONL/报告（供决策 #8 标注实验）
 │  └─ report/         # Astro 报告页 + React islands
-├─ db/migrations/     # 编号 SQL 迁移（NNN_verb_snake_case.sql），规范见 MIGRATION_CONVENTION.md
+├─ db/migrations/sqlite/   # SQLite 编号迁移（NNN_verb_snake_case.sql）
+├─ db/migrations/postgres/ # Postgres 编号迁移（与 sqlite 编号/文件名一一对应），规范见 MIGRATION_CONVENTION.md
 ├─ tools/             # check-migrations.sh 等只读工程脚本
 ├─ tests/fixtures/    # 录制并脱敏的 GitHub 响应夹具
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
@@ -58,8 +59,8 @@ pnpm -r test                 # 全部就近单测（Vitest）
 pnpm -r build                # 构建各 workspace
 pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm --filter <pkg> exec vitest run path/to/file.test.ts  # 跑单个测试文件
-pnpm migrate:up / migrate:down / migrate:status          # 应用/回滚一步/查看迁移（默认 data/job-agent.db）
-bash tools/check-migrations.sh   # 只读校验迁移命名/编号/文件头
+pnpm migrate:up / migrate:down / migrate:status          # SQLite 应用/回滚一步/查看状态（默认 data/job-agent.db）；migrate:pg:* 走 Postgres（读 DATABASE_URL）
+bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号/文件头 + 文件名集合对齐（可传单目录参数）
 ```
 
 提交或交付前至少完成：typecheck、相关单测、build、迁移校验、`git diff --check`。
@@ -83,13 +84,13 @@ bash tools/check-migrations.sh   # 只读校验迁移命名/编号/文件头
 ### 所有 DB 访问收敛到单一持久化模块（硬约束，对齐 agent-world）
 
 - 设唯一持久化/仓储抽象（如各服务内的 `db.ts` / repository），对外只暴露 `getX/insertX/listX` 等方法；**业务模块内禁止裸 SQL、禁止直接调用驱动/Drizzle 查询**。
-- **SQL 方言差异只允许出现在该模块内部**（为自托管/托管、Postgres/SQLite 双轨预留）；Drizzle 只在这层内部做类型化查询，调用方不感知。
+- **SQL 方言差异只允许出现在该模块内部**（W3-6 起落地 Postgres/SQLite 双轨：业务只依赖统一 async 仓储接口与 `createStorage()` 工厂，按 `DB_DRIVER` 切换，见 [docs/design-storage-dual-dialect-20260911.md](docs/design-storage-dual-dialect-20260911.md)）；Drizzle 只在这层内部做类型化查询，调用方不感知。
 - 数据库字段 `snake_case`，TS 字段 `camelCase`，转换集中在数据访问层。
 
 ### 迁移规范
 
-- 结构变更只通过 **`db/migrations/NNN_verb_snake_case.sql`** 编号文件，规则（文件头、幂等、`COMMENT ON`、只追加不重写、回滚）见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。
-- W1 已落地：迁移器（按序应用）、`scripts/migrate-down`（回滚一步，无安全 down 则拒绝）、`migrations.test.ts`（干净库顺序加载/编号连续/关键表存在），实现见 `packages/storage`。
+- 结构变更只通过 **`db/migrations/{sqlite,postgres}/NNN_verb_snake_case.sql`** 编号文件（两侧各一份、编号文件名对齐），规则（文件头、幂等、`COMMENT ON`、只追加不重写、回滚）见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。
+- W1 已落地：迁移器（按序应用）、`scripts/migrate-down`（回滚一步，无安全 down 则拒绝）、`migrations.test.ts`（干净库顺序加载/编号连续/关键表存在），实现见 `packages/storage`。**W3-6 已扩展为双方言**：`db/migrations/{sqlite,postgres}` 对称目录、双方言 schema/迁移文本一致性测试防漂移、`postgres-behavior.test.ts` 仅在 `DATABASE_TEST_URL` 存在时实跑（否则 skip）；新增/改表必须两侧各一份编号文件名对齐的迁移，`bash tools/check-migrations.sh` 会校验对齐。
 - M1 核心表：`profiles`（画像快照 JSONB + analyzerVersion + 时间窗）、`evidence`、`analysis_jobs`、`waitlist`；账号/认领头表 P1 再加（见 deferred）。
 - 画像存**快照**而非实时重算，避免源数据变化导致已分享结论漂移；优先存**证据指针与精简原始快照（带 ETag）**，不做无标注全量拷贝。
 
