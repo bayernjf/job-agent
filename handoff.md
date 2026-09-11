@@ -29,7 +29,7 @@ JobAgent 当前状态，截至 2026-09-11。
 
 ## 当前状态
 
-- 阶段：**M1·W4 报告与分享完成**（W4-1~W4-6 全部完成：Astro 5 SSR 报告应用 + 设计 token + 中英 i18n + 首页/报告页 + React islands + 只读分享链接 + 落地页 demo 接线，astro check/build 全绿、i18n 14 测试全绿、standalone 冒烟中英报告页通过、落地页 build 双模式验证通过）。**M1·W3-6 持久化 SQLite/Postgres 双方言适配已完成**（统一 async 仓储 + createStorage 工厂，业务零感知方言，见最近变更）。M1 剩余：#8 去风险实验重新批量验证（待 GITHUB_TOKEN）、端到端联调（api+worker+report 同时启动跑通主链路，可用 `DB_DRIVER=postgres` 验证生产形态）。
+- 阶段：**M1·W4 报告与分享完成**（W4-1~W4-6 全部完成：Astro 5 SSR 报告应用 + 设计 token + 中英 i18n + 首页/报告页 + React islands + 只读分享链接 + 落地页 demo 接线，astro check/build 全绿、i18n 14 测试全绿、standalone 冒烟中英报告页通过、落地页 build 双模式验证通过）。**M1·W3-6 持久化 SQLite/Postgres 双方言适配已完成**（统一 async 仓储 + createStorage 工厂，业务零感知方言，见最近变更）。M1 剩余：真实性算法双向校准（需 suspicious/fake 负样本，当前 11 个 authentic 正样本准确率 100%）、可用 `DB_DRIVER=postgres` 验证生产形态。M1 核心开发（W1~W4 + W3-6 双方言 + #8 去风险 + 端到端联调 + 真实性 S3 校准）已全部完成。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
@@ -42,7 +42,7 @@ JobAgent 当前状态，截至 2026-09-11。
 2. ~~M1·W2：`github-source` + `analyzer-core`（纯函数）+ `cli`，先在命令行对真实账号出画像（不起 Web）。~~ ✅ 已完成（2026-09-11，见最近变更）
 3. ~~#8 去风险实验·S1/S2 spike：5 个真实账号批量跑，暴露 3 个 bug（org 仓库 owner 穿透致 L1 404 / 空仓库 pushedAt=null 崩溃 / 组织账号 NOT_FOUND 未归一）~~ ✅ 已完成（2026-09-11）
 4. ~~修复 spike 暴露的 3 个 bug + 回归测试（commit `b77ec11`，18 files）~~ ✅ 已完成（2026-09-11）
-5. ~~**#8 去风险实验·重新批量验证**~~ ✅ 已完成（2026-09-11）：用修复后 CLI + GITHUB_TOKEN 重跑 5 个账号——torvalds（likely_authentic, conf 0.9, 10 tags）、sindresorhus（conf 0.8, 13 tags）、tj（conf 0.62, 11 tags）、bayernjf（conf 0.72, 14 tags）4 个成功无崩溃；github 组织账号优雅失败（`Could not resolve to a User`，符合预期——CLI 仅支持 user，组织需单独 organization 查询）。证据链对齐：authenticity 信号均挂 evidenceRefs（commit/PR 指针）。**下一步**：扩到 20–50 标注账号（标注人/判定人届时落实），校准真实性信号；通过后进 P2 系统层。
+5. ~~**#8 去风险实验·重新批量验证**~~ ✅ 已完成（2026-09-11）：用修复后 CLI + GITHUB_TOKEN 重跑 5 个账号——torvalds（likely_authentic, conf 0.9, 10 tags）、sindresorhus（conf 0.8, 13 tags）、tj（conf 0.62, 11 tags）、bayernjf（conf 0.72, 14 tags）4 个成功无崩溃；github 组织账号优雅失败（`Could not resolve to a User`，符合预期——CLI 仅支持 user，组织需单独 organization 查询）。证据链对齐：authenticity 信号均挂 evidenceRefs（commit/PR 指针）。**S3 校准已完成**（2026-09-11，commit `46e8157`）：11 个 authentic 账号准确率 73%→100%，误报率 27%→0%（详见最近变更）。**下一步**：①找 suspicious/fake 负样本账号做双向校准（当前只有正样本，无法评估漏报率）；②扩到 20-50 标注账号进一步验证阈值稳定性；通过后进 P2 系统层。
 6. **M1·W3 服务化**（已完成，W3-1~W3-6）：
    - ~~W3-1：`analysis_jobs` 表迁移(002) + schema + AnalysisJobsRepository（create/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus）+ 12 测试~~ ✅ 已完成（2026-09-11）
    - ~~W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次~~ ✅ 已完成（2026-09-11）
@@ -65,6 +65,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**真实性算法 S3 校准完成（准确率 73%→100%）**——基于 #8 实验的 11 个标注为 authentic 的 OSS 账号（torvalds/sindresorhus/tj/bayernjf/gaearon/feross/yyx990803/kentcdodds/addyosmani/mathiasbynens/rauchg）做校准，发现 27% 误报率（gaearon/feross/tj 三个知名 OSS 开发者被误判为 suspicious）。根因：①正向信号无法抵消 risk（有 9-40 个外部 PR 被合并仍被 author_inconsistency risk 直接判 suspicious）；②author_inconsistency risk 阈值太严（emailRatio<0.3 & nameRatio<0.5 即 risk，OSS 开发者多用公司邮箱/旧邮箱）；③star_activity_mismatch 对 OSS 名人不公平（200 stars+<20 commits 即 risk，名人项目出名 star 多但本人去年 commit 少）。修复（commit `46e8157`）：①新增正向信号抵消——有 external_contributions 时，author_inconsistency 和 star_activity_mismatch 的 risk 降级为 warn；②提高 star_activity 阈值（risk 200→2000 stars，warn 200→500 stars）。验证：25 个单测全绿（新增 2 个正向信号抵消测试、更新 4 个阈值测试），全仓 typecheck/build/test 全绿；重新分析 3 个误判账号全部修正（gaearon 0.82/feross 0.74/tj 0.74 均 likely_authentic），11 个账号准确率 100%、误报率 0%。**局限**：当前只有 authentic 正样本，缺少 suspicious/fake 负样本，无法评估漏报率；下一步需找负样本账号做双向校准。
 
 - 2026-09-11：**端到端联调完成**——api(localhost:3000) + worker(poll=2000ms, GITHUB_TOKEN) + report(127.0.0.1:4321, Astro 7 SSR) 三服务同时启动，跑通"输入用户名→采集→分析→报告页"完整主链路。POST /analyze(sindresorhus) → queued → Worker 认领 running(L0) → 12s 内 succeeded(profileId=281ff516-28f4-4174-a942-710b68f59c76) → GET /jobs/:id 轮询状态 → GET /profiles/:id 查询画像 → 报告页 SSR 渲染验证：英文页 /en/report/:id (200, 13468 bytes, 含 Sindre Sorhus/authenticity/skill/interview sections, 无 [missing:])、中文页 /zh-CN/report/:id (200, 无缺失文案)。M1 全链路验证通过。
 
