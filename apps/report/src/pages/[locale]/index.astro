@@ -27,6 +27,7 @@ const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
 
       <div class="ja-card form-card">
         <AnalyzeForm
+          client:load
           locale={locale}
           apiBase={apiBase}
           placeholder={t('home.placeholder')}
