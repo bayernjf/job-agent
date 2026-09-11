@@ -17,9 +17,14 @@
     "migrate:pg:down": "pnpm --filter @jobagent/storage exec node dist/cli.js down --driver postgres",
     "migrate:pg:status": "pnpm --filter @jobagent/storage exec node dist/cli.js status --driver postgres",
     "check:migrations": "bash tools/check-migrations.sh",
-    "prepare": "husky"
+    "prepare": "husky",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
+    "@jobagent/shared": "workspace:*",
+    "@jobagent/storage": "workspace:*",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.5",
     "husky": "^9.1.7",
     "typescript": "^5.7.2",
