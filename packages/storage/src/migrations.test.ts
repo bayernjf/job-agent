@@ -43,6 +43,8 @@ describe('migrations', () => {
       .all() as Array<{ name: string }>;
     expect(tables.map((t) => t.name)).toContain('profiles');
     expect(tables.map((t) => t.name)).toContain('analysis_jobs');
+    expect(tables.map((t) => t.name)).toContain('evidence');
+    expect(tables.map((t) => t.name)).toContain('waitlist');
     expect(tables.map((t) => t.name)).toContain('schema_migrations');
 
     const profileColumns = db.prepare('PRAGMA table_info(profiles)').all() as Array<{ name: string }>;
@@ -113,20 +115,50 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
-    // 第一步：回滚最新的 002（analysis_jobs）
+    // 第一步：回滚最新的 004（waitlist）
+    const result4 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result4.version).toBe('004');
+
+    let tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(tables.map((t) => t.name)).not.toContain('waitlist');
+    expect(tables.map((t) => t.name)).toContain('evidence'); // 003 还在
+    expect(tables.map((t) => t.name)).toContain('analysis_jobs'); // 002 还在
+    expect(tables.map((t) => t.name)).toContain('profiles'); // 001 还在
+
+    let versions = db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: string }>;
+    expect(versions.map((v) => v.version)).toEqual(['001', '002', '003']);
+
+    // 第二步：回滚 003（evidence）
+    const result3 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result3.version).toBe('003');
+
+    tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(tables.map((t) => t.name)).not.toContain('evidence');
+    expect(tables.map((t) => t.name)).not.toContain('waitlist');
+    expect(tables.map((t) => t.name)).toContain('analysis_jobs'); // 002 还在
+    expect(tables.map((t) => t.name)).toContain('profiles'); // 001 还在
+
+    versions = db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: string }>;
+    expect(versions.map((v) => v.version)).toEqual(['001', '002']);
+
+    // 第三步：回滚 002（analysis_jobs）
     const result2 = rollbackLatestMigration(db, MIGRATIONS_DIR);
     expect(result2.version).toBe('002');
 
-    let tables = db
+    tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
       .all() as Array<{ name: string }>;
     expect(tables.map((t) => t.name)).not.toContain('analysis_jobs');
     expect(tables.map((t) => t.name)).toContain('profiles'); // 001 还在
 
-    let versions = db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: string }>;
+    versions = db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: string }>;
     expect(versions.map((v) => v.version)).toEqual(['001']);
 
-    // 第二步：回滚 001（profiles）
+    // 第四步：回滚 001（profiles）
     const result1 = rollbackLatestMigration(db, MIGRATIONS_DIR);
     expect(result1.version).toBe('001');
 
@@ -135,6 +167,7 @@ describe('migrations', () => {
       .all() as Array<{ name: string }>;
     expect(tables.map((t) => t.name)).not.toContain('profiles');
     expect(tables.map((t) => t.name)).not.toContain('analysis_jobs');
+    expect(tables.map((t) => t.name)).not.toContain('evidence');
 
     versions = db.prepare('SELECT version FROM schema_migrations').all() as Array<{ version: string }>;
     expect(versions).toEqual([]);
