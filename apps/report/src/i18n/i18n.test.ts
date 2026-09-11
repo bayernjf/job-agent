@@ -105,3 +105,71 @@ describe('isLocale', () => {
     expect(isLocale(undefined)).toBe(false);
   });
 });
+
+
+// ─── #10 增强：结构规范与边界行为 ───────────────────────────────────────────
+
+describe('i18n value shape', () => {
+  it('every zh-CN value is a non-empty string', () => {
+    for (const [key, value] of Object.entries(zhCN)) {
+      expect(typeof value, 'zh-CN "' + key + '" must be string').toBe('string');
+    }
+  });
+
+  it('every en value is a non-empty string', () => {
+    for (const [key, value] of Object.entries(en)) {
+      expect(typeof value, 'en "' + key + '" must be string').toBe('string');
+    }
+  });
+
+  it('every key follows dotted.namespace camelCase convention', () => {
+    // 至少一个点分段，段以小写字母开头，仅含字母数字
+    // 段内允许下划线（如 report.authenticity.likely_authentic 对齐状态枚举）
+    const keyPattern = /^[a-z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
+    for (const key of Object.keys(zhCN)) {
+      expect(keyPattern.test(key), 'bad key naming: "' + key + '"').toBe(true);
+    }
+  });
+
+  it('en values contain no CJK characters (forgot-to-translate guard)', () => {
+    const cjk = /[\u4e00-\u9fff]/;
+    const CJK_ALLOWLIST = new Set(['nav.language']); // language switcher shows the other language
+    for (const [key, value] of Object.entries(en)) {
+      if (CJK_ALLOWLIST.has(key)) continue;
+      expect(cjk.test(value), 'en "' + key + '" still contains Chinese: ' + value).toBe(false);
+    }
+  });
+});
+
+describe('translate edge cases', () => {
+  it('returns a visible missing marker for an unknown key', () => {
+    // MessageKey 类型不允许未知 key，这里用 as never 模拟运行时脏数据
+    const out = translate('en', 'does.not.exist' as never);
+    expect(out).toBe('[missing: does.not.exist]');
+  });
+
+  it('keeps an unmatched placeholder intact instead of crashing', () => {
+    // 模板有 {count}，但不传参数 → 原样保留
+    expect(translate('en', 'report.evidence.count')).toContain('{count}');
+  });
+
+  it('substitutes all provided placeholders', () => {
+    const out = translate('en', 'job.attempts', { current: 1, max: 3 });
+    expect(out).not.toContain('{');
+    expect(out).not.toContain('}');
+    expect(out).toBe('Attempt 1/3');
+  });
+});
+
+describe('locale registry consistency', () => {
+  it('locales list matches the dictionaries exposed', async () => {
+    const mod = await import('./index.js');
+    expect(mod.locales).toEqual(['zh-CN', 'en']);
+    expect(mod.DEFAULT_LOCALE).toBe('en');
+    // 每个支持的 locale 都能创建 translator
+    for (const loc of mod.locales) {
+      const t = mod.createTranslator(loc);
+      expect(typeof t('app.name')).toBe('string');
+    }
+  });
+});

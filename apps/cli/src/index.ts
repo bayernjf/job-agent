@@ -15,6 +15,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { analyze, type AnalyzerInput } from '@jobagent/analyzer-core';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
+import { toHtml, toMarkdown } from './report-format.js';
 
 export interface CliDeps {
   /** 环境变量 GITHUB_TOKEN 的值（由调用方注入，便于测试） */
@@ -88,6 +89,13 @@ function writeOutput(
   }
 }
 
+function renderProfile(result: AnalyzeResult, format: string): string {
+  const p = result.profile;
+  if (format === 'markdown' || format === 'md') return toMarkdown(p);
+  if (format === 'html') return toHtml(p);
+  return JSON.stringify(result, null, 2);
+}
+
 export async function run(argv: string[], deps: CliDeps): Promise<number> {
   const logger = deps.logger ?? console;
   const stdout = deps.stdout ?? process.stdout;
@@ -101,7 +109,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     });
     const login = positionals[0];
     if (!login) {
-      logger.error('Usage: jobagent analyze <user> [--out <file>]');
+      logger.error('Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html]');
       return 2;
     }
     try {
@@ -157,7 +165,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
   }
 
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] | jobagent batch <file> [--out <file>]',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>]',
   );
   return 2;
 }

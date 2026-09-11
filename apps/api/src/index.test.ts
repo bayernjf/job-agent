@@ -137,6 +137,72 @@ describe('POST /analyze', () => {
     expect(body2.dedup).toBe(false);
   });
 
+  it('returns cached profileId when a fresh complete profile exists', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+
+    // 预先插入一个 complete 画像
+    const profileId = 'prof-cache-001';
+    const snapshot = sampleProfile(profileId, 'cached-user');
+    await repos.profiles.insert({
+      id: profileId,
+      analyzerVersion: snapshot.analyzerVersion,
+      subjectLogin: 'cached-user',
+      subjectClaimed: false,
+      dataWindowSince: snapshot.dataWindow.since,
+      dataWindowUntil: snapshot.dataWindow.until,
+      status: 'complete',
+      snapshot,
+    });
+
+    // POST /analyze 应直接返回缓存的 profileId，不创建 job
+    const res = await app.request('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'cached-user' }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.profileId).toBe(profileId);
+    expect(body.cached).toBe(true);
+    expect(body.jobId).toBeUndefined();
+
+    // 没有创建任何 job
+    const queued = await repos.jobs.listQueued();
+    expect(queued).toHaveLength(0);
+  });
+
+  it('creates a new job when cached profile is partial (not complete)', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+
+    // 插入一个 partial 画像（L0 only，未完成）
+    const snapshot = sampleProfile('prof-partial-001', 'partial-user');
+    await repos.profiles.insert({
+      id: 'prof-partial-001',
+      analyzerVersion: snapshot.analyzerVersion,
+      subjectLogin: 'partial-user',
+      subjectClaimed: false,
+      dataWindowSince: snapshot.dataWindow.since,
+      dataWindowUntil: snapshot.dataWindow.until,
+      status: 'partial',
+      snapshot,
+    });
+
+    const res = await app.request('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'partial-user' }),
+    });
+
+    // partial 画像不命中缓存，应创建新 job
+    expect(res.status).toBe(201);
+    const body = await res.json() as any;
+    expect(body.jobId).toBeTruthy();
+    expect(body.cached).toBeUndefined();
+  });
+
   it('rejects empty username', async () => {
     const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/analyze', {

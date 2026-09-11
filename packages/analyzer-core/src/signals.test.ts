@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { computeAuthenticity, computeAuthenticitySignals } from './signals.js';
 import { SIGNAL_CODES } from './rules.js';
 import { buildInput } from './test-input.js';
-import type { AnalyzerCommit, AnalyzerInput, AnalyzerRepo } from './input.js';
+import type { AnalyzerCommit, AnalyzerInput, AnalyzerPullRequest, AnalyzerRepo } from './input.js';
 
 /** 断言所有信号的 evidenceRefs 都真实存在（无证据不下结论） */
 function expectValidRefs(input: AnalyzerInput): void {
@@ -40,7 +40,11 @@ describe('computeAuthenticitySignals', () => {
       repoName: 'dev-strong/web-platform',
       messageHeadline: `mismatched commit ${i}`,
     }));
-    const input = buildInput({ email: 'other@example.com', commits: mismatchedCommits });
+    const input = buildInput({
+      email: 'other@example.com',
+      commits: mismatchedCommits,
+      pullRequests: [], // no external contributions so author risk is not mitigated
+    });
     const author = computeAuthenticitySignals(input).find(
       (s) => s.code === SIGNAL_CODES.AUTHOR_INCONSISTENCY,
     );
@@ -111,7 +115,7 @@ describe('computeAuthenticitySignals', () => {
         primaryLanguage: 'TypeScript',
         topics: [],
         description: null,
-        stargazerCount: 300,
+        stargazerCount: 3000,
         forkCount: 4,
         pushedAt: '2026-01-05T00:00:00Z',
         createdAt: '2024-09-01T00:00:00Z',
@@ -187,8 +191,12 @@ describe('computeAuthenticity (status & confidence)', () => {
       repoName: 'dev-strong/web-platform',
       messageHeadline: `mismatched ${i}`,
     }));
-    const { status: doubleStatus } = computeAuthenticity(
-      buildInput({ email: 'other@example.com', commits: mismatchedCommits }),
+        const { status: doubleStatus } = computeAuthenticity(
+      buildInput({
+        email: 'other@example.com',
+        commits: mismatchedCommits,
+        pullRequests: [], // no external contributions so author risk is not mitigated
+      }),
     );
     expect(doubleStatus).toBe('suspicious');
   });
@@ -225,7 +233,7 @@ describe('computeAuthenticity (status & confidence)', () => {
         primaryLanguage: 'TypeScript',
         topics: [],
         description: null,
-        stargazerCount: 250,
+        stargazerCount: 600,
         forkCount: 2,
         pushedAt: '2024-08-01T00:00:00Z',
         createdAt: '2022-01-01T00:00:00Z',
@@ -237,7 +245,7 @@ describe('computeAuthenticity (status & confidence)', () => {
       pullRequests: [],
       issues: [],
       contributions: {
-        totalCommitContributions: 40,
+        totalCommitContributions: 20,
         totalPullRequestContributions: 0,
         totalIssueContributions: 0,
         totalRepositoryContributions: 0,
@@ -248,10 +256,343 @@ describe('computeAuthenticity (status & confidence)', () => {
     expect(status).toBe('mixed_signals');
   });
 
+
+  it('external contributions mitigate author inconsistency risk', () => {
+    const mismatchedCommits: AnalyzerCommit[] = Array.from({ length: 3 }, (_, i) => ({
+      oid: `ext${String(i + 1).padStart(2, '0')}${'0'.repeat(35)}`,
+      committedAt: `2026-0${i + 1}-15T10:00:00Z`,
+      authorName: 'Someone Else',
+      authorEmail: 'someone.else@example.com',
+      repoName: 'dev-strong/web-platform',
+      messageHeadline: `mismatched ${i}`,
+    }));
+    // 默认 buildInput 有外部 merged PR（other-org/awesome-project）
+    const signals = computeAuthenticitySignals(
+      buildInput({ email: 'other@example.com', commits: mismatchedCommits }),
+    );
+    const author = signals.find((s) => s.code === SIGNAL_CODES.AUTHOR_INCONSISTENCY);
+    // 有外部贡献时，risk 降级为 warn
+    expect(author?.severity).toBe('warn');
+    expect(author?.detail).toContain('mitigated by verified external contributions');
+  });
+
+  it('external contributions prevent suspicious status for double identity mismatch', () => {
+    const mismatchedCommits: AnalyzerCommit[] = Array.from({ length: 3 }, (_, i) => ({
+      oid: `st${String(i + 1).padStart(2, '0')}${'0'.repeat(35)}`,
+      committedAt: `2026-0${i + 1}-15T10:00:00Z`,
+      authorName: 'Someone Else',
+      authorEmail: 'someone.else@example.com',
+      repoName: 'dev-strong/web-platform',
+      messageHeadline: `mismatched ${i}`,
+    }));
+    // 默认有外部 PR，不应被判为 suspicious
+    const { status } = computeAuthenticity(
+      buildInput({ email: 'other@example.com', commits: mismatchedCommits }),
+    );
+    expect(status).not.toBe('suspicious');
+  });
+
   it('confidence stays within [0.3, 0.95] and is rounded to 2 decimals', () => {
     const { confidence } = computeAuthenticity(buildInput({ email: 'other@example.com' }));
     expect(confidence).toBeGreaterThanOrEqual(0.3);
     expect(confidence).toBeLessThanOrEqual(0.95);
     expect(Number.isInteger(confidence * 100)).toBe(true);
+  });
+
+  it('flags star_to_commit_ratio warn when stars disproportionately exceed commits', () => {
+    const starRepos: AnalyzerRepo[] = [
+      {
+        name: 'popular-repo',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/popular-repo',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'TypeScript',
+        topics: [],
+        description: null,
+        stargazerCount: 800,
+        forkCount: 100,
+        pushedAt: '2026-08-01T00:00:00Z',
+        createdAt: '2024-01-01T00:00:00Z',
+      },
+    ];
+    const fewCommits: AnalyzerCommit[] = [
+      {
+        oid: 'sc01bb02cc03dd04ee05ff06aa07bb08cc09dd0e',
+        committedAt: '2026-07-15T10:00:00Z',
+        authorName: 'Dev Strong',
+        authorEmail: 'dev.strong@example.com',
+        repoName: 'dev-strong/popular-repo',
+        messageHeadline: 'initial commit',
+      },
+    ];
+    const signals = computeAuthenticitySignals(
+      buildInput({ repos: starRepos, commits: fewCommits, pullRequests: [], issues: [] }),
+    );
+    const ratio = signals.find((s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO);
+    expect(ratio?.severity).toBe('warn');
+    expect(ratio?.detail).toContain('ratio');
+    expectValidRefs(buildInput({ repos: starRepos, commits: fewCommits }));
+  });
+
+  it('elevates extreme star-to-commit ratio (>=2000 stars, >=50:1) to risk and overall suspicious', () => {
+    // 复现负样本 MSNightmare：约 5k star、仅 33 个采样 commit、0 PR、窗口短
+    const viralRepos: AnalyzerRepo[] = [
+      {
+        name: 'viral-repo',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/viral-repo',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'JavaScript',
+        topics: [],
+        description: null,
+        stargazerCount: 4971,
+        forkCount: 1646,
+        pushedAt: '2026-08-01T00:00:00Z',
+        createdAt: '2026-06-01T00:00:00Z',
+      },
+    ];
+    const fewCommits: AnalyzerCommit[] = Array.from({ length: 33 }, (_, i) => ({
+      oid: `ec${String(i).padStart(38, '0')}`,
+      committedAt: '2026-07-15T10:00:00Z',
+      authorName: 'Dev Strong',
+      authorEmail: 'dev.strong@example.com',
+      repoName: 'dev-strong/viral-repo',
+      messageHeadline: `commit ${i}`,
+    }));
+    const { status, signals } = computeAuthenticity(
+      buildInput({ repos: viralRepos, commits: fewCommits, pullRequests: [], issues: [] }),
+    );
+    const ratio = signals.find((s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO);
+    expect(ratio?.severity).toBe('risk');
+    expect(status).toBe('suspicious');
+  });
+
+  it('mitigates extreme star-to-commit ratio risk when the account has externally merged PRs', () => {
+    // 高声望维护者：项目 star 极高、本人采样 commit 少，但有被外部项目 merge 的 PR，
+    // 难以伪造的协作证据应抵消 ratio risk（区别于 0 外部 PR 的买 star 账号）。
+    const viralRepos: AnalyzerRepo[] = [
+      {
+        name: 'framework',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/framework',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'Ruby',
+        topics: [],
+        description: null,
+        stargazerCount: 50000,
+        forkCount: 12000,
+        pushedAt: '2026-08-01T00:00:00Z',
+        createdAt: '2020-01-01T00:00:00Z',
+      },
+    ];
+    const fewCommits: AnalyzerCommit[] = Array.from({ length: 40 }, (_, i) => ({
+      oid: `mx${String(i).padStart(38, '0')}`,
+      committedAt: '2026-07-15T10:00:00Z',
+      authorName: 'Dev Strong',
+      authorEmail: 'dev.strong@example.com',
+      repoName: 'dev-strong/framework',
+      messageHeadline: `commit ${i}`,
+    }));
+    const extPRs: AnalyzerPullRequest[] = [
+      {
+        number: 7,
+        title: 'upstream fix merged elsewhere',
+        url: 'https://github.com/other-org/stack/pull/7',
+        state: 'MERGED' as const,
+        createdAt: '2026-07-01T08:00:00Z',
+        mergedAt: '2026-07-03T12:00:00Z',
+        repoNameWithOwner: 'other-org/stack',
+        repoIsFork: false,
+        repoOwnerIsSelf: false,
+        additions: 30,
+        deletions: 8,
+        changedFiles: 2,
+      },
+    ];
+    const { status, signals } = computeAuthenticity(
+      buildInput({ repos: viralRepos, commits: fewCommits, pullRequests: extPRs, issues: [] }),
+    );
+    const ratio = signals.find((s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO);
+    expect(ratio?.severity).toBe('warn');
+    expect(status).not.toBe('suspicious');
+  });
+
+  it('treats extreme ratio of a long-lived maintainer as warn rather than risk (wycats case)', () => {
+    // 组织核心维护者：5w+ star、个人采样 commit 少、PR 多在自己是成员的组织仓库，
+    // 但账号活跃多年、merged PR 多、行为总量大——不应判 suspicious。
+    const bigRepos: AnalyzerRepo[] = [
+      {
+        name: 'framework',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/framework',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'JavaScript',
+        topics: [],
+        description: null,
+        stargazerCount: 53011,
+        forkCount: 6564,
+        pushedAt: '2026-08-01T00:00:00Z',
+        createdAt: '2019-01-01T00:00:00Z',
+      },
+    ];
+    // 283 个近期 commit + 1 个 2020 年的早期 commit，把活动跨度拉到 6 年以上
+    const commits: AnalyzerCommit[] = [
+      ...Array.from({ length: 283 }, (_, i) => ({
+        oid: `lf${String(i).padStart(38, '0')}`,
+        committedAt: '2026-08-01T10:00:00Z',
+        authorName: 'Dev Strong',
+        authorEmail: 'dev.strong@example.com',
+        repoName: 'dev-strong/framework',
+        messageHeadline: `c ${i}`,
+      })),
+      {
+        oid: 'lf0000000000000000000000000000000000old',
+        committedAt: '2020-03-01T10:00:00Z',
+        authorName: 'Dev Strong',
+        authorEmail: 'dev.strong@example.com',
+        repoName: 'dev-strong/framework',
+        messageHeadline: 'early commit',
+      },
+    ];
+    const selfPRs: AnalyzerPullRequest[] = Array.from({ length: 47 }, (_, i) => ({
+      number: i + 1,
+      title: `self merged PR ${i + 1}`,
+      url: `https://github.com/dev-strong/framework/pull/${i + 1}`,
+      state: 'MERGED' as const,
+      createdAt: '2026-07-01T08:00:00Z',
+      mergedAt: '2026-07-02T08:00:00Z',
+      repoNameWithOwner: 'dev-strong/framework',
+      repoIsFork: false,
+      repoOwnerIsSelf: true,
+      additions: 10,
+      deletions: 2,
+      changedFiles: 1,
+    }));
+    const { status, signals } = computeAuthenticity(
+      buildInput({ repos: bigRepos, commits, pullRequests: selfPRs, issues: [] }),
+    );
+    const ratioSignal = signals.find((s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO);
+    expect(ratioSignal?.severity).toBe('warn');
+    expect(status).not.toBe('suspicious');
+  });
+
+  it('downgrades short-window thin evidence to mixed_signals even with one weak external PR', () => {
+    // 复现负样本 ByteBunny777：少量活动、窗口仅 1-3 个月、仅 1 个外部 merged PR，
+    // 不应给 likely_authentic 高置信度结论。
+    const recentCommits: AnalyzerCommit[] = Array.from({ length: 38 }, (_, i) => ({
+      oid: `tb${String(i).padStart(38, '0')}`,
+      committedAt: '2026-08-10T10:00:00Z',
+      authorName: 'Dev Strong',
+      authorEmail: 'dev.strong@example.com',
+      repoName: 'dev-strong/web-platform',
+      messageHeadline: `commit ${i}`,
+    }));
+    // 仓库也都是近期的（窗口约 1 个月），避免默认仓库的历史 pushedAt 拉长窗口
+    const recentRepos: AnalyzerRepo[] = [
+      {
+        name: 'web-platform',
+        ownerLogin: 'dev-strong',
+        url: 'https://github.com/dev-strong/web-platform',
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'TypeScript',
+        topics: [],
+        description: null,
+        stargazerCount: 262,
+        forkCount: 6,
+        pushedAt: '2026-08-20T00:00:00Z',
+        createdAt: '2026-07-01T00:00:00Z',
+      },
+    ];
+    const oneExtPR: AnalyzerPullRequest[] = [
+      {
+        number: 1,
+        title: 'single external contribution',
+        url: 'https://github.com/other-org/project/pull/1',
+        state: 'MERGED' as const,
+        createdAt: '2026-08-12T08:00:00Z',
+        mergedAt: '2026-08-14T12:00:00Z',
+        repoNameWithOwner: 'other-org/project',
+        repoIsFork: false,
+        repoOwnerIsSelf: false,
+        additions: 20,
+        deletions: 5,
+        changedFiles: 2,
+      },
+    ];
+    const { status, confidence } = computeAuthenticity(
+      buildInput({
+        repos: recentRepos,
+        commits: recentCommits,
+        pullRequests: oneExtPR,
+        issues: [],
+      }),
+    );
+    expect(status).toBe('mixed_signals');
+    expect(confidence).toBeLessThanOrEqual(0.6);
+  });
+
+  it('flags self_pr_ratio warn when nearly all PRs are in self-owned repos', () => {
+    const selfPRs: AnalyzerPullRequest[] = Array.from({ length: 25 }, (_, i) => ({
+      number: i + 1,
+      title: `self PR ${i + 1}`,
+      url: `https://github.com/dev-strong/repo-${i % 5}/pull/${i + 1}`,
+      state: 'MERGED' as const,
+      createdAt: `2026-0${(i % 9) + 1}-15T10:00:00Z`,
+      mergedAt: `2026-0${(i % 9) + 1}-16T10:00:00Z`,
+      repoNameWithOwner: `dev-strong/repo-${i % 5}`,
+      repoIsFork: false,
+      repoOwnerIsSelf: true,
+      additions: 10,
+      deletions: 2,
+      changedFiles: 1,
+    }));
+    const signals = computeAuthenticitySignals(buildInput({ pullRequests: selfPRs }));
+    const selfRatio = signals.find((s) => s.code === SIGNAL_CODES.SELF_PR_RATIO);
+    expect(selfRatio?.severity).toBe('warn');
+    expect(selfRatio?.detail).toContain('self-owned repos');
+  });
+
+  it('weak external contributions (1-2 PRs) add less confidence than strong (3+)', () => {
+    const oneExtPR: AnalyzerPullRequest[] = [
+      {
+        number: 1,
+        title: 'single external contribution',
+        url: 'https://github.com/other-org/project/pull/1',
+        state: 'MERGED' as const,
+        createdAt: '2026-06-15T08:00:00Z',
+        mergedAt: '2026-06-20T12:00:00Z',
+        repoNameWithOwner: 'other-org/project',
+        repoIsFork: false,
+        repoOwnerIsSelf: false,
+        additions: 50,
+        deletions: 10,
+        changedFiles: 3,
+      },
+    ];
+    const threeExtPRs: AnalyzerPullRequest[] = Array.from({ length: 3 }, (_, i) => ({
+      number: i + 1,
+      title: `external contribution ${i + 1}`,
+      url: `https://github.com/other-org/project-${i}/pull/${i + 1}`,
+      state: 'MERGED' as const,
+      createdAt: `2026-0${i + 4}-15T08:00:00Z`,
+      mergedAt: `2026-0${i + 4}-20T12:00:00Z`,
+      repoNameWithOwner: `other-org/project-${i}`,
+      repoIsFork: false,
+      repoOwnerIsSelf: false,
+      additions: 50,
+      deletions: 10,
+      changedFiles: 3,
+    }));
+    const weak = computeAuthenticity(buildInput({ pullRequests: oneExtPR, commits: [] }));
+    const strong = computeAuthenticity(buildInput({ pullRequests: threeExtPRs, commits: [] }));
+    // 弱正向 +0.05，强正向 +0.1，所以 strong confidence 应该比 weak 高 0.05
+    expect(strong.confidence).toBeGreaterThan(weak.confidence);
+    expect(weak.signals.find((s) => s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS)?.detail).toContain('weak positive signal');
+    expect(strong.signals.find((s) => s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS)?.detail).toContain('strong positive signal');
   });
 });

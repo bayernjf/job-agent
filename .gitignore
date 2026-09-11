@@ -28,3 +28,9 @@ data/
 
 # macOS
 .DS_Store
+
+# Playwright E2E artifacts
+test-results/
+playwright-report/
+e2e/.tmp/
+blob-report/

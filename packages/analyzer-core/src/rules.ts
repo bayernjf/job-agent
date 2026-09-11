@@ -20,10 +20,14 @@ export const SIGNAL_CODES = {
   EMPTY_ACTIVITY: 'r0.1.sig.empty_activity',
   /** 活动跨度过短（不足 6 个月） */
   SHORT_LONGEVITY: 'r0.1.sig.short_longevity',
-  /** 有被他人项目 merge 的贡献（强正向信号） */
+  /** 有被他人项目 merge 的贡献（正向信号，按数量分级：1-2 弱正向，3+ 强正向） */
   EXTERNAL_CONTRIBUTIONS: 'r0.1.sig.external_contributions',
   /** 语言/领域单一（弱信号，仅信息提示） */
   LOW_DIVERSITY: 'r0.1.sig.low_diversity',
+  /** star 与 commit 比例异常（star 远多于 commit，可能是买 star 或搬运项目） */
+  STAR_TO_COMMIT_RATIO: 'r0.1.sig.star_to_commit_ratio',
+  /** PR 几乎全在自己 repo（可能是刷 PR 数量） */
+  SELF_PR_RATIO: 'r0.1.sig.self_pr_ratio',
 } as const;
 
 export type SignalCode = (typeof SIGNAL_CODES)[keyof typeof SIGNAL_CODES];

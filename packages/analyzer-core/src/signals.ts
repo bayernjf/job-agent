@@ -157,7 +157,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
   // 4. 高 star 与低活跃不匹配
   const totalStars = input.repos.reduce((sum, r) => sum + r.stargazerCount, 0);
   const commitContributions = input.contributions.totalCommitContributions;
-  if (totalStars >= 200 && commitContributions < 20) {
+  if (totalStars >= 2000 && commitContributions < 10) {
     signals.push({
       code: SIGNAL_CODES.STAR_ACTIVITY_MISMATCH,
       severity: 'risk',
@@ -171,7 +171,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
           .map((r) => `repo:${repoRef(r)}`),
       ),
     });
-  } else if (totalStars >= 200 && commitContributions < 60) {
+  } else if (totalStars >= 500 && commitContributions < 30) {
     signals.push({
       code: SIGNAL_CODES.STAR_ACTIVITY_MISMATCH,
       severity: 'warn',
@@ -185,6 +185,50 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
           .map((r) => `repo:${repoRef(r)}`),
       ),
     });
+  }
+
+
+  // 4b. star 与 commit 比例异常（2026-09-11 负样本校准；batch2/v3 校准叠加账号成熟度）
+  // star 远多于 commit 可能是买 star、搬运高星项目，但也可能是高声望维护者
+  //（项目 star 高、本人采样 commit 少）。区分关键是账号成熟度与协作痕迹：
+  // 长期活跃(≥24 月)/大量 merged PR(≥10)/行为总量大(≥150) 的账号判 warn 留人工复核，
+  // 只有"短历史、无协作"同时满足时极端比例才升 risk（如 3 个月、0 PR 的买星号）。
+  if (totalCommits >= 1) {
+    const ratio = totalStars / totalCommits;
+    const behaviorHere = input.commits.length + input.pullRequests.length + input.issues.length;
+    const mergedPrCount = input.pullRequests.filter((p) => p.state === "MERGED").length;
+    const spanMonths =
+      dates.length > 0
+        ? (Date.parse(input.collectedAt) -
+            Math.min(...dates.map((d) => Date.parse(d)))) /
+          (30.44 * 86_400_000)
+        : null;
+    const established =
+      (spanMonths !== null && spanMonths >= 24) ||
+      mergedPrCount >= 10 ||
+      behaviorHere >= 150;
+    const rawExtreme = totalStars >= 2000 && ratio >= 50;
+    const isRisk = rawExtreme && !established;
+    const isWarn = !isRisk && (rawExtreme || (totalStars >= 500 && ratio >= 100));
+    if (isRisk || isWarn) {
+      signals.push({
+        code: SIGNAL_CODES.STAR_TO_COMMIT_RATIO,
+        severity: isRisk ? 'risk' : 'warn',
+        label: isRisk
+          ? 'Star count grossly disproportionate to commit activity'
+          : 'Star count disproportionately high relative to commit activity',
+        detail: isRisk
+          ? `${totalStars} stars across ${totalCommits} sampled commits (ratio ${Math.round(ratio)}:1) with a short history and no collaboration record; strongly suggests purchased stars or a carried-over high-profile repository`
+          : `${totalStars} stars across ${totalCommits} sampled commits (ratio ${Math.round(ratio)}:1); ${established ? "high but the account is long-lived with real collaboration, so treat as a maintainer profile and review manually" : "may indicate purchased stars or forked high-profile repos"}`,
+        evidenceRefs: validRefs(
+          input,
+          input.repos
+            .toSorted((a, b) => b.stargazerCount - a.stargazerCount)
+            .slice(0, 3)
+            .map((r) => `repo:${repoRef(r)}`),
+        ),
+      });
+    }
   }
 
   // 5. 行为证据不足
@@ -215,17 +259,38 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
     }
   }
 
-  // 7. 被他人项目 merge 的贡献（强正向）
+  // 7. 被他人项目 merge 的贡献（正向信号，2026-09-11 负样本校准：按数量分级）
+  // 1-2 个外部 PR = 弱正向（可能是偶然贡献），3+ 个 = 强正向（持续被外部维护者认可）
   const externalMerged = input.pullRequests.filter((p) => !p.repoOwnerIsSelf && p.state === 'MERGED');
   if (externalMerged.length > 0) {
+    const isStrong = externalMerged.length >= 3;
     signals.push({
       code: SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS,
       severity: 'info',
-      label: 'Merged contributions to external projects',
-      detail: `${externalMerged.length} pull request(s) merged into projects not owned by the account`,
+      label: isStrong
+        ? 'Strong verified external contributions'
+        : 'Merged contributions to external projects',
+      detail: `${externalMerged.length} pull request(s) merged into projects not owned by the account (${isStrong ? 'strong positive signal' : 'weak positive signal'})`,
       evidenceRefs: validRefs(
         input,
         externalMerged.slice(0, 5).map((p) => `pr:${p.repoNameWithOwner}:${p.number}`),
+      ),
+    });
+  }
+
+  // 7b. PR 几乎全在自己 repo（2026-09-11 负样本校准新增）
+  // 大量 PR 但全在自己 repo，可能是刷 PR 数量；仅在 PR 总数较多时触发
+  const allPRs = input.pullRequests;
+  const selfPRs = allPRs.filter((p) => p.repoOwnerIsSelf);
+  if (allPRs.length >= 20 && selfPRs.length / allPRs.length >= 0.9) {
+    signals.push({
+      code: SIGNAL_CODES.SELF_PR_RATIO,
+      severity: 'warn',
+      label: 'Nearly all pull requests are in self-owned repos',
+      detail: `${selfPRs.length} of ${allPRs.length} pull requests (${Math.round((selfPRs.length / allPRs.length) * 100)}%) are in self-owned repos; may indicate inflated PR count`,
+      evidenceRefs: validRefs(
+        input,
+        selfPRs.slice(0, 3).map((p) => `pr:${p.repoNameWithOwner}:${p.number}`),
       ),
     });
   }
@@ -247,6 +312,29 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
     }
   }
 
+  // 9. 正向信号抵消（2026-09-11 S3 校准；batch2 校准扩展到 star_to_commit_ratio）：
+  // 有外部项目合并的 PR 时，author_inconsistency / star_activity_mismatch /
+  // star_to_commit_ratio 的 risk 降级为 warn。
+  // 被外部维护者 merge PR 是难以伪造的真实协作证据：author 不一致多为公司/旧邮箱，
+  // 高 star 低个人 commit 多为 OSS 名人做管理/架构（项目 star 高、本人采样 commit 少）。
+  // 反之，买 star/搬运账号（如 MSNightmare）externalMerged=0，不满足抵消、保持 risk。
+  const hasExternalContributions = signals.some(
+    (sig) => sig.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS,
+  );
+  if (hasExternalContributions) {
+    for (const sig of signals) {
+      if (
+        (sig.code === SIGNAL_CODES.AUTHOR_INCONSISTENCY ||
+          sig.code === SIGNAL_CODES.STAR_ACTIVITY_MISMATCH ||
+          sig.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO) &&
+        sig.severity === 'risk'
+      ) {
+        sig.severity = 'warn';
+        sig.detail += ' (mitigated by verified external contributions)';
+      }
+    }
+  }
+
   return signals;
 }
 
@@ -265,11 +353,28 @@ export function computeAuthenticity(input: AnalyzerInput): {
     (p) => !p.repoOwnerIsSelf && p.state === 'MERGED',
   ).length;
 
+  // 观察窗口跨度（月）。窗口极短且行为证据总量少、又缺少强外部背书时，
+  // 即便没有负面信号也不足以支撑"真实"结论（2026-09-11 batch2 校准）。
+  const allDates = validDates(input);
+  const longevityMonths =
+    allDates.length > 0
+      ? (Date.parse(input.collectedAt) -
+          Math.min(...allDates.map((d) => Date.parse(d)))) /
+        (30.44 * 86_400_000)
+      : null;
+  const thinEvidence =
+    longevityMonths !== null &&
+    longevityMonths < 4 &&
+    behaviorTotal < 60 &&
+    externalMerged < 3;
+
   let status: AuthenticityStatus;
   if (behaviorTotal < 5 && input.contributions.totalCommitContributions < 20 && externalMerged === 0) {
     status = 'insufficient_data';
   } else if (risks.length > 0) {
     status = 'suspicious';
+  } else if (thinEvidence) {
+    status = 'mixed_signals';
   } else if (warns.length >= 2 && positives.length === 0) {
     status = 'mixed_signals';
   } else {
@@ -280,9 +385,14 @@ export function computeAuthenticity(input: AnalyzerInput): {
   for (const s of signals) {
     if (s.severity === 'risk') confidence -= 0.2;
     else if (s.severity === 'warn') confidence -= 0.08;
-    if (s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS) confidence += 0.1;
+    if (s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS) {
+      // 按数量分级：1-2 个外部 PR 弱正向 +0.05，3+ 个强正向 +0.1
+      const extCount = input.pullRequests.filter((pr) => !pr.repoOwnerIsSelf && pr.state === 'MERGED').length;
+      confidence += extCount >= 3 ? 0.1 : 0.05;
+    }
   }
   if (status === 'insufficient_data') confidence = 0.35;
+  if (thinEvidence && status === 'mixed_signals') confidence = Math.min(confidence, 0.6);
   confidence = clamp(Math.round(confidence * 100) / 100, 0.3, 0.95);
 
   return { status, confidence, signals };
