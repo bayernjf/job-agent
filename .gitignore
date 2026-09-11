@@ -10,6 +10,9 @@ coverage/
 # logs
 *.log
 
+# local sqlite database (migrate CLI default location)
+data/
+
 # environment variables（密钥绝不入库）
 .env
 .env.*

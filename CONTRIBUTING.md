@@ -18,11 +18,12 @@ pnpm install        # 安装全部 workspace 依赖
 pnpm -r typecheck   # 全仓类型检查（不产出文件）
 pnpm -r test        # 全部单元测试（Vitest，就近 *.test.ts）
 pnpm -r build       # 构建各 workspace
+pnpm migrate:up / migrate:down / migrate:status   # 应用/回滚一步/查看迁移（默认 data/job-agent.db）
 pnpm --filter <pkg> dev   # 只跑某个包/应用
 pnpm --filter <pkg> test  # 只跑某个包的测试
 ```
 
-> 工程骨架初始化后这些脚本才齐全；当前仓库以文档与约定为主。
+> 迁移命令依赖 `packages/storage` 已 build（`pnpm -r build` 或包内 `pnpm build`）。
 
 ## 3. workspace 布局
 
