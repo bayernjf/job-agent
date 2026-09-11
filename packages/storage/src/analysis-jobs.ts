@@ -201,6 +201,28 @@ export class AnalysisJobsRepository {
       .run();
   }
 
+  /**
+   * 重置任务为 queued 等待重试（attempts < maxRetries 时使用）。
+   * 保留 attempts 计数（claimNext 时已 +1），记录最近一次错误信息，
+   * 清空 stage/startedAt/finishedAt/claimedBy，下次认领时重新填充。
+   */
+  resetToQueued(id: string, lastError: string): void {
+    const now = new Date().toISOString();
+    this.db
+      .update(analysisJobs)
+      .set({
+        status: 'queued',
+        stage: null,
+        errorMessage: lastError,
+        claimedBy: null,
+        startedAt: null,
+        finishedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(analysisJobs.id, id))
+      .run();
+  }
+
   /** 按用户查询历史任务（按创建时间倒序） */
   listBySubject(
     subjectPlatform: string,
