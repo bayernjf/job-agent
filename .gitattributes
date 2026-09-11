@@ -1,0 +1,11 @@
+# Line-ending normalization for cross-platform development.
+# Repository stores LF; on Windows checkouts follow the rules below.
+
+* text=auto
+
+# Files executed or parsed by POSIX tools (bash / git hooks / shebang scripts)
+# must stay LF on every platform, or they break under git-bash on Windows.
+*.sh text eol=lf
+*.sql text eol=lf
+.husky/* text eol=lf
+scripts/* text eol=lf
