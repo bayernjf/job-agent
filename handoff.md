@@ -29,7 +29,7 @@ JobAgent 当前状态，截至 2026-09-11。
 
 ## 当前状态
 
-- 阶段：**M1·W4 报告与分享完成**（W4-1~W4-6 全部完成：Astro 5 SSR 报告应用 + 设计 token + 中英 i18n + 首页/报告页 + React islands + 只读分享链接 + 落地页 demo 接线，astro check/build 全绿、i18n 14 测试全绿、standalone 冒烟中英报告页通过、落地页 build 双模式验证通过）。M1 剩余：W3-6 Postgres 适配（可延后，SQLite 足够 MVP）、#8 去风险实验重新批量验证（待 GITHUB_TOKEN）、端到端联调（api+worker+report 同时启动跑通主链路）。
+- 阶段：**M1·W4 报告与分享完成**（W4-1~W4-6 全部完成：Astro 5 SSR 报告应用 + 设计 token + 中英 i18n + 首页/报告页 + React islands + 只读分享链接 + 落地页 demo 接线，astro check/build 全绿、i18n 14 测试全绿、standalone 冒烟中英报告页通过、落地页 build 双模式验证通过）。**M1·W3-6 持久化 SQLite/Postgres 双方言适配已完成**（统一 async 仓储 + createStorage 工厂，业务零感知方言，见最近变更）。M1 剩余：#8 去风险实验重新批量验证（待 GITHUB_TOKEN）、端到端联调（api+worker+report 同时启动跑通主链路，可用 `DB_DRIVER=postgres` 验证生产形态）。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
@@ -43,14 +43,14 @@ JobAgent 当前状态，截至 2026-09-11。
 3. ~~#8 去风险实验·S1/S2 spike：5 个真实账号批量跑，暴露 3 个 bug（org 仓库 owner 穿透致 L1 404 / 空仓库 pushedAt=null 崩溃 / 组织账号 NOT_FOUND 未归一）~~ ✅ 已完成（2026-09-11）
 4. ~~修复 spike 暴露的 3 个 bug + 回归测试（commit `b77ec11`，18 files）~~ ✅ 已完成（2026-09-11）
 5. **#8 去风险实验·重新批量验证（进行中，待 GITHUB_TOKEN）**：bug 修复已完成（commit `b77ec11`），需设置 `GITHUB_TOKEN` 后用修复后 CLI 重跑 5 个账号（建议：torvalds / 2 位 OSS 维护者 / github 组织账号 / 1 个普通账号）确认无崩溃、证据链对齐；通过后扩到 20–50 标注账号（标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
-6. **M1·W3 服务化**（进行中）：
+6. **M1·W3 服务化**（已完成，W3-1~W3-6）：
    - ~~W3-1：`analysis_jobs` 表迁移(002) + schema + AnalysisJobsRepository（create/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus）+ 12 测试~~ ✅ 已完成（2026-09-11）
    - ~~W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次~~ ✅ 已完成（2026-09-11）
    - ~~W3-3：api Hono 接口——POST /analyze（创建 job，去重：同一用户有 active job 则返回现有 jobId）、GET /jobs/:id（查询状态）、GET /profiles/:id（查询画像快照）~~ ✅ 已完成（2026-09-11）
    - ~~W3-4：evidence 表迁移(003) + schema + 仓储（证据索引，关联 profile_id）~~ ✅ 已完成（2026-09-11）
    - ~~W3-5：waitlist 表迁移(004) + schema + 仓储（落地页留资）~~ ✅ 已完成（2026-09-11）
-   - W3-6：Postgres 方言适配（storage 双轨：SQLite 本地/实验 + Postgres 生产，Drizzle 方言隔离）——**进行中（2026-09-11）**：设计文档已落地 `docs/design-storage-dual-dialect-20260911.md`，实施序列：①迁移目录对称化 → ②仓储全链路 async 化（纯重构）→ ③postgres 方言+createStorage 工厂 → ④脚本/环境变量/双目录校验；3 项待拍板（迁移目录形态/是否本次跑真实 PG/列类型是否用 JSONB）默认按文档方案执行
-7. **M1·W4 报告与分享**（进行中）：
+   - ~~W3-6：Postgres 方言适配（storage 双轨：SQLite 本地/实验 + Postgres 生产，Drizzle 方言隔离）~~ ✅ 已完成（2026-09-11，5 个原子提交 `07e0fd9`/`3e5afd7`/`0cd72d4`/`440f20f`/`e204798`）：设计文档 `docs/design-storage-dual-dialect-20260911.md`；迁移目录对称化 `db/migrations/{sqlite,postgres}`；仓储接口全链路 async + entities 共享纯逻辑；postgres-js 方言（双 schema/四 async 仓储/异步迁移器/`createStorage({driver})` 工厂，PG 列对齐 TEXT/BOOLEAN/INTEGER，JSONB/TIMESTAMPTZ 缓做）；脚本/env/双目录对齐校验。验证：全仓 typecheck/test/build 全绿，storage 50 passed + 4 skipped（PG 行为套件仅在 `DATABASE_TEST_URL` 存在时实跑，本次未起真实 PG，属待拍板默认项）；双方言 schema/迁移一致性测试守护防漂移。
+7. **M1·W4 报告与分享**（已完成，W4-1~W4-6）：
    - ~~W4-1：Astro 项目初始化——apps/report 从 TS 库改造为 Astro 5 SSR 应用（@astrojs/node standalone + @astrojs/react islands，端口 4321/REPORT_PORT），删除旧占位 index.ts~~ ✅ 已完成（2026-09-11）
    - ~~W4-2：设计 token——src/styles/tokens.css（primitive/semantic 两层 + dark 覆盖，--ja- 前缀，四态色映射 authenticity 枚举）+ global.css（reset + 工具类，全 var 无 hex）~~ ✅ 已完成（2026-09-11）
    - ~~W4-3：i18n 基础设施——zh-CN.json 单一事实源（约 70 key）+ en.json 同构 + index.ts（t()/createTranslator/negotiateLocale，{name} 插值，缺 key 渲染 [missing:]）+ 14 个 key 对齐测试全绿~~ ✅ 已完成（2026-09-11）
@@ -64,6 +64,8 @@ JobAgent 当前状态，截至 2026-09-11。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**M1·W3-6 Postgres 双方言适配代码全部落地（5 个原子提交）**——按设计文档 §7 序列：①`07e0fd9` 设计文档；②`3e5afd7` 迁移目录 `git mv` 对称化为 `db/migrations/{sqlite,postgres}`（SQLite 内容零改）；③`0cd72d4` 纯重构：仓储接口全链路 async，拆出 `entities/`（方言无关领域类型+纯映射）与 `repositories/`（4 个 async 接口），sqlite 实现下沉 `sqlite/`，apps/api、worker、report 只依赖接口与 `createStorage()`（新增 api/worker `tsconfig.build.json` 排除测试出产物）；④`440f20f` postgres-js 方言：`postgres/`（schema/connection/异步 migrator/4 个 async 仓储，claimNext 用 async 事务两步法，count(*) Number 化）+ 4 个 PG 编号迁移（TEXT/BOOLEAN/INTEGER 对齐 SQLite、每列 COMMENT ON、含 DOWN）+ 方言无关 `migrations-fs.ts` + `createStorage({driver})` 工厂（postgres 必须有 DATABASE_URL，readonly 默认不自动迁移）；⑤`e204798` chore：`.env.example` 补 DB_DRIVER/DB_PATH/DATABASE_URL/DATABASE_TEST_URL、迁移 CLI 支持 `--driver postgres`、根脚本加 `migrate:pg:*`、`check-migrations.sh` 升级为双目录校验+文件名集合对齐。测试：新增 schema 一致性（4）、迁移文本一致性（7）、PG 行为套件（4，无 `DATABASE_TEST_URL` 自动 skip）。全仓 typecheck/test/build 全绿，storage 50 passed+4 skipped，CLI 双方言冒烟通过（sqlite up 应用 4 迁移、postgres 缺 URL 正确报错）。**未跑真实 Postgres**（设计 §10 默认不跑，属待拍板项；起一次性 PG 并设 `DATABASE_TEST_URL` 即可让 4 个行为测试实跑）。业务代码不感知方言，达成 Spike S6 验收。
 
 - 2026-09-11：**M1·W3-6 Postgres 双方言适配启动，设计方案落地**——新增 `docs/design-storage-dual-dialect-20260911.md`（现行）。核心方案：仓储接口统一 async（postgres-js 全异步）、entities 共享领域纯逻辑 + sqlite/postgres 双 schema 双仓储实现、`createStorage()` 工厂按 `DB_DRIVER` 装配（业务零感知方言，对齐 Spike S6）、迁移目录对称化为 `db/migrations/{sqlite,postgres}`（git mv 不改内容）、PG 列类型 MVP 对齐 SQLite（TEXT/BOOLEAN，JSONB/TIMESTAMPTZ 缓做）、四层测试（SQLite 行为 + schema 一致性 + 迁移文本一致性 + `DATABASE_TEST_URL` 条件 PG 实库）。docs/README 补场景入口。代码实施按文档 §7 原子序列推进中。
 
