@@ -40,3 +40,45 @@ export const profiles = sqliteTable(
 
 export type ProfileInsert = typeof profiles.$inferInsert;
 export type ProfileSelect = typeof profiles.$inferSelect;
+
+/**
+ * analysis_jobs 表——异步分析任务队列（技术选型 6.6）。
+ * MVP 用单 Worker 轮询/认领，不引入 Redis。
+ * 状态机：queued -> running -> succeeded | failed。
+ * 必须与 db/migrations/002_create_analysis_jobs.sql 保持一致。
+ */
+export const analysisJobs = sqliteTable(
+  'analysis_jobs',
+  {
+    id: text('id').primaryKey(),
+    subjectPlatform: text('subject_platform').notNull().default('github'),
+    subjectLogin: text('subject_login').notNull(),
+    status: text('status').notNull().default('queued'),
+    stage: text('stage'),
+    attempts: integer('attempts').notNull().default(0),
+    profileId: text('profile_id'),
+    errorMessage: text('error_message'),
+    budgetUsed: text('budget_used'),
+    missing: text('missing'),
+    claimedBy: text('claimed_by'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    startedAt: text('started_at'),
+    finishedAt: text('finished_at'),
+  },
+  (table) => [
+    index('idx_analysis_jobs_status_created').on(table.status, table.createdAt),
+    index('idx_analysis_jobs_subject_created').on(
+      table.subjectPlatform,
+      table.subjectLogin,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type AnalysisJobInsert = typeof analysisJobs.$inferInsert;
+export type AnalysisJobSelect = typeof analysisJobs.$inferSelect;

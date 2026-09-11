@@ -28,7 +28,7 @@ JobAgent 当前状态，截至 2026-09-11。
 
 ## 当前状态
 
-- 阶段：**M1·W2 代码交付完成**（`github-source` 采集 + `analyzer-core` 纯函数内核 + `cli` 命令行出画像，typecheck/test/build/check-migrations 全绿，真实账号冒烟通过），下一步是 #8 去风险实验与 W3 系统层。
+- 阶段：**M1·W3 服务化进行中**（W3-1 analysis_jobs 表+仓储已完成，typecheck/test/build/check-migrations 全绿；下一步 W3-2 worker 核心逻辑）。M1·W2 代码交付已完成（`github-source` + `analyzer-core` + `cli`，真实账号冒烟通过），#8 去风险实验待 GITHUB_TOKEN。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
@@ -42,14 +42,23 @@ JobAgent 当前状态，截至 2026-09-11。
 3. ~~#8 去风险实验·S1/S2 spike：5 个真实账号批量跑，暴露 3 个 bug（org 仓库 owner 穿透致 L1 404 / 空仓库 pushedAt=null 崩溃 / 组织账号 NOT_FOUND 未归一）~~ ✅ 已完成（2026-09-11）
 4. ~~修复 spike 暴露的 3 个 bug + 回归测试（commit `b77ec11`，18 files）~~ ✅ 已完成（2026-09-11）
 5. **#8 去风险实验·重新批量验证（进行中，待 GITHUB_TOKEN）**：bug 修复已完成（commit `b77ec11`），需设置 `GITHUB_TOKEN` 后用修复后 CLI 重跑 5 个账号（建议：torvalds / 2 位 OSS 维护者 / github 组织账号 / 1 个普通账号）确认无崩溃、证据链对齐；通过后扩到 20–50 标注账号（标注人/判定人届时落实），校准真实性信号，**通过后才进 P2 系统层**。
-6. M1·W3–W4：Postgres + 仓储层 + `analysis_jobs` + `api`/`worker`；Astro 报告页 + 分享，接通落地页 demo。
-7. M1·W4（与第 6 项同批）：报告页落地即执行 [i18n](docs/design-i18n-20260910.md) 与[设计 token](docs/design-tokens-20260910.md)（落地页不在本仓范围）。
+6. **M1·W3 服务化**（进行中）：
+   - ~~W3-1：`analysis_jobs` 表迁移(002) + schema + AnalysisJobsRepository（create/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus）+ 12 测试~~ ✅ 已完成（2026-09-11）
+   - W3-2：worker 核心逻辑——轮询认领 job → 调 github-source(L0→L1) → 调 analyzer-core → 写 profiles → 更新 job 状态（succeeded/failed），失败重试上限 3 次
+   - W3-3：api Hono 接口——POST /analyze（创建 job，去重：同一用户有 active job 则返回现有 jobId）、GET /jobs/:id（查询状态）、GET /profiles/:id（查询画像快照）
+   - W3-4：evidence 表迁移(003) + schema + 仓储（证据索引，关联 profile_id）
+   - W3-5：waitlist 表迁移(004) + schema + 仓储（落地页留资）
+   - W3-6：Postgres 方言适配（storage 双轨：SQLite 本地/实验 + Postgres 生产，Drizzle 方言隔离）
+7. **M1·W4 报告与分享**：Astro 报告页 + React islands + 只读分享链接 + 接落地页 demo（落地即执行 i18n 与设计 token）。
+
 8. **P1·Chrome 扩展一键填充**（决策 #15，2026-09-11 拍板）：画像验证通过后启动，支持 Workday/Greenhouse/Lever 三大 ATS，填充数据来自可信画像；只做用户主动触发的一键填充，不做全自动后台投递。前置：packages/shared 预留可导出画像数据结构。
 9. **P2·职位聚合（岗位搜集）**（决策 #16，2026-09-11 拍板）：按原计划 P2 启动，先聚焦海外技术岗数据源（Wellfound/YC Jobs/RemoteOK 等），轻量爬虫+公开 API，日更增量；是匹配/投递的前置基础设施。当前只做准备：JobPosting 类型预留 + 1-2 天 Spike 验证。
 
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**M1·W3-1 analysis_jobs 表+仓储落地**——新增 `db/migrations/002_create_analysis_jobs.sql`（analysis_jobs 表：id/subject_platform/subject_login/status/stage/attempts/profile_id/error_message/budget_used/missing/claimed_by/created_at/updated_at/started_at/finished_at，两个索引，含 down 段）；`packages/storage/src/schema.ts` 新增 analysisJobs Drizzle 表定义；`packages/storage/src/analysis-jobs.ts` 实现 AnalysisJobsRepository（create/getById/claimNext/updateStage/succeed/fail/listBySubject/latestActiveBySubject/listQueued/countByStatus），claimNext 用事务内两步法（SELECT 最老 queued id → UPDATE 特定 id + status 双重校验）保证原子认领只更新一行，attempts<3 防无限重试；12 个测试覆盖全方法 + 迁移列检查；migrations.test.ts 适配 002（分两步回滚验证）；全仓 typecheck/build 全绿，storage 22 测试全绿，check-migrations 通过。
 
 - 2026-09-11：**#8 去风险实验 spike + bug 修复**——5 个真实账号批量跑暴露 3 个 bug：①`user.repositories` 含组织仓库（节点 name='vitest' 但真实 owner 是 vitest-dev），L1 用 owner=本人 login 查 commits 必然 404；②空仓库 `pushedAt=null` 致 `.slice()`/`localeCompare` 崩溃；③组织账号 user 查询返回 NOT_FOUND 未归一为 not_found。修复贯穿 analyzer-core（新增 `ownerLogin` 契约 + `repoRef()` 统一证据引用 + null 安全排序/过滤）与 github-source（真实 owner 贯穿 L0→L1 + NOT_FOUND 归一化 + 证据构造）；新增 3 个回归测试（org owner 穿透、null pushedAt、org NOT_FOUND），更新全部 4 个 L0 夹具补 nameWithOwner/owner；commit `b77ec11`，typecheck/test/build/check-migrations 全绿。
 
