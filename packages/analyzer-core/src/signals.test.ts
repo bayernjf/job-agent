@@ -40,7 +40,11 @@ describe('computeAuthenticitySignals', () => {
       repoName: 'dev-strong/web-platform',
       messageHeadline: `mismatched commit ${i}`,
     }));
-    const input = buildInput({ email: 'other@example.com', commits: mismatchedCommits });
+    const input = buildInput({
+      email: 'other@example.com',
+      commits: mismatchedCommits,
+      pullRequests: [], // no external contributions so author risk is not mitigated
+    });
     const author = computeAuthenticitySignals(input).find(
       (s) => s.code === SIGNAL_CODES.AUTHOR_INCONSISTENCY,
     );
@@ -111,7 +115,7 @@ describe('computeAuthenticitySignals', () => {
         primaryLanguage: 'TypeScript',
         topics: [],
         description: null,
-        stargazerCount: 300,
+        stargazerCount: 3000,
         forkCount: 4,
         pushedAt: '2026-01-05T00:00:00Z',
         createdAt: '2024-09-01T00:00:00Z',
@@ -187,8 +191,12 @@ describe('computeAuthenticity (status & confidence)', () => {
       repoName: 'dev-strong/web-platform',
       messageHeadline: `mismatched ${i}`,
     }));
-    const { status: doubleStatus } = computeAuthenticity(
-      buildInput({ email: 'other@example.com', commits: mismatchedCommits }),
+        const { status: doubleStatus } = computeAuthenticity(
+      buildInput({
+        email: 'other@example.com',
+        commits: mismatchedCommits,
+        pullRequests: [], // no external contributions so author risk is not mitigated
+      }),
     );
     expect(doubleStatus).toBe('suspicious');
   });
@@ -225,7 +233,7 @@ describe('computeAuthenticity (status & confidence)', () => {
         primaryLanguage: 'TypeScript',
         topics: [],
         description: null,
-        stargazerCount: 250,
+        stargazerCount: 600,
         forkCount: 2,
         pushedAt: '2024-08-01T00:00:00Z',
         createdAt: '2022-01-01T00:00:00Z',
@@ -237,7 +245,7 @@ describe('computeAuthenticity (status & confidence)', () => {
       pullRequests: [],
       issues: [],
       contributions: {
-        totalCommitContributions: 40,
+        totalCommitContributions: 20,
         totalPullRequestContributions: 0,
         totalIssueContributions: 0,
         totalRepositoryContributions: 0,
@@ -246,6 +254,42 @@ describe('computeAuthenticity (status & confidence)', () => {
     });
     const { status } = computeAuthenticity(input);
     expect(status).toBe('mixed_signals');
+  });
+
+
+  it('external contributions mitigate author inconsistency risk', () => {
+    const mismatchedCommits: AnalyzerCommit[] = Array.from({ length: 3 }, (_, i) => ({
+      oid: `ext${String(i + 1).padStart(2, '0')}${'0'.repeat(35)}`,
+      committedAt: `2026-0${i + 1}-15T10:00:00Z`,
+      authorName: 'Someone Else',
+      authorEmail: 'someone.else@example.com',
+      repoName: 'dev-strong/web-platform',
+      messageHeadline: `mismatched ${i}`,
+    }));
+    // 默认 buildInput 有外部 merged PR（other-org/awesome-project）
+    const signals = computeAuthenticitySignals(
+      buildInput({ email: 'other@example.com', commits: mismatchedCommits }),
+    );
+    const author = signals.find((s) => s.code === SIGNAL_CODES.AUTHOR_INCONSISTENCY);
+    // 有外部贡献时，risk 降级为 warn
+    expect(author?.severity).toBe('warn');
+    expect(author?.detail).toContain('mitigated by verified external contributions');
+  });
+
+  it('external contributions prevent suspicious status for double identity mismatch', () => {
+    const mismatchedCommits: AnalyzerCommit[] = Array.from({ length: 3 }, (_, i) => ({
+      oid: `st${String(i + 1).padStart(2, '0')}${'0'.repeat(35)}`,
+      committedAt: `2026-0${i + 1}-15T10:00:00Z`,
+      authorName: 'Someone Else',
+      authorEmail: 'someone.else@example.com',
+      repoName: 'dev-strong/web-platform',
+      messageHeadline: `mismatched ${i}`,
+    }));
+    // 默认有外部 PR，不应被判为 suspicious
+    const { status } = computeAuthenticity(
+      buildInput({ email: 'other@example.com', commits: mismatchedCommits }),
+    );
+    expect(status).not.toBe('suspicious');
   });
 
   it('confidence stays within [0.3, 0.95] and is rounded to 2 decimals', () => {
