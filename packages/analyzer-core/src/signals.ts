@@ -157,7 +157,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
   // 4. 高 star 与低活跃不匹配
   const totalStars = input.repos.reduce((sum, r) => sum + r.stargazerCount, 0);
   const commitContributions = input.contributions.totalCommitContributions;
-  if (totalStars >= 200 && commitContributions < 20) {
+  if (totalStars >= 2000 && commitContributions < 10) {
     signals.push({
       code: SIGNAL_CODES.STAR_ACTIVITY_MISMATCH,
       severity: 'risk',
@@ -171,7 +171,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
           .map((r) => `repo:${repoRef(r)}`),
       ),
     });
-  } else if (totalStars >= 200 && commitContributions < 60) {
+  } else if (totalStars >= 500 && commitContributions < 30) {
     signals.push({
       code: SIGNAL_CODES.STAR_ACTIVITY_MISMATCH,
       severity: 'warn',
@@ -244,6 +244,26 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
           input.repos.slice(0, 3).map((r) => `repo:${repoRef(r)}`),
         ),
       });
+    }
+  }
+
+  // 9. 正向信号抵消（2026-09-11 S3 校准）：有外部项目合并的 PR 时，
+  // author_inconsistency 和 star_activity_mismatch 的 risk 降级为 warn。
+  // 能被外部维护者合并 PR 的开发者身份真实性很高：author 不一致多为公司邮箱/旧邮箱，
+  // star 多 commit 少多为 OSS 名人做管理/架构/演讲，均不构成可疑。
+  const hasExternalContributions = signals.some(
+    (sig) => sig.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS,
+  );
+  if (hasExternalContributions) {
+    for (const sig of signals) {
+      if (
+        (sig.code === SIGNAL_CODES.AUTHOR_INCONSISTENCY ||
+          sig.code === SIGNAL_CODES.STAR_ACTIVITY_MISMATCH) &&
+        sig.severity === 'risk'
+      ) {
+        sig.severity = 'warn';
+        sig.detail += ' (mitigated by verified external contributions)';
+      }
     }
   }
 
