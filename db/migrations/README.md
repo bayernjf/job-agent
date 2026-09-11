@@ -4,6 +4,7 @@
 
 - 文件命名：`NNN_verb_snake_case.sql`，从 `001` 起严格连续。
 - 校验：`bash tools/check-migrations.sh`（只读）。
-- 当前为文档/约定阶段，尚无代码与首个迁移；首个迁移（如 `001_create_profiles.sql`）在脚手架期 W1 随持久化层一起落地。
+- 应用 / 回滚：`pnpm migrate:up` / `pnpm migrate:down` / `pnpm migrate:status`（经 `packages/storage` CLI，默认数据库 `data/job-agent.db`）。
+- 首个迁移：`001_create_profiles.sql`（profiles 画像快照表，SQLite 方言，含 down 段）。
 
-> 本文件仅用于在尚无迁移时锚定目录并说明约定，首个迁移加入后可保留作为目录说明。
+> 本目录同时是 schema 演进的单一事实源：Drizzle 表定义（`packages/storage/src/schema.ts`）必须与编号迁移保持一致（见 MIGRATION_CONVENTION 第 6 节）。

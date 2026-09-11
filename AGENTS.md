@@ -32,6 +32,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 job-agent/
 ├─ packages/
 │  ├─ shared/         # AbilityProfile/EvidenceItem 类型 + Zod 契约（单一事实源）
+│  ├─ storage/        # 持久化抽象层：Drizzle 表定义 + 迁移器/回滚 + profiles 仓储（业务模块禁裸 SQL；MVP 方言 SQLite）
 │  ├─ github-source/  # Octokit、GraphQL 查询、L0/L1 采集、限频/缓存（首个 EvidenceSource）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
 │  └─ llm/            # LLM 端口 + 结构化输出校验（P1 才启用，见 deferred）
@@ -46,7 +47,7 @@ job-agent/
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
 ```
 
-> 结构已于 2026-09-10 脚手架落地：`packages/*` 与 `apps/*` 已建（shared 含完整契约，其余为占位包），根 `package.json`/`tsconfig.base.json`/`.husky`/`.github/workflows/ci.yml` 就绪；后续里程碑按各包注释填充。
+> 结构已于 2026-09-10 脚手架落地，M1·W1 完成 `packages/shared`（Zod 契约）与 `packages/storage`（持久化层 + `db/migrations/001`）；`github-source`/`analyzer-core`/`cli` 等为占位包，后续里程碑按各包注释填充。
 
 ## 常用命令
 
@@ -57,6 +58,7 @@ pnpm -r test                 # 全部就近单测（Vitest）
 pnpm -r build                # 构建各 workspace
 pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm --filter <pkg> exec vitest run path/to/file.test.ts  # 跑单个测试文件
+pnpm migrate:up / migrate:down / migrate:status          # 应用/回滚一步/查看迁移（默认 data/job-agent.db）
 bash tools/check-migrations.sh   # 只读校验迁移命名/编号/文件头
 ```
 
@@ -87,7 +89,7 @@ bash tools/check-migrations.sh   # 只读校验迁移命名/编号/文件头
 ### 迁移规范
 
 - 结构变更只通过 **`db/migrations/NNN_verb_snake_case.sql`** 编号文件，规则（文件头、幂等、`COMMENT ON`、只追加不重写、回滚）见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。
-- 脚手架期补齐：迁移器（按序应用）、`scripts/migrate-down`（回滚一步，无安全 down 则拒绝）、`migrations.test.ts`（干净库顺序加载/编号连续/关键表存在）。
+- W1 已落地：迁移器（按序应用）、`scripts/migrate-down`（回滚一步，无安全 down 则拒绝）、`migrations.test.ts`（干净库顺序加载/编号连续/关键表存在），实现见 `packages/storage`。
 - M1 核心表：`profiles`（画像快照 JSONB + analyzerVersion + 时间窗）、`evidence`、`analysis_jobs`、`waitlist`；账号/认领头表 P1 再加（见 deferred）。
 - 画像存**快照**而非实时重算，避免源数据变化导致已分享结论漂移；优先存**证据指针与精简原始快照（带 ETag）**，不做无标注全量拷贝。
 
