@@ -7,8 +7,9 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "typecheck": "astro check",
-    "astro": "astro"
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
+    "astro": "astro",
+    "check:astro": "astro check"
   },
   "dependencies": {
     "@astrojs/node": "^11.1.5",
