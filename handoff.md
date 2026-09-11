@@ -58,12 +58,15 @@ JobAgent 当前状态，截至 2026-09-11。
    - ~~W4-5：只读分享链接——/[locale]/report/[profileId] SSR 路由，语言段随链接固定；src/lib/db.ts readonly 单例读 profiles 快照，format.ts 用 Intl 按 locale 格式化~~ ✅ 已完成（2026-09-11，冒烟验证中英双语渲染通过）
    - ~~W4-6：接落地页 demo——独立工程 `../job-agent-landing` 的 #demo 改造为环境变量驱动：构建时配置 PUBLIC_API_BASE/PUBLIC_REPORT_BASE 即走真实流程（校验→POST /analyze→2s 轮询→跳报告页 {en|zh-CN}/report/:id），未配置则回退原 localStorage waitlist，保证已上线站点行为不变；落地页独立仓库 commit `ba90d25`（dev 分支，未 push）~~ ✅ 已完成（2026-09-11）
 
-8. **P1·Chrome 扩展一键填充**（决策 #15，2026-09-11 拍板）：画像验证通过后启动，支持 Workday/Greenhouse/Lever 三大 ATS，填充数据来自可信画像；只做用户主动触发的一键填充，不做全自动后台投递。前置：packages/shared 预留可导出画像数据结构。
+8. ~~**端到端联调**~~ ✅ 已完成（2026-09-11）：api(3000) + worker(poll=2s) + report(4321) 三服务同时启动，跑通完整主链路——POST /analyze 创建任务(sindresorhus) → Worker 认领采集 L0+L1 → 分析写画像 → 12s 内 succeeded(profileId=281ff516) → GET /jobs/:id 轮询 → GET /profiles/:id 查询 → 报告页 SSR 渲染（英文/中文均 200、含 subject name/authenticity/skill/interview sections、无 [missing:] i18n 缺失标记）。
+9. **P1·Chrome 扩展一键填充**（决策 #15，2026-09-11 拍板）：画像验证通过后启动，支持 Workday/Greenhouse/Lever 三大 ATS，填充数据来自可信画像；只做用户主动触发的一键填充，不做全自动后台投递。前置：packages/shared 预留可导出画像数据结构。
 9. **P2·职位聚合（岗位搜集）**（决策 #16，2026-09-11 拍板）：按原计划 P2 启动，先聚焦海外技术岗数据源（Wellfound/YC Jobs/RemoteOK 等），轻量爬虫+公开 API，日更增量；是匹配/投递的前置基础设施。当前只做准备：JobPosting 类型预留 + 1-2 天 Spike 验证。
 
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+
+- 2026-09-11：**端到端联调完成**——api(localhost:3000) + worker(poll=2000ms, GITHUB_TOKEN) + report(127.0.0.1:4321, Astro 7 SSR) 三服务同时启动，跑通"输入用户名→采集→分析→报告页"完整主链路。POST /analyze(sindresorhus) → queued → Worker 认领 running(L0) → 12s 内 succeeded(profileId=281ff516-28f4-4174-a942-710b68f59c76) → GET /jobs/:id 轮询状态 → GET /profiles/:id 查询画像 → 报告页 SSR 渲染验证：英文页 /en/report/:id (200, 13468 bytes, 含 Sindre Sorhus/authenticity/skill/interview sections, 无 [missing:])、中文页 /zh-CN/report/:id (200, 无缺失文案)。M1 全链路验证通过。
 
 - 2026-09-11：**#8 去风险实验·重新批量验证完成**——用修复后 CLI + GITHUB_TOKEN 重跑 5 个账号：torvalds/sindresorhus/tj/bayernjf 4 个成功无崩溃（均 L0+L1 完整、有 skillTags 和 authenticity 信号+evidenceRefs），github 组织账号优雅失败（符合预期）。确认 spike 暴露的 3 个 bug（org 仓库 owner 穿透致 L1 404 / 空仓库 pushedAt=null 崩溃 / 组织账号 NOT_FOUND 未归一）全部修复有效。输出文件在 apps/cli/data/spike-*.json（gitignore 忽略）。
 
