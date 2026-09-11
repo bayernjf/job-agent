@@ -1,4 +1,4 @@
-import { and, desc, eq, asc, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, asc, lt, or, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { analysisJobs, type AnalysisJobSelect } from './schema.js';
 
