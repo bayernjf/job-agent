@@ -8,7 +8,8 @@
 | 场景 | 迁移目录 |
 | --- | --- |
 | Supabase 项目 | `supabase/migrations/`（本项目不适用） |
-| **自建 Postgres / SQLite（本项目）** | **`db/migrations/`** |
+| **SQLite（本地/实验）** | **`db/migrations/sqlite/`** |
+| **Postgres（生产）** | **`db/migrations/postgres/`**（两目录编号/文件名一一对应，check 脚本断言对齐，见 [docs/design-storage-dual-dialect-20260911.md](docs/design-storage-dual-dialect-20260911.md)） |
 
 ## 2. 文件命名：`NNN_verb_snake_case.sql`
 
