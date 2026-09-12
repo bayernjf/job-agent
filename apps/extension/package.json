@@ -1,0 +1,21 @@
+{
+  "name": "@jobagent/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "P1 Chrome extension (MV3): one-click autofill of ATS application forms from a verified JobAgent profile",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@jobagent/shared": "workspace:*",
+    "@types/chrome": "^0.0.287",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.28.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
