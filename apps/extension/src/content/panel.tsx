@@ -6,7 +6,7 @@
  * localStorage（不进 JobAgent 服务端）。
  */
 import { useState, type FormEvent, type JSX } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import type { ExportableProfile } from '@jobagent/shared';
 import type { AtsAdapter, LocalFields } from '../ats/index.js';
 import { toFillValues } from '../ats/index.js';
@@ -19,12 +19,13 @@ export interface PanelHandle {
   toggle(): void;
 }
 
-export function mountPanel(shadow: ShadowRoot, root: Root, ats: AtsAdapter): PanelHandle {
+export function mountPanel(shadow: ShadowRoot, ats: AtsAdapter): PanelHandle {
   const mount = document.createElement('div');
   mount.id = 'jobagent-autofill-panel';
   shadow.appendChild(mount);
+  const root = createRoot(mount);
   root.render(<Panel ats={ats} />);
-  let visible = true;
+  let visible = false;
   return {
     toggle(): void {
       visible = !visible;
