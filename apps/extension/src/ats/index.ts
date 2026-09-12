@@ -1,0 +1,155 @@
+/**
+ * ATS 适配器层：识别当前页面属于哪个招聘系统，把可信画像 + 本地补填
+ * 映射为表单字段值并写入页面。
+ *
+ * 差异化（决策 #15）：填充数据来自 GitHub 验证过的画像（ExportableProfile），
+ * 区别于"更快投出你编的简历"的普通填充工具；skills 保留 evidenceRefs 可回溯。
+ *
+ * MVP 范围：Greenhouse / Lever / Workday 三大 ATS，仅用户主动触发（点击面板"填充"）。
+ */
+
+import type { ExportableProfile } from '@jobagent/shared';
+import { greenhouseAdapter } from './greenhouse.js';
+import { leverAdapter } from './lever.js';
+import { workdayAdapter } from './workday.js';
+
+/** 用户在面板里本地补填的信息（画像没有的字段，仅存本机 localStorage） */
+export interface LocalFields {
+  email?: string;
+  phone?: string;
+  location?: string;
+  linkedinUrl?: string;
+  /** 教育经历：学校 / 学位 / 起止 */
+  education?: Array<{ school: string; degree?: string; start?: string; end?: string }>;
+  /** 工作经历：公司 / 职位 / 起止 */
+  experience?: Array<{ company: string; title?: string; start?: string; end?: string }>;
+}
+
+/** 语义化表单值（各 ATS 的 fill 再映射到具体 DOM） */
+export interface FillValue {
+  key:
+    | 'full_name'
+    | 'email'
+    | 'phone'
+    | 'location'
+    | 'headline'
+    | 'summary'
+    | 'github_url'
+    | 'linkedin_url'
+    | 'skills'
+    | 'education'
+    | 'experience';
+  value: string;
+}
+
+export interface AtsAdapter {
+  id: 'greenhouse' | 'lever' | 'workday';
+  name: string;
+  /** 当前页面是否为该 ATS 的应用表单页 */
+  detect(doc: Document): boolean;
+  /** 画像 + 本地补填 → 语义化表单值（纯函数，便于单测） */
+  mapFields(profile: ExportableProfile, local: LocalFields): FillValue[];
+  /** 把语义化值写入页面表单元素；返回成功写入的字段数 */
+  fill(doc: Document, values: FillValue[]): number;
+}
+
+/** 画像 + 本地补填 → 通用语义值（三适配器共享，差异化逻辑集中在此） */
+export function toFillValues(profile: ExportableProfile, local: LocalFields): FillValue[] {
+  const values: FillValue[] = [];
+  const fullName = profile.subject.displayName ?? profile.subject.login;
+  values.push({ key: 'full_name', value: fullName });
+  values.push({ key: 'github_url', value: profile.subject.profileUrl });
+  values.push({ key: 'headline', value: profile.headline });
+  values.push({
+    key: 'summary',
+    value: `${profile.headline}\n\n技能（GitHub 验证，可回溯证据）：${profile.skills
+      .map((s) => `${s.name} (${s.confidence})`)
+      .join('、')}`,
+  });
+  values.push({ key: 'skills', value: profile.skills.map((s) => s.name).join(', ') });
+  if (local.email) values.push({ key: 'email', value: local.email });
+  if (local.phone) values.push({ key: 'phone', value: local.phone });
+  if (local.location) values.push({ key: 'location', value: local.location });
+  if (local.linkedinUrl) values.push({ key: 'linkedin_url', value: local.linkedinUrl });
+  if (local.education?.length) {
+    values.push({
+      key: 'education',
+      value: local.education
+        .map((e) => [e.school, e.degree, e.start && e.end ? `${e.start}–${e.end}` : ''].filter(Boolean).join(', '))
+        .join('\n'),
+    });
+  }
+  if (local.experience?.length) {
+    values.push({
+      key: 'experience',
+      value: local.experience
+        .map((e) => [e.company, e.title, e.start && e.end ? `${e.start}–${e.end}` : ''].filter(Boolean).join(', '))
+        .join('\n'),
+    });
+  }
+  return values;
+}
+
+const ADAPTERS: readonly AtsAdapter[] = [greenhouseAdapter, leverAdapter, workdayAdapter];
+
+export function detectAts(doc: Document): AtsAdapter | null {
+  return ADAPTERS.find((a) => a.detect(doc)) ?? null;
+}
+
+export function listAdapters(): readonly AtsAdapter[] {
+  return ADAPTERS;
+}
+
+/** 收集当前文档及其同源 iframe 内的 document（Greenhouse job-boards 等 SPA 表单在 iframe 中） */
+function allDocuments(doc: Document): Document[] {
+  const docs: Document[] = [doc];
+  for (const frame of Array.from(doc.querySelectorAll('iframe'))) {
+    try {
+      const fd = frame.contentDocument;
+      if (fd && !docs.includes(fd)) docs.push(fd);
+    } catch {
+      // 跨域 iframe 无法访问，跳过
+    }
+  }
+  return docs;
+}
+
+/** 递归收集 root（Document/ShadowRoot）内的可填字段，含嵌套 shadow DOM（Workday 全组件化表单） */
+function collectFields(root: Document | ShadowRoot): Array<HTMLInputElement | HTMLTextAreaElement> {
+  const fields = Array.from(
+    root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[type="text"], input[type="email"], input:not([type]), textarea'),
+  );
+  for (const el of Array.from(root.querySelectorAll('*'))) {
+    if (el.shadowRoot) fields.push(...collectFields(el.shadowRoot));
+  }
+  return fields;
+}
+
+/** 归一化：小写 + 下划线/连字符/空格统一为空格（匹配 "first_name" ↔ "First name" 等变体） */
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[_\-\s]+/g, ' ').trim();
+}
+
+/** 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder 关键字匹配（含 iframe 与 shadow DOM） */
+export function findFields(doc: Document, keywords: string[]): HTMLInputElement[] {
+  const hit = new Set<HTMLInputElement | HTMLTextAreaElement>();
+  for (const d of allDocuments(doc)) {
+    for (const el of collectFields(d)) {
+      const hay = [
+        norm(el.name),
+        norm(el.getAttribute('id') ?? ''),
+        norm(el.getAttribute('aria-label') ?? ''),
+        norm(el.placeholder),
+      ].join(' ');
+      if (keywords.some((k) => hay.includes(norm(k)))) {
+        hit.add(el);
+      }
+    }
+  }
+  return [...hit] as HTMLInputElement[];
+}
+
+/** 按语义键取单个值（fill 用） */
+export function valueFor(values: FillValue[], key: FillValue['key']): string | undefined {
+  return values.find((v) => v.key === key)?.value;
+}

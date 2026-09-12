@@ -3,8 +3,9 @@
  * 供决策 #8 的 20–50 账号去风险实验：批量导出 JSONL。
  *
  * 用法：
- *   jobagent analyze <user> [--out <file>]      # 单账号 → JSON（stdout 或文件）
+ *   jobagent analyze <user> [--out <file>] [--format json|markdown|html]   # 单账号 → 画像
  *   jobagent batch <file> [--out <file>]        # 每行一个用户名 → JSONL
+ *   jobagent waitlist [--status <s>] [--limit <n>] [--count]  # 只读查看落地页留资（MVP 无认证、不暴露 admin HTTP）
  *
  * 凭证：环境变量 GITHUB_TOKEN（本地 PAT，见 .env.example；绝不下发前端/不入 Git）。
  */
@@ -15,6 +16,8 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { analyze, type AnalyzerInput } from '@jobagent/analyzer-core';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
+import { createStorage, WAITLIST_STATUSES } from '@jobagent/storage';
+import type { StorageContext, WaitlistStatus } from '@jobagent/storage';
 import { toHtml, toMarkdown } from './report-format.js';
 
 export interface CliDeps {
@@ -22,6 +25,8 @@ export interface CliDeps {
   token?: string;
   /** 采集器注入点（测试用 fake；生产默认 new GitHubSource） */
   source?: { collect(login: string): Promise<GitHubCollectedData> };
+  /** 持久化上下文注入点（waitlist 子命令用；测试注入临时库，生产默认 createStorage()） */
+  storage?: StorageContext;
   logger?: Pick<Console, 'error' | 'warn' | 'info' | 'log'>;
   /** 注入"现在"（测试确定性）；默认 new Date().toISOString() */
   now?: () => string;
@@ -44,6 +49,14 @@ function makeSource(deps: CliDeps): { collect(login: string): Promise<GitHubColl
     );
   }
   return new GitHubSource({ token, log: deps.logger ?? console });
+}
+
+/** waitlist 子命令的持久化上下文（测试注入；生产默认 SQLite data/job-agent.db） */
+async function makeStorage(deps: CliDeps): Promise<StorageContext> {
+  if (deps.storage) return deps.storage;
+  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
+  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
+  return createStorage({ sqlitePath }); // 非只读 autoMigrate=true
 }
 
 class CliError extends Error {
@@ -164,8 +177,57 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     return failed > 0 ? 1 : 0;
   }
 
+  if (command === 'waitlist') {
+    const { values } = parseArgs({
+      args: rest,
+      options: {
+        status: { type: 'string' },
+        limit: { type: 'string' },
+        count: { type: 'boolean' },
+      },
+    });
+    if (values.status !== undefined && !WAITLIST_STATUSES.includes(values.status as WaitlistStatus)) {
+      logger.error(
+        `unknown waitlist status '${values.status}' (expected one of: ${WAITLIST_STATUSES.join(', ')})`,
+      );
+      return 2;
+    }
+    let limit: number | undefined;
+    if (values.limit !== undefined) {
+      limit = Number(values.limit);
+      if (!Number.isInteger(limit) || limit < 1) {
+        logger.error('--limit must be a positive integer');
+        return 2;
+      }
+    }
+    try {
+      const storage = await makeStorage(deps);
+      if (values.count || values.status === undefined) {
+        // 默认/--count：按状态计数
+        const counts = await storage.waitlist.countByStatus();
+        const total = WAITLIST_STATUSES.reduce((sum, s) => sum + (counts[s] ?? 0), 0);
+        const rows = WAITLIST_STATUSES.map((s) => `${s.padEnd(10)} ${counts[s] ?? 0}`);
+        stdout.write(`${rows.join('\n')}\n${'total'.padEnd(10)} ${total}\n`);
+      } else {
+        const rows = await storage.waitlist.listByStatus(values.status as WaitlistStatus, limit);
+        if (rows.length === 0) {
+          stdout.write(`(no ${values.status} entries)\n`);
+        } else {
+          const lines = rows.map(
+            (r) => `${r.email}\t${r.status}\t${r.githubUsername ?? ''}\t${r.createdAt}`,
+          );
+          stdout.write(`${lines.join('\n')}\n`);
+        }
+      }
+      return 0;
+    } catch (err) {
+      logger.error(`waitlist failed: ${(err as Error).message}`);
+      return 1;
+    }
+  }
+
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>]',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count]',
   );
   return 2;
 }
