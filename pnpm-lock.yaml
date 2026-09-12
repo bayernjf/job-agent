@@ -69,6 +69,9 @@ importers:
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@jobagent/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
 
   apps/report:
     dependencies:
