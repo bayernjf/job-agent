@@ -4,7 +4,7 @@
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
 - 内容类型：请求/响应均为 `application/json`（健康检查除外）
 - CORS：MVP 阶段 `*` 开放，生产环境收紧为落地页域名
-- 最后更新：2026-09-11
+- 最后更新：2026-09-12
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`。
 
@@ -191,6 +191,36 @@
 - `collaboration`（prSummary、externalMergedContributions）
 - `authenticity`（status、confidence、signals[]）
 - `interviewQuestions[]`、`caveats[]`
+
+#### 不存在（404）
+
+```json
+{ "error": "profile not found" }
+```
+
+---
+
+## 3.1 查询可导出画像（P1 扩展消费）
+
+### `GET /profiles/:id/exportable`
+
+返回服务端投影后的**可导出画像**（`ExportableProfile`），供 Chrome 扩展等外部消费方直接使用，无需解包存储行。
+
+- 由服务端对 `snapshot` 调用 `toExportableProfile` 投影（`packages/shared`），缺 `snapshot` 返回 404。
+- 字段契约：`schemaVersion`（当前 `0.1`）、`subject`（displayName/login/profileUrl）、`headline`、`authenticity`（status/confidence）、`skills[]`（name/confidence/evidenceRefs）、`summary` 等，以 `packages/shared` 的 `ExportableProfileSchema` 为准。
+
+#### 响应（200，节选）
+
+```json
+{
+  "schemaVersion": "0.1",
+  "subject": { "platform": "github", "login": "sindresorhus", "displayName": "Sindre Sorhus", "profileUrl": "https://github.com/sindresorhus" },
+  "headline": "Sindre Sorhus — ...",
+  "authenticity": { "status": "likely_authentic", "confidence": 0.82 },
+  "skills": [ { "name": "TypeScript", "confidence": 0.9, "evidenceRefs": ["..."] } ],
+  "summary": "..."
+}
+```
 
 #### 不存在（404）
 

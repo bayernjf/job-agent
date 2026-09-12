@@ -21,6 +21,7 @@ JobAgent 当前状态，截至 2026-09-12。
 - [docs/PRD.md](docs/PRD.md) — 产品范围、F1–F9、AbilityProfile/EvidenceItem 契约、指标、风险 ★
 - [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) — 技术栈选型、运行架构、目录规划、M1 排期与 Spike ★
 - [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) — AI 求职赛道市场调研：市场格局、功能全景、代表性产品画像、信任风险与 P0/P1/P2 跟进建议（现行）
+- [apps/extension/README.md](apps/extension/README.md) — P1 浏览器扩展试用指南：本地服务、开发者模式加载、Greenhouse/Lever 一键填充步骤与已知限制（现行）
 - [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) — #1–#14；#1–#8 已拍板（#4 当日修订为海内外同步），#9–#14 延后 ★
 - [docs/deferred-items.md](docs/deferred-items.md) — 缓做/低优事项登记表（挂起项 + 触发条件的单一事实源）
 - [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) — i18n 设计：自研 `t()` + 中英 JSON 字典、key 对齐守护、分享链接语言固定、不翻译边界（现行）
@@ -30,7 +31,7 @@ JobAgent 当前状态，截至 2026-09-12。
 
 ## 当前状态
 
-- 阶段：**M1 核心开发 + 工程化补全完成，进入 P1 前稳定期**。M1·W1~W4、W3-6 SQLite/Postgres 双方言、#8 去风险、端到端联调、真实性三轮校准均已完成。**2026-09-12 一次性完成 10 项工程化补全**（见活跃待办 item 10）：Playwright E2E 主链路（顺带修复两个 React island 缺 `client:load` 致浏览器内无交互的真实 bug）、Dockerfile/docker-compose、embedded-postgres 真实 PG 行为测试、pre-commit 卡死修复、画像缓存、CLI markdown/html 导出、docs/API.md、report i18n 测试补齐增强（waitlist CLI 查看未完成，见 item 10 #9）。**真实性第三轮双向校准完成**：标注账号扩到 26 个（22 正 + 4 负），真实账号 0 误报为 suspicious、可疑账号 0 漏报为 likely_authentic，analyzer-core 32 测试。全仓 typecheck/test/build 三件套全绿。**下一步：P1·Chrome 扩展一键填充（决策 #15）**。
+- 阶段：**M1 核心开发 + 工程化补全完成，P1·Chrome 扩展真实环境冒烟通过（Greenhouse + Lever），进入扩展稳定期**。M1·W1~W4、W3-6 SQLite/Postgres 双方言、#8 去风险、端到端联调、真实性三轮校准均已完成。**2026-09-12 一次性完成 10 项工程化补全**（见活跃待办 item 11）：Playwright E2E 主链路（顺带修复两个 React island 缺 `client:load` 致浏览器内无交互的真实 bug）、Dockerfile/docker-compose、embedded-postgres 真实 PG 行为测试、pre-commit 卡死修复、画像缓存、CLI markdown/html 导出、docs/API.md、report i18n 测试补齐增强、waitlist CLI 只读子命令（`4474978`）。**真实性第三轮双向校准完成**：标注账号扩到 26 个（22 正 + 4 负），真实账号 0 误报为 suspicious、可疑账号 0 漏报为 likely_authentic，analyzer-core 32 测试。**P1·Chrome 扩展第 3 步真实环境冒烟完成（2026-09-12）**：真实 Greenhouse 岗位页跑通「按钮→面板→画像→一键填充」四环，first_name 真实写入，修复 4 个真实问题；同日 **Lever 真实岗位页零改动跑通（name+github 写入）**；**Workday 实测 4 家租户受限（外链官网/反爬/不直渲染），已加 shadow DOM 定位并登记限制**。全仓 typecheck/test/build 三件套全绿。**下一步：真实用户装扩展试用（CRX/unpacked 先行已建议）；summary→question_* 映射**。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
 - 待办：见上方「活跃待办」（决策 #1–#8 已拍板；迁移 → github-source/analyzer-core/cli → 去风险实验 spike+修复 → 重新批量验证 → 系统层）。
@@ -60,10 +61,15 @@ JobAgent 当前状态，截至 2026-09-12。
    - ~~W4-6：接落地页 demo——独立工程 `../job-agent-landing` 的 #demo 改造为环境变量驱动：构建时配置 PUBLIC_API_BASE/PUBLIC_REPORT_BASE 即走真实流程（校验→POST /analyze→2s 轮询→跳报告页 {en|zh-CN}/report/:id），未配置则回退原 localStorage waitlist，保证已上线站点行为不变；落地页独立仓库 commit `ba90d25`（dev 分支，未 push）~~ ✅ 已完成（2026-09-11）
 
 8. ~~**端到端联调**~~ ✅ 已完成（2026-09-11）：api(3000) + worker(poll=2s) + report(4321) 三服务同时启动，跑通完整主链路——POST /analyze 创建任务(sindresorhus) → Worker 认领采集 L0+L1 → 分析写画像 → 12s 内 succeeded(profileId=281ff516) → GET /jobs/:id 轮询 → GET /profiles/:id 查询 → 报告页 SSR 渲染（英文/中文均 200、含 subject name/authenticity/skill/interview sections、无 [missing:] i18n 缺失标记）。
-9. **P1·Chrome 扩展一键填充**（决策 #15，2026-09-11 拍板）：画像验证通过后启动，支持 Workday/Greenhouse/Lever 三大 ATS，填充数据来自可信画像；只做用户主动触发的一键填充，不做全自动后台投递。前置：packages/shared 预留可导出画像数据结构。
-9. **P2·职位聚合（岗位搜集）**（决策 #16，2026-09-11 拍板）：按原计划 P2 启动，先聚焦海外技术岗数据源（Wellfound/YC Jobs/RemoteOK 等），轻量爬虫+公开 API，日更增量；是匹配/投递的前置基础设施。当前只做准备：JobPosting 类型预留 + 1-2 天 Spike 验证。
+9. **P1·Chrome 扩展一键填充**（决策 #15，2026-09-11 拍板）：支持 Workday/Greenhouse/Lever 三大 ATS，填充数据来自可信画像；只做用户主动触发的一键填充，不做全自动后台投递。前置：packages/shared 预留可导出画像数据结构（已落地）。
+   - **第 1–2 步已完成**：`apps/extension` 骨架（MV3 + content script + Shadow DOM 面板 + 三 ATS 适配器 + esbuild + 14 测试，commit `975e367`）；后端 `GET /profiles/:id/exportable` 投影端点（`ed69003`）。
+   - **第 3 步真实环境冒烟 ✅（2026-09-12，4 个 commit `ed69003`/`d959c83`/`54b513e`/`3e74f40`）**：Playwright + 加载 unpacked 扩展，真实 Greenhouse job-boards 岗位页（Airtable）跑通「悬浮按钮→面板→输入用户名拉取可信画像→一键填充表单」四环，真实画像 bayernjf（mixed_signals 64%/14 技能），**first_name 实际写入 "bay"**。冒烟揪出并修复 4 个真实问题：①`/profiles/:id` 返回存储行包装 → 新增 `/exportable`；②共用 React root 致面板顶掉按钮 → 双 root；③greenhouse SPA hydration 周期清理注入节点 → interval 保活；④新表单字段仅 id 无 name（`#application-form` 内 `#first_name`…）→ findFields 加 id 匹配 + 跨 iframe + full_name 拆分。
+   - **第 3 步追加：Lever 真实环境冒烟 ✅（2026-09-12）**：真实 Lever 岗位页（Alluxio Software Engineer - Distributed Systems）点 APPLY 后 `/apply` 表单 `form.application-form` 字段（name/email/phone/location/urls[LinkedIn]/urls[Github]…），**适配器零改动跑通，真实写入 2 字段**：name="bay"、github="https://github.com/bayernjf"（email 依赖本地补填为空属预期）。
+   - **Workday 真实环境冒烟：平台侧受限，已登记限制**（2026-09-12）：实测 4 家真实租户（NVIDIA/GM/Walmart/FMC），Workday 求职端岗位详情页普遍**外链官网或只渲染导航壳**（NVIDIA 302 → nvidia.com/careers；GM 维护页；Walmart/FMC 仅渲染 header 且 cxs API 被反爬 403），**无法在真实页面获得可填表单**。本轮已给 findFields 增加 **shadow DOM 递归定位**（Workday 全组件化）与**关键词归一化**（`first_name`↔`First name` 空格变体），workday 适配器拆 first/last 防误匹配；待拿到直渲染表单的真实 Workday 租户页再验证端到端。
+   - **下一步（P1 扩展）**：真实用户装扩展试用（本地 api+worker 已可跑）；分发策略已建议 **CRX/unpacked 手动加载先行**（用户"好的"默认采纳，正式图标留 CWS 上架前）；summary 到 Greenhouse question_* 自定义字段映射（当前 cover_letter 为 file input、summary 字段不命中）。
+10. **P2·职位聚合（岗位搜集）**（决策 #16，2026-09-11 拍板）：按原计划 P2 启动，先聚焦海外技术岗数据源（Wellfound/YC Jobs/RemoteOK 等），轻量爬虫+公开 API，日更增量；是匹配/投递的前置基础设施。当前只做准备：JobPosting 类型预留 + 1-2 天 Spike 验证。
 
-10. ~~**工程化补全 10 项（2026-09-12 一口气完成，改动未 commit）**~~ ✅ 已完成（2026-09-12）：
+11. ~~**工程化补全 10 项（2026-09-12 完成，已按原子规则提交）**~~ ✅ 已完成（2026-09-12）：
    - ~~#1 Playwright E2E~~ ✅：根目录 @playwright/test + chromium，`e2e/` globalSetup 预置临时 SQLite fixture，home-flow(7)+report-render(3) 共 10 用例全绿（约 44s）；**修复真实产品 bug**：AnalyzeForm/ShareButton 两个 React island 在 .astro 缺 `client:load`，浏览器里只输出静态 HTML、表单按钮永久 disabled，已补；并写 waitForHydrated（探测 React 19 容器 fiber key）解决 hydration 竞态。
    - ~~#2 Docker 化~~ ✅（**已编写、未实跑验证**，本机无 docker）：多阶段 Dockerfile（final targets api/worker/report）+ docker-compose.yml（可选 with-pg profile 起 Postgres）+ .dockerignore；待有 Docker 环境验证 build（better-sqlite3 原生模块、Astro standalone 入口、workspace 拷贝）。
    - ~~#3 真实 Postgres 行为测试~~ ✅：embedded-postgres 测试内自管生命周期（Windows 必带 `--locale=C`/`--encoding=UTF8`），`pgIt()` 在无 DATABASE_TEST_URL 时 skip；顺带修复 splitStatements 被 `--` 注释/字符串内分号截断的 bug（重写为字符级状态机）；storage 54 测试（含 4 真实 PG）。
@@ -71,7 +77,7 @@ JobAgent 当前状态，截至 2026-09-12。
    - ~~#6 画像缓存~~ ✅：POST /analyze 在 job 去重前先查未过期画像快照（PROFILE_CACHE_TTL_MS 默认 24h），命中返回 cached:true；api 15 测试。
    - ~~#7 CLI 报告导出~~ ✅：纯函数 report-format.ts（toMarkdown/toHtml，含 XSS 转义），CLI analyze 加 `--format json|markdown|html`；cli 12 测试。
    - ~~#8 API 文档~~ ✅：新增 docs/API.md（接口、请求/响应、缓存语义、错误码）。
-   - ~~#9 waitlist 查看~~ ❌ 未完成：方案已定（MVP 无认证、不暴露 admin HTTP，改在 CLI 加 `waitlist` 只读子命令 --status/--limit/--count），子命令尚未实现；本次仅清掉了误写的 usage 文案与未使用 import。
+   - ~~#9 waitlist 查看~~ ✅：CLI 增加只读 `waitlist` 子命令（--status/--limit/--count，commit `4474978`）。
    - ~~#10 i18n 测试增强~~ ✅：apps/report 原有 i18n.test.ts 却缺 test 脚本/vitest 配置（从未运行），补齐并增强到 22 测试、79 key 中英对齐守护。
 
 
@@ -79,6 +85,7 @@ JobAgent 当前状态，截至 2026-09-12。
 
 ## 最近变更
 
+- 2026-09-12：**P1·Chrome 扩展第 3 步真实环境冒烟完成（4 个提交，未 push）**——Playwright 加载 unpacked 扩展（`apps/extension/dist`）访问真实 Greenhouse job-boards 岗位页（Airtable "Software Engineer, Data"），跑通「悬浮按钮注入→面板打开→输入 bayernjf 拉取可信画像（mixed_signals 64%/14 技能）→一键填充真实表单（first_name 写入 "bay"）」四环。冒烟揪出并修复 4 个真实问题：①api `GET /profiles/:id` 返回存储行包装、扩展 `parseExportableProfile` 直接失败 → 新增 `GET /profiles/:id/exportable` 服务端投影端点（+2 测试，`ed69003`）；②共用 React root 致面板渲染顶掉悬浮按钮 → 按钮/面板拆双 root（`54b513e`）；③greenhouse job-boards SPA hydration 后周期清理 documentElement 注入节点（MutationObserver 探针实测 fired=2/probe 被删）→ interval 保活（检查 host+按钮双重存在，缺失即重建）（`54b513e`）；④新版表单字段只有 id 无 name（`#application-form` 内 `#first_name`/`#email`…，`hasForm:false` 因容器 id 是 `application-form` 而非 `application_form`）→ `findFields` 增加 id 匹配 + 跨同源 iframe 查找 + full_name 拆分 first/last + country 字段映射（`d959c83`/`3e74f40`）。临时冒烟脚本 `e2e/smoke-extension.mjs` 已删。全仓 typecheck/test（149 全绿）/build/check-migrations 通过；dev 分支 ahead 6 未 push。**踩坑记录**：Playwright 直连 greenhouse 报 ERR_SSL_PROTOCOL_ERROR 需显式代理 127.0.0.1:7897；job-boards 页面 React hydration #418/#423 警告为站点自身噪音；greenhouse 新表单点 Apply 才渲染（recaptcha 挂载后出现）。
 - 2026-09-12：**工程化补全 10 项 + 真实性第三轮双向校准（本批改动均未 commit）**。
   - **真实性第三轮校准**：标注账号从 15 扩到 26（新增 11 国际知名 OSS 正样本 + 第一批 11 正样本回归 + 4 负样本）。校准中先发现新 risk 阈值误伤 10/11 名人（"项目高 star + 本人采样 commit 少"本是高声望维护者特征），两步修正：①把 star_to_commit_ratio risk 纳入"外部贡献抵消"；②叠加账号成熟度豁免（活跃 ≥24 月 / merged PR ≥10 / 行为总量 ≥150 时极端比例只判 warn），并新增"短窗口薄证据降级"（活跃 <4 月且行为 <60 且外部 merged <3 → mixed_signals、置信度上限 0.6）。最终：22 正样本 0 误报为 suspicious（18 likely_authentic；wycats/sindresorhus/bayernjf/kentcdodds 4 个组织核心/高 star 自建库型保守落 mixed_signals 灰区），4 负样本 0 漏报为 likely_authentic（MSNightmare suspicious、GodzillaYellowQuestan insufficient、holilayet/ByteBunny777 mixed）。analyzer-core 28→32 测试。
   - **Playwright E2E**：10 用例覆盖首页双语/非法校验/分析轮询跳转/报告全区块渲染/未知 id 重定向；修复 AnalyzeForm、ShareButton 缺 `client:load` 的真实交互 bug 与 hydration 竞态（waitForHydrated 探测 React 19 容器 fiber key）。
@@ -134,10 +141,12 @@ JobAgent 当前状态，截至 2026-09-12。
 - 启动前决策 #1–#8 已于 2026-09-10 拍板；#9–#14 保持延后（见待拍板决策清单），不得把"助手建议"当作"已决策"实现。
 - **Docker 产物未实跑验证**：本机无 docker，Dockerfile/docker-compose 仅编写完成，需在有 Docker 的环境验证 build（better-sqlite3 原生编译、Astro standalone 入口 apps/report/dist/server/entry.mjs、pnpm workspace 拷贝路径）；生产部署目标（服务器/云平台）未定，compose 暂按本地/staging 写。
 - **真实性算法已知边界**：wycats/sindresorhus/bayernjf/kentcdodds 这类"组织核心维护者/高 star 自建库、个人外部 PR 少"的账号会保守落 mixed_signals（而非 suspicious），要进一步降到 likely_authentic 需 L2 组织成员关系数据（MVP 不做）；买粉丝 / followers 增长曲线检测留 L2/P2。CI workflow 尚未补 report typecheck、Playwright E2E、Docker build 步骤。
+- **P1 扩展开放项**：分发策略已建议 **CRX/unpacked 手动加载先行**（用户"好的"采纳，正式图标留 CWS 上架前，当前为占位蓝底 L 形）；**Workday 端到端待验证**——实测 4 家真实租户（NVIDIA 302 官网、GM 维护页、Walmart/FMC 只渲染导航壳且 cxs API 反爬 403）无法取得可填表单，适配器已具备 shadow DOM 定位 + first/last 拆分，待找到直渲染表单的真实 Workday 租户页再端到端验证（触发条件：某 Workday 客户岗位页直接渲染 `data-automation-id` 表单且 API 可访问）；Greenhouse 表单的 summary 需映射到 question_* 自定义字段（当前 cover_letter 为 file input 不命中，未填）；填充字段命中依赖用户本地补填（email/phone/linkedin/location，仅存本机 localStorage）。
 - GitHub API 限额为 2026-09-10 官方文档核实值，开工前需复核非企业 GitHub App 精确额度（来源见技术选型文档）。
 - 托管价格、LLM 厂商/单价待当期 spike；本机访问 GitHub 直连不稳定（全局代理 127.0.0.1:7897 常未开启，需临时直连重试，勿改全局配置）。
 
 ## Git 状态
 
 - 当前工作分支：`dev`（track `origin/dev`）；分支策略：日常改动直接在 `dev` 提交，`main` 仍需 PR（细节见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)）。
-- **2026-09-12 工程化补全批次（#1~#10 + 第三轮校准）全部改动尚未 commit**：17 个 modified + 新增 `e2e/`、`playwright.config.ts`、`Dockerfile`、`docker-compose.yml`、`.dockerignore`、`docs/API.md`、`apps/cli/src/report-format.{ts,test.ts}`、`apps/report/vitest.config.ts`。按约定不擅自 commit；需用户明确要求后按原子提交拆分（英文 Conventional Commit、无 AI co-author）。
+- **本地领先 `origin/dev` 13 个提交未 push**（dev 默认不 push，需用户明确要求）：`3be71a4`（docs 扩展试用指南）、`fed7726`（docs handoff 冒烟）、`c27979c`（feat 扩展 shadow DOM 字段定位）、`9ccb2bf`（docs API）、`56249dd`（docs handoff）、`ed69003`（api exportable 端点）、`d959c83`（扩展读 exportable）、`54b513e`（扩展 overlay 保活）、`3e74f40`（扩展字段 id/iframe 匹配）、`975e367`（扩展骨架）、`4474978`（waitlist CLI），以及本批项目文档同步（见下）。
+- 工作区当前仅项目文档同步更新未提交（提交后清零）。

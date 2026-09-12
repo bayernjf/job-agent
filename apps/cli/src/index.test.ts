@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createStorage } from '@jobagent/storage';
+import type { StorageContext } from '@jobagent/storage';
 import type { GitHubCollectedData } from '@jobagent/github-source';
 import { run, type CliDeps, type AnalyzeResult } from './index.js';
 
@@ -197,5 +199,102 @@ describe('cli run', () => {
     const code = await run([], c.deps({ collect: async (l) => fakeCollected(l) }));
     expect(code).toBe(2);
     expect(c.stderr).toContain('Usage');
+  });
+});
+
+describe('cli waitlist', () => {
+  async function seeded(): Promise<{ deps: CliDeps; storage: StorageContext; out: string; err: string }> {
+    const c = capture();
+    const storage = await createStorage({ sqlitePath: ':memory:' });
+    await storage.waitlist.insert({
+      id: 'w1',
+      email: 'alice@example.com',
+      name: 'Alice',
+      githubUsername: 'alice-dev',
+      source: 'landing_page',
+      status: 'pending',
+    });
+    await storage.waitlist.insert({
+      id: 'w2',
+      email: 'bob@example.com',
+      name: 'Bob',
+      githubUsername: 'bob-dev',
+      source: 'landing_page',
+      status: 'pending',
+    });
+    await storage.waitlist.insert({
+      id: 'w3',
+      email: 'carol@example.com',
+      name: 'Carol',
+      githubUsername: 'carol-dev',
+      source: 'landing_page',
+      status: 'contacted',
+    });
+    return {
+      deps: { ...c.deps({ collect: async (l) => fakeCollected(l) }), storage },
+      storage,
+      get out() {
+        return c.stdout;
+      },
+      get err() {
+        return c.stderr;
+      },
+    };
+  }
+
+  it('default shows per-status counts and total', async () => {
+    const s = await seeded();
+    const code = await run(['waitlist'], s.deps);
+    expect(code).toBe(0);
+    expect(s.out).toContain('pending    2');
+    expect(s.out).toContain('contacted  1');
+    expect(s.out).toContain('total      3');
+  });
+
+  it('--count is the same as the default', async () => {
+    const s = await seeded();
+    const code = await run(['waitlist', '--count'], s.deps);
+    expect(code).toBe(0);
+    expect(s.out).toContain('pending    2');
+    expect(s.out).toContain('total      3');
+  });
+
+  it('--status lists matching entries as email/status/username/createdAt', async () => {
+    const s = await seeded();
+    const code = await run(['waitlist', '--status', 'pending'], s.deps);
+    expect(code).toBe(0);
+    const lines = s.out.trim().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('alice@example.com');
+    expect(lines[0]).toContain('alice-dev');
+    expect(lines[1]).toContain('bob@example.com');
+  });
+
+  it('--limit caps the number of rows', async () => {
+    const s = await seeded();
+    const code = await run(['waitlist', '--status', 'pending', '--limit', '1'], s.deps);
+    expect(code).toBe(0);
+    expect(s.out.trim().split('\n')).toHaveLength(1);
+  });
+
+  it('empty status list prints a notice', async () => {
+    const s = await seeded();
+    const code = await run(['waitlist', '--status', 'archived'], s.deps);
+    expect(code).toBe(0);
+    expect(s.out).toContain('(no archived entries)');
+  });
+
+  it('rejects an unknown status with exit 2', async () => {
+    const s = await seeded();
+    const code = await run(['waitlist', '--status', 'spam'], s.deps);
+    expect(code).toBe(2);
+    expect(s.err).toContain('unknown waitlist status');
+  });
+
+  it('rejects a non-positive --limit with exit 2', async () => {
+    const s = await seeded();
+    const code = await run(['waitlist', '--limit', '0'], s.deps);
+    expect(code).toBe(2);
+    expect(s.err).toContain('--limit must be a positive integer');
   });
 });

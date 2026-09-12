@@ -348,6 +348,43 @@ describe('GET /profiles/:id', () => {
   });
 });
 
+describe('GET /profiles/:id/exportable', () => {
+  it('returns the exportable projection for P1 extension consumption', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    const profile = sampleProfile('prof-001', 'profile-user');
+    await repos.profiles.insert({
+      id: 'prof-001',
+      analyzerVersion: profile.analyzerVersion,
+      subjectLogin: profile.subject.login,
+      dataWindowSince: profile.dataWindow.since,
+      dataWindowUntil: profile.dataWindow.until,
+      status: 'complete',
+      snapshot: profile,
+    });
+
+    const res = await app.request('/profiles/prof-001/exportable');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.schemaVersion).toBe('0.1');
+    expect(body.profileId).toBe('prof-001');
+    expect(body.subject.login).toBe('profile-user');
+    expect(body.subject.profileUrl).toBe('https://github.com/profile-user');
+    expect(body.headline).toBe('Test developer');
+    expect(body.skills).toEqual([]);
+    expect(body.authenticity.status).toBe('likely_authentic');
+    expect(body.authenticity.confidence).toBe(0.75);
+  });
+
+  it('returns 404 for non-existent profile', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/profiles/prof-nonexistent/exportable');
+    expect(res.status).toBe(404);
+    const body = await res.json() as any;
+    expect(body.error).toBe('profile not found');
+  });
+});
+
 describe('404 fallback', () => {
   it('returns 404 for unknown routes', async () => {
     const app = await createApp({ repos: await freshRepos() });

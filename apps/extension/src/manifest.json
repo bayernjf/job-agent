@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "JobAgent Autofill",
+  "version": "0.1.0",
+  "description": "One-click autofill of ATS application forms from a GitHub-verified JobAgent profile.",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_title": "JobAgent Autofill"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.greenhouse.io/*",
+        "https://*.lever.co/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*/*careers*",
+        "https://*/*jobs*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.greenhouse.io/*",
+    "https://*.lever.co/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://*/*careers*",
+    "https://*/*jobs*"
+  ]
+}
