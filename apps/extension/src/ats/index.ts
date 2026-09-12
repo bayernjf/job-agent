@@ -100,18 +100,35 @@ export function listAdapters(): readonly AtsAdapter[] {
   return ADAPTERS;
 }
 
+/** 收集当前文档及其同源 iframe 内的 document（Greenhouse job-boards 等 SPA 表单在 iframe 中） */
+function allDocuments(doc: Document): Document[] {
+  const docs: Document[] = [doc];
+  for (const frame of Array.from(doc.querySelectorAll('iframe'))) {
+    try {
+      const fd = frame.contentDocument;
+      if (fd && !docs.includes(fd)) docs.push(fd);
+    } catch {
+      // 跨域 iframe 无法访问，跳过
+    }
+  }
+  return docs;
+}
+
 /** 通用 DOM 定位：按 input/textarea 的 name/aria-label 关键字匹配（骨架级，迭代加固） */
 export function findFields(doc: Document, keywords: string[]): HTMLInputElement[] {
-  const inputs = Array.from(doc.querySelectorAll<HTMLInputElement>('input[type="text"], input[type="email"], input:not([type])'));
-  const textareas = Array.from(doc.querySelectorAll<HTMLTextAreaElement>('textarea'));
-  const all: Array<HTMLInputElement | HTMLTextAreaElement> = [...inputs, ...textareas];
   const hit = new Set<HTMLInputElement | HTMLTextAreaElement>();
-  for (const el of all) {
-    const name = el.name.toLowerCase();
-    const aria = el.getAttribute('aria-label')?.toLowerCase() ?? '';
-    const placeholder = el.placeholder.toLowerCase();
-    if (keywords.some((k) => name.includes(k) || aria.includes(k) || placeholder.includes(k))) {
-      hit.add(el);
+  for (const d of allDocuments(doc)) {
+    const inputs = Array.from(d.querySelectorAll<HTMLInputElement>('input[type="text"], input[type="email"], input:not([type])'));
+    const textareas = Array.from(d.querySelectorAll<HTMLTextAreaElement>('textarea'));
+    const all: Array<HTMLInputElement | HTMLTextAreaElement> = [...inputs, ...textareas];
+    for (const el of all) {
+      const name = el.name.toLowerCase();
+      const id = el.getAttribute('id')?.toLowerCase() ?? '';
+      const aria = el.getAttribute('aria-label')?.toLowerCase() ?? '';
+      const placeholder = el.placeholder.toLowerCase();
+      if (keywords.some((k) => name.includes(k) || id.includes(k) || aria.includes(k) || placeholder.includes(k))) {
+        hit.add(el);
+      }
     }
   }
   return [...hit] as HTMLInputElement[];
