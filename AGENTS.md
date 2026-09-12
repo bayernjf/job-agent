@@ -20,7 +20,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 - 后端：Hono + Zod；分析任务由独立 Worker 消费
 - 数据库：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（**Drizzle 与方言差异只允许出现在 `packages/storage` 内部**，业务只依赖统一 async 仓储接口与 `createStorage()` 工厂、按 `DB_DRIVER` 切换，见下；MVP 不引入 Redis）
 - GitHub 采集：官方 Octokit，GraphQL 批量优先、REST 补；生产用 GitHub App
-- 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`
+- 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`；浏览器扩展 `apps/extension`（P1：三大 ATS 一键填充）
 - 测试：Vitest（就近单元）+ Playwright（E2E）
 - 分析深度：MVP 仅 **L0 元数据 + L1 行为时序**，**不 clone 仓库**（L2/L3/L4 见 docs/deferred-items）
 
@@ -40,7 +40,8 @@ job-agent/
 │  ├─ api/            # Hono：触发分析、查询任务/画像、只读分享接口
 │  ├─ worker/         # 消费 analysis_jobs，调用 github-source + analyzer-core
 │  ├─ cli/            # 本地批量分析，导出 JSONL/报告（供决策 #8 标注实验）
-│  └─ report/         # Astro 报告页 + React islands
+│  ├─ report/         # Astro 报告页 + React islands
+│  └─ extension/      # P1 浏览器扩展（MV3 + content script + Shadow DOM 面板 + 三 ATS 适配器 + esbuild；试用指南见其 README）
 ├─ db/migrations/sqlite/   # SQLite 编号迁移（NNN_verb_snake_case.sql）
 ├─ db/migrations/postgres/ # Postgres 编号迁移（与 sqlite 编号/文件名一一对应），规范见 MIGRATION_CONVENTION.md
 ├─ tools/             # check-migrations.sh 等只读工程脚本
@@ -48,7 +49,7 @@ job-agent/
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
 ```
 
-> 结构已于 2026-09-10 脚手架落地，M1·W1 完成 `packages/shared`（Zod 契约）与 `packages/storage`（持久化层 + `db/migrations/001`）；`github-source`/`analyzer-core`/`cli` 等为占位包，后续里程碑按各包注释填充。
+> 结构已按技术选型文档第 7 章落地；M1 完成 `packages/shared`（Zod 契约）、`packages/storage`（持久化层 + 迁移）、`github-source`/`analyzer-core`/`cli` 与三应用；P1（2026-09-11 拍板）新增 `apps/extension`（真实环境冒烟：Greenhouse/Lever 通过，Workday 平台受限见 handoff）。
 
 ## 常用命令
 
