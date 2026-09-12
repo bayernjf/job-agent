@@ -21,6 +21,7 @@
 | 写用户可见文案 / 加双语 / 处理语言与分享链接 | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
 | 定颜色、间距、圆角、字号 / 改主题 | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
 | 让存储层同时支持 SQLite 与 Postgres / 新增数据库方言 | [design-storage-dual-dialect-20260911.md](design-storage-dual-dialect-20260911.md) ★ |
+| 装 / 试用浏览器扩展，一键填充 ATS 表单 | [../apps/extension/README.md](../apps/extension/README.md) |
 | 快速了解项目门面与技术栈 | [../README.md](../README.md) |
 
 ## 文档分层约定（重要）
