@@ -1,0 +1,45 @@
+/**
+ * Lever ATS 适配器。
+ * 表单特征：#job-application-form 或 .application-form；字段 name 为 name/email/phone/github/urls 等。
+ */
+import type { ExportableProfile } from '@jobagent/shared';
+import type { AtsAdapter, FillValue, LocalFields } from './index.js';
+import { findFields, toFillValues, valueFor } from './index.js';
+
+export const leverAdapter: AtsAdapter = {
+  id: 'lever',
+  name: 'Lever',
+
+  detect(doc: Document): boolean {
+    return (
+      !!doc.querySelector('#job-application-form, form.application-form, [data-qa="application-form"]') ||
+      /lever/i.test(doc.documentElement.outerHTML.slice(0, 100_000))
+    );
+  },
+
+  mapFields(profile: ExportableProfile, local: LocalFields): FillValue[] {
+    return toFillValues(profile, local);
+  },
+
+  fill(doc: Document, values: FillValue[]): number {
+    let written = 0;
+    const set = (keywords: string[], value: string | undefined): void => {
+      if (!value) return;
+      const el = findFields(doc, keywords)[0];
+      if (el) {
+        el.value = value;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        written += 1;
+      }
+    };
+    set(['name'], valueFor(values, 'full_name'));
+    set(['email'], valueFor(values, 'email'));
+    set(['phone'], valueFor(values, 'phone'));
+    set(['location'], valueFor(values, 'location'));
+    set(['linkedin'], valueFor(values, 'linkedin_url'));
+    set(['github'], valueFor(values, 'github_url'));
+    set(['how_did_you_hear', 'cover_letter'], valueFor(values, 'summary'));
+    return written;
+  },
+};
