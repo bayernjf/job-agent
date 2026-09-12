@@ -1,10 +1,12 @@
 /**
  * Lever ATS 适配器。
  * 表单特征：#job-application-form 或 .application-form；字段 name 为 name/email/phone/github/urls 等。
+ * 自定义问题字段名形如 questions[<uuid>]（id 为 question_<uuid>），问题文本在其 <label> 中；
+ * summary 命中"动机/自我介绍"类问题才写入。
  */
 import type { ExportableProfile } from '@jobagent/shared';
 import type { AtsAdapter, FillValue, LocalFields } from './index.js';
-import { findFields, toFillValues, valueFor } from './index.js';
+import { findFields, findLabeledQuestion, toFillValues, valueFor } from './index.js';
 
 export const leverAdapter: AtsAdapter = {
   id: 'lever',
@@ -39,7 +41,17 @@ export const leverAdapter: AtsAdapter = {
     set(['location'], valueFor(values, 'location'));
     set(['linkedin'], valueFor(values, 'linkedin_url'));
     set(['github'], valueFor(values, 'github_url'));
-    set(['how_did_you_hear', 'cover_letter'], valueFor(values, 'summary'));
+    // summary：先试 how_did_you_hear/cover_letter 关键词字段，未命中则写入动机/自我介绍类自定义问题
+    const summary = valueFor(values, 'summary');
+    if (summary) {
+      const el = findFields(doc, ['how_did_you_hear', 'cover_letter'])[0] ?? findLabeledQuestion(doc, /questions\[|question_/i);
+      if (el) {
+        el.value = summary;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        written += 1;
+      }
+    }
     return written;
   },
 };
