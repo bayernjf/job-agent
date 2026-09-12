@@ -100,7 +100,7 @@ export class JobAgentApi {
   }
 
   private async getProfile(fetchImpl: typeof fetch, baseUrl: string, profileId: string): Promise<ExportableProfile> {
-    const res = await fetchImpl(`${baseUrl}/profiles/${encodeURIComponent(profileId)}`);
+    const res = await fetchImpl(`${baseUrl}/profiles/${encodeURIComponent(profileId)}/exportable`);
     if (!res.ok) throw apiError(`profile lookup failed (HTTP ${res.status})`, res.status);
     const body = await res.json();
     const parsed = parseExportableProfile(body);
