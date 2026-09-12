@@ -33,10 +33,13 @@ export const greenhouseAdapter: AtsAdapter = {
         written += 1;
       }
     };
-    set(['first_name', 'last_name'], valueFor(values, 'full_name'));
+    // full_name 拆分为 first/last（greenhouse 新版表单字段只有 id：first_name/last_name）
+    const nameParts = (valueFor(values, 'full_name') ?? '').trim().split(/\s+/);
+    set(['first_name'], nameParts[0]);
+    set(['last_name'], nameParts.slice(1).join(' '));
     set(['email'], valueFor(values, 'email'));
     set(['phone'], valueFor(values, 'phone'));
-    set(['location'], valueFor(values, 'location'));
+    set(['country', 'location'], valueFor(values, 'location'));
     set(['linkedin'], valueFor(values, 'linkedin_url'));
     set(['github'], valueFor(values, 'github_url'));
     set(['cover_letter', 'summary'], valueFor(values, 'summary'));
