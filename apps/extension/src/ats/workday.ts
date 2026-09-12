@@ -35,11 +35,14 @@ export const workdayAdapter: AtsAdapter = {
         written += 1;
       }
     };
-    set(['first_name', 'name'], valueFor(values, 'full_name'));
+    // 拆 first/last，避免宽松 'name' 误匹配 Company/Preferred name 等
+    const nameParts = (valueFor(values, 'full_name') ?? '').trim().split(/\s+/);
+    set(['first_name'], nameParts[0]);
+    set(['last_name'], nameParts.slice(1).join(' '));
     set(['email'], valueFor(values, 'email'));
     set(['phone'], valueFor(values, 'phone'));
     set(['location'], valueFor(values, 'location'));
-    // Workday 的 GitHub/LinkedIn 链接字段在 shadow DOM 内，待后续迭代
+    // Workday 的 GitHub/LinkedIn 链接字段在深层组件内，待后续迭代
     void valueFor(values, 'github_url');
     void valueFor(values, 'linkedin_url');
     return written;

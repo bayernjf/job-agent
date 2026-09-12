@@ -114,19 +114,34 @@ function allDocuments(doc: Document): Document[] {
   return docs;
 }
 
-/** 通用 DOM 定位：按 input/textarea 的 name/aria-label 关键字匹配（骨架级，迭代加固） */
+/** 递归收集 root（Document/ShadowRoot）内的可填字段，含嵌套 shadow DOM（Workday 全组件化表单） */
+function collectFields(root: Document | ShadowRoot): Array<HTMLInputElement | HTMLTextAreaElement> {
+  const fields = Array.from(
+    root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[type="text"], input[type="email"], input:not([type]), textarea'),
+  );
+  for (const el of Array.from(root.querySelectorAll('*'))) {
+    if (el.shadowRoot) fields.push(...collectFields(el.shadowRoot));
+  }
+  return fields;
+}
+
+/** 归一化：小写 + 下划线/连字符/空格统一为空格（匹配 "first_name" ↔ "First name" 等变体） */
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[_\-\s]+/g, ' ').trim();
+}
+
+/** 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder 关键字匹配（含 iframe 与 shadow DOM） */
 export function findFields(doc: Document, keywords: string[]): HTMLInputElement[] {
   const hit = new Set<HTMLInputElement | HTMLTextAreaElement>();
   for (const d of allDocuments(doc)) {
-    const inputs = Array.from(d.querySelectorAll<HTMLInputElement>('input[type="text"], input[type="email"], input:not([type])'));
-    const textareas = Array.from(d.querySelectorAll<HTMLTextAreaElement>('textarea'));
-    const all: Array<HTMLInputElement | HTMLTextAreaElement> = [...inputs, ...textareas];
-    for (const el of all) {
-      const name = el.name.toLowerCase();
-      const id = el.getAttribute('id')?.toLowerCase() ?? '';
-      const aria = el.getAttribute('aria-label')?.toLowerCase() ?? '';
-      const placeholder = el.placeholder.toLowerCase();
-      if (keywords.some((k) => name.includes(k) || id.includes(k) || aria.includes(k) || placeholder.includes(k))) {
+    for (const el of collectFields(d)) {
+      const hay = [
+        norm(el.name),
+        norm(el.getAttribute('id') ?? ''),
+        norm(el.getAttribute('aria-label') ?? ''),
+        norm(el.placeholder),
+      ].join(' ');
+      if (keywords.some((k) => hay.includes(norm(k)))) {
         hit.add(el);
       }
     }
