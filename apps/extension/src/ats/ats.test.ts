@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ExportableProfile } from '@jobagent/shared';
-import { detectAts, findFields, toFillValues, valueFor } from './index.js';
+import { detectAts, findFields, listAdapters, toFillValues, valueFor } from './index.js';
 
 function profile(overrides: Partial<ExportableProfile> = {}): ExportableProfile {
   return {
@@ -134,5 +134,86 @@ describe('findFields', () => {
       querySelectorAll: (sel: string) => (sel.startsWith('input') ? [fakeInput('candidate_country')] : []),
     } as unknown as Document;
     expect(findFields(doc, ['github'])).toHaveLength(0);
+  });
+});
+
+describe('greenhouse summary → question_* mapping', () => {
+  const greenhouseAdapter = listAdapters().find((a) => a.id === 'greenhouse')!;
+
+  function fakeQuestionDoc(): { doc: Document; why: HTMLTextAreaElement; salary: HTMLInputElement } {
+    const why = {
+      id: 'question_123',
+      name: 'job_application[answers][123]',
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? 'question_123' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    } as unknown as HTMLTextAreaElement;
+    const salary = {
+      id: 'question_456',
+      name: 'job_application[answers][456]',
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? 'question_456' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    } as unknown as HTMLInputElement;
+    const labels: Record<string, { textContent: string }> = {
+      question_123: { textContent: 'Why do you want to work here? *' },
+      question_456: { textContent: 'What is your salary expectation? *' },
+    };
+    const doc = {
+      querySelectorAll: (sel: string) => {
+        if (sel === 'textarea') return [why];
+        if (sel === 'input[type="text"], input:not([type])') return [salary];
+        if (sel === 'iframe') return [];
+        return [];
+      },
+      querySelector: (sel: string) => {
+        const m = sel.match(/^label\[for="([^"]+)"\]$/);
+        return m && m[1] ? (labels[m[1]] ?? null) : null;
+      },
+    } as unknown as Document;
+    return { doc, why, salary };
+  }
+
+  const fillValues = [
+    { key: 'full_name' as const, value: 'Demo Dev' },
+    { key: 'github_url' as const, value: 'https://github.com/demo-dev' },
+    { key: 'headline' as const, value: 'TypeScript 后端工程师' },
+    { key: 'summary' as const, value: 'TypeScript 后端工程师，开源维护者。' },
+    { key: 'skills' as const, value: 'TypeScript' },
+  ];
+
+  it('writes summary into a motivation-style custom question', () => {
+    const { doc, why, salary } = fakeQuestionDoc();
+    const written = greenhouseAdapter.fill(doc, fillValues);
+    expect(written).toBe(1);
+    expect(why.value).toBe('TypeScript 后端工程师，开源维护者。');
+    expect(salary.value).toBe('');
+  });
+
+  it('keeps written count at zero when no summary-like question exists', () => {
+    const salary = {
+      id: 'question_456',
+      name: 'job_application[answers][456]',
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? 'question_456' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    } as unknown as HTMLInputElement;
+    const doc = {
+      querySelectorAll: (sel: string) => {
+        if (sel === 'textarea') return [];
+        if (sel === 'input[type="text"], input:not([type])') return [salary];
+        return [];
+      },
+      querySelector: (sel: string) => (sel.includes('question_456') ? { textContent: 'What is your salary expectation? *' } : null),
+    } as unknown as Document;
+    const written = greenhouseAdapter.fill(doc, fillValues);
+    expect(written).toBe(0);
+    expect(salary.value).toBe('');
   });
 });
