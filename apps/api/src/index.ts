@@ -26,7 +26,7 @@ import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import type { AbilityProfile } from '@jobagent/shared';
+import { toExportableProfile, type AbilityProfile } from '@jobagent/shared';
 import {
   createStorage,
   type IAnalysisJobsRepository,
@@ -219,6 +219,24 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
     return c.json(formatProfile(profile));
   });
 
+  // GET /profiles/:id/exportable：导出画像（P1 扩展消费，服务端投影单一事实源）
+  app.get('/profiles/:id/exportable', async (c) => {
+    const parsed = ProfileIdParamSchema.safeParse(c.req.param());
+    if (!parsed.success) {
+      return c.json({ error: 'invalid profile id' }, 400);
+    }
+
+    const profile = await repos.profiles.getById(parsed.data.id);
+    if (!profile) {
+      return c.json({ error: 'profile not found' }, 404);
+    }
+    if (!profile.snapshot) {
+      return c.json({ error: 'profile has no snapshot' }, 404);
+    }
+
+    return c.json(toExportableProfile(profile.snapshot));
+  });
+
   // 404 兜底
   app.notFound((c) => {
     return c.json({ error: 'not found', path: c.req.path }, 404);
@@ -243,7 +261,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, GET /jobs/:id, GET /profiles/:id, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /health`);
   });
 }
 
