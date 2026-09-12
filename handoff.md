@@ -21,6 +21,7 @@ JobAgent 当前状态，截至 2026-09-12。
 - [docs/PRD.md](docs/PRD.md) — 产品范围、F1–F9、AbilityProfile/EvidenceItem 契约、指标、风险 ★
 - [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) — 技术栈选型、运行架构、目录规划、M1 排期与 Spike ★
 - [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) — AI 求职赛道市场调研：市场格局、功能全景、代表性产品画像、信任风险与 P0/P1/P2 跟进建议（现行）
+- [apps/extension/README.md](apps/extension/README.md) — P1 浏览器扩展试用指南：本地服务、开发者模式加载、Greenhouse/Lever 一键填充步骤与已知限制（现行）
 - [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) — #1–#14；#1–#8 已拍板（#4 当日修订为海内外同步），#9–#14 延后 ★
 - [docs/deferred-items.md](docs/deferred-items.md) — 缓做/低优事项登记表（挂起项 + 触发条件的单一事实源）
 - [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) — i18n 设计：自研 `t()` + 中英 JSON 字典、key 对齐守护、分享链接语言固定、不翻译边界（现行）
@@ -147,5 +148,5 @@ JobAgent 当前状态，截至 2026-09-12。
 ## Git 状态
 
 - 当前工作分支：`dev`（track `origin/dev`）；分支策略：日常改动直接在 `dev` 提交，`main` 仍需 PR（细节见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)）。
-- **本地领先 `origin/dev` 10 个提交未 push**（dev 默认不 push，需用户明确要求）：`9ccb2bf`（docs API）、`56249dd`（docs handoff）、`ed69003`（api exportable 端点）、`d959c83`（扩展读 exportable）、`54b513e`（扩展 overlay 保活）、`3e74f40`（扩展字段 id/iframe 匹配）、`975e367`（扩展骨架）、`4474978`（waitlist CLI），以及本批扩展改进与文档更新（见下）。
-- 工作区当前仅扩展源码与 handoff.md 更新未提交（待提交后清零）。
+- **本地领先 `origin/dev` 13 个提交未 push**（dev 默认不 push，需用户明确要求）：`3be71a4`（docs 扩展试用指南）、`fed7726`（docs handoff 冒烟）、`c27979c`（feat 扩展 shadow DOM 字段定位）、`9ccb2bf`（docs API）、`56249dd`（docs handoff）、`ed69003`（api exportable 端点）、`d959c83`（扩展读 exportable）、`54b513e`（扩展 overlay 保活）、`3e74f40`（扩展字段 id/iframe 匹配）、`975e367`（扩展骨架）、`4474978`（waitlist CLI），以及本批项目文档同步（见下）。
+- 工作区当前仅项目文档同步更新未提交（提交后清零）。
