@@ -165,10 +165,10 @@ describe('greenhouse summary → question_* mapping', () => {
     };
     const doc = {
       querySelectorAll: (sel: string) => {
-        if (sel === 'textarea') return [why];
-        if (sel === 'input[type="text"], input:not([type])') return [salary];
-        if (sel === 'iframe') return [];
-        return [];
+        const out: unknown[] = [];
+        if (sel.includes('textarea')) out.push(why);
+        if (sel.includes('input')) out.push(salary);
+        return out;
       },
       querySelector: (sel: string) => {
         const m = sel.match(/^label\[for="([^"]+)"\]$/);
@@ -205,15 +205,61 @@ describe('greenhouse summary → question_* mapping', () => {
       dispatchEvent: () => true,
     } as unknown as HTMLInputElement;
     const doc = {
-      querySelectorAll: (sel: string) => {
-        if (sel === 'textarea') return [];
-        if (sel === 'input[type="text"], input:not([type])') return [salary];
-        return [];
-      },
+      querySelectorAll: (sel: string) => (sel.includes('input') ? [salary] : []),
       querySelector: (sel: string) => (sel.includes('question_456') ? { textContent: 'What is your salary expectation? *' } : null),
     } as unknown as Document;
     const written = greenhouseAdapter.fill(doc, fillValues);
     expect(written).toBe(0);
+    expect(salary.value).toBe('');
+  });
+});
+
+describe('lever summary → questions[*] mapping', () => {
+  const leverAdapter = listAdapters().find((a) => a.id === 'lever')!;
+
+  it('writes summary into a motivation-style custom question', () => {
+    const why = {
+      id: 'question_abc',
+      name: 'questions[abc]',
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? 'question_abc' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    } as unknown as HTMLTextAreaElement;
+    const salary = {
+      id: 'question_def',
+      name: 'questions[def]',
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? 'question_def' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    } as unknown as HTMLInputElement;
+    const doc = {
+      querySelectorAll: (sel: string) => {
+        const out: unknown[] = [];
+        if (sel.includes('textarea')) out.push(why);
+        if (sel.includes('input')) out.push(salary);
+        return out;
+      },
+      querySelector: (sel: string) => {
+        const m = sel.match(/^label\[for="([^"]+)"\]$/);
+        if (m?.[1] === 'question_abc') return { textContent: 'Why do you want to work at Acme? *' };
+        if (m?.[1] === 'question_def') return { textContent: 'What is your salary expectation? *' };
+        return null;
+      },
+    } as unknown as Document;
+    const values = [
+      { key: 'full_name' as const, value: 'Demo Dev' },
+      { key: 'github_url' as const, value: 'https://github.com/demo-dev' },
+      { key: 'headline' as const, value: 'TypeScript 后端工程师' },
+      { key: 'summary' as const, value: 'TypeScript 后端工程师，开源维护者。' },
+      { key: 'skills' as const, value: 'TypeScript' },
+    ];
+    const written = leverAdapter.fill(doc, values);
+    expect(written).toBe(1);
+    expect(why.value).toBe('TypeScript 后端工程师，开源维护者。');
     expect(salary.value).toBe('');
   });
 });
