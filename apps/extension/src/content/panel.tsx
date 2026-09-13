@@ -5,12 +5,12 @@
  * 数据边界：email/教育/工作经历不在画像契约中，由用户在面板补填并仅存本机
  * localStorage（不进 JobAgent 服务端）。
  */
-import { useState, type FormEvent, type JSX } from 'react';
+import { useState, useEffect, type FormEvent, type JSX } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { ExportableProfile } from '@jobagent/shared';
 import type { AtsAdapter, LocalFields } from '../ats/index.js';
 import { toFillValues } from '../ats/index.js';
-import { DEFAULT_BASE, JobAgentApi } from '../lib/api.js';
+import { DEFAULT_BASE, JobAgentApi, matchJobs, type JobMatchItem } from '../lib/api.js';
 
 const API_BASE_KEY = 'jobagent.apiBase';
 const LOCAL_FIELDS_KEY = 'jobagent.localFields';
@@ -59,6 +59,9 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filled, setFilled] = useState<number | null>(null);
+  const [matches, setMatches] = useState<JobMatchItem[] | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [matchError, setMatchError] = useState<string | null>(null);
 
   async function handleAnalyze(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -85,6 +88,31 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     const written = ats.fill(document, values);
     setFilled(written);
   }
+
+  // 鐢诲儚鍔犺浇鍚庤嚜鍔ㄥ尮閰嶅矖浣嶏紙绗竴妗ｈ交閲忥細灞曠ず宀椾綅搴?top 鍖归厤锛屼笉鍋氬綋鍓?ATS 宀楃簿纭尮閰嶏級
+  useEffect(() => {
+    if (!profile) {
+      setMatches(null);
+      setMatchError(null);
+      return;
+    }
+    let cancelled = false;
+    setMatchLoading(true);
+    setMatchError(null);
+    matchJobs(apiBase.replace(/\/$/, ''), profile.profileId, { limit: 3 })
+      .then((m) => {
+        if (!cancelled) setMatches(m);
+      })
+      .catch((err) => {
+        if (!cancelled) setMatchError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setMatchLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, apiBase]);
 
   return (
     <div className="ja-panel">
@@ -130,6 +158,35 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
             真实性：{profile.authenticity.status}（{(profile.authenticity.confidence * 100).toFixed(0)}%）
           </div>
           <div className="ja-row">技能：{profile.skills.map((s) => s.name).join('、') || '—'}</div>
+
+          {/* 岗位匹配度（第一档轻量：岗位库 top 匹配，不做当前 ATS 岗精确匹配） */}
+          <div className="ja-match">
+            <div className="ja-match-title">岗位匹配度</div>
+            {matchLoading && <div className="ja-muted">匹配中…</div>}
+            {matchError && <div className="ja-error">匹配失败：{matchError}</div>}
+            {!matchLoading && !matchError && matches && matches.length === 0 && (
+              <div className="ja-muted">暂无匹配岗位（岗位库仍在积累中）</div>
+            )}
+            {!matchLoading && !matchError && matches && matches.length > 0 && (() => {
+              const top = matches[0]!;
+              return (
+                <div className="ja-match-item">
+                  <div className="ja-flex-between">
+                    <a href={top.posting.sourceUrl} target="_blank" rel="noopener noreferrer" className="ja-match-job">
+                      {top.posting.title} @ {top.posting.company}
+                    </a>
+                    <span className={`ja-match-score ja-match-score--${top.score >= 6 ? 'high' : top.score >= 3 ? 'mid' : 'low'}`}>
+                      {top.score}
+                    </span>
+                  </div>
+                  {top.matchedSkills.length > 0 && (
+                    <div className="ja-muted ja-match-skills">命中：{top.matchedSkills.join('、')}</div>
+                  )}
+                  <div className="ja-muted ja-match-count">画像技能 {profile.skills.length} 项，命中 {top.matchedSkills.length} 项</div>
+                </div>
+              );
+            })()}
+          </div>
 
           <details className="ja-details">
             <summary>本地补填（仅存本机，不上传）</summary>

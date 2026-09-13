@@ -109,3 +109,78 @@
   color: #166534;
   font-size: 12px;
 }
+
+/* ── 岗位匹配度（第一档轻量） ── */
+.ja-match {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.ja-match-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #0f172a;
+}
+
+.ja-match-item {
+  padding: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+
+.ja-flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ja-match-job {
+  color: #2d6cdf;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.ja-match-job:hover {
+  text-decoration: underline;
+}
+
+.ja-match-score {
+  flex-shrink: 0;
+  min-width: 28px;
+  text-align: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.ja-match-score--high {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.ja-match-score--mid {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.ja-match-score--low {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.ja-match-skills {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.ja-match-count {
+  margin-top: 2px;
+  font-size: 11px;
+}

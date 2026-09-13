@@ -114,3 +114,38 @@ function sleep(ms: number): Promise<void> {
 }
 
 export { DEFAULT_BASE };
+
+/** 岗位匹配结果（POST /job-postings/match 返回的单条） */
+export interface JobMatchItem {
+  score: number;
+  matchedSkills: string[];
+  posting: {
+    title: string;
+    company: string;
+    location?: string | null;
+    remote?: boolean;
+    sourceUrl: string;
+    postedAt?: string;
+    source?: string;
+  };
+}
+
+/**
+ * 用画像 profileId 调 POST /job-postings/match，返回按匹配分排序的岗位。
+ * 第一档轻量：扩展侧栏展示 top 1，不做当前 ATS 岗位精确匹配（见 design-match-wiring §3）。
+ */
+export async function matchJobs(
+  baseUrl: string,
+  profileId: string,
+  opts: { limit?: number; fetchImpl?: typeof fetch } = {},
+): Promise<JobMatchItem[]> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const res = await fetchImpl(`${baseUrl}/job-postings/match`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ profileId, limit: opts.limit ?? 5 }),
+  });
+  if (!res.ok) throw apiError(`job match failed (HTTP ${res.status})`, res.status);
+  const body = (await res.json()) as { matches?: JobMatchItem[] };
+  return Array.isArray(body.matches) ? body.matches : [];
+}

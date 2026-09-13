@@ -2,7 +2,7 @@
  * API 客户端单测：用注入的 fetchImpl 覆盖缓存命中 / 轮询 / 失败 / 契约校验。
  */
 import { describe, expect, it } from 'vitest';
-import { JobAgentApi } from './api.js';
+import { JobAgentApi, matchJobs } from './api.js';
 
 const VALID_PROFILE = {
   schemaVersion: '0.1',
@@ -97,5 +97,36 @@ describe('JobAgentApi.fetchProfile', () => {
       ]),
     });
     await expect(api.fetchProfile('demo-dev')).rejects.toThrow(/exportable schema/);
+  });
+});
+
+
+describe('matchJobs', () => {
+  it('returns matched jobs from POST /job-postings/match with profileId', async () => {
+    let capturedBody: unknown;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      capturedBody = init?.body ? JSON.parse(String(init.body)) : undefined;
+      return jsonResponse(200, {
+        matches: [
+          { score: 7, matchedSkills: ['TypeScript', 'React'], posting: { title: 'Senior FE', company: 'Acme', sourceUrl: 'https://example.test/1' } },
+        ],
+      });
+    }) as typeof fetch;
+    const out = await matchJobs('http://api.test', 'prof-1', { limit: 3, fetchImpl });
+    expect(out).toHaveLength(1);
+    expect(out[0]!.score).toBe(7);
+    expect(out[0]!.matchedSkills).toEqual(['TypeScript', 'React']);
+    expect(capturedBody).toEqual({ profileId: 'prof-1', limit: 3 });
+  });
+
+  it('returns empty array when matches field is missing', async () => {
+    const fetchImpl = (async () => jsonResponse(200, {})) as typeof fetch;
+    const out = await matchJobs('http://api.test', 'prof-1', { fetchImpl });
+    expect(out).toEqual([]);
+  });
+
+  it('throws on HTTP error', async () => {
+    const fetchImpl = (async () => jsonResponse(500, { error: 'boom' })) as typeof fetch;
+    await expect(matchJobs('http://api.test', 'prof-1', { fetchImpl })).rejects.toThrow(/HTTP 500/);
   });
 });
