@@ -35,6 +35,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.17(hono@4.13.7)
+      '@jobagent/job-source':
+        specifier: workspace:*
+        version: link:../../packages/job-source
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
