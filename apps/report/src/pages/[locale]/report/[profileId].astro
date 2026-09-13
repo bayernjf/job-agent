@@ -5,6 +5,7 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
+import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import { loadProfile } from '../../../lib/db';
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
@@ -16,6 +17,9 @@ if (!isLocale(rawLocale)) {
 }
 const locale: Locale = rawLocale;
 const t = createTranslator(locale);
+
+// API 地址：服务端环境变量或同源（MVP 默认同源）
+const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
 
 const profile = profileId ? await loadProfile(profileId) : null;
 
@@ -128,6 +132,26 @@ const until = formatDateTime(profile.dataWindow.until, locale);
             )}
           </div>
         </section>
+      )
+    }
+
+    <!-- 推荐岗位（第一档匹配接线） -->
+    {
+      profile.skillTags.length > 0 && (
+        <JobRecommendations
+          client:load
+          profileId={profileId!}
+          apiBase={apiBase}
+          locale={locale}
+          title={t('report.recommendations.title')}
+          loadingText={t('report.recommendations.loading')}
+          errorText={t('report.recommendations.error')}
+          emptyText={t('report.recommendations.empty')}
+          scoreLabel={t('report.recommendations.score')}
+          matchedSkillsLabel={t('report.recommendations.matchedSkills')}
+          viewJobLabel={t('report.recommendations.viewJob')}
+          remoteLabel={t('report.recommendations.remote')}
+        />
       )
     }
 
@@ -385,5 +409,119 @@ const until = formatDateTime(profile.dataWindow.until, locale);
   .caveats li {
     font-size: var(--ja-text-sm);
     color: var(--ja-color-fg-muted);
+  }
+
+  /* ── 推荐岗位（第一档匹配接线） ── */
+  .rec-status {
+    display: flex;
+    align-items: center;
+    gap: var(--ja-space-2);
+    font-size: var(--ja-text-sm);
+  }
+
+  .rec-error {
+    color: var(--ja-color-danger);
+    font-size: var(--ja-text-sm);
+  }
+
+  .rec-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-4);
+  }
+
+  .rec-item {
+    padding: var(--ja-space-3);
+    border: 1px solid var(--ja-color-border);
+    border-radius: var(--ja-radius-md);
+    background: var(--ja-color-surface-muted);
+  }
+
+  .rec-item-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ja-space-3);
+  }
+
+  .rec-title {
+    font-weight: 600;
+    color: var(--ja-color-accent);
+    text-decoration: none;
+    font-size: var(--ja-text-base);
+  }
+
+  .rec-title:hover {
+    text-decoration: underline;
+  }
+
+  .rec-score {
+    flex-shrink: 0;
+    min-width: 2.5rem;
+    text-align: center;
+    padding: var(--ja-space-1) var(--ja-space-2);
+    border-radius: var(--ja-radius-sm);
+    font-weight: 600;
+    font-size: var(--ja-text-sm);
+    font-family: var(--ja-font-mono);
+  }
+
+  .rec-score--high {
+    background: var(--ja-color-accent-subtle);
+    color: var(--ja-color-accent);
+  }
+
+  .rec-score--mid {
+    background: var(--ja-color-surface-muted);
+    color: var(--ja-color-warning);
+  }
+
+  .rec-score--low {
+    background: var(--ja-color-surface-muted);
+    color: var(--ja-color-fg-muted);
+  }
+
+  .rec-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ja-space-3);
+    margin-top: var(--ja-space-2);
+    font-size: var(--ja-text-sm);
+  }
+
+  .rec-badge {
+    padding: 0.1rem var(--ja-space-2);
+    border-radius: var(--ja-radius-sm);
+    background: var(--ja-color-surface-muted);
+    color: var(--ja-color-info);
+    font-size: var(--ja-text-xs);
+  }
+
+  .rec-skills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ja-space-2);
+    margin-top: var(--ja-space-2);
+  }
+
+  .rec-skills-label {
+    font-size: var(--ja-text-xs);
+  }
+
+  .rec-view-link {
+    display: inline-block;
+    margin-top: var(--ja-space-2);
+    font-size: var(--ja-text-sm);
+    color: var(--ja-color-accent);
+    text-decoration: none;
+  }
+
+  .rec-view-link:hover {
+    text-decoration: underline;
   }
 </style>
