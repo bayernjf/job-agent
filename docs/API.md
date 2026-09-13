@@ -1,10 +1,10 @@
-# JobAgent HTTP API 参考（M1）
+# JobAgent HTTP API 参考（M1 + P2 职位聚合）
 
 - 状态：现行（M1）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
 - 内容类型：请求/响应均为 `application/json`（健康检查除外）
 - CORS：MVP 阶段 `*` 开放，生产环境收紧为落地页域名
-- 最后更新：2026-09-12
+- 最后更新：2026-09-13
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`。
 
@@ -226,6 +226,85 @@
 
 ```json
 { "error": "profile not found" }
+```
+
+---
+
+## 3.2 职位聚合：岗位检索与画像匹配（P2-D）
+
+岗位数据由离线采集管道写入（CLI `jobs sync`，见 `docs/design-job-ingestion-20260913.md`），API 只做只读检索与匹配。注意分析任务已占用 `/jobs/:id`，故岗位端点统一用 `/job-postings`。
+
+### `GET /job-postings`
+
+岗位检索（薄封装仓储 `search`），默认只返回 `active`。
+
+#### Query 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `keyword` | string | 关键词，词间 AND，命中 title/company/tags |
+| `remote` | `true` \| `false` | 是否仅远程 |
+| `sources` | string | 逗号分隔数据源（如 `remoteok,lever`），出现非法值返回 400 |
+| `company` | string | 公司名过滤 |
+| `tags` | string | 逗号分隔标签（OR） |
+| `salaryMinUsd` | number | 薪资下限（USD，按 `COALESCE(salaryMax,salaryMin)` 比较） |
+| `postedAfter` | ISO datetime | 仅该时间之后发布 |
+| `limit` | number | 默认 100，上限 500 |
+| `offset` | number | 分页偏移 |
+| `orderBy` | `posted_desc` \| `posted_asc` \| `salary_desc` | 默认 `posted_desc` |
+
+#### 响应（200）
+
+```json
+{
+  "items": [
+    { "jobId": "...", "source": "remoteok", "title": "Senior Python Engineer", "company": "...", "remote": true, "tags": ["python"], "postedAt": "...", "sourceUrl": "..." }
+  ],
+  "limit": 100,
+  "offset": 0
+}
+```
+
+### `GET /job-postings/stats`
+
+按源统计在招/失效岗位数。该静态路径必须在 `/job-postings/:id` 之前注册，否则 `stats` 会被当成 id。
+
+```json
+{ "active": { "remoteok": 99, "lever": 12 }, "inactive": { "remoteok": 3 } }
+```
+
+### `GET /job-postings/:id`
+
+按内部稳定 id（由 `source + sourceUrl` 派生）取单条岗位；不存在返回 404。
+
+### `POST /job-postings/match`
+
+先用结构化条件取候选池（默认最近 500 条），再按画像技能名对 title（权重 3）/tags（权重 2）/description（权重 1）做词边界加权打分，按分数降序返回；至少命中一个技能才会出现在结果里。技能名通常取自 `GET /profiles/:id/exportable` 的 `skills[].name`。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `skills` | string[] | 是（≥1） | 技能名列表，缺失或空数组返回 400 |
+| `remote` | boolean | 否 | 硬过滤：仅远程 |
+| `salaryMinUsd` | number | 否 | 硬过滤：薪资下限（无薪资岗位不满足） |
+| `sources` | string[] | 否 | 硬过滤：限定数据源 |
+| `keyword` / `company` / `tags` / `postedAfter` | — | 否 | 候选池过滤，语义同 GET |
+| `candidateLimit` | number | 否 | 候选池大小，默认 500，上限 500 |
+| `limit` | number | 否 | 返回上限，默认 50，上限 500 |
+
+#### 请求 / 响应
+
+```json
+// 请求
+{ "skills": ["Python", "React"], "remote": true, "limit": 5 }
+// 响应（200）
+{
+  "matches": [
+    { "score": 5, "matchedSkills": ["Python", "React"], "posting": { "title": "...", "source": "remoteok", "sourceUrl": "..." } }
+  ],
+  "total": 1
+}
 ```
 
 ---
