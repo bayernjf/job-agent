@@ -45,7 +45,41 @@ describe('migrations', () => {
     expect(tables.map((t) => t.name)).toContain('analysis_jobs');
     expect(tables.map((t) => t.name)).toContain('evidence');
     expect(tables.map((t) => t.name)).toContain('waitlist');
+    expect(tables.map((t) => t.name)).toContain('job_postings');
     expect(tables.map((t) => t.name)).toContain('schema_migrations');
+
+    const postingColumns = db.prepare('PRAGMA table_info(job_postings)').all() as Array<{ name: string }>;
+    const postingNames = postingColumns.map((c) => c.name);
+    for (const expected of [
+      'id',
+      'job_id',
+      'source',
+      'source_url',
+      'title',
+      'company',
+      'location',
+      'remote',
+      'salary_min',
+      'salary_max',
+      'salary_currency',
+      'tags',
+      'description',
+      'posted_at',
+      'normalized_key',
+      'status',
+      'first_seen_at',
+      'last_seen_at',
+      'fetched_at',
+      'created_at',
+      'updated_at',
+    ]) {
+      expect(postingNames).toContain(expected);
+    }
+    const postingIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='job_postings'")
+      .all() as Array<{ name: string }>;
+    expect(postingIndexes.map((i) => i.name)).toContain('idx_job_postings_source_url');
+    expect(postingIndexes.map((i) => i.name)).toContain('idx_job_postings_status_posted');
 
     const profileColumns = db.prepare('PRAGMA table_info(profiles)').all() as Array<{ name: string }>;
     const profileNames = profileColumns.map((c) => c.name);
@@ -115,7 +149,17 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
-    // 第一步：回滚最新的 004（waitlist）
+    // 第零步：回滚最新的 005（job_postings）
+    const result5 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result5.version).toBe('005');
+
+    const preTables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(preTables.map((t) => t.name)).not.toContain('job_postings');
+    expect(preTables.map((t) => t.name)).toContain('waitlist'); // 004 还在
+
+    // 第一步：回滚 004（waitlist）
     const result4 = rollbackLatestMigration(db, MIGRATIONS_DIR);
     expect(result4.version).toBe('004');
 

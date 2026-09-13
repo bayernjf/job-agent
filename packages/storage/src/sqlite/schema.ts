@@ -146,3 +146,53 @@ export const waitlist = sqliteTable(
 
 export type WaitlistInsert = typeof waitlist.$inferInsert;
 export type WaitlistSelect = typeof waitlist.$inferSelect;
+
+
+/**
+ * job_postings 表——P2 职位聚合（决策 #16 / design-job-ingestion-20260913）。
+ * 同源去重唯一键 (source, source_url)；tags 以 JSON 文本存储；
+ * 薪资统一年化美元整数；first/last_seen 支撑岗位下线判定。
+ * 必须与 db/migrations/sqlite/005_create_job_postings.sql 保持一致。
+ */
+export const jobPostings = sqliteTable(
+  'job_postings',
+  {
+    id: text('id').primaryKey(),
+    jobId: text('job_id').notNull(),
+    source: text('source').notNull(),
+    sourceUrl: text('source_url').notNull(),
+    title: text('title').notNull(),
+    company: text('company').notNull(),
+    location: text('location'),
+    remote: integer('remote', { mode: 'boolean' }).notNull().default(false),
+    salaryMin: integer('salary_min'),
+    salaryMax: integer('salary_max'),
+    salaryCurrency: text('salary_currency'),
+    tags: text('tags').notNull().default('[]'),
+    description: text('description'),
+    postedAt: text('posted_at').notNull(),
+    fetchedAt: text('fetched_at').notNull(),
+    applyUrl: text('apply_url'),
+    companyLogoUrl: text('company_logo_url'),
+    companyUrl: text('company_url'),
+    normalizedKey: text('normalized_key'),
+    status: text('status').notNull().default('active'),
+    firstSeenAt: text('first_seen_at').notNull(),
+    lastSeenAt: text('last_seen_at').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_job_postings_status_posted').on(table.status, table.postedAt),
+    index('idx_job_postings_source').on(table.source),
+    index('idx_job_postings_company').on(table.company),
+    index('idx_job_postings_normalized').on(table.normalizedKey),
+  ],
+);
+
+export type JobPostingInsert = typeof jobPostings.$inferInsert;
+export type JobPostingSelect = typeof jobPostings.$inferSelect;

@@ -131,3 +131,47 @@ export const waitlist = pgTable(
 
 export type WaitlistInsert = typeof waitlist.$inferInsert;
 export type WaitlistSelect = typeof waitlist.$inferSelect;
+
+/** job_postings 表——P2 职位聚合；JS key/物理列名与 sqlite/schema.ts 逐一对齐。 */
+export const jobPostings = pgTable(
+  'job_postings',
+  {
+    id: text('id').primaryKey(),
+    jobId: text('job_id').notNull(),
+    source: text('source').notNull(),
+    sourceUrl: text('source_url').notNull(),
+    title: text('title').notNull(),
+    company: text('company').notNull(),
+    location: text('location'),
+    remote: boolean('remote').notNull().default(false),
+    salaryMin: integer('salary_min'),
+    salaryMax: integer('salary_max'),
+    salaryCurrency: text('salary_currency'),
+    tags: text('tags').notNull().default('[]'),
+    description: text('description'),
+    postedAt: text('posted_at').notNull(),
+    fetchedAt: text('fetched_at').notNull(),
+    applyUrl: text('apply_url'),
+    companyLogoUrl: text('company_logo_url'),
+    companyUrl: text('company_url'),
+    normalizedKey: text('normalized_key'),
+    status: text('status').notNull().default('active'),
+    firstSeenAt: text('first_seen_at').notNull(),
+    lastSeenAt: text('last_seen_at').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_job_postings_status_posted').on(table.status, table.postedAt),
+    index('idx_job_postings_source').on(table.source),
+    index('idx_job_postings_company').on(table.company),
+    index('idx_job_postings_normalized').on(table.normalizedKey),
+  ],
+);
+
+export type JobPostingInsert = typeof jobPostings.$inferInsert;
+export type JobPostingSelect = typeof jobPostings.$inferSelect;

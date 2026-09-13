@@ -66,6 +66,9 @@ importers:
       '@jobagent/github-source':
         specifier: workspace:*
         version: link:../../packages/github-source
+      '@jobagent/job-source':
+        specifier: workspace:*
+        version: link:../../packages/job-source
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -191,6 +194,15 @@ importers:
       octokit:
         specifier: ^5.0.5
         version: 5.0.5
+
+  packages/job-source:
+    dependencies:
+      '@jobagent/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@jobagent/storage':
+        specifier: workspace:*
+        version: link:../storage
 
   packages/llm:
     dependencies:
