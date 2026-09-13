@@ -1,5 +1,5 @@
 {
-  "name": "@jobagent/cli",
+  "name": "@jobagent/job-source",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,18 +11,12 @@
       "default": "./dist/index.js"
     }
   },
-  "bin": {
-    "jobagent": "./dist/index.js"
-  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run"
   },
   "dependencies": {
-    "@jobagent/analyzer-core": "workspace:*",
-    "@jobagent/github-source": "workspace:*",
-    "@jobagent/job-source": "workspace:*",
     "@jobagent/shared": "workspace:*",
     "@jobagent/storage": "workspace:*"
   }

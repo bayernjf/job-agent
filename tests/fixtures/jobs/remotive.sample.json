@@ -1,0 +1,75 @@
+{
+  "00-warning": "Remotive main domain moved to remotive.com ! Please make your API calls on remotive.com/api/remote-jobs instead of remotive.io now ;) Legacy endpoint remotive.io/api/remote-jobs will be terminated in June 2022. Thank you!",
+  "0-legal-notice": "Legal warning - Hey, thanks for using Remotive's API, we appreciate it! Please note that API documentation and access is granted so that developers can share our jobs further. Please do not submit Remotive jobs to third Party websites, including but not limited to: Jooble, Neuvoo, Google Jobs, LinkedIn Jobs. Please link back to the URL found on Remotive AND mention Remotive as a source in order to Remotive to get traffic from your listing. If you don't do that, we'll terminate your API access, sorry! Jobs displayed are delayed by 24 hours, the goal being that jobs are attributed to Remotive on various platforms. Displaying our jobs in order to collect signups/email addresses to show a listing constitutes a breach of our terms of services. We offer a private, paid-for API, please email us at hello(at)remotive(dot)io for more information (starting budget is $5k/mo). Please find out terms of services on https://remotive.com/api-documentation. Please note that there is absolutely no need to request Remotive Job data too frequently. Typically, you only need to GET Remotive job data through this API a couple of times a day (we advise max. 4 times a day). Our data is not changing much fas…[truncated]",
+  "job-count": 16,
+  "total-job-count": 16,
+  "jobs": [
+    {
+      "id": 2091126,
+      "url": "https://remotive.com/remote-jobs/artificial-intelligence/ai-response-evaluator-2091126",
+      "title": "AI Response Evaluator",
+      "company_name": "iMerit Technology",
+      "company_logo": "https://remotive.com/job/2091126/logo",
+      "category": "Artificial Intelligence",
+      "tags": [
+        "AI/ML",
+        "research",
+        "SOLID"
+      ],
+      "job_type": "freelance",
+      "publication_date": "2026-09-11T06:49:00",
+      "candidate_required_location": "France, Japan, Turkey, Vietnam, Mexico, Norway",
+      "salary": "$10K-$20K",
+      "description": "<p>iMerit is looking for detail oriented analysts to evaluate and rank AI generated responses to image based prompts. You will judge answers on accuracy, relevance, clarity, conciseness, safety, localization, and how well they follow the user's instructions, then explain your reasoning in writing.<br>Much of the job comes down to this: look at the image, look at what the model said about it, and decide whether the two actually match.</p>\n<p><strong>What you will do</strong></p>\n<ul class=\"list-disc list-outside leading-3 -mt-2\" style=\"\">\n<li class=\"leading-normal -mb-2\" style=\"\">\n<p>Interpret conversational context and identify what the user really wanted</p>\n</li>\n<li class=\"leading-normal -mb-2\" style=\"\">\n<p>Rate and rank responses against defined quality criteria</p>\n</li>\n<li class=\"leading-normal -mb-2\" style=\"\">\n<p>Compare multiple answers and explain in writing why one wins</p>\n</li>\n<li class=\"leading-normal -mb-2\" style=\"\">\n<p>Verify factual claims using approved research sources</p>\n</li>\n<li class=\"leading-normal -mb-2\" style=\"\">\n<p>Flag tasks that cannot be reliably assessed rather than guessing</p>\n</li>\n</ul>\n<p><strong>What you bring:</strong></p>\n<ul class=\"list-dis…[truncated]",
+      "company_logo_url": "https://remotive.com/job/2091126/logo"
+    },
+    {
+      "id": 2086540,
+      "url": "https://remotive.com/remote-jobs/sales/inside-sales-contractor-2086540",
+      "title": "Inside Sales Contractor",
+      "company_name": "Credit Wellness, LLC",
+      "company_logo": "https://remotive.com/job/2086540/logo",
+      "category": "Sales",
+      "tags": [
+        "CRM",
+        "google sheets",
+        "financial services",
+        "Inside Sales"
+      ],
+      "job_type": "full_time",
+      "publication_date": "2026-09-08T21:47:54",
+      "candidate_required_location": "Worldwide",
+      "salary": "OTE $25k - $35k",
+      "description": "<p dir=\"ltr\" style=\"line-height: 1.38; background-color: #ffffff; margin-top: 0pt; margin-bottom: 0pt; padding: 0pt 0pt 12pt 0pt;\"><span style=\"color: #2d2d2d; background-color: transparent; font-weight: bold; font-style: normal; font-variant: normal; text-decoration: none; vertical-align: baseline; white-space: pre-wrap;\">About Us</span></p>\n<p dir=\"ltr\" style=\"line-height: 1.38; background-color: #ffffff; margin-top: 0pt; margin-bottom: 0pt; padding: 0pt 0pt 12pt 0pt;\"><span style=\"color: #2d2d2d; background-color: transparent; font-weight: 400; font-style: normal; font-variant: normal; text-decoration: none; vertical-align: baseline; white-space: pre-wrap;\">We are a financial services start up focusing on helping to improve consumer credit profiles. We are currently seeking KPI driven sales representatives looking to earn up to 45K in their first year while working remotely. We offer comprehensive training and continuous sales coaching to help you meet your financial goals.</span></p>\n<p dir=\"ltr\" style=\"line-height: 1.38; background-color: #ffffff; margin-top: 0pt; margin-bottom: 0pt; padding: 0pt 0pt 12pt 0pt;\"><span style=\"color: #2d2d2d; background-color: transparent; font-w…[truncated]",
+      "company_logo_url": "https://remotive.com/job/2086540/logo"
+    },
+    {
+      "id": 2091045,
+      "url": "https://remotive.com/remote-jobs/information-technology/tier-iii-service-desk-engineer-2091045",
+      "title": "Tier III Service Desk Engineer",
+      "company_name": "Unio Digital",
+      "company_logo": "https://remotive.com/job/2091045/logo",
+      "category": "Information Technology",
+      "tags": [
+        "azure",
+        "cisco",
+        "security",
+        "video",
+        "documentation",
+        "hardware",
+        "helpdesk",
+        "onboarding",
+        "MSP",
+        "ticketing",
+        "Microsoft 365",
+        "IT systems"
+      ],
+      "job_type": "full_time",
+      "publication_date": "2026-09-07T01:10:43",
+      "candidate_required_location": "Worldwide",
+      "salary": "",
+      "description": "<p class=\"MsoNormal\" style=\"margin: 0in 0in 8pt; line-height: 15.6933px; color: #000000;\">Unió Digital is an Arizona-based managed service provider (MSP) delivering Managed IT Services, Low Voltage Cabling, Access Control, Video Surveillance, and Intrusion Services. We believe technology should be intuitive, not intimidating.</p>\n<p> </p>\n<p class=\"MsoNormal\" style=\"margin: 0in 0in 8pt; line-height: 15.6933px; color: #000000;\">We are looking for an experienced Tier 3 Service Desk Technician with exceptional problem-solving skills. You will serve as the escalation point within the team, resolving complex technical issues while also leading client onboarding and project initiatives. You are expected to be involved in direct end-user support when required. If you have a passion for ensuring top-quality user support and thrive in a collaborative environment, this role is for you.</p>\n<p> </p>\n<p class=\"MsoNormal\" style=\"margin: 0in 0in 8pt; line-height: 15.6933px; color: #000000;\"><strong>Duties</strong></p>\n<p> </p>\n<p class=\"MsoListParagraphCxSpFirst\" style=\"margin: 0in 0in 0in 0.5in; line-height: 15.6933px; color: #000000; text-indent: -0.25in;\">·<span style=\"font-style: normal; fon…[truncated]",
+      "company_logo_url": "https://remotive.com/job/2091045/logo"
+    }
+  ]
+}

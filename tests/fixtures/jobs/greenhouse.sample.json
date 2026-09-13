@@ -1,0 +1,158 @@
+{
+  "jobs": [
+    {
+      "absolute_url": "https://job-boards.greenhouse.io/airtable/jobs/8403127002",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "internal_job_id": 6354778002,
+      "location": {
+        "name": "Remote - US"
+      },
+      "metadata": null,
+      "id": 8403127002,
+      "updated_at": "2026-09-10T17:57:33-04:00",
+      "requisition_id": "Pipeline",
+      "title": "Account Executive, Strategic Accounts",
+      "company_name": "Airtable",
+      "first_published": "2026-02-28T09:04:24-05:00",
+      "language": "en",
+      "application_deadline": null,
+      "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Airtable is the no-code app platform that empowers people closest to the work to accelerate their most critical business processes. More than 500,000 organizations, including 80% of the Fortune 100, rely on Airtable to transform how work gets done.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;As a Strategic Account Executive at Airtable you will have the opportunity to work closely with a variety of strategic accounts across the Fortune 500 globally. Each client has unique needs and you act as a trusted business advisor, helping them effectively leverage our product to drive maximum impact for their business.&lt;/span&gt;&lt;/p&gt;\n&lt;p&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Just like Lego blocks, what our customers can build with Airtable is virtually limitless. The opportunity for an Account Executive to make an impact on the largest global businesses is massive. &lt;/span&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;Do you thrive working closely with strategic accounts on their unique business needs? Are you looking for some truly fascinating work, where you&#39;ll work alongs…[truncated]",
+      "departments": [
+        {
+          "id": 4009067002,
+          "name": "Sales",
+          "child_ids": [],
+          "parent_id": 4060295002
+        }
+      ],
+      "offices": [
+        {
+          "id": 4005133002,
+          "name": "Remote - US",
+          "location": null,
+          "child_ids": [],
+          "parent_id": null
+        }
+      ],
+      "ai_disclaimer": null,
+      "include_ai_disclaimer": null,
+      "ai_opt_out_request_url": null
+    },
+    {
+      "absolute_url": "https://job-boards.greenhouse.io/airtable/jobs/8654173002",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "internal_job_id": 6428105002,
+      "location": {
+        "name": "New York, NY; Remote - US"
+      },
+      "metadata": null,
+      "id": 8654173002,
+      "updated_at": "2026-08-01T04:17:01-04:00",
+      "requisition_id": "P-TEQ001180-20250501",
+      "title": "Delivery Consultant",
+      "company_name": "Airtable",
+      "first_published": "2026-07-28T15:59:04-04:00",
+      "language": "en",
+      "application_deadline": null,
+      "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Airtable is the no-code app platform that empowers people closest to the work to accelerate their most critical business processes. More than 500,000 organizations, including 80% of the Fortune 100, rely on Airtable to transform how work gets done.&lt;/p&gt;&lt;/div&gt;&lt;div class=&quot;mb1&quot;&gt;Work isn&#39;t being replaced. It&#39;s being redesigned. Airtable is built for that moment: the same platform humans run their most critical workflows on is where agents now operate alongside them. Professional Services is where that redesign happens.&lt;/div&gt;\n&lt;div class=&quot;mb1&quot;&gt;&amp;nbsp;&lt;/div&gt;\n&lt;div class=&quot;mb1&quot;&gt;The Delivery Consultant turns a solution vision into systems that achieve outcomes. You build the systems: interfaces, automations, data models, integrations, and you run the customer sessions that close the gap between how the work was designed and how it actually gets done. The two are inseparable: what you learn in the room changes what you build, and what you build is how you earn the room&#39;s trust. You work directly with the operators and builders whose jobs are changing. Your j…[truncated]",
+      "departments": [
+        {
+          "id": 4009072002,
+          "name": "Customer Success & Services",
+          "child_ids": [],
+          "parent_id": 4060295002
+        }
+      ],
+      "offices": [
+        {
+          "id": 4005041002,
+          "name": "New York",
+          "location": "New York, New York, United States",
+          "child_ids": [],
+          "parent_id": null
+        },
+        {
+          "id": 4005133002,
+          "name": "Remote - US",
+          "location": null,
+          "child_ids": [],
+          "parent_id": null
+        }
+      ],
+      "ai_disclaimer": null,
+      "include_ai_disclaimer": null,
+      "ai_opt_out_request_url": null
+    },
+    {
+      "absolute_url": "https://job-boards.greenhouse.io/airtable/jobs/8397665002",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "internal_job_id": 6352551002,
+      "location": {
+        "name": "San Francisco, CA; New York, NY"
+      },
+      "metadata": null,
+      "id": 8397665002,
+      "updated_at": "2026-08-13T17:45:55-04:00",
+      "requisition_id": "Pipeline",
+      "title": "Engineering Manager, Enterprise Product",
+      "company_name": "Airtable",
+      "first_published": "2026-02-11T16:44:05-05:00",
+      "language": "en",
+      "application_deadline": null,
+      "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Airtable is the no-code app platform that empowers people closest to the work to accelerate their most critical business processes. More than 500,000 organizations, including 80% of the Fortune 100, rely on Airtable to transform how work gets done.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;Airtable is used by more than half of the Fortune 500 companies to power their mission-critical initiatives. Enterprise customers leverage Airtable to build sophisticated apps, and orchestrate deep, end-to-end workflows. As we continue to scale, our teams are building the systems to ensure the security and governance of our customer’s data - from secure handling of file attachments to enterprise key management. These are advanced systems that provide robust security measures to protect our user’s data.&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;We are seeking Engineering Managers to join our Enterprise engineering pillar, focused on scaling product experiences for our biggest customers. We currently have openings on:&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;&lt;strong&gt;The Admin &amp;amp; Governance Team:&amp;nbsp;&lt;/strong&gt;As AI becomes central to Airtable, enterprise cust…[truncated]",
+      "departments": [
+        {
+          "id": 4009068002,
+          "name": "Engineering",
+          "child_ids": [
+            4060278002,
+            4119207002
+          ],
+          "parent_id": null
+        }
+      ],
+      "offices": [
+        {
+          "id": 4005040002,
+          "name": "San Francisco",
+          "location": "San Francisco, California, United States",
+          "child_ids": [],
+          "parent_id": null
+        }
+      ],
+      "ai_disclaimer": null,
+      "include_ai_disclaimer": null,
+      "ai_opt_out_request_url": null
+    }
+  ],
+  "meta": {
+    "total": 16
+  }
+}
