@@ -6,12 +6,14 @@ import { SqliteProfilesRepository } from './sqlite/profiles-repo.js';
 import { SqliteAnalysisJobsRepository } from './sqlite/analysis-jobs-repo.js';
 import { SqliteEvidenceRepository } from './sqlite/evidence-repo.js';
 import { SqliteWaitlistRepository } from './sqlite/waitlist-repo.js';
+import { SqliteJobPostingsRepository } from './sqlite/job-postings-repo.js';
 import { openPostgres } from './postgres/connection.js';
 import { runPgMigrations } from './postgres/migrator.js';
 import { PgProfilesRepository } from './postgres/profiles-repo.js';
 import { PgAnalysisJobsRepository } from './postgres/analysis-jobs-repo.js';
 import { PgEvidenceRepository } from './postgres/evidence-repo.js';
 import { PgWaitlistRepository } from './postgres/waitlist-repo.js';
+import { PgJobPostingsRepository } from './postgres/job-postings-repo.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +44,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       jobs: new PgAnalysisJobsRepository(db),
       evidence: new PgEvidenceRepository(db),
       waitlist: new PgWaitlistRepository(db),
+      jobPostings: new PgJobPostingsRepository(db),
       migrate: async () => runPgMigrations(client, migrationsDir),
       close: async () => {
         await client.end({ timeout: 5 });
@@ -61,6 +64,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     jobs: new SqliteAnalysisJobsRepository(db),
     evidence: new SqliteEvidenceRepository(db),
     waitlist: new SqliteWaitlistRepository(db),
+    jobPostings: new SqliteJobPostingsRepository(db),
     migrate: async () => runMigrations(client, migrationsDir),
     close: async () => {
       client.close();

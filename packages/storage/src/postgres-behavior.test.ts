@@ -169,4 +169,35 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       s.waitlist.insert({ id: `wl_${randomUUID()}`, email }),
     ).rejects.toThrow();
   });
+
+  pgIt('upserts job postings idempotently and searches case-insensitively', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const base = {
+      jobId: `gh_${suffix}`,
+      source: 'greenhouse' as const,
+      sourceUrl: `https://example.com/${suffix}/1`,
+      title: 'Senior Backend Engineer',
+      company: `PG Co ${suffix}`,
+      location: 'Remote',
+      remote: true,
+      salaryMin: null,
+      salaryMax: null,
+      salaryCurrency: null,
+      tags: ['go', 'backend'],
+      description: 'd',
+      postedAt: '2026-09-01T00:00:00.000Z',
+      fetchedAt: '2026-09-10T00:00:00.000Z',
+      normalizedKey: `nk_${suffix}`,
+    };
+
+    const first = await s.jobPostings.upsertBatch([base], '2026-09-10T00:00:00.000Z');
+    expect(first.inserted).toBe(1);
+    // second identical run -> unchanged, no duplicate
+    const second = await s.jobPostings.upsertBatch([base], '2026-09-11T00:00:00.000Z');
+    expect(second.unchanged).toBe(1);
+
+    // ILIKE: lowercase keyword matches capitalized title
+    const hits = await s.jobPostings.search({ keyword: 'backend engineer', sources: ['greenhouse'] });
+    expect(hits.some((p) => p.sourceUrl === base.sourceUrl)).toBe(true);
+  });
 });
