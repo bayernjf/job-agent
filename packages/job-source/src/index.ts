@@ -34,9 +34,20 @@ export {
   type LeverAdapterOptions,
 } from './adapters/lever.js';
 export {
+  HnWhoIsHiringAdapter,
+  pickHiringStoryId,
+  parseHnThread,
+  type HnAdapterOptions,
+} from './adapters/hn-whoishiring.js';
+export {
   createDefaultAdapters,
   DEFAULT_SOURCES,
   SEED_GREENHOUSE_BOARDS,
   SEED_LEVER_BOARDS,
   type DefaultAdapterOptions,
 } from './adapters/registry.js';
+export {
+  matchJobs,
+  type JobMatch,
+  type JobMatchCriteria,
+} from './match/job-match.js';
