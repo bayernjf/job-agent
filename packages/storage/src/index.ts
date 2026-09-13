@@ -18,6 +18,11 @@ export type { IProfilesRepository } from './repositories/profiles.js';
 export type { IAnalysisJobsRepository } from './repositories/analysis-jobs.js';
 export type { IEvidenceRepository } from './repositories/evidence.js';
 export type { IWaitlistRepository } from './repositories/waitlist.js';
+export type {
+  IJobPostingsRepository,
+  JobPostingQuery,
+  UpsertCounts,
+} from './repositories/job-posting.js';
 
 // 实体领域类型
 export type {
@@ -38,6 +43,11 @@ export type {
   StoredWaitlist,
   NewWaitlist,
 } from './entities/waitlist.js';
+export type {
+  JobPostingStatus,
+  NewJobPosting,
+  StoredJobPosting,
+} from './entities/job-posting.js';
 
 // 状态枚举与纯映射（测试/工具可用）
 export {
@@ -49,6 +59,10 @@ export {
   toStoredJob,
   toStoredEvidence,
   toStoredWaitlist,
+  JOB_POSTING_STATUSES,
+  makeJobPostingId,
+  jobPostingSignature,
+  toStoredJobPosting,
   parseJson,
 } from './entities/index.js';
 

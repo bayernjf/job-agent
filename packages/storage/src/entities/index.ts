@@ -26,3 +26,16 @@ export type {
   RawWaitlistRow,
 } from './waitlist.js';
 export { WAITLIST_STATUSES, toStoredWaitlist } from './waitlist.js';
+
+export type {
+  JobPostingStatus,
+  NewJobPosting,
+  StoredJobPosting,
+  RawJobPostingRow,
+} from './job-posting.js';
+export {
+  JOB_POSTING_STATUSES,
+  makeJobPostingId,
+  jobPostingSignature,
+  toStoredJobPosting,
+} from './job-posting.js';
