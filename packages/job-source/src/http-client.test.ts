@@ -60,3 +60,46 @@ describe('createJobHttpClient', () => {
     expect(sleep).toHaveBeenCalledWith(3000);
   });
 });
+
+describe('createJobHttpClient proxy support', () => {
+  it('routes requests through the built proxy fetch when proxy is set', async () => {
+    const proxied = vi.fn(async () => jsonResponse(200, { via: 'proxy' }));
+    const makeProxyFetch = vi.fn(() => proxied);
+    const http = createJobHttpClient({
+      proxy: '  http://127.0.0.1:7897  ',
+      makeProxyFetch,
+      sleep: noSleep,
+    });
+    await expect(http.getJson('https://x.test/a')).resolves.toEqual({ via: 'proxy' });
+    expect(makeProxyFetch).toHaveBeenCalledWith('http://127.0.0.1:7897');
+    expect(proxied).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a blank proxy as direct and never builds a proxy fetch', async () => {
+    const direct = vi.fn(async () => jsonResponse(200, { ok: 1 }));
+    const makeProxyFetch = vi.fn();
+    const http = createJobHttpClient({
+      fetchImpl: direct,
+      proxy: '   ',
+      makeProxyFetch,
+      sleep: noSleep,
+    });
+    await http.getJson('https://x.test/a');
+    expect(makeProxyFetch).not.toHaveBeenCalled();
+    expect(direct).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets an explicit fetchImpl take precedence over proxy', async () => {
+    const direct = vi.fn(async () => jsonResponse(200, { ok: 1 }));
+    const makeProxyFetch = vi.fn();
+    const http = createJobHttpClient({
+      fetchImpl: direct,
+      proxy: 'http://127.0.0.1:7897',
+      makeProxyFetch,
+      sleep: noSleep,
+    });
+    await http.getJson('https://x.test/a');
+    expect(makeProxyFetch).not.toHaveBeenCalled();
+    expect(direct).toHaveBeenCalledTimes(1);
+  });
+});

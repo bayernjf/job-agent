@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@jobagent/shared": "workspace:*",
-    "@jobagent/storage": "workspace:*"
+    "@jobagent/storage": "workspace:*",
+    "undici": "^8.10.2"
   }
 }
