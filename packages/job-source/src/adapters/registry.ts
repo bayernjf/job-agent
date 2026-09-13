@@ -4,6 +4,7 @@ import { RemoteOkAdapter } from './remoteok.js';
 import { RemotiveAdapter } from './remotive.js';
 import { GreenhouseAdapter, type GreenhouseBoard } from './greenhouse.js';
 import { LeverAdapter, type LeverBoard } from './lever.js';
+import { HnWhoIsHiringAdapter, type HnAdapterOptions } from './hn-whoishiring.js';
 
 /**
  * Greenhouse 种子 board 清单（token = job-boards.greenhouse.io/{token}）。
@@ -35,6 +36,8 @@ export interface DefaultAdapterOptions {
   sources?: JobSource[];
   greenhouseBoards?: GreenhouseBoard[];
   leverBoards?: LeverBoard[];
+  /** HN 月度源选项（仅当 sources 显式含 hn_whoishiring 时挂载，默认日更不含它） */
+  hn?: HnAdapterOptions;
   sleep?: (ms: number) => Promise<void>;
   intervalMs?: number;
   logger?: Pick<Console, 'warn'>;
@@ -66,6 +69,10 @@ export function createDefaultAdapters(options: DefaultAdapterOptions = {}): JobS
         logger: options.logger,
       }),
     );
+  }
+  // HN 为月度自由文本源：默认日更集合不含，仅在显式启用时挂载（每月单独跑一次）
+  if (enabled.has('hn_whoishiring')) {
+    adapters.push(new HnWhoIsHiringAdapter(options.hn));
   }
   return adapters;
 }
