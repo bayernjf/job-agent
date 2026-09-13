@@ -13,7 +13,7 @@
 
 ## 项目概览
 
-JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前为 MVP（M1）准备阶段：产品/技术文档已完成，代码骨架待初始化。
+JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展进入稳定期、P2 职位聚合完成前置 Spike**（阶段与待办以 handoff.md 为准）。
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
@@ -31,7 +31,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 ```text
 job-agent/
 ├─ packages/
-│  ├─ shared/         # AbilityProfile/EvidenceItem 类型 + Zod 契约（单一事实源）
+│  ├─ shared/         # AbilityProfile/EvidenceItem/JobPosting 类型 + Zod 契约（单一事实源，JobPosting 为 P2 预留）
 │  ├─ storage/        # 持久化抽象层：仓储接口（统一 async）+ entities 共享 + sqlite/postgres 双实现 + 迁移器（业务模块禁裸 SQL；设计见 docs/design-storage-dual-dialect-20260911.md）
 │  ├─ github-source/  # Octokit、GraphQL 查询、L0/L1 采集、限频/缓存（首个 EvidenceSource）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
@@ -105,7 +105,7 @@ bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号
 ## 代码规范
 
 - TypeScript strict 必须通过；避免 `any` 与不必要的类型断言；所有外部输入与 LLM 输出用 Zod 校验。
-- 共享类型与画像契约只放在 `packages/shared`，全链路复用，禁止各处重复定义。
+- 共享类型与画像契约只放在 `packages/shared`（含 P2 预留的 `JobPosting`，source+sourceUrl 去重唯一键），全链路复用，禁止各处重复定义。
 - 能力/真实性结论必须挂 `evidenceRefs`；**无证据不下结论，证据不足走 `insufficient_data`**。
 - 用户可见文案**中英双语并行**（决策 #4 海内外同步，落地即 i18n，见下条），内部标识、代码命名、GitHub 内容用英文。
 - **i18n（报告页/UI 落地起执行）**：用户可见字符串一律走 `t()`，先加中文 key 再加同构英文 key，禁止在组件硬编码用户可见文案（仅代码注释、术语数据、输入 placeholder 示例、语言切换器本身可例外）；用一致性测试守护中英文 key 对齐。
