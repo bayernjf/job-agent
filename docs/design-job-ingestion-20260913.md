@@ -441,13 +441,13 @@ Greenhouse board / Lever slug 清单：MVP 放 `packages/job-source/src/adapters
 
 6. greenhouse / lever 适配器 + board/slug 种子清单 + 串行限速 + 夹具单测；默认启用源清单追加这两个。
 
-### P2-C：HN Who's Hiring（自由文本）
+### P2-C：HN Who's Hiring（自由文本）——已落地 2026-09-13
 
 7. Algolia 拉取 + 保守解析器 + 置信度门槛 + 单测；cron 月度触发，不与日更源混跑。
 
-### P2-D（另立项）：消费侧
+### P2-D：消费侧——已落地 2026-09-13
 
-8. `GET /jobs` 搜索 API（Hono，薄封装 repo.search）→ 岗位与画像匹配 → 报告页/扩展消费。
+8. 岗位搜索 HTTP API（Hono，薄封装 repo.search；端点实际命名为 `/job-postings` 以规避既有 `/jobs/:id` 分析任务冲突）→ `matchJobs` 画像技能匹配（放 `packages/job-source/src/match`，非 analyzer-core）→ CLI `jobs match` 与 API `POST /job-postings/match`，供报告页/扩展消费。
 
 > 每个子步骤按「功能 / 测试 / 文档」原子提交拆分，英文 Conventional Commit（scope 用 `jobs` / `db` / `cli`），不加 AI co-author，不主动 push（遵循用户偏好）。
 
@@ -470,29 +470,44 @@ Greenhouse board / Lever slug 清单：MVP 放 `packages/job-source/src/adapters
 
 ## 14. 落代码文件清单（Checklist）
 
-**新增**
+**新增（P2-A/B 采集侧，已落地）**
 
-- [ ] `db/migrations/sqlite/005_create_job_postings.sql`
-- [ ] `db/migrations/postgres/005_create_job_postings.sql`
-- [ ] `packages/storage/src/entities/job-posting.ts`
-- [ ] `packages/storage/src/repositories/job-postings.ts`
-- [ ] `packages/storage/src/sqlite/job-postings-repo.ts`
-- [ ] `packages/storage/src/postgres/job-postings-repo.ts`
-- [ ] `packages/job-source/`（package.json/tsconfig + src 全套，见 §6.1）
-- [ ] `tests/fixtures/jobs/*.sample.json`
-- [ ] apps/cli 内 `jobs` 命令组（sync/search/stats）
+- [x] `db/migrations/sqlite/005_create_job_postings.sql`
+- [x] `db/migrations/postgres/005_create_job_postings.sql`
+- [x] `packages/storage/src/entities/job-posting.ts`
+- [x] `packages/storage/src/repositories/job-posting.ts`
+- [x] `packages/storage/src/sqlite/job-postings-repo.ts`
+- [x] `packages/storage/src/postgres/job-postings-repo.ts`
+- [x] `packages/job-source/`（package.json/tsconfig + src 全套，见 §6.1）
+- [x] `tests/fixtures/jobs/*.sample.json`（四源 + HN search/thread 黄金样本）
+- [x] apps/cli 内 `jobs` 命令组（sync/search/stats/match）
+
+**P2-C 新增（HN 自由文本，已落地 2026-09-13）**
+
+- [x] `packages/job-source/src/adapters/hn-whoishiring.ts` + 单测（Algolia 两阶段、header ≥3 段门槛、保守规则解析）
+- [x] `tests/fixtures/jobs/hn-search.sample.json` / `hn-thread.sample.json`
+- [x] registry 条件挂载 HN（默认日更四源不含 HN，仅显式 --source hn_whoishiring 触发）
+
+**P2-D 新增（消费侧，已落地 2026-09-13）**
+
+- [x] `packages/job-source/src/match/job-match.ts` + 单测（title×3 / tags×2 / description×1 加权、remote/薪资/源硬过滤）
+- [x] `apps/api/src/index.ts`：GET /job-postings、/job-postings/stats、/job-postings/:id、POST /job-postings/match
+- [x] `apps/api/src/job-postings.test.ts`（端点集成测试）
+- [x] apps/cli `jobs match --skills` + `apps/cli/src/jobs-match.test.ts`
+- [x] `docs/API.md` §3.2 岗位端点契约
 
 **修改（装配点，缺一不可）**
 
-- [ ] `packages/storage/src/sqlite/schema.ts` + `postgres/schema.ts`：加 `jobPostings` 表定义
-- [ ] `packages/storage/src/repositories/index.ts` + `src/index.ts`：导出新接口/实体
-- [ ] `packages/storage/src/types.ts`：`StorageContext` 加 `jobPostings`
-- [ ] `packages/storage/src/storage.ts`：sqlite/postgres 两分支各 `new XxxJobPostingsRepository(db)`
-- [ ] `apps/cli` 命令注册处：挂 `jobs` 命令组
-- [ ] `.env.example`：补 §8 变量
-- [ ] 一致性测试补 005：`migrations.test.ts` / `schema-parity` / `migrations-parity`
+- [x] `packages/storage/src/sqlite/schema.ts` + `postgres/schema.ts`：加 `jobPostings` 表定义
+- [x] `packages/storage/src/repositories/index.ts` + `src/index.ts`：导出新接口/实体
+- [x] `packages/storage/src/types.ts`：`StorageContext` 加 `jobPostings`
+- [x] `packages/storage/src/storage.ts`：sqlite/postgres 两分支各 new XxxJobPostingsRepository(db)
+- [x] `apps/cli` 命令注册处：挂 `jobs` 命令组
+- [x] `.env.example`：补 §8 变量 + HN 月度单独运行（--stale-days 35）说明
+- [x] 一致性测试补 005：`migrations.test.ts` / `schema-parity` / `migrations-parity`
+- [x] `apps/api/package.json`：加 @jobagent/job-source workspace 依赖；ApiRepos 加 jobPostings
 
 **文档收尾**
 
-- [ ] handoff.md「Project documents」登记本文；item 10（P2）标注「采集管道设计已落地，进入 P2-A 编码」
-- [ ] docs/README.md 场景导航补一行
+- [x] handoff.md「Project documents」登记本文；item 10（P2）随各阶段更新
+- [x] docs/README.md 场景导航补一行
