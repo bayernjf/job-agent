@@ -56,12 +56,29 @@ function parseSources(raw: string | undefined, logger: Pick<Console, 'error'>): 
   return picked;
 }
 
+/**
+ * 解析出站代理：优先 JOB_HTTP_PROXY（本项目专用），再回退标准 HTTPS_PROXY/HTTP_PROXY（兼容大小写）。
+ * Node 全局 fetch 不读这些变量，必须显式传给 createJobHttpClient 才生效。
+ */
+function resolveProxyFromEnv(): string | undefined {
+  const raw =
+    process.env.JOB_HTTP_PROXY ??
+    process.env.HTTPS_PROXY ??
+    process.env.https_proxy ??
+    process.env.HTTP_PROXY ??
+    process.env.http_proxy;
+  const proxy = raw?.trim();
+  return proxy ? proxy : undefined;
+}
+
 function httpOptionsFromEnv(): JobHttpOptions {
   const timeoutMs = process.env.JOB_HTTP_TIMEOUT_MS ? Number(process.env.JOB_HTTP_TIMEOUT_MS) : undefined;
   const retries = process.env.JOB_HTTP_RETRIES ? Number(process.env.JOB_HTTP_RETRIES) : undefined;
+  const proxy = resolveProxyFromEnv();
   return {
     ...(timeoutMs && Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
     ...(retries != null && Number.isFinite(retries) ? { retries } : {}),
+    ...(proxy ? { proxy } : {}),
   };
 }
 
