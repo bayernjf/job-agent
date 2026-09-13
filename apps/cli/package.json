@@ -15,6 +15,7 @@
     "jobagent": "./dist/index.js"
   },
   "scripts": {
+    "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run"
