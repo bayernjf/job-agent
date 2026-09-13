@@ -8,6 +8,17 @@ export interface JobHttpClient {
 export interface JobHttpOptions {
   /** 自定义 fetch（测试注入；默认 Node 全局 fetch） */
   fetchImpl?: typeof fetch;
+  /**
+   * 出站 HTTP(S) 代理 URL（如 http://127.0.0.1:7897）。
+   * 设置后采集请求经 undici ProxyAgent 转发；Node 全局 fetch 默认不读代理环境变量，需显式传入。
+   * 空白字符串视为未设置（直连）。
+   */
+  proxy?: string;
+  /**
+   * 由代理 URL 构造底层 fetch 的工厂（测试注入，避免真实联网）；
+   * 生产默认用 undici 的 ProxyAgent + undici fetch（同一 undici 实例，规避跨实例 dispatcher 校验）。
+   */
+  makeProxyFetch?: (proxyUrl: string) => typeof fetch;
   /** 单请求超时毫秒，默认 15000 */
   timeoutMs?: number;
   /** 网络错误 / 5xx / 429 重试次数（4xx 不重试），默认 2 */
