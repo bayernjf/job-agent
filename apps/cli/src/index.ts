@@ -19,6 +19,8 @@ import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source'
 import { createStorage, WAITLIST_STATUSES } from '@jobagent/storage';
 import type { StorageContext, WaitlistStatus } from '@jobagent/storage';
 import { toHtml, toMarkdown } from './report-format.js';
+import type { JobSourceAdapter } from '@jobagent/job-source';
+import { runJobs } from './jobs-commands.js';
 
 export interface CliDeps {
   /** 环境变量 GITHUB_TOKEN 的值（由调用方注入，便于测试） */
@@ -27,6 +29,8 @@ export interface CliDeps {
   source?: { collect(login: string): Promise<GitHubCollectedData> };
   /** 持久化上下文注入点（waitlist 子命令用；测试注入临时库，生产默认 createStorage()） */
   storage?: StorageContext;
+  /** Test injection for `jobs sync` (defaults to createDefaultAdapters) */
+  jobAdapters?: JobSourceAdapter[];
   logger?: Pick<Console, 'error' | 'warn' | 'info' | 'log'>;
   /** 注入"现在"（测试确定性）；默认 new Date().toISOString() */
   now?: () => string;
@@ -226,8 +230,12 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     }
   }
 
+  if (command === 'jobs') {
+    return runJobs(rest, deps);
+  }
+
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count]',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats>',
   );
   return 2;
 }
