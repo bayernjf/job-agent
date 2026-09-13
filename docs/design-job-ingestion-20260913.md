@@ -306,8 +306,8 @@ export interface JobSourceAdapter {
 
 - 单一职责：`getJson(url, {timeoutMs, retries, headers})`，默认 `timeoutMs=15000`、`retries=2`（仅对网络错误/5xx/429 重试，4xx 不重试，对齐 github-client 的 doNotRetry 思路）、429 读 `Retry-After`。
 - 固定 `User-Agent: job-agent/0.1 (+https://github.com/bayernjf/job-agent)`（公开 API 基本要求，可辨识）。
-- 支持 `JOB_HTTP_PROXY`（undici ProxyAgent / 或环境 `HTTPS_PROXY`）：Spike 实测本机直连部分源不稳、经 `127.0.0.1:7897` 代理可达——代理只通过环境变量注入，**不写死在代码里、不入 Git**。
-- `fetch` 构造时可注入（测试 fake）；不引入新 HTTP 库（Node 全局 fetch + undici 即可，除非代理支持确需 undici，届时在该包内隔离）。
+- **出站代理已落地（2026-09-13）**：`JobHttpOptions.proxy` 非空时，用 undici `ProxyAgent` + **undici 自身 fetch** 配对（同一 undici 实例，规避与 Node 内置全局 fetch 跨实例的 dispatcher `instanceof` 校验失败）；空白代理视为直连；显式注入的 `fetchImpl` 优先于代理。代理只经环境变量注入（CLI 读 `JOB_HTTP_PROXY`，回退标准 `HTTPS_PROXY`/`HTTP_PROXY`、兼容小写），**不写死在代码里、不入 Git**；用于解决本机直连拉不动 Lever 大 board（palantir≈6MB / shieldai≈7.7MB 超时被跳过）的问题，生产海外 VPS 直连可留空。
+- `fetch` 与代理 fetch 工厂（`makeProxyFetch`）均可注入，测试用 fake 不打真实网络、不依赖真代理；undici 仅在 `packages/job-source` 内隔离依赖，其余包不感知。
 
 ### 6.8 编排器 `ingestor.syncOnce`
 
