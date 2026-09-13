@@ -23,10 +23,19 @@ export const SEED_GREENHOUSE_BOARDS: GreenhouseBoard[] = [
 
 /**
  * Lever 种子 board 清单（slug = jobs.lever.co/{slug}，posting 本身不含公司名）。
- * 初始仅纳入已验证样例，后续按真实可达 slug 扩充。
+ * 每个 slug 均于 2026-09-13 实测 api.lever.co 返回 200 且当前有在招工程岗；
+ * 扩充时先实测可达性再追加（单个 board 404 会被自动跳过）。
  */
 export const SEED_LEVER_BOARDS: LeverBoard[] = [
   { slug: 'alluxio', companyName: 'Alluxio' },
+  { slug: 'binance', companyName: 'Binance' },
+  { slug: 'palantir', companyName: 'Palantir' },
+  { slug: 'scaleway', companyName: 'Scaleway' },
+  { slug: 'shieldai', companyName: 'Shield AI' },
+  { slug: 'sonarsource', companyName: 'SonarSource' },
+  { slug: 'spotify', companyName: 'Spotify' },
+  { slug: 'sysdig', companyName: 'Sysdig' },
+  { slug: 'zoox', companyName: 'Zoox' },
 ];
 
 export const DEFAULT_SOURCES: JobSource[] = ['remoteok', 'remotive', 'greenhouse', 'lever'];
