@@ -235,7 +235,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
   }
 
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats>',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match>',
   );
   return 2;
 }

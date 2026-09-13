@@ -11,6 +11,8 @@
  *   POST /analyze        — 创建分析任务（去重：同一用户有 active job 则返回现有 jobId）
  *   GET  /jobs/:id       — 查询任务状态（queued/running/succeeded/failed + stage + profileId）
  *   GET  /profiles/:id   — 查询画像快照（完整 AbilityProfile JSON）
+ *   GET  /job-postings   — 岗位检索（P2-D 职位聚合消费侧）
+ *   POST /job-postings/match — 按画像技能匹配岗位
  *   GET  /health         — 健康检查
  *
  * 环境变量：
@@ -26,20 +28,28 @@ import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import { toExportableProfile, type AbilityProfile } from '@jobagent/shared';
+import {
+  toExportableProfile,
+  JobSourceSchema,
+  type AbilityProfile,
+  type JobSource,
+} from '@jobagent/shared';
 import {
   createStorage,
   type IAnalysisJobsRepository,
   type IProfilesRepository,
+  type IJobPostingsRepository,
   type StoredAnalysisJob,
   type StoredProfile,
 } from '@jobagent/storage';
+import { matchJobs } from '@jobagent/job-source';
 
 // ─── 类型 ───────────────────────────────────────────────────────────────
 
 export interface ApiRepos {
   jobs: IAnalysisJobsRepository;
   profiles: IProfilesRepository;
+  jobPostings: IJobPostingsRepository;
 }
 
 export interface ApiDeps {
@@ -66,6 +76,34 @@ const JobIdParamSchema = z.object({
 
 const ProfileIdParamSchema = z.object({
   id: z.string().min(1, 'profile id is required'),
+});
+
+// 岗位搜索 query string 校验（全是字符串，需逐项转换）
+const JobSearchQuerySchema = z.object({
+  keyword: z.string().trim().min(1).optional(),
+  remote: z.enum(['true', 'false']).optional(),
+  sources: z.string().trim().min(1).optional(), // 逗号分隔，逐个用 JobSourceSchema 校验
+  company: z.string().trim().min(1).optional(),
+  tags: z.string().trim().min(1).optional(),
+  salaryMinUsd: z.coerce.number().int().nonnegative().optional(),
+  postedAfter: z.string().trim().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(500).optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
+  orderBy: z.enum(['posted_desc', 'posted_asc', 'salary_desc']).optional(),
+});
+
+// 画像匹配请求体：技能必填，其余为候选池过滤/硬过滤条件
+const JobMatchRequestSchema = z.object({
+  skills: z.array(z.string().trim().min(1)).min(1, 'at least one skill is required'),
+  remote: z.boolean().optional(),
+  salaryMinUsd: z.number().int().nonnegative().optional(),
+  sources: z.array(JobSourceSchema).optional(),
+  keyword: z.string().trim().min(1).optional(),
+  tags: z.array(z.string().trim().min(1)).optional(),
+  company: z.string().trim().min(1).optional(),
+  postedAfter: z.string().trim().min(1).optional(),
+  candidateLimit: z.number().int().positive().max(500).optional(),
+  limit: z.number().int().positive().max(500).optional(),
 });
 
 // ─── 响应格式化 ──────────────────────────────────────────────────────────
@@ -237,6 +275,96 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
     return c.json(toExportableProfile(profile.snapshot));
   });
 
+  // ── 职位聚合（P2-D）：搜索 / 统计 / 单条 / 画像匹配 ────────────────
+  // 注意：/jobs/:id 已被分析任务占用，岗位相关端点统一用 /job-postings。
+
+  // GET /job-postings：岗位检索（薄封装仓储 search）
+  app.get('/job-postings', async (c) => {
+    const parsed = JobSearchQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+      return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
+    }
+    const q = parsed.data;
+    let sources: JobSource[] | undefined;
+    if (q.sources) {
+      const picked = q.sources.split(',').map((s) => s.trim()).filter(Boolean);
+      const bad = picked.filter((s) => !JobSourceSchema.safeParse(s).success);
+      if (bad.length > 0) return c.json({ error: 'invalid source(s)', invalid: bad }, 400);
+      sources = picked as JobSource[];
+    }
+    const tags = q.tags ? q.tags.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+    const rows = await repos.jobPostings.search({
+      keyword: q.keyword,
+      remote: q.remote === undefined ? undefined : q.remote === 'true',
+      sources,
+      company: q.company,
+      tags,
+      salaryMinUsd: q.salaryMinUsd,
+      postedAfter: q.postedAfter,
+      limit: q.limit,
+      offset: q.offset,
+      orderBy: q.orderBy,
+    });
+    return c.json({ items: rows, limit: q.limit ?? 100, offset: q.offset ?? 0 });
+  });
+
+  // GET /job-postings/stats：按源统计（须在 :id 路由之前注册，避免 stats 被当成 id）
+  app.get('/job-postings/stats', async (c) => {
+    const active = await repos.jobPostings.countBySource('active');
+    const inactive = await repos.jobPostings.countBySource('inactive');
+    return c.json({ active, inactive });
+  });
+
+  // GET /job-postings/:id：单条岗位
+  app.get('/job-postings/:id', async (c) => {
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'invalid job posting id' }, 400);
+    const posting = await repos.jobPostings.getById(id);
+    if (!posting) return c.json({ error: 'job posting not found' }, 404);
+    return c.json(posting);
+  });
+
+  // POST /job-postings/match：先用结构化条件取候选池，再按画像技能打分排序
+  app.post('/job-postings/match', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    const parsed = JobMatchRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
+    }
+    const m = parsed.data;
+    const candidates = await repos.jobPostings.search({
+      keyword: m.keyword,
+      sources: m.sources,
+      remote: m.remote,
+      company: m.company,
+      tags: m.tags,
+      salaryMinUsd: m.salaryMinUsd,
+      postedAfter: m.postedAfter,
+      limit: m.candidateLimit ?? 500,
+      orderBy: 'posted_desc',
+    });
+    const matches = matchJobs(candidates, {
+      skills: m.skills,
+      remote: m.remote,
+      salaryMinUsd: m.salaryMinUsd,
+      sources: m.sources,
+      limit: m.limit ?? 50,
+    });
+    return c.json({
+      matches: matches.map((x) => ({
+        score: x.score,
+        matchedSkills: x.matchedSkills,
+        posting: x.posting,
+      })),
+      total: matches.length,
+    });
+  });
+
   // 404 兜底
   app.notFound((c) => {
     return c.json({ error: 'not found', path: c.req.path }, 404);
@@ -261,7 +389,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /job-postings, POST /job-postings/match, GET /health`);
   });
 }
 

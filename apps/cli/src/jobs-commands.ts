@@ -3,6 +3,7 @@
  *   jobs sync   [--source=a,b] [--dry-run] [--stale-days=7]  # 抓取→清洗→去重→入库
  *   jobs search [--keyword k] [--remote] [--source=a,b] [--limit n] [--json]
  *   jobs stats                                              # 按源统计 active/inactive
+ *   jobs match --skills=a,b [--remote] [--salary-min n] [--keyword k] [--json]  # 画像技能匹配排序
  *
  * 退出码：所有源失败=1；部分源失败=0（stderr 告警）；成功=0。
  */
@@ -16,12 +17,20 @@ import {
   createDefaultAdapters,
   createJobHttpClient,
   syncOnce,
+  matchJobs,
   type JobHttpOptions,
 } from '@jobagent/job-source';
 import type { JobSourceAdapter } from '@jobagent/job-source';
 import type { CliDeps } from './index.js';
 
-const ENABLED_SOURCES: JobSource[] = ['remoteok', 'remotive', 'greenhouse', 'lever'];
+// hn_whoishiring 为月度源：默认 sync 不含它，需 --source hn_whoishiring 显式触发（每月一次）
+const ENABLED_SOURCES: JobSource[] = [
+  'remoteok',
+  'remotive',
+  'greenhouse',
+  'lever',
+  'hn_whoishiring',
+];
 
 function makeCliStorage(): Promise<StorageContext> | StorageContext {
   const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
@@ -183,6 +192,93 @@ async function runStats(_rest: string[], deps: CliDeps): Promise<number> {
   return 0;
 }
 
+/**
+ * jobs match：按画像技能对在招岗位打分排序（P2-D 消费侧）。
+ * 先用结构化条件取候选池，再用 matchJobs 纯函数按 title/tags/description 命中加权。
+ */
+async function runMatch(rest: string[], deps: CliDeps): Promise<number> {
+  const logger = deps.logger ?? console;
+  const stdout = deps.stdout ?? process.stdout;
+  const { values } = parseArgs({
+    args: rest,
+    options: {
+      skills: { type: 'string' }, // 逗号分隔，必填（来自能力画像 skillTags.name）
+      keyword: { type: 'string', short: 'k' },
+      remote: { type: 'boolean' },
+      source: { type: 'string' },
+      'salary-min': { type: 'string' },
+      'candidate-limit': { type: 'string' },
+      limit: { type: 'string' },
+      json: { type: 'boolean' },
+    },
+  });
+
+  const skills = (values.skills ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (skills.length === 0) {
+    logger.error('--skills=a,b is required (comma-separated skill names)');
+    return 2;
+  }
+  const sources = parseSources(values.source, logger);
+  if (sources === null) return 2;
+
+  let salaryMinUsd: number | undefined;
+  if (values['salary-min'] !== undefined) {
+    salaryMinUsd = Number(values['salary-min']);
+    if (!Number.isInteger(salaryMinUsd) || salaryMinUsd < 0) {
+      logger.error('--salary-min must be a non-negative integer');
+      return 2;
+    }
+  }
+  const parsePositive = (raw: string | undefined, flag: string): number | undefined | 2 => {
+    if (raw === undefined) return undefined;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1) {
+      logger.error(`${flag} must be a positive integer`);
+      return 2;
+    }
+    return n;
+  };
+  const candidateLimit = parsePositive(values['candidate-limit'], '--candidate-limit');
+  if (candidateLimit === 2) return 2;
+  const limit = parsePositive(values.limit, '--limit');
+  if (limit === 2) return 2;
+
+  const storage = await resolveStorage(deps);
+  const candidates = await storage.jobPostings.search({
+    keyword: values.keyword,
+    sources: sources ?? undefined,
+    remote: values.remote ? true : undefined,
+    salaryMinUsd,
+    limit: candidateLimit ?? 500,
+    orderBy: 'posted_desc',
+  });
+  const matches = matchJobs(candidates, {
+    skills,
+    remote: values.remote ? true : undefined,
+    salaryMinUsd,
+    sources: sources ?? undefined,
+    limit: limit ?? 20,
+  });
+
+  if (values.json) {
+    stdout.write(`${JSON.stringify(matches, null, 2)}\n`);
+    return 0;
+  }
+  if (matches.length === 0) {
+    stdout.write('(no postings match the given skills)\n');
+    return 0;
+  }
+  const lines = matches.map(
+    (m) =>
+      `${m.score}\t${m.posting.source}\t${m.posting.title} @ ${m.posting.company}\t[${m.matchedSkills.join(',')}]\t${m.posting.sourceUrl}`,
+  );
+  stdout.write(`${lines.join('\n')}\n(${matches.length} matches)\n`);
+  return 0;
+}
+
 /** jobs 子命令入口，返回进程退出码。 */
 export async function runJobs(rest: string[], deps: CliDeps): Promise<number> {
   const [sub, ...subRest] = rest;
@@ -190,7 +286,8 @@ export async function runJobs(rest: string[], deps: CliDeps): Promise<number> {
     if (sub === 'sync') return await runSync(subRest, deps);
     if (sub === 'search') return await runSearch(subRest, deps);
     if (sub === 'stats') return await runStats(subRest, deps);
-    (deps.logger ?? console).error('Usage: jobagent jobs <sync|search|stats>  (see each subcommand --help in docs)');
+    if (sub === 'match') return await runMatch(subRest, deps);
+    (deps.logger ?? console).error('Usage: jobagent jobs <sync|search|stats|match>  (see each subcommand --help in docs)');
     return 2;
   } catch (err) {
     (deps.logger ?? console).error(`jobs ${sub ?? ''} failed: ${(err as Error).message}`);
