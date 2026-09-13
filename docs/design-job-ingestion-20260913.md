@@ -360,9 +360,17 @@ pnpm --filter @jobagent/cli start jobs stats
 
 ### 7.3 调度
 
-- 本地/单机：系统计划任务每日跑一次（Windows 任务计划程序 / Linux cron / 后期服务端 systemd timer），命令写入文档，不进代码。
-  - 例（Linux）：`17 3 * * * cd /srv/job-agent && pnpm --filter @jobagent/cli start jobs sync >> logs/jobs-sync.log 2>&1`（错峰整点）。
-- 频率（Spike 结论）：RemoteOK/Remotive/Greenhouse/Lever **日更**；HN 月度帖**每月跑一次**即可（CLI 单独 `--source=hn_whoishiring`，cron 月度触发）。
+- 本地/单机：系统计划任务触发（Linux cron / systemd timer / Windows 任务计划程序），**命令只写进文档、不内置定时器**（见 §7.1）。运行前需先 `pnpm -r build`；cron 的环境变量很精简，建议在命令里先载入仓库 `.env`（`set -a; . /srv/job-agent/.env; set +a`）并 `mkdir -p logs`。
+- **日更（RemoteOK/Remotive/Greenhouse/Lever，每日一次，错峰整点）**
+  - Linux cron：`17 3 * * * cd /srv/job-agent && mkdir -p logs && pnpm --filter @jobagent/cli start jobs sync >> logs/jobs-sync.log 2>&1`
+  - systemd timer：`OnCalendar=*-*-* 03:17:00`、`Persistent=true`（停机后补跑），`ExecStart` 用同一条 `pnpm ... jobs sync`。
+- **HN 月度源（每月一次，单独触发，绝不并进日更列表）**
+  - 时机：HN「Who is hiring」由官方账号在每月初（通常为美西 1 日）发父帖，定时任务定在**每月 2 日**，确保父帖与顶层评论已建立；命令显式 `--source hn_whoishiring` 并带 `--stale-days 35`。
+  - 为什么是 35 天：`markStale` 全表不分源（§6.5），HN 每月才刷新一次，若沿用日更的 7 天阈值，会在下次月度刷新前把这些岗位误标 inactive；35 天覆盖一个月周期并留缓冲。
+  - Linux cron：`41 3 2 * * cd /srv/job-agent && mkdir -p logs && pnpm --filter @jobagent/cli start jobs sync --source hn_whoishiring --stale-days 35 >> logs/jobs-hn-monthly.log 2>&1`
+  - systemd timer：`OnCalendar=*-*-02 03:41:00`、`Persistent=true`。
+  - Windows 任务计划程序（开发/单机，管理员 PowerShell，路径换成实际仓库）：`schtasks /Create /SC MONTHLY /D 2 /TN "JobAgent HN monthly" /ST 03:41 /TR "cmd /c cd /d C:\path\to\job-agent && pnpm --filter @jobagent/cli start jobs sync --source hn_whoishiring --stale-days 35 >> logs\jobs-hn-monthly.log 2>&1"`
+  - 月度源幂等：`(source, source_url)` UNIQUE 去重，同月重复跑只产生 unchanged，可安全补跑；首次上线或改解析器后先加 `--dry-run` 验证条数，再写库。
 
 ### 7.4 为什么暂不建搜索 API / 页面
 
