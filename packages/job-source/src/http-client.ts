@@ -1,3 +1,5 @@
+import { ProxyAgent, fetch as undiciFetch } from 'undici';
+import type { Dispatcher } from 'undici';
 import type { JobHttpClient, JobHttpOptions } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -6,6 +8,23 @@ const DEFAULT_UA = 'job-agent/0.1 (+https://github.com/bayernjf/job-agent)';
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 const realSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 生产默认的代理 fetch：undici 的 ProxyAgent 与 undici 自身 fetch 配对，
+ * 保证 dispatcher 与 fetch 来自同一 undici 实例（避免与 Node 内置全局 fetch 跨实例 instanceof 校验失败）。
+ */
+function defaultMakeProxyFetch(proxyUrl: string): typeof fetch {
+  const dispatcher: Dispatcher = new ProxyAgent(proxyUrl);
+  const proxied = (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+  ) =>
+    undiciFetch(input as never, {
+      ...(init as Record<string, unknown> | undefined),
+      dispatcher,
+    } as never);
+  return proxied as typeof fetch;
+}
 
 export class JobHttpError extends Error {
   constructor(
@@ -26,7 +45,11 @@ export class JobHttpError extends Error {
  * - fetch 可注入，测试不打真实网络。
  */
 export function createJobHttpClient(options: JobHttpOptions = {}): JobHttpClient {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const proxy = options.proxy?.trim();
+  // 显式注入的 fetchImpl 优先；否则配置了非空代理就经代理转发，再否则直连全局 fetch。
+  const fetchImpl =
+    options.fetchImpl ??
+    (proxy ? (options.makeProxyFetch ?? defaultMakeProxyFetch)(proxy) : fetch);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const retries = options.retries ?? DEFAULT_RETRIES;
   const userAgent = options.userAgent ?? DEFAULT_UA;
