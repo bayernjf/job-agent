@@ -206,6 +206,9 @@ importers:
       '@jobagent/storage':
         specifier: workspace:*
         version: link:../storage
+      undici:
+        specifier: ^8.10.2
+        version: 8.10.2
 
   packages/llm:
     dependencies:
