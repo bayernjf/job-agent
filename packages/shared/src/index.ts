@@ -215,3 +215,41 @@ export function parseExportableProfile(input: unknown): ExportableProfile | null
   const result = ExportableProfileSchema.safeParse(input);
   return result.success ? result.data : null;
 }
+
+/**
+ * 职位发布契约（P2 职位聚合预留，2026-09-13 Spike 实证落地）。
+ *
+ * 设计原则：source+sourceUrl 是去重唯一键；只存精简字段（描述剥离 HTML），
+ * 不存源站 raw 全量（对齐 AGENTS 快照原则）；数据源实测结论见
+ * docs/设计-职位聚合-Spike-20260913.md。
+ */
+export const JobSourceSchema = z.enum([
+  'remoteok',
+  'remotive',
+  'greenhouse',
+  'lever',
+  'hn_whoishiring',
+  'weworkremotely',
+]);
+export type JobSource = z.infer<typeof JobSourceSchema>;
+
+export const JobPostingSchema = z.object({
+  jobId: z.string().min(1),
+  source: JobSourceSchema,
+  sourceUrl: z.string().url(), // 原平台绝对 URL（同源去重唯一键）
+  title: z.string().min(1),
+  company: z.string().min(1),
+  location: z.string().nullish(), // 源站原文（如 "Remote - US" / "Foster City, California"）
+  remote: z.boolean(), // 是否远程（源字段或 location 解析）
+  salaryMin: z.number().nullish(), // 统一年化美元；未知为 null
+  salaryMax: z.number().nullish(),
+  salaryCurrency: z.string().nullish(),
+  tags: z.array(z.string()).default([]),
+  description: z.string().nullish(), // 精简文本（HTML 剥离后）
+  postedAt: z.string().datetime(), // 源发布时间（ISO）
+  fetchedAt: z.string().datetime(), // 我方抓取时间（ISO）
+  applyUrl: z.string().url().optional(), // 独立申请入口（Greenhouse/Lever 有）
+  companyLogoUrl: z.string().url().optional(),
+  companyUrl: z.string().url().optional(), // 公司主页（YC batch 等补充字段）
+});
+export type JobPosting = z.infer<typeof JobPostingSchema>;

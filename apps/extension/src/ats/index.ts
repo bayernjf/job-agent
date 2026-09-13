@@ -126,9 +126,23 @@ function collectFields(root: Document | ShadowRoot): Array<HTMLInputElement | HT
 }
 
 /** 归一化：小写 + 下划线/连字符/空格统一为空格（匹配 "first_name" ↔ "First name" 等变体） */
-function norm(s: string): string {
+export function norm(s: string): string {
   return s.toLowerCase().replace(/[_\-\s]+/g, ' ').trim();
 }
+
+/** 可接受画像 summary 的自定义问题文本关键词（归一化后命中任一即写入） */
+export const SUMMARY_HINTS = [
+  'why',
+  'cover letter',
+  'about yourself',
+  'tell us',
+  'interest',
+  'motivat',
+  'summary',
+  'introduce',
+  'relevant experience',
+  'additional',
+];
 
 /** 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder 关键字匹配（含 iframe 与 shadow DOM） */
 export function findFields(doc: Document, keywords: string[]): HTMLInputElement[] {
@@ -147,6 +161,35 @@ export function findFields(doc: Document, keywords: string[]): HTMLInputElement[
     }
   }
   return [...hit] as HTMLInputElement[];
+}
+
+/**
+ * 定位 ATS 自定义问题中的自由文本字段（Greenhouse question_/answers[*]、Lever questions[...]），
+ * 取关联问题文本（label[for=id] > aria-label > 就近 label），命中 summary 类关键词即返回。
+ * id 形如 question_<uuid>/question_<数字>（字母数字-_），无需 CSS 转义。
+ */
+export function findLabeledQuestion(
+  doc: Document,
+  fieldPattern: RegExp,
+): HTMLTextAreaElement | HTMLInputElement | null {
+  for (const d of allDocuments(doc)) {
+    for (const el of collectFields(d)) {
+      if (!fieldPattern.test(el.name) && !fieldPattern.test(el.id)) continue;
+      let labelText = '';
+      if (el.id) {
+        labelText = d.querySelector(`label[for="${el.id}"]`)?.textContent ?? '';
+      }
+      if (!labelText) labelText = el.getAttribute('aria-label') ?? '';
+      if (!labelText) {
+        const host = el.closest?.('div, fieldset, section');
+        labelText = host?.querySelector('label')?.textContent ?? '';
+      }
+      if (SUMMARY_HINTS.some((hint) => norm(labelText).includes(hint))) {
+        return el;
+      }
+    }
+  }
+  return null;
 }
 
 /** 按语义键取单个值（fill 用） */
