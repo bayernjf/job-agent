@@ -15,6 +15,10 @@ const FIXTURE_DB = resolve(process.cwd(), 'e2e', '.tmp', 'e2e.db').replace(/\\/g
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
+  // 扩展用例归属 playwright.extension.config.ts（其 fixture 自启 persistent context
+  // 加载 unpacked MV3，不需要这里的 Astro webServer / fixture DB）；显式排除，
+  // 避免 `pnpm e2e` 与 `pnpm e2e:extension` 重复执行同一批扩展用例。
+  testIgnore: '**/extension/**',
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
