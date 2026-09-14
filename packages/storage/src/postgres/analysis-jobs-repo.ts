@@ -128,6 +128,30 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
       .where(eq(analysisJobs.id, id));
   }
 
+  async reclaimStaleRunning(maxAgeMs: number): Promise<number> {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const now = new Date().toISOString();
+    const result = await this.db
+      .update(analysisJobs)
+      .set({
+        status: 'queued',
+        stage: null,
+        errorMessage: 'Reclaimed: worker likely crashed mid-job',
+        claimedBy: null,
+        startedAt: null,
+        finishedAt: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(analysisJobs.status, 'running'),
+          lt(analysisJobs.startedAt, cutoff),
+        ),
+      )
+      .returning({ id: analysisJobs.id });
+    return result.length;
+  }
+
   async listBySubject(
     subjectPlatform: string,
     subjectLogin: string,
