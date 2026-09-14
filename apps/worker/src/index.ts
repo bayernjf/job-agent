@@ -210,6 +210,13 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
 
   logger.info(`[worker] ${workerId} started (poll=${pollIntervalMs}ms, maxRetries=${maxRetries})`);
 
+  // Reclaim running jobs left by a crashed worker before the previous shutdown.
+  // A job running for >5 minutes is almost certainly orphaned (single analysis takes <1 min).
+  const reclaimed = await repos.jobs.reclaimStaleRunning(5 * 60 * 1000);
+  if (reclaimed > 0) {
+    logger.warn(`[worker] reclaimed ${reclaimed} stale running job(s) from a crashed worker`);
+  }
+
   while (shouldContinue()) {
     const job = await repos.jobs.claimNext(workerId);
     if (!job) {
