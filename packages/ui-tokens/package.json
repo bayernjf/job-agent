@@ -1,0 +1,10 @@
+{
+  "name": "@jobagent/ui-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single source of JobAgent design tokens (CSS custom properties), shared by apps/report and apps/extension. See docs/design-tokens-20260910.md",
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  },
+  "files": ["tokens.css"]
+}

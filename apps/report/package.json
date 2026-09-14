@@ -17,6 +17,7 @@
     "@astrojs/react": "^6.0.5",
     "@jobagent/shared": "workspace:*",
     "@jobagent/storage": "workspace:*",
+    "@jobagent/ui-tokens": "workspace:*",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "astro": "^7.3.2",
