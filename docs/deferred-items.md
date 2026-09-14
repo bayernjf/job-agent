@@ -29,7 +29,7 @@
 | --- | --- | --- | --- |
 | #11 L2 clone 静态分析 + 隔离沙箱 | MVP 只做 L0 元数据 + L1 行为时序、**不 clone**，以规避供应链安全面与资源成本；L2 需隔离沙箱 | 进入 P3 前，且 L0/L1 信号被证明不足以支撑目标结论 | [待拍板决策清单 #11](待拍板决策清单-20260910.md)、[技术选型](技术选型-MVP-20260910.md) |
 | L3 / L4 更深分析（代码语义、长期演进等） | 依赖 L2 的代码获取与沙箱先成立，逐级递进 | L2 落地并验证成立后 | [PRD 分析分层 L0–L4](PRD.md) |
-| #12 Gitee / 多证据源接入 | 契约层已预留 `EvidenceSource` 抽象；先用 GitHub 跑通 L0/L1 内核，避免最早期两套 API/合规翻倍 | **Spike 已完成 2026-09-14**（[design-gitee-source-spike](design-gitee-source-spike-20260914.md)：v5 仅 REST 无 GraphQL、匿名可读、L0 充分、L1 基本可行但协作/代码量信号弱）；**实现 `packages/gitee-source` 仍缓做**，重启条件＝明确拍板立项支持 Gitee 分析（国内用户需求显化或多源融合进入排期） | [待拍板决策清单 #12/#4](待拍板决策清单-20260910.md)、[Gitee Spike](design-gitee-source-spike-20260914.md) |
+| ✅ **G-A 已重启并落地 2026-09-14（CLI 闭环，见 handoff item 14）** #12 Gitee / 多证据源接入：新增 `packages/gitee-source`（v5 REST-only，产出证据源无关 AnalyzerInput）+ shared/analyzer 多平台参数化 + CLI `--platform github|gitee` 选源 | 契约层已预留 `EvidenceSource` 抽象；G-A 先用 CLI 跑通国内第二证据源，避免最早期两套在线链路/合规翻倍。**G-B 仍缓做**：worker/api 生产链路选源、events 行为流、跨源镜像账号去重、Gitee OAuth、认证态精确限频、L2 | G-A 触发条件 2026-09-14 已满足（拍板立项 Gitee、Spike 就绪）；**G-B 重启条件＝生产要在线支持 Gitee 分析，或多源融合进入排期** | [实现设计 design-gitee-source-20260914](design-gitee-source-20260914.md)、[Gitee Spike](design-gitee-source-spike-20260914.md)、[待拍板决策清单 #12/#4](待拍板决策清单-20260910.md) |
 
 ### 平台与工程线
 
