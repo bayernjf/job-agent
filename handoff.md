@@ -113,7 +113,8 @@ JobAgent 当前状态，截至 2026-09-14。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
-- 2026-09-14：**项目文档同步（1 个提交，未 push）**——G-B + P2 匹配接线完成后同步三处门面文档：①AGENTS.md Gitee 行从"G-A 落地、G-B 缓做"改为"G-A+G-B 落地、剩余项缓做"；②README.md 刷新项目状态（P2 采集+匹配接线完成、Gitee 双平台支持）、技术栈采集行补 Gitee、产品规则从"只走 GitHub API"改为"只走平台公开 API"、文档导航表补 6 份设计文档；③docs/README.md Gitee 两行合并为"已落地"一行。
+- 2026-09-14：**Docker 容器运行时首次实跑验证 + 修复（1 个提交，未 push）**——本机有 Docker Desktop，首次跑通三容器运行时 smoke（此前 CI 只验证 build）。**发现并修复真实 bug**：better-sqlite3 只创建 db 文件不建父目录，API/Worker 默认 `data/job-agent.db` 在容器内启动即崩（`Cannot open database because the directory does not exist`）；在 node-runtime 层加 `RUN mkdir -p /app/data`。验证：api `/health` 返回 200 `{"status":"ok"}`、report 返回 302 语言重定向、worker 传 GITHUB_TOKEN 后正常进入轮询（poll=5000ms）并 SIGTERM 优雅关闭。
+- 2026-09-14：**项目文档同步（1 个提交，已 push）**——G-B + P2 匹配接线完成后同步三处门面文档：①AGENTS.md Gitee 行从"G-A 落地、G-B 缓做"改为"G-A+G-B 落地、剩余项缓做"；②README.md 刷新项目状态（P2 采集+匹配接线完成、Gitee 双平台支持）、技术栈采集行补 Gitee、产品规则从"只走 GitHub API"改为"只走平台公开 API"、文档导航表补 6 份设计文档；③docs/README.md Gitee 两行合并为"已落地"一行。
 - 2026-09-14：**Gitee mappers edge case 测试补强（4 个提交，未 push）**——Gitee source 测试从 23→26，补齐 mappers 层缺失分支覆盖：①匿名 commit（author:null）不崩、authorName=null；②PR 无 html_url 时回退 URL 断言；③mapSubject 可选字段全缺时 null/0 回退；④repo owner=null 时回退调用者 login。全仓 typecheck/test/diff 全绿。
 - 2026-09-14：**Gitee collector 补组织仓库 ownerLogin 回归测试（1 个提交，已 push）**——对齐 github-source 的 org-repo 回归测试：当 repos 列表中某仓库 owner.login 不同于查询用户名（组织仓库场景），collector 必须用 `repo.ownerLogin` 构造 L1 commits/pulls/issues URL，而非调用者 login。+1 测试（gitee-source 23 测试全绿）。
 - 2026-09-14：**扩展 E2E 补平台切换测试（1 个提交，未 push）**——扩展 E2E 此前未覆盖面板平台切换 UI。新增用例：打开面板→验证 GitHub/Gitee 按钮可见→切到 Gitee→提交用户名→断言拦截到的 POST /analyze body 含 `platform=gitee`。扩展 E2E 6 全绿（16.8s）。
