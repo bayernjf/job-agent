@@ -113,7 +113,9 @@ JobAgent 当前状态，截至 2026-09-14。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
-- 2026-09-14：**Gitee collector 补组织仓库 ownerLogin 回归测试（1 个提交，未 push）**——对齐 github-source 的 org-repo 回归测试：当 repos 列表中某仓库 owner.login 不同于查询用户名（组织仓库场景），collector 必须用 `repo.ownerLogin` 构造 L1 commits/pulls/issues URL，而非调用者 login。+1 测试（gitee-source 23 测试全绿）。
+- 2026-09-14：**项目文档同步（1 个提交，未 push）**——G-B + P2 匹配接线完成后同步三处门面文档：①AGENTS.md Gitee 行从"G-A 落地、G-B 缓做"改为"G-A+G-B 落地、剩余项缓做"；②README.md 刷新项目状态（P2 采集+匹配接线完成、Gitee 双平台支持）、技术栈采集行补 Gitee、产品规则从"只走 GitHub API"改为"只走平台公开 API"、文档导航表补 6 份设计文档；③docs/README.md Gitee 两行合并为"已落地"一行。
+- 2026-09-14：**Gitee mappers edge case 测试补强（4 个提交，未 push）**——Gitee source 测试从 23→26，补齐 mappers 层缺失分支覆盖：①匿名 commit（author:null）不崩、authorName=null；②PR 无 html_url 时回退 URL 断言；③mapSubject 可选字段全缺时 null/0 回退；④repo owner=null 时回退调用者 login。全仓 typecheck/test/diff 全绿。
+- 2026-09-14：**Gitee collector 补组织仓库 ownerLogin 回归测试（1 个提交，已 push）**——对齐 github-source 的 org-repo 回归测试：当 repos 列表中某仓库 owner.login 不同于查询用户名（组织仓库场景），collector 必须用 `repo.ownerLogin` 构造 L1 commits/pulls/issues URL，而非调用者 login。+1 测试（gitee-source 23 测试全绿）。
 - 2026-09-14：**扩展 E2E 补平台切换测试（1 个提交，未 push）**——扩展 E2E 此前未覆盖面板平台切换 UI。新增用例：打开面板→验证 GitHub/Gitee 按钮可见→切到 Gitee→提交用户名→断言拦截到的 POST /analyze body 含 `platform=gitee`。扩展 E2E 6 全绿（16.8s）。
 - 2026-09-14：**G-B 跨平台硬编码清理（3 个提交，已 push）**——G-B 在线选源完成后系统清理残留的 GitHub 特指文案：①report i18n `app.tagline`/`home.step3.desc` 从"GitHub 行为痕迹/GitHub 记录"改为"代码托管平台/原始平台记录"；②extension i18n `fill.summarySkillsLeadin` 从硬编码"GitHub 验证"改为 `{platform}` 模板，panel.tsx 按 `profile.subject.platform` 注入；③gitee-source collector 补 commits 时间排序测试（对齐 github-source）；④CLI batch Usage 补 `--platform`。全仓 typecheck/test/build/git diff --check 全绿。
 - 2026-09-14：**扩展 ATS 填充跨平台修复（1 个提交，未 push）**——G-B 在线选源完成后发现扩展 ATS 适配器 `toFillValues` 的 summary 文案硬编码"GitHub 验证"，Gitee 用户画像会显示"GitHub 验证"但实际是 Gitee；修复为按 `profile.subject.platform` 动态生成平台名（GitHub/Gitee）。`github_url` 字段仍填 `profile.subject.profileUrl`（Gitee 用户填 gitee.com 链接到 ATS 的 GitHub/代码仓库字段，因多数 ATS 无独立 Gitee 字段）。+1 测试覆盖 gitee 分支（扩展 56 测试全绿）。全仓 typecheck/build 全 Done。
