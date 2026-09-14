@@ -3,7 +3,9 @@ import {
   AbilityProfileSchema,
   parseAbilityProfile,
   SCHEMA_VERSION,
+  matchScoreTier,
   type AbilityProfile,
+  type MatchScoreTier,
 } from './index.js';
 
 /** 构造一份最小合法画像（含 L0/L1 各一个证据） */
@@ -106,5 +108,34 @@ describe('AbilityProfileSchema', () => {
 
   it('exposes the schema version', () => {
     expect(SCHEMA_VERSION).toBe('0.1');
+  });
+});
+
+describe('matchScoreTier', () => {
+  it('returns high when score >= 80% of max', () => {
+    expect(matchScoreTier(5, 1)).toBe<MatchScoreTier>('high'); // 5/6 = 83%
+    expect(matchScoreTier(10, 2)).toBe<MatchScoreTier>('high'); // 10/12 = 83%
+  });
+
+  it('returns mid when score >= 40% but < 80%', () => {
+    expect(matchScoreTier(3, 1)).toBe<MatchScoreTier>('mid'); // 3/6 = 50%
+    expect(matchScoreTier(5, 2)).toBe<MatchScoreTier>('mid'); // 5/12 = 42%
+  });
+
+  it('returns low when score < 40%', () => {
+    expect(matchScoreTier(2, 1)).toBe<MatchScoreTier>('low'); // 2/6 = 33%
+    expect(matchScoreTier(5, 3)).toBe<MatchScoreTier>('low'); // 5/18 = 28%
+  });
+
+  it('returns low for zero matched skills regardless of score', () => {
+    expect(matchScoreTier(0, 0)).toBe<MatchScoreTier>('low');
+    expect(matchScoreTier(9, 0)).toBe<MatchScoreTier>('low');
+  });
+
+  it('uses ratio so multi-skill profiles are not misjudged by absolute threshold', () => {
+    // 5 skills, score 6 = only 20% -> low (old absolute rule >=6 would wrongly say high)
+    expect(matchScoreTier(6, 5)).toBe<MatchScoreTier>('low');
+    // 3 skills, score 15 = 83% -> high (old absolute rule also high, but ratio is fair)
+    expect(matchScoreTier(15, 3)).toBe<MatchScoreTier>('high');
   });
 });
