@@ -16,6 +16,8 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { analyze, type AnalyzerInput } from '@jobagent/analyzer-core';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
+import { GiteeSource, type GiteeCollectedData } from '@jobagent/gitee-source';
+import type { SupportedPlatform } from '@jobagent/shared';
 import { createStorage, WAITLIST_STATUSES } from '@jobagent/storage';
 import type { StorageContext, WaitlistStatus } from '@jobagent/storage';
 import { toHtml, toMarkdown } from './report-format.js';
@@ -25,8 +27,10 @@ import { runJobs } from './jobs-commands.js';
 export interface CliDeps {
   /** 环境变量 GITHUB_TOKEN 的值（由调用方注入，便于测试） */
   token?: string;
+  /** 环境变量 GITEE_TOKEN（可选；Gitee 匿名也可读公开数据，token 仅用于提额） */
+  giteeToken?: string;
   /** 采集器注入点（测试用 fake；生产默认 new GitHubSource） */
-  source?: { collect(login: string): Promise<GitHubCollectedData> };
+  source?: { collect(login: string): Promise<GitHubCollectedData | GiteeCollectedData> };
   /** 持久化上下文注入点（waitlist 子命令用；测试注入临时库，生产默认 createStorage()） */
   storage?: StorageContext;
   /** Test injection for `jobs sync` (defaults to createDefaultAdapters) */
@@ -40,11 +44,18 @@ export interface CliDeps {
 
 export interface AnalyzeResult {
   profile: ReturnType<typeof analyze>;
-  meta: GitHubCollectedData['meta'];
+  meta: GitHubCollectedData['meta'] | GiteeCollectedData['meta'];
 }
 
-function makeSource(deps: CliDeps): { collect(login: string): Promise<GitHubCollectedData> } {
+function makeSource(
+  deps: CliDeps,
+  platform: SupportedPlatform,
+): { collect(login: string): Promise<GitHubCollectedData | GiteeCollectedData> } {
   if (deps.source) return deps.source;
+  if (platform === 'gitee') {
+    // Gitee 匿名即可读公开数据，token 仅用于提额，因此不强制
+    return new GiteeSource({ token: deps.giteeToken, log: deps.logger ?? console });
+  }
   const token = deps.token;
   if (!token) {
     throw new CliError(
@@ -73,14 +84,22 @@ class CliError extends Error {
 export async function analyzeLogin(
   login: string,
   deps: CliDeps,
+  platform: SupportedPlatform = 'github',
 ): Promise<AnalyzeResult> {
-  const source = makeSource(deps);
+  const source = makeSource(deps, platform);
   const collected = await source.collect(login);
   const profile = analyze(collected.input as AnalyzerInput, {
     profileId: randomUUID(),
     claimed: false,
+    platform,
   });
   return { profile, meta: collected.meta };
+}
+
+/** 解析 --platform；缺省 github，非法值返回 undefined 由调用方报错退出 */
+function parsePlatform(value: string | undefined): SupportedPlatform | undefined {
+  if (value === undefined) return 'github';
+  return value === 'github' || value === 'gitee' ? value : undefined;
 }
 
 function readBatchFile(file: string): string[] {
@@ -122,15 +141,20 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     const { values, positionals } = parseArgs({
       args: rest,
       allowPositionals: true,
-      options: { out: { type: 'string', short: 'o' } },
+      options: { out: { type: 'string', short: 'o' }, platform: { type: 'string' } },
     });
     const login = positionals[0];
+    const platform = parsePlatform(values.platform);
+    if (!platform) {
+      logger.error('--platform must be one of: github, gitee (default github)');
+      return 2;
+    }
     if (!login) {
-      logger.error('Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html]');
+      logger.error('Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] [--platform github|gitee]');
       return 2;
     }
     try {
-      const result = await analyzeLogin(login, deps);
+      const result = await analyzeLogin(login, deps, platform);
       const json = JSON.stringify(result, null, 2);
       writeOutput(values.out, json, logger, stdout);
       return 0;
@@ -144,7 +168,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     const { values, positionals } = parseArgs({
       args: rest,
       allowPositionals: true,
-      options: { out: { type: 'string', short: 'o' } },
+      options: { out: { type: 'string', short: 'o' }, platform: { type: 'string' } },
     });
     const file = positionals[0];
     if (!file) {
@@ -162,11 +186,16 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
       logger.error('batch file is empty (one username per line, # for comments)');
       return 1;
     }
+    const platform = parsePlatform(values.platform);
+    if (!platform) {
+      logger.error('--platform must be one of: github, gitee (default github)');
+      return 2;
+    }
     const lines: string[] = [];
     let failed = 0;
     for (const login of logins) {
       try {
-        const result = await analyzeLogin(login, deps);
+        const result = await analyzeLogin(login, deps, platform);
         lines.push(JSON.stringify(result));
         logger.log(`ok ${login}`);
       } catch (err) {
@@ -243,6 +272,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
 async function main(): Promise<void> {
   const code = await run(process.argv.slice(2), {
     token: process.env.GITHUB_TOKEN,
+    giteeToken: process.env.GITEE_TOKEN,
   });
   process.exitCode = code;
 }

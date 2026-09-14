@@ -20,6 +20,7 @@ COPY packages/analyzer-core/package.json packages/analyzer-core/
 COPY packages/llm/package.json packages/llm/
 COPY packages/job-source/package.json packages/job-source/
 COPY packages/ui-tokens/package.json packages/ui-tokens/
+COPY packages/gitee-source/package.json packages/gitee-source/
 COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/
 COPY apps/cli/package.json apps/cli/
