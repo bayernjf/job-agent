@@ -33,4 +33,6 @@ export interface IAnalysisJobsRepository {
   ): Promise<StoredAnalysisJob | undefined>;
   listQueued(limit?: number): Promise<StoredAnalysisJob[]>;
   countByStatus(): Promise<Record<JobStatus, number>>;
+  /** Reclaim running jobs older than maxAgeMs (worker crashed mid-job). Returns count requeued. */
+  reclaimStaleRunning(maxAgeMs: number): Promise<number>;
 }
