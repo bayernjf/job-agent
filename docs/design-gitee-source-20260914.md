@@ -43,7 +43,7 @@ base：`https://gitee.com/api/v5`；匿名可读公开数据，可选 `GITEE_TOK
 | L1 | `GET /repos/{owner}/{repo}/commits?per_page=30&page=1` | 每仓最近提交（仅前 N 个非归档仓） |
 | L1 | `GET /repos/{owner}/{repo}/pulls?state=all&per_page=...` | 仓库 PR，**客户端过滤 `user.login===login`（本人发起）** |
 | L1 | `GET /repos/{owner}/{repo}/issues?state=all&per_page=...` | 仓库 Issue（Gitee `/issues` 不混 PR），同样按作者过滤 |
-| L1 | `GET /users/{login}/events/public?page=1&per_page=20` | **用户级公开事件流，只请求一次、严禁翻页**（实测见 §4.11），用于补全近期 PushEvent 提交与最近活跃时间 |
+| L1 | `GET /users/{login}/events/public?page=1&per_page=20` | **用户级公开事件流，只请求一次、严禁翻页**（实测见 §4.11），用于补全近期 PushEvent 提交与最近活跃时间，并聚合为源无关 `BehaviorEventSummary`（方案 B，见 [design-behavior-diversity-20260915](design-behavior-diversity-20260915.md)） |
 
 - **没有「用户级 PR/Issue 聚合」端点**（GitHub 靠 GraphQL `user.pullRequests`），Gitee 只能遍历仓库再按作者过滤，因此请求数更多。
 - 请求预算：L0 最多 `1 + ceil(repos/100)`；L1 对**前 `maxCommitRepos=8` 个非归档仓**各 3 请求，再加 events 单次 1 请求。典型 ≈ 2 + 8×3 + 1 = **27 次/画像**，低于匿名约 60 次/分钟，默认 `restCalls` 预算 56 留余量。
@@ -120,7 +120,7 @@ const profile = analyze(input, { profileId, platform: 'gitee' });
 | 缓做项 | 触发条件 |
 | --- | --- |
 | worker/api 生产链路选源（POST /analyze 带 platform、DB 存 subject.platform、report/extension 展示平台标识） | G-A 经 CLI 在 ≥10 个真实 Gitee 账号上验证信号质量后 |
-| ~~`events/public` 行为流补充~~ | ✅ **已落地 2026-09-15（§4.11，方案 A：只动 gitee-source，补近期 PushEvent 提交与最近活跃时间，不动内核）**；行为多样性信号（动内核的方案 B）仍缓做，触发条件＝真实 Gitee 账号出现"因行为多样性不足导致误判" |
+| ~~`events/public` 行为流补充~~ / ~~行为多样性信号（动内核的方案 B）~~ | ✅ **方案 A 已落地 2026-09-15（§4.11，补近期 PushEvent 提交与最近活跃，不动内核）**；✅ **方案 B 已落地 2026-09-15（双源 events 聚合源无关 `BehaviorEventSummary` + analyzer 保守弱信号 `narrow_activity_scope` + 规则版本 0.1→0.2，见 [design-behavior-diversity-20260915](design-behavior-diversity-20260915.md)）**；仅剩真实 26 账号 GitHub/Gitee 双源回归待 token 校准阈值 |
 | 跨源 GitHub/Gitee 镜像项目去重、多源融合画像 | 进入多证据源融合里程碑 |
 | Gitee OAuth / 私人令牌提额与最小权限、私有仓库 | 出现需要分析私有 Gitee 数据的真实需求 |
 | 认证后精确限频额度/窗口核实 | 启用 token 提额前（查官方 oauth_doc/限频页） |
