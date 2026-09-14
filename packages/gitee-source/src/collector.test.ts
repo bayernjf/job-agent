@@ -190,3 +190,25 @@ describe('GiteeSource error handling', () => {
     await expect(makeSource(f, { restCalls: 1 }).collect('alice')).rejects.toBeInstanceOf(GiteeSourceError);
   });
 });
+
+describe('GiteeSource org-owned repo ownerLogin', () => {
+  it('uses repo.ownerLogin (not caller login) for L1 endpoints', async () => {
+    const calls: string[] = [];
+    const orgRepos: GiteeRepoRaw[] = [
+      { ...REPOS[0]!, owner: { login: 'someorg' }, html_url: 'https://gitee.com/someorg/core' },
+    ];
+    const f: typeof fetch = (async (url: string) => {
+      calls.push(url);
+      if (url.includes('/users/alice/repos')) return json(orgRepos);
+      if (url.includes('/users/alice')) return json(USER);
+      if (url.includes('/repos/someorg/core/commits')) return json(COMMITS);
+      if (url.includes('/repos/someorg/core/pulls')) return json(PULLS);
+      if (url.includes('/repos/someorg/core/issues')) return json(ISSUES);
+      return new Response(`unexpected ${url}`, { status: 500 });
+    }) as typeof fetch;
+    const collected = await makeSource(f).collect('alice');
+    expect(collected.input.repos[0]!.ownerLogin).toBe('someorg');
+    expect(calls.some((u) => u.includes('/repos/someorg/core/commits'))).toBe(true);
+    expect(calls.some((u) => u.includes('/repos/alice/core/commits'))).toBe(false);
+  });
+});

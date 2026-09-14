@@ -116,3 +116,35 @@ test.describe('extension match panel', () => {
     await expect(extPage.locator('.ja-match-error')).toHaveCount(0);
   });
 });
+
+test.describe('extension platform switcher', () => {
+  test('shows GitHub and Gitee buttons and sends platform in analyze request', async ({
+    extPage,
+    openPanel,
+  }) => {
+    await openPanel();
+
+    // 平台切换按钮可见
+    await expect(extPage.getByRole('button', { name: 'GitHub' })).toBeVisible();
+    await expect(extPage.getByRole('button', { name: 'Gitee' })).toBeVisible();
+
+    // 捕获 POST /analyze body
+    let postedPlatform = '';
+    await extPage.route('**/analyze', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      postedPlatform = body.platform;
+      await route.fulfill({ json: { profileId: 'prof-test' } });
+    });
+
+    // 切换到 Gitee
+    await extPage.getByRole('button', { name: 'Gitee' }).click();
+    await expect(extPage.getByRole('button', { name: 'Gitee' })).toHaveClass(/ja-platform-btn--active/);
+
+    await extPage.getByPlaceholder('e.g. sindresorhus').fill('gitee-user');
+    await extPage.getByRole('button', { name: 'Load verified profile' }).click();
+
+    // 等画像区出现
+    await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
+    expect(postedPlatform).toBe('gitee');
+  });
+});
