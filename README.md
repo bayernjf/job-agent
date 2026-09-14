@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成 + 工程化补全完成，P1·Chrome 扩展进入稳定期，P2 职位聚合与画像↔岗位匹配端到端接线完成，Gitee 第二证据源 G-A+G-B 全链路打通，Docker 容器运行时（SQLite + Postgres 双轨）与真实 GitHub 端到端首跑均已验证**：pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成 + 工程化补全完成，P1·Chrome 扩展进入稳定期，P2 职位聚合与画像↔岗位匹配端到端接线完成，Gitee 第二证据源 G-A+G-B 全链路打通，Docker 容器运行时（SQLite + Postgres 双轨）与 GitHub/Gitee/岗位推荐/报告页四条真实端到端均已验证，Worker 弹性增强（not_found 不重试 + 僵尸任务回收）**：pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -11,7 +11,7 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 ## 当前阶段
 
 - **M1 完成**：W1 持久化层（SQLite/Postgres 双方言）→ W2 采集+分析内核+CLI → W3 服务化 → W4 报告+分享 → 端到端联调 + 真实性三轮校准（26 账号 0 误报/0 漏报）。MVP 最小闭环：输入 GitHub 或 Gitee 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
-- **P1 进行中**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过，summary→自定义问题映射完成，面板/悬浮球已补齐中英 i18n 与共享设计 token、岗位匹配面板已接线，待真实用户装扩展试用。
+- **P1 进行中**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过，summary→自定义问题映射完成，面板/悬浮球已补齐中英 i18n 与共享设计 token、岗位匹配面板已接线，[试用安装指南](apps/extension/INSTALL.md) 已就绪，待真实用户装扩展试用。
 - **P2 完成**：五源岗位库（RemoteOK/Remotive/Greenhouse/Lever/HN）入库与增量同步、纯函数 `matchJobs` 技能匹配、API 岗位搜索/匹配端点、画像↔岗位推荐端到端接线（报告页推荐岛 + 扩展匹配面板）均落地。
 - **Gitee 第二证据源完成**：`packages/gitee-source`（v5 REST-only）+ CLI/API/Worker/报告页/扩展全链路平台切换，海内外同步。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
@@ -39,7 +39,7 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/design-extension-match-ui-20260914.md](docs/design-extension-match-ui-20260914.md) | 扩展面板岗位匹配 UI 设计 |
 | [docs/design-extension-e2e-20260914.md](docs/design-extension-e2e-20260914.md) | 扩展浏览器级 E2E 设计 |
 | [docs/API.md](docs/API.md) | HTTP API 接口文档（analyze/jobs/profiles/health） |
-| [apps/extension/README.md](apps/extension/README.md) | 浏览器扩展试用指南（本地服务、加载、一键填充步骤） |
+| [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
 | [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md) | 数据库迁移规范（`db/migrations/NNN_*.sql`） |

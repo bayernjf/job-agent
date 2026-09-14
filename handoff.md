@@ -113,7 +113,8 @@ JobAgent 当前状态，截至 2026-09-14。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
-- 2026-09-14：**僵尸任务恢复（2 个提交，未 push）**——worker 崩溃后正在处理的任务会永远卡在 running。①storage 加 `reclaimStaleRunning(maxAgeMs)`（sqlite+postgres 双方言，+1 测试覆盖 fresh/stale 边界）；②worker 启动时调用（5 分钟阈值），回收僵尸任务回 queued 重新处理。
+- 2026-09-15：**项目文档同步（2 个提交，未 push）**——README 状态行补四条真实端到端 + worker 弹性、P1 链接 INSTALL.md、文档导航指向 INSTALL.md；AGENTS.md 运行架构补 not_found 不重试 + 僵尸任务回收两条规则。
+- 2026-09-15：**扩展试用安装指南（2 个提交，未 push）**
 - 2026-09-14：**worker not_found 不重试修复 + HN 源验证 + 真实场景复验（2 个提交，已 push）**——①worker handleJobFailure 检查 error.code，not_found 直接 fail 不重试；②Gitee crossoverJie 画像确认正常（3 tags 是因 5 repos 数据少，非 bug）；③HN WhoIsHiring 月度源显式 `--source hn_whoishiring` 跑通：261 fetched/240 inserted/21 invalid，五源全部验证通过；④修复后真实复验：提交不存在的 Gitee 用户，8 秒内直接 failed（attempts=1，无重试），worker log 确认 "not found, failing permanently"。
 - 2026-09-14：**Gitee/岗位推荐/报告页三链路真实端到端首跑（1 个提交，已 push）**——①Gitee 真实 API：`crossoverJie`（Gitee 匿名可读，无需 token）13 秒完成（17 REST calls），5 repos/135 commits/0 PRs，likely_authentic(conf 0.72)，3 skill tags；②岗位推荐：sync 2063 岗位入库（remoteok 99/remotive 16/greenhouse 1915/lever 33），bayernjf 画像调 `/job-recommendations` 返回 20 匹配，最高分 27，含 fieldScores(title/tags/description)+skillHits 分解；③报告页真实渲染：report SSR 服务连真实 API，`/en/report/:id` 和 `/zh-CN/report/:id` 均 200（17KB），HTML 含 bayernjf/TypeScript/Astro/skill/authenticity/interview 内容。**此前 E2E 全是 mock fixture，这是三条链路首次用真实数据走通。**
 - 2026-09-14：**Postgres 模式容器验证 + 真实 GitHub 端到端首跑（1 个提交，已 push）**——本机有 Docker Desktop，首次跑通三容器运行时 smoke（此前 CI 只验证 build）。**发现并修复真实 bug**：better-sqlite3 只创建 db 文件不建父目录，API/Worker 默认 `data/job-agent.db` 在容器内启动即崩（`Cannot open database because the directory does not exist`）；在 node-runtime 层加 `RUN mkdir -p /app/data`。验证：api `/health` 返回 200 `{"status":"ok"}`、report 返回 302 语言重定向、worker 传 GITHUB_TOKEN 后正常进入轮询（poll=5000ms）并 SIGTERM 优雅关闭。
