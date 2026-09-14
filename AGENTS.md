@@ -20,7 +20,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 - 后端：Hono + Zod；分析任务由独立 Worker 消费
 - 数据库：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（**Drizzle 与方言差异只允许出现在 `packages/storage` 内部**，业务只依赖统一 async 仓储接口与 `createStorage()` 工厂、按 `DB_DRIVER` 切换，见下；MVP 不引入 Redis）
 - GitHub 采集：官方 Octokit，GraphQL 批量优先、REST 补；生产用 GitHub App
-- Gitee 采集（第二证据源，2026-09-14 G-A 落地）：官方 v5 **REST-only（无 GraphQL）**，匿名可读公开数据、`GITEE_TOKEN` 可选仅提额；产出与 GitHub 一致的证据源无关 `AnalyzerInput`，经 CLI `--platform gitee` 选源；worker/api 在线选源、events、跨源去重、OAuth 属 G-B 缓做（见 deferred #12、docs/design-gitee-source-20260914.md）
+- Gitee 采集（第二证据源，2026-09-14 G-A+G-B 落地）：官方 v5 **REST-only（无 GraphQL）**，匿名可读公开数据、`GITEE_TOKEN` 可选仅提额；产出与 GitHub 一致的证据源无关 `AnalyzerInput`，CLI `--platform gitee` 与在线链路（API `platform` 枚举、Worker 多源路由、报告页/扩展平台切换 UI）均已打通；events 行为流、跨源镜像去重、多源融合画像、Gitee OAuth、认证精确限频属缓做（见 deferred #12、docs/design-gitee-source-20260914.md）
 - 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`；浏览器扩展 `apps/extension`（P1：三大 ATS 一键填充）
 - 测试：Vitest（就近单元）+ Playwright（E2E）
 - 分析深度：MVP 仅 **L0 元数据 + L1 行为时序**，**不 clone 仓库**（L2/L3/L4 见 docs/deferred-items）

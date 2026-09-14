@@ -66,6 +66,24 @@ describe('GiteeClient conditional requests / retries', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it('retries on 503 then succeeds', async () => {
+    const fetchImpl = vi.fn(async () => {
+      const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
+      return calls === 1 ? new Response(null, { status: 503 }) : json({ ok: true });
+    }) as unknown as typeof fetch;
+
+    const client = makeClient(fetchImpl);
+    const data = await client.get<{ ok: boolean }>('/x');
+    expect(data.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up after retries on persistent 5xx', async () => {
+    const fetchImpl = (async () => new Response(null, { status: 500 })) as typeof fetch;
+    const client = makeClient(fetchImpl);
+    await expect(client.get('/x')).rejects.toMatchObject({ code: 'api_error' });
+  });
+
   it('maps 404 to not_found', async () => {
     const fetchImpl = (async () => new Response(null, { status: 404 })) as typeof fetch;
     const client = makeClient(fetchImpl);

@@ -50,6 +50,16 @@ describe('mapSubject', () => {
     expect(s.createdAt).toBe('2023-12-31T16:00:00.000Z');
     expect(s).toMatchObject({ login: 'alice', displayName: 'Alice', followers: 5, publicRepos: 2 });
   });
+
+  it('falls back to defaults when optional fields are missing', () => {
+    const s = mapSubject({ login: 'alice' }, 'alice');
+    expect(s.displayName).toBeNull();
+    expect(s.avatarUrl).toBeNull();
+    expect(s.profileUrl).toBe('https://gitee.com/alice');
+    expect(s.createdAt).toBeNull();
+    expect(s.followers).toBe(0);
+    expect(s.publicRepos).toBe(0);
+  });
 });
 
 describe('mapRepos', () => {
@@ -76,6 +86,15 @@ describe('mapRepos', () => {
     expect(repos[0]!.isFork).toBe(false);
     expect(repos[0]!.topics).toEqual([]);
   });
+
+  it('falls back to caller login when owner is absent', () => {
+    const rows: GiteeRepoRaw[] = [
+      { name: 'nolowner', fork: false, created_at: '2024-01-01T00:00:00+08:00', owner: null },
+    ];
+    const repos = mapRepos(rows, 'alice');
+    expect(repos[0]!.ownerLogin).toBe('alice');
+    expect(repos[0]!.url).toBe('https://gitee.com/alice/nolowner');
+  });
 });
 
 describe('mapCommits (PII cleaning)', () => {
@@ -101,6 +120,20 @@ describe('mapCommits (PII cleaning)', () => {
       messageHeadline: 'init', // 只取首行
       committedAt: '2026-03-01T02:00:00.000Z',
     });
+  });
+
+  it('handles anonymous commits with no top-level author login', () => {
+    const rows: GiteeCommitRaw[] = [
+      {
+        sha: 'ccc333',
+        commit: { message: 'authored anonymously', author: { date: '2026-03-01T10:00:00+08:00' } },
+        author: null,
+      },
+    ];
+    const commits = mapCommits(rows, 'alice/core');
+    expect(commits).toHaveLength(1);
+    expect(commits[0]!.authorName).toBeNull();
+    expect(commits[0]!.authorEmail).toBeNull();
   });
 });
 
@@ -138,6 +171,7 @@ describe('mapPullRequests', () => {
       'some-org/shared',
     );
     expect(prs[0]!.repoOwnerIsSelf).toBe(false);
+    expect(prs[0]!.url).toBe('https://gitee.com/some-org/shared/pulls/3');
   });
 });
 
