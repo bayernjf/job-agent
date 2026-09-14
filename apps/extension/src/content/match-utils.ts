@@ -1,20 +1,16 @@
 /**
  * 扩展面板匹配 UI 的纯函数工具（无 React 依赖，便于单测）。
- * 匹配分档与证据链接解析，与报告页 JobRecommendations 逻辑对齐。
+ * 匹配分档复用 shared.matchScoreTier（与报告页同一事实源），证据链接解析为扩展专属。
  */
+import { matchScoreTier, type MatchScoreTier } from '@jobagent/shared';
 import type { EvidenceBrief } from '../lib/api.js';
 import type { MessageKey } from '../i18n/index.js';
 
-/** 匹配分三档（与报告页一致）：high ≥80% 满分，mid ≥40%，low <40%。满分=技能数×6（title3+tags2+desc1）。 */
-export type MatchTier = 'high' | 'mid' | 'low';
+/** 匹配分三档，类型复用 shared，panel 侧保留语义别名。 */
+export type MatchTier = MatchScoreTier;
 
 export function matchTier(score: number, matchedSkills: readonly string[]): MatchTier {
-  if (matchedSkills.length === 0) return 'low';
-  const max = matchedSkills.length * 6;
-  const ratio = score / max;
-  if (ratio >= 0.8) return 'high';
-  if (ratio >= 0.4) return 'mid';
-  return 'low';
+  return matchScoreTier(score, matchedSkills.length);
 }
 
 export const MATCH_TIER_KEY: Record<MatchTier, MessageKey> = {
