@@ -151,6 +151,14 @@ const until = formatDateTime(profile.dataWindow.until, locale);
           matchedSkillsLabel={t('report.recommendations.matchedSkills')}
           viewJobLabel={t('report.recommendations.viewJob')}
           remoteLabel={t('report.recommendations.remote')}
+          basisLabel={t('report.recommendations.basis')}
+          fieldTitleLabel={t('report.recommendations.fieldTitle')}
+          fieldTagsLabel={t('report.recommendations.fieldTags')}
+          fieldDescriptionLabel={t('report.recommendations.fieldDescription')}
+          depthUsedLabel={t('report.skills.depth.used')}
+          depthProficientLabel={t('report.skills.depth.proficient')}
+          evidenceCountTemplate={t('report.evidence.count')}
+          viewEvidenceLabel={t('report.evidence.viewOriginal')}
         />
       )
     }
@@ -522,6 +530,73 @@ const until = formatDateTime(profile.dataWindow.until, locale);
   }
 
   .rec-view-link:hover {
+    text-decoration: underline;
+  }
+
+  /* ── 匹配依据（决策 #10：分数分解 + 可回溯证据） ── */
+  .rec-basis {
+    margin-top: var(--ja-space-3);
+    font-size: var(--ja-text-sm);
+  }
+
+  .rec-basis summary {
+    cursor: pointer;
+    color: var(--ja-color-fg-muted);
+    font-size: var(--ja-text-xs);
+  }
+
+  .rec-basis-count {
+    color: var(--ja-color-fg-muted);
+  }
+
+  .rec-basis-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ja-space-2);
+    margin-top: var(--ja-space-2);
+  }
+
+  .rec-field-chip {
+    padding: 0.1rem var(--ja-space-2);
+    border-radius: var(--ja-radius-sm);
+    background: var(--ja-color-surface-muted);
+    font-family: var(--ja-font-mono);
+    font-size: var(--ja-text-xs);
+  }
+
+  .rec-evidence {
+    list-style: none;
+    padding: 0;
+    margin: var(--ja-space-2) 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-1);
+  }
+
+  .rec-evidence li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--ja-space-2);
+  }
+
+  .rec-evidence-type {
+    flex-shrink: 0;
+    padding: 0.1rem var(--ja-space-2);
+    border-radius: var(--ja-radius-sm);
+    background: var(--ja-color-accent-subtle);
+    color: var(--ja-color-accent);
+    font-size: var(--ja-text-xs);
+    text-transform: uppercase;
+  }
+
+  .rec-evidence a {
+    color: var(--ja-color-fg-muted);
+    text-decoration: none;
+  }
+
+  .rec-evidence a:hover {
+    color: var(--ja-color-accent);
     text-decoration: underline;
   }
 </style>

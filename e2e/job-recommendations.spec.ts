@@ -60,6 +60,49 @@ const TWO_MATCHES = {
   ],
 };
 
+// Decision #10: response carries field-level score breakdown, per-skill reasons
+// and a traceable evidence dictionary.
+const EXPLAINED_MATCH = {
+  profileId: FIXTURE_PROFILE_ID,
+  profileSkills: ['TypeScript'],
+  total: 1,
+  candidatePool: 10,
+  matches: [
+    {
+      score: 6,
+      matchedSkills: ['TypeScript'],
+      fieldScores: { title: 3, tags: 2, description: 1 },
+      skillReasons: [
+        {
+          skill: 'TypeScript',
+          score: 6,
+          fields: ['title', 'tags', 'description'],
+          kind: 'language',
+          depth: 'proficient',
+          confidence: 0.9,
+          evidenceRefs: ['ev-1'],
+        },
+      ],
+      posting: {
+        jobId: 'job-9',
+        source: 'remoteok',
+        sourceUrl: 'https://example.test/job-9',
+        title: 'TypeScript Engineer',
+        company: 'Acme Corp',
+        remote: true,
+        postedAt: '2026-09-01T00:00:00.000Z',
+      },
+    },
+  ],
+  evidence: {
+    'ev-1': {
+      sourceType: 'pr',
+      url: 'https://github.com/u/r/pull/1',
+      claim: 'Authored a TypeScript pull request',
+    },
+  },
+};
+
 test.describe('job recommendations island', () => {
   test('renders matched jobs with score, company and matched skills', async ({ page }) => {
     await mockRecommendations(page, TWO_MATCHES);
@@ -89,6 +132,9 @@ test.describe('job recommendations island', () => {
     const second = items.nth(1);
     await expect(second.locator('.skill-tag', { hasText: 'React' })).toBeVisible();
     await expect(second.locator('.rec-badge')).toHaveCount(0);
+
+    // Legacy response without explainability fields renders no basis disclosure
+    await expect(section.locator('.rec-basis')).toHaveCount(0);
   });
 
   test('renders empty state when no jobs match', async ({ page }) => {
@@ -121,5 +167,32 @@ test.describe('job recommendations island', () => {
     await expect(section.getByRole('heading', { name: '为你推荐的岗位' })).toBeVisible();
     // 中文路由下命中技能标签文案（第一条岗位）
     await expect(section.locator('.rec-skills-label').first()).toContainText('命中技能');
+  });
+
+  test('expands match basis with field breakdown and traceable evidence', async ({ page }) => {
+    await mockRecommendations(page, EXPLAINED_MATCH);
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+
+    const first = page.locator('.job-recs .rec-item').first();
+    // Proficient skill chip carries the depth modifier class
+    await expect(first.locator('.skill-tag--proficient', { hasText: 'TypeScript' })).toBeVisible();
+
+    // Collapsed summary advertises the basis and evidence count
+    const basis = first.locator('.rec-basis');
+    await expect(basis.locator('summary')).toContainText('Why this matches');
+    await expect(basis.locator('summary')).toContainText('1 evidence items');
+    // Evidence is rendered inside <details> but stays hidden until expanded
+    await expect(first.locator('.rec-evidence')).toBeHidden();
+
+    // Expand: field score breakdown and clickable evidence link
+    await basis.locator('summary').click();
+    await expect(first.locator('.rec-evidence')).toBeVisible();
+    await expect(first.locator('.rec-field-chip', { hasText: 'Title ×3' })).toBeVisible();
+    await expect(first.locator('.rec-field-chip', { hasText: 'Tags ×2' })).toBeVisible();
+    await expect(first.locator('.rec-field-chip', { hasText: 'Description ×1' })).toBeVisible();
+    const evidenceLink = first.locator('.rec-evidence a');
+    await expect(evidenceLink).toHaveText('Authored a TypeScript pull request');
+    await expect(evidenceLink).toHaveAttribute('href', 'https://github.com/u/r/pull/1');
+    await expect(evidenceLink).toHaveAttribute('target', '_blank');
   });
 });
