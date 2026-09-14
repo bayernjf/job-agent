@@ -1,11 +1,9 @@
 {
   "app.name": "JobAgent",
   "app.tagline": "Verifiable ability profiles from GitHub behavioral evidence",
-
   "nav.home": "Home",
   "nav.report": "Report",
   "nav.language": "中文",
-
   "home.title": "Enter a GitHub username to generate a verifiable ability profile",
   "home.subtitle": "Analyzes public commits, PRs, issues and other behavioral traces to produce an evidence-backed report",
   "home.placeholder": "GitHub username, e.g. torvalds",
@@ -19,7 +17,6 @@
   "home.step2.desc": "Pure-function engine computes authenticity, skill tags and interview questions; versioned and reproducible",
   "home.step3.title": "Produce a trusted report",
   "home.step3.desc": "Every conclusion is backed by evidence that links back to the original GitHub record",
-
   "job.queued": "Queued",
   "job.running": "Running",
   "job.succeeded": "Completed",
@@ -31,7 +28,6 @@
   "job.retry": "Retry",
   "job.error": "Analysis error: {message}",
   "job.attempts": "Attempt {current}/{max}",
-
   "report.title": "Ability Profile",
   "report.generatedAt": "Generated at",
   "report.analyzerVersion": "Analyzer version",
@@ -42,10 +38,8 @@
   "report.viewOnGithub": "View on GitHub",
   "report.dataSource": "Data sources & limitations",
   "report.dispute": "Raise a dispute",
-
   "report.summary.title": "Summary",
   "report.summary.headline": "Headline",
-
   "report.authenticity.title": "Authenticity Assessment",
   "report.authenticity.confidence": "Confidence",
   "report.authenticity.likely_authentic": "Likely authentic",
@@ -53,7 +47,6 @@
   "report.authenticity.suspicious": "Suspicious",
   "report.authenticity.insufficient_data": "Insufficient data",
   "report.authenticity.signals": "Signals",
-
   "report.skills.title": "Skill Tags",
   "report.skills.depth.used": "Used",
   "report.skills.depth.proficient": "Proficient",
@@ -61,35 +54,36 @@
   "report.skills.kind.framework": "Framework",
   "report.skills.kind.domain": "Domain",
   "report.skills.empty": "Not enough evidence for skill tags",
-
   "report.activity.title": "Activity",
   "report.activity.longevityMonths": "Longevity",
   "report.activity.months": "{count} months",
   "report.activity.cadence": "Cadence",
   "report.activity.metrics": "Metrics",
-
   "report.collaboration.title": "Collaboration",
   "report.collaboration.prSummary": "PR summary",
   "report.collaboration.externalMerged": "Merged into external projects",
-
   "report.interview.title": "Interview Questions Based on Real Projects",
   "report.interview.intent": "Intent",
   "report.interview.empty": "Insufficient evidence; no interview questions generated",
-
   "report.evidence.title": "Evidence",
   "report.evidence.layer": "Layer",
   "report.evidence.viewOriginal": "View original record",
   "report.evidence.count": "{count} evidence items",
-
   "report.caveats.title": "Limitations & Notes",
-
   "report.notFound.title": "Report not found",
   "report.notFound.desc": "This profile may not have been generated yet or the link is incorrect",
   "report.notFound.back": "Back to home",
-
   "common.loading": "Loading…",
   "common.error": "Error",
   "common.close": "Close",
   "common.expand": "Expand",
-  "common.collapse": "Collapse"
+  "common.collapse": "Collapse",
+  "report.recommendations.title": "Recommended jobs for you",
+  "report.recommendations.loading": "Matching jobs…",
+  "report.recommendations.error": "Failed to load recommendations",
+  "report.recommendations.empty": "No matching jobs yet (job pool is still growing)",
+  "report.recommendations.score": "Match score",
+  "report.recommendations.matchedSkills": "Matched skills",
+  "report.recommendations.viewJob": "View job",
+  "report.recommendations.remote": "Remote"
 }

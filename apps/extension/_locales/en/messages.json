@@ -1,0 +1,8 @@
+{
+  "appName": {
+    "message": "JobAgent Autofill"
+  },
+  "appDescription": {
+    "message": "One-click autofill of ATS application forms from a GitHub-verified JobAgent profile."
+  }
+}

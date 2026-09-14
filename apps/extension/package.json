@@ -11,6 +11,8 @@
   },
   "devDependencies": {
     "@jobagent/shared": "workspace:*",
+    "@jobagent/ui-tokens": "workspace:*",
+    "@types/node": "^22.10.5",
     "@types/chrome": "^0.0.287",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

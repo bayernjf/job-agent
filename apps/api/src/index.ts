@@ -92,9 +92,10 @@ const JobSearchQuerySchema = z.object({
   orderBy: z.enum(['posted_desc', 'posted_asc', 'salary_desc']).optional(),
 });
 
-// 画像匹配请求体：技能必填，其余为候选池过滤/硬过滤条件
+// 画像匹配请求体：skills 与 profileId 二选一（profileId 优先，从画像快照取 skillTags.name）
 const JobMatchRequestSchema = z.object({
-  skills: z.array(z.string().trim().min(1)).min(1, 'at least one skill is required'),
+  skills: z.array(z.string().trim().min(1)).optional(),
+  profileId: z.string().trim().min(1).optional(),
   remote: z.boolean().optional(),
   salaryMinUsd: z.number().int().nonnegative().optional(),
   sources: z.array(JobSourceSchema).optional(),
@@ -104,6 +105,9 @@ const JobMatchRequestSchema = z.object({
   postedAfter: z.string().trim().min(1).optional(),
   candidateLimit: z.number().int().positive().max(500).optional(),
   limit: z.number().int().positive().max(500).optional(),
+}).refine((d) => (d.skills && d.skills.length > 0) || !!d.profileId, {
+  message: 'either non-empty skills or profileId is required',
+  path: ['skills'],
 });
 
 // ─── 响应格式化 ──────────────────────────────────────────────────────────
@@ -275,6 +279,61 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
     return c.json(toExportableProfile(profile.snapshot));
   });
 
+  // GET /profiles/:id/job-recommendations：画像技能 → 岗位匹配推荐（第一档①，报告页消费）
+  app.get('/profiles/:id/job-recommendations', async (c) => {
+    const parsed = ProfileIdParamSchema.safeParse(c.req.param());
+    if (!parsed.success) return c.json({ error: 'invalid profile id' }, 400);
+    const profile = await repos.profiles.getById(parsed.data.id);
+    if (!profile) return c.json({ error: 'profile not found' }, 404);
+    if (!profile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
+    const skills = profile.snapshot.skillTags.map((tag) => tag.name);
+
+    const q = c.req.query();
+    let remote: boolean | undefined;
+    if (q.remote !== undefined) remote = q.remote === 'true';
+    let sources: JobSource[] | undefined;
+    if (q.sources) {
+      const picked = q.sources.split(',').map((s) => s.trim()).filter(Boolean);
+      const bad = picked.filter((s) => !JobSourceSchema.safeParse(s).success);
+      if (bad.length > 0) return c.json({ error: 'invalid source(s)', invalid: bad }, 400);
+      sources = picked as JobSource[];
+    }
+    let salaryMinUsd: number | undefined;
+    if (q.salary_min !== undefined) {
+      const n = Number(q.salary_min);
+      if (!Number.isInteger(n) || n < 0) return c.json({ error: 'salary_min must be a non-negative integer' }, 400);
+      salaryMinUsd = n;
+    }
+    let limit = 20;
+    if (q.limit !== undefined) {
+      const n = Number(q.limit);
+      if (!Number.isInteger(n) || n < 1 || n > 100) return c.json({ error: 'limit must be an integer between 1 and 100' }, 400);
+      limit = n;
+    }
+    let candidateLimit = 500;
+    if (q.candidate_limit !== undefined) {
+      const n = Number(q.candidate_limit);
+      if (!Number.isInteger(n) || n < 1 || n > 500) return c.json({ error: 'candidate_limit must be an integer between 1 and 500' }, 400);
+      candidateLimit = n;
+    }
+
+    const candidates = await repos.jobPostings.search({
+      sources,
+      remote,
+      salaryMinUsd,
+      limit: candidateLimit,
+      orderBy: 'posted_desc',
+    });
+    const matches = matchJobs(candidates, { skills, remote, salaryMinUsd, sources, limit });
+    return c.json({
+      profileId: parsed.data.id,
+      profileSkills: skills,
+      matches: matches.map((x) => ({ score: x.score, matchedSkills: x.matchedSkills, posting: x.posting })),
+      total: matches.length,
+      candidatePool: candidates.length,
+    });
+  });
+
   // ── 职位聚合（P2-D）：搜索 / 统计 / 单条 / 画像匹配 ────────────────
   // 注意：/jobs/:id 已被分析任务占用，岗位相关端点统一用 /job-postings。
 
@@ -337,6 +396,17 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
       return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
     }
     const m = parsed.data;
+
+    // resolve skills: profileId takes precedence over explicit skills
+    let skills: string[];
+    if (m.profileId) {
+      const profile = await repos.profiles.getById(m.profileId);
+      if (!profile) return c.json({ error: 'profile not found' }, 404);
+      if (!profile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
+      skills = profile.snapshot.skillTags.map((tag) => tag.name);
+    } else {
+      skills = m.skills!;
+    }
     const candidates = await repos.jobPostings.search({
       keyword: m.keyword,
       sources: m.sources,
@@ -349,7 +419,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
       orderBy: 'posted_desc',
     });
     const matches = matchJobs(candidates, {
-      skills: m.skills,
+      skills,
       remote: m.remote,
       salaryMinUsd: m.salaryMinUsd,
       sources: m.sources,
@@ -362,6 +432,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
         posting: x.posting,
       })),
       total: matches.length,
+      ...(m.profileId ? { profileSkills: skills } : {}),
     });
   });
 
@@ -389,7 +460,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /job-postings, POST /job-postings/match, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, GET /health`);
   });
 }
 

@@ -30,7 +30,7 @@ pnpm --filter @jobagent/cli dev analyze <你的GitHub用户名>
 
 1. 打开 Greenhouse（如 `job-boards.greenhouse.io/<公司>`）或 Lever（`jobs.lever.co/<公司>`）岗位页。
 2. 点页面的 **APPLY / Apply for this job**，等表单出现（表单是点击后才渲染的）。
-3. 页面右下角点悬浮按钮「JobAgent 填充」打开面板。
+3. 页面右下角点悬浮按钮「JobAgent」打开面板（面板头部可一键切换中/英文，选择记在本机 localStorage；浏览器语言默认按 `navigator.languages` 协商）。
 4. 输入 GitHub 用户名 →「获取可信画像」（显示真实性与技能标签）。
 5. 点「填充到表单」：name / GitHub 等画像中存在的字段自动写入。
 6. 可选「本地补填」：email / phone / LinkedIn / location 填一次后仅存本机 localStorage，之后自动带上。

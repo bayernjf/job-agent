@@ -1,0 +1,161 @@
+/**
+ * JobAgent 设计 Token 单一事实源（design-tokens-20260910.md）
+ *
+ * 本文件是报告页 apps/report 与浏览器扩展 apps/extension 共用的唯一 token 来源：
+ * - apps/report 通过 src/styles/tokens.css @import 本文件（Vite/Astro 构建期内联）
+ * - apps/extension 构建期把本文件拷到 dist/tokens.css，在 Shadow DOM 内先于组件样式加载
+ *
+ * 三层体系：
+ * - Primitive（原始色板/刻度）：只被 semantic 层引用，组件禁止直接使用
+ * - Semantic（语义）：组件唯一允许使用的层，表达用途
+ * - Component（可选）：同一组合出现 3 次以上才提取，就近定义在各组件样式中
+ *
+ * 选择器同时写 :root 与 :host：
+ * - 普通页面（报告页）：:root 命中 <html>，:host 不命中、无副作用
+ * - Shadow DOM（扩展）：:host 命中挂载宿主，变量经继承覆盖整棵 shadow 树
+ *
+ * 硬规则：
+ * - 组件只写 var(--ja-xxx)，禁止 #hex/rgb/hsl 和硬编码 px（结构性例外需注释）
+ * - 禁止 var(--ja-x, #hex) 兜底
+ * - 暗色模式只覆盖 semantic 层，primitive 不动
+ */
+
+/* ─── Primitive 层（原始色板与刻度，组件禁止直接引用） ─────────────────── */
+:root,
+:host {
+  /* neutral scale */
+  --ja-color-neutral-0: #ffffff;
+  --ja-color-neutral-50: #f8fafc;
+  --ja-color-neutral-100: #f1f5f9;
+  --ja-color-neutral-200: #e2e8f0;
+  --ja-color-neutral-300: #cbd5e1;
+  --ja-color-neutral-400: #94a3b8;
+  --ja-color-neutral-500: #64748b;
+  --ja-color-neutral-600: #475569;
+  --ja-color-neutral-700: #334155;
+  --ja-color-neutral-800: #1e293b;
+  --ja-color-neutral-900: #0f172a;
+
+  /* accent scale (green, aligned with landing page brand) */
+  --ja-color-green-50: #f0fdf4;
+  --ja-color-green-100: #dcfce7;
+  --ja-color-green-500: #22c55e;
+  --ja-color-green-600: #16a34a;
+  --ja-color-green-700: #15803d;
+
+  /* status scale */
+  --ja-color-amber-50: #fffbeb;
+  --ja-color-amber-500: #f59e0b;
+  --ja-color-amber-600: #d97706;
+  --ja-color-red-50: #fef2f2;
+  --ja-color-red-200: #fecaca;
+  --ja-color-red-500: #ef4444;
+  --ja-color-red-600: #dc2626;
+  --ja-color-red-700: #b91c1c;
+  --ja-color-blue-500: #3b82f6;
+  --ja-color-blue-600: #2563eb;
+  --ja-color-slate-400: #94a3b8;
+
+  /* space scale (4px base) */
+  --ja-space-1: 4px;
+  --ja-space-2: 8px;
+  --ja-space-3: 12px;
+  --ja-space-4: 16px;
+  --ja-space-5: 24px;
+  --ja-space-6: 32px;
+  --ja-space-8: 48px;
+
+  /* radius scale */
+  --ja-radius-sm: 4px;
+  --ja-radius-md: 8px;
+  --ja-radius-lg: 12px;
+
+  /* font scale */
+  --ja-font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+  --ja-font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --ja-text-xs: 0.75rem;
+  --ja-text-sm: 0.875rem;
+  --ja-text-base: 1rem;
+  --ja-text-lg: 1.125rem;
+  --ja-text-xl: 1.25rem;
+  --ja-text-2xl: 1.5rem;
+  --ja-text-3xl: 1.875rem;
+  --ja-leading-normal: 1.6;
+  --ja-leading-tight: 1.25;
+}
+
+/* ─── Semantic 层（组件唯一允许使用的层） ──────────────────────────────── */
+:root,
+:host {
+  /* surfaces */
+  --ja-color-bg: var(--ja-color-neutral-50);
+  --ja-color-surface: var(--ja-color-neutral-0);
+  --ja-color-surface-muted: var(--ja-color-neutral-100);
+
+  /* text */
+  --ja-color-fg: var(--ja-color-neutral-900);
+  --ja-color-fg-muted: var(--ja-color-neutral-500);
+  --ja-color-border: var(--ja-color-neutral-200);
+
+  /* accent */
+  --ja-color-accent: var(--ja-color-green-600);
+  --ja-color-accent-hover: var(--ja-color-green-700);
+  --ja-color-accent-fg: var(--ja-color-neutral-0);
+  --ja-color-accent-subtle: var(--ja-color-green-50);
+
+  /* generic status (success / danger blocks, badges) */
+  --ja-color-success: var(--ja-color-green-600);
+  --ja-color-success-bg: var(--ja-color-green-100);
+  --ja-color-success-fg: var(--ja-color-green-700);
+  --ja-color-warning: var(--ja-color-amber-600);
+  --ja-color-danger: var(--ja-color-red-600);
+  --ja-color-danger-bg: var(--ja-color-red-50);
+  --ja-color-danger-border: var(--ja-color-red-200);
+  --ja-color-danger-fg: var(--ja-color-red-700);
+  --ja-color-info: var(--ja-color-blue-600);
+
+  /* authenticity four states (maps 1:1 to analyzer-core enum) */
+  --ja-color-auth-likely: var(--ja-color-green-600);
+  --ja-color-auth-likely-bg: var(--ja-color-green-50);
+  --ja-color-auth-mixed: var(--ja-color-amber-500);
+  --ja-color-auth-mixed-bg: var(--ja-color-amber-50);
+  --ja-color-auth-suspicious: var(--ja-color-red-500);
+  --ja-color-auth-suspicious-bg: var(--ja-color-red-50);
+  --ja-color-auth-insufficient: var(--ja-color-slate-400);
+  --ja-color-auth-insufficient-bg: var(--ja-color-neutral-100);
+
+  /* shadow */
+  --ja-shadow-card: 0 1px 3px rgb(15 23 42 / 0.08), 0 1px 2px rgb(15 23 42 / 0.04);
+  --ja-shadow-elevated: 0 4px 12px rgb(15 23 42 / 0.1), 0 2px 4px rgb(15 23 42 / 0.06);
+}
+
+/* ─── Dark mode（只覆盖 semantic 层，primitive 不动） ──────────────────── */
+:root[data-theme='dark'],
+:host([data-theme='dark']) {
+  --ja-color-bg: var(--ja-color-neutral-900);
+  --ja-color-surface: var(--ja-color-neutral-800);
+  --ja-color-surface-muted: var(--ja-color-neutral-700);
+
+  --ja-color-fg: var(--ja-color-neutral-50);
+  --ja-color-fg-muted: var(--ja-color-neutral-400);
+  --ja-color-border: var(--ja-color-neutral-700);
+
+  --ja-color-accent: var(--ja-color-green-500);
+  --ja-color-accent-hover: var(--ja-color-green-600);
+  --ja-color-accent-fg: var(--ja-color-neutral-900);
+  --ja-color-accent-subtle: var(--ja-color-neutral-800);
+
+  --ja-color-success-bg: var(--ja-color-neutral-800);
+  --ja-color-success-fg: var(--ja-color-green-500);
+  --ja-color-danger-bg: var(--ja-color-neutral-800);
+  --ja-color-danger-border: var(--ja-color-neutral-700);
+  --ja-color-danger-fg: var(--ja-color-red-500);
+
+  --ja-color-auth-likely-bg: var(--ja-color-neutral-800);
+  --ja-color-auth-mixed-bg: var(--ja-color-neutral-800);
+  --ja-color-auth-suspicious-bg: var(--ja-color-neutral-800);
+  --ja-color-auth-insufficient-bg: var(--ja-color-neutral-800);
+
+  --ja-shadow-card: 0 1px 3px rgb(0 0 0 / 0.3), 0 1px 2px rgb(0 0 0 / 0.2);
+  --ja-shadow-elevated: 0 4px 12px rgb(0 0 0 / 0.4), 0 2px 4px rgb(0 0 0 / 0.3);
+}
