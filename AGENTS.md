@@ -35,7 +35,8 @@ job-agent/
 │  ├─ storage/        # 持久化抽象层：仓储接口（统一 async）+ entities 共享 + sqlite/postgres 双实现 + 迁移器（业务模块禁裸 SQL；设计见 docs/design-storage-dual-dialect-20260911.md）
 │  ├─ github-source/  # Octokit、GraphQL 查询、L0/L1 采集、限频/缓存（首个 EvidenceSource）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
-│  └─ llm/            # LLM 端口 + 结构化输出校验（P1 才启用，见 deferred）
+│  ├─ llm/            # LLM 端口 + 结构化输出校验（P1 才启用，见 deferred）
+│  └─ ui-tokens/      # 设计 token 单一事实源（无构建静态 CSS，--ja-* 变量；report 与 extension 共用，设计见 docs/design-tokens-20260910.md）
 ├─ apps/
 │  ├─ api/            # Hono：触发分析、查询任务/画像、只读分享接口
 │  ├─ worker/         # 消费 analysis_jobs，调用 github-source + analyzer-core
@@ -108,8 +109,8 @@ bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号
 - 共享类型与画像契约只放在 `packages/shared`（含 P2 预留的 `JobPosting`，source+sourceUrl 去重唯一键），全链路复用，禁止各处重复定义。
 - 能力/真实性结论必须挂 `evidenceRefs`；**无证据不下结论，证据不足走 `insufficient_data`**。
 - 用户可见文案**中英双语并行**（决策 #4 海内外同步，落地即 i18n，见下条），内部标识、代码命名、GitHub 内容用英文。
-- **i18n（报告页/UI 落地起执行）**：用户可见字符串一律走 `t()`，先加中文 key 再加同构英文 key，禁止在组件硬编码用户可见文案（仅代码注释、术语数据、输入 placeholder 示例、语言切换器本身可例外）；用一致性测试守护中英文 key 对齐。
-- **设计 token（UI 落地起执行）**：颜色/间距/圆角/阴影用 CSS 变量，禁止散落 `#hex/rgb/hsl` 与硬编码尺寸；不写带 hex fallback 的 `var(--x, #xxx)`。
+- **i18n（报告页/UI 落地起执行）**：用户可见字符串一律走 `t()`，先加中文 key 再加同构英文 key，禁止在组件硬编码用户可见文案（仅代码注释、术语数据、输入 placeholder 示例、语言切换器本身可例外）；用一致性测试守护中英文 key 对齐。各前端字典独立（report 与 extension 各一套）；扩展无 URL 语言段，语言取 localStorage 覆盖 + `navigator.languages` 协商，其 MV3 manifest/商店元数据走 Chrome 原生 `_locales`（`__MSG_*__`，目录用 `zh_CN`），详见 docs/design-i18n-20260910.md 第 8 节。
+- **设计 token（UI 落地起执行）**：颜色/间距/圆角/阴影用 CSS 变量，禁止散落 `#hex/rgb/hsl` 与硬编码尺寸；不写带 hex fallback 的 `var(--x, #xxx)`。token 单一事实源在 `packages/ui-tokens/tokens.css`（`:root, :host` 双选择器），新前端只消费不另立色板；扩展在 Shadow DOM 内 `:host` 作用域加载，颜色字面量由 tokens-guard 测试守护，详见 docs/design-tokens-20260910.md 第 8 节。
 - 未经明确需求不引入新框架/状态库/中间件（尤其不在 MVP 引入 Redis、消息队列、clone 沙箱，见 deferred）。
 - 最小权限：新增 GitHub scope、环境变量、对外接口时说明用途。
 
