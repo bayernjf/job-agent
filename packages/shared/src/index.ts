@@ -253,3 +253,22 @@ export const JobPostingSchema = z.object({
   companyUrl: z.string().url().optional(), // 公司主页（YC batch 等补充字段）
 });
 export type JobPosting = z.infer<typeof JobPostingSchema>;
+
+/**
+ * 匹配分三档（报告页与扩展共用，单一事实源，2026-09-14）。
+ *
+ * 匹配分随命中技能数叠加（每个技能满分 6 = title×3 + tags×2 + description×1），
+ * 故按相对比例分档而非绝对阈值，避免多技能画像被固定阈值误判为 high。
+ * - high：score ≥ 80% 满分
+ * - mid：score ≥ 40% 满分
+ * - low：score < 40%，或无命中技能
+ */
+export type MatchScoreTier = 'high' | 'mid' | 'low';
+
+export function matchScoreTier(score: number, matchedSkillCount: number): MatchScoreTier {
+  if (matchedSkillCount <= 0) return 'low';
+  const ratio = score / (matchedSkillCount * 6);
+  if (ratio >= 0.8) return 'high';
+  if (ratio >= 0.4) return 'mid';
+  return 'low';
+}

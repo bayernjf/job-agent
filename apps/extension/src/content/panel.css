@@ -184,3 +184,207 @@
   color: var(--ja-color-success-fg);
   font-size: var(--ja-text-xs);
 }
+
+/* ── 岗位匹配区块 ── */
+
+.ja-match {
+  margin: var(--ja-space-3) 0;
+  padding: var(--ja-space-2);
+  background: var(--ja-color-surface);
+  border: 1px solid var(--ja-color-border); /* 1px 边框，结构性 */
+  border-radius: var(--ja-radius-md);
+}
+
+.ja-match-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ja-space-2);
+}
+
+.ja-match-title {
+  font-weight: 600;
+  color: var(--ja-color-fg);
+}
+
+.ja-match-refresh,
+.ja-match-retry {
+  background: none;
+  border: none;
+  color: var(--ja-color-accent);
+  cursor: pointer;
+  font-size: var(--ja-text-xs);
+  padding: 0;
+}
+
+.ja-match-refresh:hover,
+.ja-match-retry:hover {
+  text-decoration: underline;
+}
+
+.ja-match-loading,
+.ja-match-empty {
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+  padding: var(--ja-space-1) 0;
+}
+
+.ja-match-error {
+  color: var(--ja-color-danger-fg);
+  font-size: var(--ja-text-xs);
+}
+
+.ja-match-error-detail {
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-match-retry {
+  margin-left: var(--ja-space-2);
+}
+
+.ja-match-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.ja-match-item {
+  padding: var(--ja-space-2);
+  background: var(--ja-color-neutral-50);
+  border-radius: var(--ja-radius-sm);
+}
+
+.ja-match-item-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ja-space-2);
+}
+
+.ja-match-score {
+  font-weight: 700;
+  font-size: var(--ja-text-base);
+  min-width: var(--ja-space-6);
+  text-align: center;
+}
+
+.ja-match-score-high {
+  color: var(--ja-color-success-fg);
+}
+
+.ja-match-score-mid {
+  color: var(--ja-color-amber-600);
+}
+
+.ja-match-score-low {
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-match-job {
+  display: flex;
+  flex-direction: column;
+  color: var(--ja-color-fg);
+  text-decoration: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.ja-match-job:hover {
+  text-decoration: underline;
+}
+
+.ja-match-title-text {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ja-match-company {
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+}
+
+.ja-match-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-1);
+  margin-top: var(--ja-space-1);
+}
+
+.ja-match-chip {
+  padding: 2px var(--ja-space-2);
+  background: var(--ja-color-neutral-100);
+  border-radius: 999px; /* 胶囊 chip，结构性 */
+  font-size: var(--ja-text-xs);
+  color: var(--ja-color-fg);
+}
+
+.ja-match-basis {
+  margin-top: var(--ja-space-1);
+}
+
+.ja-match-basis summary {
+  cursor: pointer;
+  color: var(--ja-color-accent);
+  font-size: var(--ja-text-xs);
+}
+
+.ja-match-breakdown {
+  margin-top: var(--ja-space-1);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-1);
+  font-size: var(--ja-text-xs);
+}
+
+.ja-match-breakdown-label {
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-match-breakdown-chip {
+  padding: 1px var(--ja-space-2);
+  background: var(--ja-color-neutral-100);
+  border-radius: var(--ja-radius-sm);
+  color: var(--ja-color-fg);
+}
+
+.ja-match-skill-reasons {
+  list-style: none;
+  margin: var(--ja-space-1) 0 0;
+  padding: 0;
+  font-size: var(--ja-text-xs);
+}
+
+.ja-match-skill-reason {
+  margin: 2px 0;
+  color: var(--ja-color-fg);
+}
+
+.ja-match-skill-depth,
+.ja-match-skill-fields,
+.ja-match-skill-score {
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-match-evidence {
+  margin-top: var(--ja-space-1);
+  font-size: var(--ja-text-xs);
+}
+
+.ja-match-evidence-label {
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-match-evidence ul {
+  margin: var(--ja-space-1) 0 0;
+  padding-left: var(--ja-space-4);
+}
+
+.ja-match-evidence a {
+  color: var(--ja-color-accent);
+  word-break: break-all;
+}

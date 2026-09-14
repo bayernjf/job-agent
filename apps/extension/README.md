@@ -32,8 +32,9 @@ pnpm --filter @jobagent/cli dev analyze <你的GitHub用户名>
 2. 点页面的 **APPLY / Apply for this job**，等表单出现（表单是点击后才渲染的）。
 3. 页面右下角点悬浮按钮「JobAgent」打开面板（面板头部可一键切换中/英文，选择记在本机 localStorage；浏览器语言默认按 `navigator.languages` 协商）。
 4. 输入 GitHub 用户名 →「获取可信画像」（显示真实性与技能标签）。
-5. 点「填充到表单」：name / GitHub 等画像中存在的字段自动写入。
-6. 可选「本地补填」：email / phone / LinkedIn / location 填一次后仅存本机 localStorage，之后自动带上。
+5. 画像加载后面板自动展示「岗位匹配」区块：从岗位库取 top 5 匹配岗位，每条显示匹配分（高/部分/弱三档色）、岗位@公司外链、命中技能；展开「匹配依据」可看分数在标题/标签/正文上的分解、技能深度与可回溯的 GitHub 证据链接。匹配加载不影响填充，岗位库为空或接口失败时显示对应空态/错误态（可重试）。
+6. 点「填充到表单」：name / GitHub 等画像中存在的字段自动写入。
+7. 可选「本地补填」：email / phone / LinkedIn / location 填一次后仅存本机 localStorage，之后自动带上。
 
 ## 已知限制
 

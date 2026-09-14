@@ -25,5 +25,17 @@
   "auth.insufficient_data": "证据不足",
   "fill.summarySkillsLeadin": "技能（GitHub 验证，可回溯证据）：",
   "fill.skillSeparator": "、",
+  "match.title": "岗位匹配",
+  "match.loading": "加载匹配中…",
+  "match.empty": "暂无匹配岗位",
+  "match.error": "匹配加载失败",
+  "match.retry": "重试",
+  "match.refresh": "刷新",
+  "match.basis": "匹配依据",
+  "match.scoreBreakdown": "分数分解",
+  "match.evidence": "证据",
+  "match.high": "高度匹配",
+  "match.mid": "部分匹配",
+  "match.low": "弱覆盖",
   "nav.language": "English"
 }
