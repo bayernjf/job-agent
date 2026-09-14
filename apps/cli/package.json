@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@jobagent/analyzer-core": "workspace:*",
+    "@jobagent/gitee-source": "workspace:*",
     "@jobagent/github-source": "workspace:*",
     "@jobagent/job-source": "workspace:*",
     "@jobagent/shared": "workspace:*",
