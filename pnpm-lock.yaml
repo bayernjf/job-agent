@@ -66,6 +66,9 @@ importers:
       '@jobagent/analyzer-core':
         specifier: workspace:*
         version: link:../../packages/analyzer-core
+      '@jobagent/gitee-source':
+        specifier: workspace:*
+        version: link:../../packages/gitee-source
       '@jobagent/github-source':
         specifier: workspace:*
         version: link:../../packages/github-source
@@ -185,6 +188,15 @@ importers:
 
   packages/analyzer-core:
     dependencies:
+      '@jobagent/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/gitee-source:
+    dependencies:
+      '@jobagent/analyzer-core':
+        specifier: workspace:*
+        version: link:../analyzer-core
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../shared
