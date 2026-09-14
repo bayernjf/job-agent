@@ -85,5 +85,9 @@
   "report.recommendations.score": "Match score",
   "report.recommendations.matchedSkills": "Matched skills",
   "report.recommendations.viewJob": "View job",
-  "report.recommendations.remote": "Remote"
+  "report.recommendations.remote": "Remote",
+  "report.recommendations.basis": "Why this matches",
+  "report.recommendations.fieldTitle": "Title",
+  "report.recommendations.fieldTags": "Tags",
+  "report.recommendations.fieldDescription": "Description"
 }

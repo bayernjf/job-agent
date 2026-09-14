@@ -115,10 +115,36 @@ function sleep(ms: number): Promise<void> {
 
 export { DEFAULT_BASE };
 
+/** 分数在岗位标题/标签/正文上的分解（三项合计=score，决策 #10）。 */
+export interface JobMatchFieldScores {
+  title: number;
+  tags: number;
+  description: number;
+}
+
+/** 单个画像技能在岗位上的字段级命中。 */
+export interface JobMatchSkillHit {
+  skill: string;
+  score: number;
+  fields: Array<'title' | 'tags' | 'description'>;
+}
+
+/** 命中技能的推荐理由：匹配贡献 + 画像元数据与证据指针（仅 profileId 匹配时返回）。 */
+export interface JobMatchSkillReason extends JobMatchSkillHit {
+  kind: 'language' | 'framework' | 'domain';
+  depth: 'used' | 'proficient';
+  confidence: number;
+  evidenceRefs: string[];
+}
+
 /** 岗位匹配结果（POST /job-postings/match 返回的单条） */
 export interface JobMatchItem {
   score: number;
   matchedSkills: string[];
+  /** 可解释性字段（决策 #10）：旧后端可能缺，故全部可选以便健壮降级 */
+  fieldScores?: JobMatchFieldScores;
+  skillHits?: JobMatchSkillHit[];
+  skillReasons?: JobMatchSkillReason[];
   posting: {
     title: string;
     company: string;

@@ -85,5 +85,9 @@
   "report.recommendations.score": "匹配分",
   "report.recommendations.matchedSkills": "命中技能",
   "report.recommendations.viewJob": "查看岗位",
-  "report.recommendations.remote": "远程"
+  "report.recommendations.remote": "远程",
+  "report.recommendations.basis": "匹配依据",
+  "report.recommendations.fieldTitle": "标题",
+  "report.recommendations.fieldTags": "标签",
+  "report.recommendations.fieldDescription": "岗位描述"
 }
