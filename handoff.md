@@ -33,6 +33,7 @@ JobAgent 当前状态，截至 2026-09-14。
 - [docs/design-match-wiring-20260914.md](docs/design-match-wiring-20260914.md) — 第一档·画像↔岗位匹配端到端接线设计：API 端点（GET /profiles/:id/job-recommendations + POST match 接受 profileId）、报告页推荐岗位 island、扩展侧栏匹配度面板、验收标准与缓做项（现行）
 - [docs/design-gitee-source-spike-20260914.md](docs/design-gitee-source-spike-20260914.md) — Gitee 证据源 Spike：v5 仅 REST 无 GraphQL、匿名可读、L0 充分/L1 基本可行、与 GitHub 关键差异、未来 gitee-source 设计（现行，仅结论不实现）
 - [docs/design-extension-match-ui-20260914.md](docs/design-extension-match-ui-20260914.md) — 扩展面板匹配 UI 设计：#10 可解释性后从 top1 轻量升级为 top5 完整展示，四态/匹配依据/证据外链/i18n/token（现行）
+- [docs/design-extension-e2e-20260914.md](docs/design-extension-e2e-20260914.md) — 扩展浏览器级 E2E 设计：--headless=new 加载 unpacked MV3、独立 playwright.extension.config、route 拦截零网络、首批 5 用例与边界（现行）
 
 ## 当前状态
 
@@ -103,6 +104,7 @@ JobAgent 当前状态，截至 2026-09-14。
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+- 2026-09-14：**扩展浏览器级 E2E 落地 + 修复重复面板节点真实 bug（未 push）**：此前扩展只到 Vitest 纯函数单测 + build，content script 注入/Shadow DOM 面板/匹配区块渲染从未自动化回归。先 spike 验证（非推断）：Playwright 1.63 用 launchPersistentContext + args 传 `--headless=new` 可纯无头加载 MV3（service worker 注册、content script 注入、open shadow DOM 由 locator 自动穿透），CI 无需 xvfb；本地 https ATS 页用 context.route 回灌（manifest matches 仅 https 且路径含 jobs/careers）。新增独立配置 `playwright.extension.config.ts`（无 webServer、workers=1）、`e2e/extension/`（extension-test.ts fixture + fixtures.ts + match-panel.spec.ts 5 用例：注入开面板/三档列表/匹配依据展开/空态/错误重试），根脚本 `pnpm e2e:extension`（先 build dist），画像复用 sample-profile 经 toExportableProfile 保证契约合法，API 全 route 拦截零网络。**E2E 首跑即发现真实 bug**：content/index.tsx 的 mountOverlay 建了个未使用的 `#jobagent-autofill-panel` 空 div，mountPanel 内部又建一个同 id 节点，重复 id 触发 strict mode 冲突，已删除死节点。5 用例全绿（13.5s），扩展 typecheck/55 单测全绿。CI 在 report E2E 后加 Extension E2E 步骤（push 后由 Actions 最终确认）。设计文档 docs/design-extension-e2e-20260914.md，AGENTS 常用命令/测试说明、docs/README 场景入口同步。
 - 2026-09-14：**统一匹配分档逻辑到 shared（修复报告页/扩展分档不一致，未 push）**：排查发现报告页 `JobRecommendations.scoreClass` 用绝对阈值（score≥6 high/≥3 mid，第一档轻量遗留），扩展 `matchTier` 用相对比例（满分=命中技能数×6，≥80% high/≥40% mid）——匹配分随命中技能数叠加，绝对阈值会把多技能画像误判为 high（如 5 技能 score=6 仅 20% 却判 high）。把纯函数 `matchScoreTier(score, matchedSkillCount)` 与 `MatchScoreTier` 类型抽到 `packages/shared`（单一事实源，+5 单测，shared 21 测试）；报告页 scoreClass 改委托 shared（调用处传 matchedSkills.length，CSS 类名不变）；扩展 match-utils.ts 改复用 shared、删除本地重复实现（薄封装，55 测试全绿）；扩展 README 使用步骤补「岗位匹配」区块说明。全仓 typecheck/test/build 全绿，E2E 15 全绿（43.8s，含 job-recommendations 5 用例）。
 - 2026-09-14：**扩展面板匹配 UI 落地（第一档遗留闭环，未 push）**：`lib/api.ts` 的 `matchJobs` 返回结构改为 `JobMatchResponse{matches,evidence?}`（evidence 在 API 响应顶层，之前 helper 丢弃了）；`panel.tsx` 画像加载后自动异步调 matchJobs 展示 top5 岗位列表（分数三档色/标题@公司外链/命中技能 chip/可展开匹配依据含分数分解+技能深度+证据外链，旧响应健壮降级），四态完整不阻塞一键填充；纯函数 `matchTier`/`resolveEvidenceLinks` 抽 `match-utils.ts` 单测；i18n 13 个 match.* key 中英同构；panel.css 全 token 零 hex。扩展 43→55 测试全绿。API.md §3.2/§3.3 补 #10 可解释性字段。CLI `jobs match` 输出无需额外代码（#10 已给 JobMatch 加 fieldScores/skillHits，JSON 自动序列化，TSV 已有 matchedSkills）。全仓 typecheck/test/build 全绿。
 
