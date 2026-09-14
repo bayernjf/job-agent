@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成 + 工程化补全完成，P1·Chrome 扩展进入稳定期，P2 职位聚合与画像↔岗位匹配端到端接线完成，Gitee 第二证据源 G-A+G-B 全链路打通**：pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成 + 工程化补全完成，P1·Chrome 扩展进入稳定期，P2 职位聚合与画像↔岗位匹配端到端接线完成，Gitee 第二证据源 G-A+G-B 全链路打通，Docker 容器运行时（SQLite + Postgres 双轨）与真实 GitHub 端到端首跑均已验证**：pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -69,6 +69,14 @@ pnpm -r build                # 构建各 workspace
 pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm migrate:up / migrate:down / migrate:status   # SQLite 迁移（migrate:pg:* 走 Postgres）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 迁移目录对齐
+```
+
+## Docker 运行
+
+```bash
+docker compose up -d                  # SQLite 模式（api:3000, report:4321）
+docker compose --profile with-pg up -d # 加 Postgres（端口 5432）
+# 环境变量：GITHUB_TOKEN（api/worker）、DB_DRIVER=postgres + DATABASE_URL 切 PG
 ```
 
 ## 当前不可违背的产品/工程规则
