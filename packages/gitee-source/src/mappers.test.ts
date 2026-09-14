@@ -86,6 +86,15 @@ describe('mapRepos', () => {
     expect(repos[0]!.isFork).toBe(false);
     expect(repos[0]!.topics).toEqual([]);
   });
+
+  it('falls back to caller login when owner is absent', () => {
+    const rows: GiteeRepoRaw[] = [
+      { name: 'nolowner', fork: false, created_at: '2024-01-01T00:00:00+08:00', owner: null },
+    ];
+    const repos = mapRepos(rows, 'alice');
+    expect(repos[0]!.ownerLogin).toBe('alice');
+    expect(repos[0]!.url).toBe('https://gitee.com/alice/nolowner');
+  });
 });
 
 describe('mapCommits (PII cleaning)', () => {
