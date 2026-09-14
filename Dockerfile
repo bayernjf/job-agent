@@ -18,10 +18,13 @@ COPY packages/storage/package.json packages/storage/
 COPY packages/github-source/package.json packages/github-source/
 COPY packages/analyzer-core/package.json packages/analyzer-core/
 COPY packages/llm/package.json packages/llm/
+COPY packages/job-source/package.json packages/job-source/
+COPY packages/ui-tokens/package.json packages/ui-tokens/
 COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/
 COPY apps/cli/package.json apps/cli/
 COPY apps/report/package.json apps/report/
+COPY apps/extension/package.json apps/extension/
 RUN pnpm install --frozen-lockfile
 
 # ---- Build all workspace packages ----
