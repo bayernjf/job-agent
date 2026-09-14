@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { JobPosting, JobSource } from '@jobagent/shared';
-import { matchJobs } from './job-match.js';
+import { matchJobs, MATCH_FIELD_WEIGHTS } from './job-match.js';
 
 let seq = 0;
 function posting(overrides: Partial<JobPosting> & { title: string }): JobPosting {
@@ -95,5 +95,46 @@ describe('matchJobs hard filters and ordering', () => {
     expect(out.map((m) => m.posting.jobId)).toEqual([strong.jobId, newerTie.jobId, olderTie.jobId]);
     const limited = matchJobs([olderTie, strong, newerTie], { skills: ['python'], limit: 2 });
     expect(limited).toHaveLength(2);
+  });
+});
+
+describe('matchJobs explainability (decision #10)', () => {
+  it('splits the score into per-field contributions', () => {
+    const p = posting({
+      title: 'TypeScript Engineer',
+      tags: ['typescript', 'react'],
+      description: 'typescript and react work',
+    });
+    const out = matchJobs([p], { skills: ['TypeScript', 'React'] });
+    const m = out[0]!;
+    // TypeScript hits title(3)+tags(2)+description(1); React hits tags(2)+description(1)
+    expect(m.fieldScores).toEqual({ title: 3, tags: 4, description: 2 });
+    expect(m.score).toBe(9);
+    // fieldScores always reconciles to the total score
+    expect(m.fieldScores.title + m.fieldScores.tags + m.fieldScores.description).toBe(m.score);
+  });
+
+  it('records per-skill hit fields and contribution in matched order', () => {
+    const p = posting({
+      title: 'Senior React Engineer',
+      tags: ['react', 'typescript'],
+      description: 'react daily',
+    });
+    const out = matchJobs([p], { skills: ['TypeScript', 'React'] });
+    const m = out[0]!;
+    expect(m.skillHits).toEqual([
+      // Per-skill hits follow the input skills order (postings are what get
+      // score-sorted, not the skills inside one posting).
+      // TypeScript: tags only = 2
+      { skill: 'TypeScript', score: 2, fields: ['tags'] },
+      // React: title 3 + tags 2 + description 1 = 6
+      { skill: 'React', score: 6, fields: ['title', 'tags', 'description'] },
+    ]);
+    // matchedSkills stays a backward-compatible projection of skillHits
+    expect(m.matchedSkills).toEqual(m.skillHits.map((h) => h.skill));
+  });
+
+  it('exposes field weights used for the breakdown', () => {
+    expect(MATCH_FIELD_WEIGHTS).toEqual({ title: 3, tags: 2, description: 1 });
   });
 });

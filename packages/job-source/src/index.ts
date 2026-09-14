@@ -48,6 +48,10 @@ export {
 } from './adapters/registry.js';
 export {
   matchJobs,
+  MATCH_FIELD_WEIGHTS,
   type JobMatch,
   type JobMatchCriteria,
+  type MatchField,
+  type SkillHit,
+  type FieldScores,
 } from './match/job-match.js';
