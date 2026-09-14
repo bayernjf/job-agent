@@ -65,6 +65,11 @@ export const SkillTagSchema = z.object({
 export type SkillTag = z.infer<typeof SkillTagSchema>;
 
 /** 能力画像快照（不可变，分享链接永远指向生成时版本） */
+/** 支持的证据源平台：github 为首个 EvidenceSource，gitee 为第二个（2026-09-14） */
+export const PlatformSchema = z.enum(['github', 'gitee']);
+export type SupportedPlatform = z.infer<typeof PlatformSchema>;
+export const SUPPORTED_PLATFORMS = PlatformSchema.options;
+
 export const AbilityProfileSchema = z.object({
   profileId: z.string().min(1),
   analyzerVersion: z.string().min(1), // 分析引擎版本，保证可复现
@@ -75,7 +80,7 @@ export const AbilityProfileSchema = z.object({
   }),
   analysisLayers: z.array(z.enum(['L0', 'L1'])), // MVP 仅 L0/L1
   subject: z.object({
-    platform: z.literal('github'),
+    platform: PlatformSchema,
     login: z.string().min(1),
     displayName: z.string().optional(),
     avatarUrl: z.string().url().optional(),
@@ -156,7 +161,7 @@ export const ExportableProfileSchema = z.object({
   generatedAt: z.string().datetime(),
   analyzerVersion: z.string().min(1),
   subject: z.object({
-    platform: z.literal('github'),
+    platform: PlatformSchema,
     login: z.string().min(1),
     displayName: z.string().optional(), // 缺省时扩展可回退显示 login
     avatarUrl: z.string().url().optional(),

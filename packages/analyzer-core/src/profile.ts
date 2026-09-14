@@ -3,7 +3,7 @@
  * 纯函数、无 I/O；analyzerVersion = `${SCHEMA_VERSION}-${RULE_VERSION}` 保证可复现。
  */
 
-import { SCHEMA_VERSION, type AbilityProfile } from '@jobagent/shared';
+import { SCHEMA_VERSION, type AbilityProfile, type SupportedPlatform } from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
 import { computeActivity } from './activity.js';
 import { generateInterviewQuestions } from './questions.js';
@@ -17,9 +17,12 @@ export interface AnalyzeOptions {
   profileId: string;
   /** 是否经本人 OAuth 认领（MVP CLI 为 false） */
   claimed?: boolean;
+  /** 证据源平台；默认 'github'（第二个源 gitee 由 gitee-source 传入） */
+  platform?: SupportedPlatform;
 }
 
 export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): AbilityProfile {
+  const platform = options.platform ?? 'github';
   const { status, confidence, signals } = computeAuthenticity(input);
   const activity = computeActivity(input, signals);
   const summary = computeSummary(input, activity);
@@ -49,11 +52,18 @@ export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): 
       .filter((r) => known.has(r)),
   };
 
+  const platformLabel = platform === 'gitee' ? 'Gitee' : 'GitHub';
   const caveats = [
     'Analysis covers L0 metadata and L1 behavior sequences only; repository code content is not read (L2+ deferred).',
     'Commit authorship is inferred from author metadata and is not cryptographically verified.',
-    'Public GitHub data only; activity on private repositories is not included.',
+    `Public ${platformLabel} data only; activity on private repositories is not included.`,
   ];
+  if (platform === 'gitee') {
+    // Gitee 无 contributionCalendar，贡献计数由采样窗口聚合，口径与 GitHub 全年值不同
+    caveats.push(
+      'Contribution totals are aggregated from the sampled L1 window rather than a full-year contribution calendar.',
+    );
+  }
   if (input.missing.length > 0) {
     caveats.push(`Partial data missing during collection: ${input.missing.join(', ')}.`);
   }
@@ -65,7 +75,7 @@ export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): 
     dataWindow: input.dataWindow,
     analysisLayers: ['L0', 'L1'],
     subject: {
-      platform: 'github',
+      platform,
       login: input.subject.login,
       displayName: input.subject.displayName ?? undefined,
       avatarUrl: input.subject.avatarUrl ?? undefined,

@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { analyze, RULE_VERSION } from './index.js';
-import { SCHEMA_VERSION } from '@jobagent/shared';
+import { AbilityProfileSchema, SCHEMA_VERSION } from '@jobagent/shared';
 import { buildInput } from './test-input.js';
 
 describe('analyze (profile assembly)', () => {
+  it('supports gitee platform via AnalyzeOptions and keeps schema valid', () => {
+    const input = buildInput();
+    const profile = analyze(input, { profileId: 'gitee-p', platform: 'gitee' });
+    expect(profile.subject.platform).toBe('gitee');
+    expect(profile.caveats.some((c) => c.includes('Public Gitee data only'))).toBe(true);
+    expect(profile.caveats.some((c) => c.includes('sampled L1 window'))).toBe(true);
+    expect(AbilityProfileSchema.safeParse(profile).success).toBe(true);
+  });
+
   it('produces a deterministic, schema-valid profile for a strong account', () => {
     const input = buildInput();
     const profile = analyze(input, { profileId: 'test-profile-1' });
