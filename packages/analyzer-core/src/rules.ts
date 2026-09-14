@@ -4,9 +4,12 @@
  */
 
 /** 分析引擎规则版本（analyzerVersion = `${SCHEMA_VERSION}-${ruleVersion}`） */
-export const RULE_VERSION = '0.1';
+export const RULE_VERSION = '0.2';
 
-/** 真实性信号码（前缀 r0.1 表明归属规则版本；severity 见 shared 契约） */
+/**
+ * 真实性信号码。规则 0.1 遗留信号在 0.2 中逻辑未变，保留 r0.1 前缀以避免快照漂移；
+ * 规则 0.2 新增信号使用 r0.2 前缀。severity 见 shared 契约。
+ */
 export const SIGNAL_CODES = {
   /** 提交 author 与账号身份不一致（name 相似度低 / 邮箱不匹配） */
   AUTHOR_INCONSISTENCY: 'r0.1.sig.author_inconsistency',
@@ -28,6 +31,8 @@ export const SIGNAL_CODES = {
   STAR_TO_COMMIT_RATIO: 'r0.1.sig.star_to_commit_ratio',
   /** PR 几乎全在自己 repo（可能是刷 PR 数量） */
   SELF_PR_RATIO: 'r0.1.sig.self_pr_ratio',
+  /** 行为高度集中在单一仓库且缺乏协作痕迹（规则 0.2 新增，方案 B；封顶 warn） */
+  NARROW_ACTIVITY_SCOPE: 'r0.2.sig.narrow_activity_scope',
 } as const;
 
 export type SignalCode = (typeof SIGNAL_CODES)[keyof typeof SIGNAL_CODES];

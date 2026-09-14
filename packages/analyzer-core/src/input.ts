@@ -83,6 +83,25 @@ export interface ContributionMonth {
   count: number;
 }
 
+/**
+ * 行为流聚合摘要（方案 B，2026-09-15；设计 docs/design-behavior-diversity-20260915.md）。
+ * 由各证据源从 public events 单次采集后聚合，是源无关的"事实计数"；
+ * 哪些事件类型算协作型由 analyzer 内核判定（规则版本化），source 不做分析。
+ * 可选：历史快照 / 端点失败 / 旧数据可能缺失，缺失时行为多样性信号走结构化降级。
+ */
+export interface BehaviorEventSummary {
+  /** 采集到的事件条数（GitHub 取第 1 页 ≤100；Gitee 固定最近 20） */
+  totalEvents: number;
+  /** 事件涉及的不同 owner/name 仓库数（跨仓活动广度） */
+  distinctRepoCount: number;
+  /** 各事件类型 → 条数（行为多样性事实，如 {PushEvent:12,PullRequestEvent:3}） */
+  eventTypeCounts: Record<string, number>;
+  /** 最早事件时间（ISO，可空） */
+  since?: string;
+  /** 最晚事件时间（ISO，可空） */
+  until?: string;
+}
+
 export interface AnalyzerInput {
   subject: AnalyzerSubject;
   dataWindow: { since: string; until: string };
@@ -98,6 +117,11 @@ export interface AnalyzerInput {
     contributionMonths: ContributionMonth[];
   };
   /** 采集到的证据项：analyzer 只读，用于校验 evidenceRefs 真实存在（无证据不下结论） */
+  /**
+   * public events 行为流聚合（方案 B，可选）：用于跨仓广度 / 行为多样性信号；
+   * 缺失时该信号只依据 commits/PR/issues 的结构化形态判定，绝不因缺字段判负。
+   */
+  behaviorEvents?: BehaviorEventSummary;
   evidence: EvidenceItem[];
   /** 显式缺失标注（如部分数据获取失败）；缺失数据不得被当作"没有" */
   missing: string[];
