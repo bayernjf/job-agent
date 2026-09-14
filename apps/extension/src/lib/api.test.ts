@@ -125,6 +125,42 @@ describe('matchJobs', () => {
     expect(out).toEqual([]);
   });
 
+  it('passes through explainability fields (decision #10)', async () => {
+    const fetchImpl = (async () =>
+      jsonResponse(200, {
+        matches: [
+          {
+            score: 6,
+            matchedSkills: ['TypeScript'],
+            fieldScores: { title: 3, tags: 2, description: 1 },
+            skillHits: [{ skill: 'TypeScript', score: 6, fields: ['title', 'tags', 'description'] }],
+            skillReasons: [
+              {
+                skill: 'TypeScript',
+                score: 6,
+                fields: ['title', 'tags', 'description'],
+                kind: 'language',
+                depth: 'proficient',
+                confidence: 0.9,
+                evidenceRefs: ['ev-1'],
+              },
+            ],
+            posting: { title: 'TS Engineer', company: 'Acme', sourceUrl: 'https://example.test/9' },
+          },
+        ],
+      })) as typeof fetch;
+    const out = await matchJobs('http://api.test', 'prof-1', { fetchImpl });
+    expect(out[0]!.fieldScores).toEqual({ title: 3, tags: 2, description: 1 });
+    expect(out[0]!.skillHits).toEqual([
+      { skill: 'TypeScript', score: 6, fields: ['title', 'tags', 'description'] },
+    ]);
+    expect(out[0]!.skillReasons?.[0]).toMatchObject({
+      skill: 'TypeScript',
+      depth: 'proficient',
+      evidenceRefs: ['ev-1'],
+    });
+  });
+
   it('throws on HTTP error', async () => {
     const fetchImpl = (async () => jsonResponse(500, { error: 'boom' })) as typeof fetch;
     await expect(matchJobs('http://api.test', 'prof-1', { fetchImpl })).rejects.toThrow(/HTTP 500/);
