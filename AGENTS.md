@@ -20,6 +20,7 @@ JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演�
 - 后端：Hono + Zod；分析任务由独立 Worker 消费
 - 数据库：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（**Drizzle 与方言差异只允许出现在 `packages/storage` 内部**，业务只依赖统一 async 仓储接口与 `createStorage()` 工厂、按 `DB_DRIVER` 切换，见下；MVP 不引入 Redis）
 - GitHub 采集：官方 Octokit，GraphQL 批量优先、REST 补；生产用 GitHub App
+- Gitee 采集（第二证据源，2026-09-14 G-A 落地）：官方 v5 **REST-only（无 GraphQL）**，匿名可读公开数据、`GITEE_TOKEN` 可选仅提额；产出与 GitHub 一致的证据源无关 `AnalyzerInput`，经 CLI `--platform gitee` 选源；worker/api 在线选源、events、跨源去重、OAuth 属 G-B 缓做（见 deferred #12、docs/design-gitee-source-20260914.md）
 - 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`；浏览器扩展 `apps/extension`（P1：三大 ATS 一键填充）
 - 测试：Vitest（就近单元）+ Playwright（E2E）
 - 分析深度：MVP 仅 **L0 元数据 + L1 行为时序**，**不 clone 仓库**（L2/L3/L4 见 docs/deferred-items）
@@ -34,6 +35,7 @@ job-agent/
 │  ├─ shared/         # AbilityProfile/EvidenceItem/JobPosting 类型 + Zod 契约（单一事实源，JobPosting 为 P2 预留）
 │  ├─ storage/        # 持久化抽象层：仓储接口（统一 async）+ entities 共享 + sqlite/postgres 双实现 + 迁移器（业务模块禁裸 SQL；设计见 docs/design-storage-dual-dialect-20260911.md）
 │  ├─ github-source/  # Octokit、GraphQL 查询、L0/L1 采集、限频/缓存（首个 EvidenceSource）
+│  ├─ gitee-source/   # 第二个 EvidenceSource：Gitee v5 REST-only 采集→证据源无关 AnalyzerInput（CLI --platform 选源；设计见 docs/design-gitee-source-20260914.md）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
 │  ├─ llm/            # LLM 端口 + 结构化输出校验（P1 才启用，见 deferred）
 │  └─ ui-tokens/      # 设计 token 单一事实源（无构建静态 CSS，--ja-* 变量；report 与 extension 共用，设计见 docs/design-tokens-20260910.md）
@@ -81,7 +83,7 @@ pnpm e2e:extension               # 扩展 E2E：--headless=new 加载 unpacked M
 ### 内核与 I/O 分离（硬约束）
 
 - `analyzer-core` 不发请求、不读数据库、不读文件系统；输入是采集后的结构化数据，输出是画像，便于对固定夹具做单测。
-- `github-source` 是第一个 `EvidenceSource`；未来 Gitee / 作品集以同接口新增，内核不改。
+- `github-source`（Octokit/GraphQL）与 `gitee-source`（Gitee v5 REST-only）是两个 `EvidenceSource`，都产出证据源无关的 `AnalyzerInput`，analyzer 内核不感知来源（`analyze(input,{platform})` 仅切换主体标识与数据来源 caveat）；未来作品集等以同接口新增，内核不改。
 
 ## 数据访问抽象层与迁移
 
