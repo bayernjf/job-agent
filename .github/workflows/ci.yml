@@ -46,6 +46,12 @@ jobs:
       - name: E2E tests
         run: pnpm e2e
 
+      - name: Extension E2E tests
+        # Loads the unpacked MV3 extension in --headless=new chromium (no xvfb needed);
+        # the script rebuilds apps/extension/dist before launching. See
+        # docs/design-extension-e2e-20260914.md.
+        run: pnpm e2e:extension
+
       - name: Docker build smoke
         # Build the api target (exercises deps + full monorepo build) and the
         # report target (verifies the Astro standalone entry path). The worker
