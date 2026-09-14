@@ -36,6 +36,7 @@ RUN pnpm -r build
 # ---- Shared runtime layer for Node services (api, worker) ----
 FROM base AS node-runtime
 ENV NODE_ENV=production
+RUN mkdir -p /app/data
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages ./packages
 COPY --from=build /app/apps ./apps
