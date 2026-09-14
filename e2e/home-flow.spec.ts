@@ -66,17 +66,20 @@ test.describe('locale negotiation and home render', () => {
   test('English home renders title, input and generate button', async ({ page }) => {
     await page.goto('/en/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
-      'Enter a GitHub username',
+      'Enter a username',
     );
-    const input = page.getByLabel('GitHub username');
+    const input = page.getByLabel('username');
     await expect(input).toBeVisible();
     await expect(input).toHaveAttribute('placeholder', /torvalds/);
     await expect(page.getByRole('button', { name: 'Generate Profile' })).toBeVisible();
+    // 平台切换按钮可见
+    await expect(page.getByRole('button', { name: 'GitHub' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Gitee' })).toBeVisible();
   });
 
   test('Chinese home renders localized copy', async ({ page }) => {
     await page.goto('/zh-CN/');
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('输入 GitHub 用户名');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('输入用户名');
     await expect(page.getByRole('button', { name: '生成画像' })).toBeVisible();
   });
 });
@@ -90,10 +93,10 @@ test.describe('AnalyzeForm flow', () => {
     });
     await page.goto('/en/');
     await waitForHydrated(page);
-    await page.getByLabel('GitHub username').fill('bad name!!');
+    await page.getByLabel('username').fill('bad name!!');
     await page.getByRole('button', { name: 'Generate Profile' }).click();
     // 出现错误提示
-    await expect(page.getByRole('alert')).toContainText('valid GitHub username');
+    await expect(page.getByRole('alert')).toContainText('valid username');
     // 未发起任何分析请求
     expect(analyzeCalled).toBe(false);
   });
@@ -103,7 +106,7 @@ test.describe('AnalyzeForm flow', () => {
     await page.goto('/en/');
     await waitForHydrated(page);
 
-    await page.getByLabel('GitHub username').fill('torvalds');
+    await page.getByLabel('username').fill('torvalds');
     await page.getByRole('button', { name: 'Generate Profile' }).click();
 
     // 成功后应导航到 /en/report/<profileId>
@@ -116,8 +119,45 @@ test.describe('AnalyzeForm flow', () => {
     );
     await page.goto('/en/');
     await waitForHydrated(page);
-    await page.getByLabel('GitHub username').fill('someone');
+    await page.getByLabel('username').fill('someone');
     await page.getByRole('button', { name: 'Generate Profile' }).click();
     await expect(page.getByRole('alert')).toBeVisible();
+  });
+
+  test('sends platform=gitee when Gitee platform is selected', async ({ page }) => {
+    let postedPlatform = '';
+    await page.route('**/analyze', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      postedPlatform = body.platform;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ jobId: 'job-mock-gitee', status: 'queued', dedup: false }),
+      });
+    });
+    await page.route('**/jobs/job-mock-gitee', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 'job-mock-gitee', status: 'succeeded', stage: 'L1', profileId: MOCK_PROFILE_ID }),
+      }),
+    );
+
+    await page.goto('/en/');
+    await waitForHydrated(page);
+
+    // 默认选中 GitHub
+    await expect(page.getByRole('button', { name: 'GitHub' })).toHaveClass(/platform-btn--active/);
+
+    // 切换到 Gitee
+    await page.getByRole('button', { name: 'Gitee' }).click();
+    await expect(page.getByRole('button', { name: 'Gitee' })).toHaveClass(/platform-btn--active/);
+
+    await page.getByLabel('username').fill('gitee_user');
+    await page.getByRole('button', { name: 'Generate Profile' }).click();
+
+    // 验证 POST body 包含 platform=gitee
+    await page.waitForURL(new RegExp(`/en/report/${MOCK_PROFILE_ID}`), { timeout: 15000 });
+    expect(postedPlatform).toBe('gitee');
   });
 });

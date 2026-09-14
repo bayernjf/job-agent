@@ -21,12 +21,18 @@ interface AnalyzeFormProps {
   pollingLabel: string;
   retryLabel: string;
   attemptsLabel: string;
+  platformGithubLabel: string;
+  platformGiteeLabel: string;
 }
 
 type Phase = 'idle' | 'creating' | 'polling' | 'done' | 'error';
+type Platform = 'github' | 'gitee';
 
-// GitHub username 规则（与 API Zod 校验一致）
-const GITHUB_USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
+// GitHub username 规则（与 API Zod 校验一致）；Gitee 额外允许下划线
+const USERNAME_RES: Record<Platform, RegExp> = {
+  github: /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/,
+  gitee: /^[a-zA-Z0-9](?:[a-zA-Z0-9]|[-_](?=[a-zA-Z0-9])){0,38}$/,
+};
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -46,9 +52,12 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     pollingLabel,
     retryLabel,
     attemptsLabel,
+    platformGithubLabel,
+    platformGiteeLabel,
   } = props;
 
   const [username, setUsername] = useState('');
+  const [platform, setPlatform] = useState<Platform>('github');
   const [phase, setPhase] = useState<Phase>('idle');
   const [statusText, setStatusText] = useState('');
   const [errorText, setErrorText] = useState('');
@@ -119,7 +128,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
       setErrorText('');
 
       const trimmed = username.trim();
-      if (!GITHUB_USERNAME_RE.test(trimmed)) {
+      if (!USERNAME_RES[platform].test(trimmed)) {
         setPhase('error');
         setErrorText(invalidLabel);
         return;
@@ -132,7 +141,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
         const res = await fetch(`${apiBase}/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: trimmed }),
+          body: JSON.stringify({ username: trimmed, platform }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { jobId: string };
@@ -157,6 +166,24 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="analyze-form">
+      <div className="platform-switch" role="group" aria-label="Platform">
+        <button
+          type="button"
+          className={`platform-btn ${platform === 'github' ? 'platform-btn--active' : ''}`}
+          onClick={() => setPlatform('github')}
+          disabled={isBusy}
+        >
+          {platformGithubLabel}
+        </button>
+        <button
+          type="button"
+          className={`platform-btn ${platform === 'gitee' ? 'platform-btn--active' : ''}`}
+          onClick={() => setPlatform('gitee')}
+          disabled={isBusy}
+        >
+          {platformGiteeLabel}
+        </button>
+      </div>
       <div className="input-row">
         <input
           type="text"
@@ -167,7 +194,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
           disabled={isBusy}
           autoComplete="off"
           spellCheck={false}
-          aria-label="GitHub username"
+          aria-label="username"
         />
         <button type="submit" className="ja-btn" disabled={isBusy || username.trim().length === 0}>
           {isBusy ? analyzingLabel : analyzeLabel}

@@ -92,6 +92,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [locale, setLocale] = useState<Locale>(initialLocale);
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [username, setUsername] = useState('');
+  const [platform, setPlatform] = useState<'github' | 'gitee'>('github');
   const [apiBase, setApiBase] = useState(loadApiBase);
   const [local, setLocal] = useState<LocalFields>(loadLocal);
   const [profile, setProfile] = useState<ExportableProfile | null>(null);
@@ -126,7 +127,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     localStorage.setItem(API_BASE_KEY, apiBase);
     try {
       const api = new JobAgentApi({ baseUrl: apiBase.replace(/\/$/, '') });
-      const p = await api.fetchProfile(username.trim());
+      const p = await api.fetchProfile(username.trim(), platform);
       setProfile(p);
       // 异步触发匹配，不阻塞画像展示与一键填充
       void loadMatches(p.profileId);
@@ -176,6 +177,24 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
       </div>
 
       <form onSubmit={handleAnalyze}>
+        <div className="ja-platform-switch" role="group" aria-label="Platform">
+          <button
+            type="button"
+            className={`ja-platform-btn ${platform === 'github' ? 'ja-platform-btn--active' : ''}`}
+            onClick={() => setPlatform('github')}
+            disabled={loading}
+          >
+            {t('panel.platformGithub')}
+          </button>
+          <button
+            type="button"
+            className={`ja-platform-btn ${platform === 'gitee' ? 'ja-platform-btn--active' : ''}`}
+            onClick={() => setPlatform('gitee')}
+            disabled={loading}
+          >
+            {t('panel.platformGitee')}
+          </button>
+        </div>
         <label className="ja-label">
           {t('panel.usernameLabel')}
           <input

@@ -70,9 +70,10 @@ const AnalyzeRequestSchema = z.object({
   username: z
     .string()
     .min(1, 'username is required')
-    .max(39, 'username too long') // GitHub username max 39 chars
-    .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9]))*$/, 'invalid GitHub username format'),
-  platform: z.enum(['github']).default('github'),
+    .max(39, 'username too long')
+    // 兼容 GitHub（字母数字+中划线）与 Gitee（额外允许下划线）
+    .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9]|[-_](?=[a-zA-Z0-9]))*$/, 'invalid username format'),
+  platform: z.enum(['github', 'gitee']).default('github'),
 });
 
 const JobIdParamSchema = z.object({

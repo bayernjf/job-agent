@@ -100,6 +100,11 @@ function makeFakeSource(data?: GitHubCollectedData, shouldFail = false) {
   };
 }
 
+/** 把单个 fake source 包装为 {github, gitee} map（两平台共用同一 fake） */
+function asSources(source: ReturnType<typeof makeFakeSource>) {
+  return { github: source, gitee: source };
+}
+
 async function createQueuedJob(repos: WorkerRepos, login = 'test-user'): Promise<string> {
   const id = `job-${randomUUID().slice(0, 8)}`;
   await repos.jobs.create({ id, subjectLogin: login });
@@ -113,7 +118,7 @@ describe('processJob', () => {
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeFakeSource();
 
-    const result = await processJob(job, repos, source);
+    const result = await processJob(job, repos, asSources(source));
 
     // 采集被调用
     expect(source.collect).toHaveBeenCalledWith('test-user');
@@ -140,7 +145,7 @@ describe('processJob', () => {
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeFakeSource();
 
-    await processJob(job, repos, source);
+    await processJob(job, repos, asSources(source));
 
     // 最终 stage 是 complete（succeed 时设置）
     expect((await repos.jobs.getById(job.id))!.stage).toBe('complete');
@@ -152,7 +157,7 @@ describe('processJob', () => {
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeFakeSource(undefined, true);
 
-    await expect(processJob(job, repos, source)).rejects.toThrow('GitHub API rate limit exceeded');
+    await expect(processJob(job, repos, asSources(source))).rejects.toThrow('GitHub API rate limit exceeded');
 
     // 任务仍为 running（调用方决定重试或失败）
     expect((await repos.jobs.getById(job.id))!.status).toBe('running');
@@ -166,10 +171,31 @@ describe('processJob', () => {
     data.meta.missing = ['pull_requests', 'commits:some/repo'];
     const source = makeFakeSource(data);
 
-    const result = await processJob(job, repos, source);
+    const result = await processJob(job, repos, asSources(source));
 
     expect(result.missing).toEqual(['pull_requests', 'commits:some/repo']);
     expect((await repos.jobs.getById(job.id))!.missing).toEqual(['pull_requests', 'commits:some/repo']);
+  });
+
+  it('routes to gitee source and passes platform when job.subjectPlatform=gitee', async () => {
+    const repos = await freshRepos();
+    const jobId = `job-${randomUUID().slice(0, 8)}`;
+    await repos.jobs.create({ id: jobId, subjectPlatform: 'gitee', subjectLogin: 'gitee-user' });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+
+    const githubSource = makeFakeSource();
+    const giteeSource = makeFakeSource();
+    const sources = { github: githubSource, gitee: giteeSource };
+
+    const result = await processJob(job, repos, sources);
+
+    // gitee source 被调用，github source 未被调用
+    expect(giteeSource.collect).toHaveBeenCalledWith('gitee-user');
+    expect(githubSource.collect).not.toHaveBeenCalled();
+
+    // 画像 platform 为 gitee
+    expect(result.profile.subject.platform).toBe('gitee');
+    expect(result.profile.subject.login).toBe('gitee-user');
   });
 });
 
@@ -249,7 +275,7 @@ describe('runWorker', () => {
     let callCount = 0;
     await runWorker({
       repos,
-      source,
+      sources: asSources(source),
       workerId: 'test-worker',
       pollIntervalMs: 10,
       maxRetries: 3,
@@ -282,7 +308,7 @@ describe('runWorker', () => {
     let loopCount = 0;
     await runWorker({
       repos,
-      source,
+      sources: asSources(source),
       workerId: 'test-worker',
       pollIntervalMs: 10,
       maxRetries: 3,
@@ -306,7 +332,7 @@ describe('runWorker', () => {
     let loopCount = 0;
     await runWorker({
       repos,
-      source,
+      sources: asSources(source),
       workerId: 'test-worker',
       pollIntervalMs: 100,
       sleep,
