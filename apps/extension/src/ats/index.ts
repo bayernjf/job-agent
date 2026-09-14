@@ -53,8 +53,23 @@ export interface AtsAdapter {
   fill(doc: Document, values: FillValue[]): number;
 }
 
+/**
+ * summary 中面向招聘方可见的组装文案，由 UI 层用 i18n 生成后注入；
+ * ats 层不依赖 i18n。缺省保留原中文，兼容既有纯函数调用与单测。
+ */
+export interface FillSummaryLabels {
+  skillsLeadin?: string;
+  skillSeparator?: string;
+}
+
 /** 画像 + 本地补填 → 通用语义值（三适配器共享，差异化逻辑集中在此） */
-export function toFillValues(profile: ExportableProfile, local: LocalFields): FillValue[] {
+export function toFillValues(
+  profile: ExportableProfile,
+  local: LocalFields,
+  labels: FillSummaryLabels = {},
+): FillValue[] {
+  const skillsLeadin = labels.skillsLeadin ?? '技能（GitHub 验证，可回溯证据）：';
+  const skillSeparator = labels.skillSeparator ?? '、';
   const values: FillValue[] = [];
   const fullName = profile.subject.displayName ?? profile.subject.login;
   values.push({ key: 'full_name', value: fullName });
@@ -62,9 +77,9 @@ export function toFillValues(profile: ExportableProfile, local: LocalFields): Fi
   values.push({ key: 'headline', value: profile.headline });
   values.push({
     key: 'summary',
-    value: `${profile.headline}\n\n技能（GitHub 验证，可回溯证据）：${profile.skills
+    value: `${profile.headline}\n\n${skillsLeadin}${profile.skills
       .map((s) => `${s.name} (${s.confidence})`)
-      .join('、')}`,
+      .join(skillSeparator)}`,
   });
   values.push({ key: 'skills', value: profile.skills.map((s) => s.name).join(', ') });
   if (local.email) values.push({ key: 'email', value: local.email });

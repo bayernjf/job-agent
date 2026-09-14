@@ -1,0 +1,8 @@
+{
+  "appName": {
+    "message": "JobAgent 自动填充"
+  },
+  "appDescription": {
+    "message": "基于 GitHub 验证的 JobAgent 可信画像，一键填充招聘系统（ATS）申请表。"
+  }
+}
