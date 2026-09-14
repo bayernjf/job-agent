@@ -217,6 +217,20 @@ describe('handleJobFailure', () => {
     expect(updated.claimedBy).toBeNull();
   });
 
+  it('does not retry not_found errors — fails immediately even on first attempt', async () => {
+    const repos = await freshRepos();
+    await createQueuedJob(repos, 'ghost-user');
+    const job = (await repos.jobs.claimNext('test-worker'))!; // attempts = 1
+
+    const err = new Error('Gitee resource not found: /users/ghost') as Error & { code: string };
+    err.code = 'not_found';
+    await handleJobFailure(job, repos, err, 3);
+
+    const updated = (await repos.jobs.getById(job.id))!;
+    expect(updated.status).toBe('failed');
+    expect(updated.attempts).toBe(1); // not incremented beyond the first attempt
+  });
+
   it('marks failed when attempts >= maxRetries', async () => {
     const repos = await freshRepos();
     const jobId = await createQueuedJob(repos, 'user-2');
