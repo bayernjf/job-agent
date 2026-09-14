@@ -25,7 +25,7 @@
   "auth.mixed_signals": "Mixed signals",
   "auth.suspicious": "Suspicious",
   "auth.insufficient_data": "Insufficient data",
-  "fill.summarySkillsLeadin": "Skills (verified on GitHub, with traceable evidence): ",
+  "fill.summarySkillsLeadin": "Skills (verified on {platform}, with traceable evidence): ",
   "fill.skillSeparator": ", ",
   "match.title": "Job matches",
   "match.loading": "Loading matches…",
