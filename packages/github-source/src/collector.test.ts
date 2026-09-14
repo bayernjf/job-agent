@@ -18,6 +18,8 @@ function fakeFetch(
   opts: {
     l0Mutate?: (l0: L0GraphqlResponse) => void;
     repoOwners?: string[];
+    eventsRows?: unknown[];
+    eventsFail?: boolean;
   } = {},
 ): typeof fetch {
   return async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
@@ -63,6 +65,10 @@ function fakeFetch(
         headers['x-ratelimit-cost'] = '5';
         payload = load('issues-strong.json');
       }
+    } else if (url.includes('/events/public')) {
+      // events 路由必须排在 /users/ 之前；默认空事件流（不产生 behaviorEvents、不记缺失）
+      if (opts.eventsFail) return new Response(null, { status: 404 }); // 404 在 doNotRetry 列表，立即失败不触发退避
+      payload = opts.eventsRows ?? [];
     } else if (url.includes('/users/')) {
       payload = load('rest-user.json');
     } else if (url.includes('/commits')) {
@@ -77,6 +83,47 @@ function fakeFetch(
 const TOKEN = 'test-token';
 
 describe('GitHubSource.collect', () => {
+  it('fills input.behaviorEvents from public events with a single page-1 REST call', async () => {
+    const eventsRows = [
+      { type: 'PushEvent', actor: { login: 'dev-strong' }, repo: { name: 'dev-strong/web-platform' }, created_at: '2026-08-01T04:00:00Z' },
+      { type: 'IssueCommentEvent', actor: { login: 'dev-strong' }, repo: { name: 'other/lib' }, created_at: '2026-08-02T04:00:00Z' },
+    ];
+    const calls: string[] = [];
+    const inner = fakeFetch({ eventsRows });
+    const counting = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      calls.push(String(input));
+      return inner(input, init);
+    }) as typeof fetch;
+    const source = new GitHubSource({ token: TOKEN, fetch: counting, throttleEnabled: false });
+    const result = await source.collect('dev-strong');
+    expect(result.input.behaviorEvents).toMatchObject({
+      totalEvents: 2,
+      distinctRepoCount: 2,
+      eventTypeCounts: { PushEvent: 1, IssueCommentEvent: 1 },
+    });
+    expect(result.meta.missing).not.toContain('events');
+    expect(calls.filter((u) => u.includes('/events/public'))).toHaveLength(1); // 只取第 1 页
+  });
+
+  it('leaves behaviorEvents undefined (no missing) when events page is empty', async () => {
+    const source = new GitHubSource({ token: TOKEN, fetch: fakeFetch(), throttleEnabled: false });
+    const result = await source.collect('dev-strong');
+    expect(result.input.behaviorEvents).toBeUndefined();
+    expect(result.meta.missing).not.toContain('events');
+  });
+
+  it('records missing:events but keeps L0/L1 when the events endpoint fails', async () => {
+    const source = new GitHubSource({
+      token: TOKEN,
+      fetch: fakeFetch({ eventsFail: true }),
+      throttleEnabled: false,
+    });
+    const result = await source.collect('dev-strong');
+    expect(result.input.behaviorEvents).toBeUndefined();
+    expect(result.meta.missing).toContain('events');
+    expect(result.input.commits.length).toBeGreaterThan(0); // L0/L1 不受影响
+  });
+
   it('collects L0+L1 for a strong account with evidence and budget meta', async () => {
     const source = new GitHubSource({ token: TOKEN, fetch: fakeFetch(), throttleEnabled: false });
     const result = await source.collect('dev-strong');

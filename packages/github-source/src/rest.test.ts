@@ -4,10 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { Octokit } from 'octokit';
 import {
+  fetchPublicEventsRest,
   fetchRepoCommitsCached,
   HttpCache,
   isNotModifiedError,
   parseRestCommits,
+  summarizeGhEvents,
   type RestCommitRow,
 } from './rest.js';
 
@@ -35,6 +37,41 @@ describe('isNotModifiedError', () => {
     expect(isNotModifiedError({ status: 304 })).toBe(true);
     expect(isNotModifiedError(new Error('boom'))).toBe(false);
     expect(isNotModifiedError(null)).toBe(false);
+  });
+});
+
+describe('public events summary (plan B-1)', () => {
+  it('summarizes rows into breadth, type counts and UTC window, filters other actors', () => {
+    const rows = [
+      { type: 'PushEvent', actor: { login: 'alice' }, repo: { name: 'alice/a' }, created_at: '2026-04-01T04:00:00Z' },
+      { type: 'PushEvent', actor: { login: 'alice' }, repo: { name: 'alice/a' }, created_at: '2026-04-02T04:00:00Z' },
+      { type: 'PullRequestReviewEvent', actor: { login: 'alice' }, repo: { name: 'org/b' }, created_at: '2026-04-03T04:00:00Z' },
+      { type: 'PushEvent', actor: { login: 'bob' }, repo: { name: 'bob/x' }, created_at: '2026-04-03T04:00:00Z' },
+    ];
+    const s = summarizeGhEvents(rows, 'alice');
+    expect(s).not.toBeNull();
+    expect(s?.totalEvents).toBe(3);
+    expect(s?.distinctRepoCount).toBe(2);
+    expect(s?.eventTypeCounts).toEqual({ PushEvent: 2, PullRequestReviewEvent: 1 });
+    expect(s?.since).toBe('2026-04-01T04:00:00Z');
+    expect(s?.until).toBe('2026-04-03T04:00:00Z');
+    expect(summarizeGhEvents([], 'alice')).toBeNull();
+  });
+
+  it('fetchPublicEventsRest requests page 1 with per_page 100', async () => {
+    let route = '';
+    let params: Record<string, unknown> = {};
+    const octokit = {
+      request: async (r: string, p: Record<string, unknown>) => {
+        route = r;
+        params = p;
+        return { data: [] };
+      },
+    } as unknown as Octokit;
+    const data = await fetchPublicEventsRest(octokit, 'alice');
+    expect(route).toBe('GET /users/{username}/events/public');
+    expect(params).toMatchObject({ username: 'alice', per_page: 100 });
+    expect(data).toEqual([]);
   });
 });
 
