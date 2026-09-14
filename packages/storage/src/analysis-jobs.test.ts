@@ -185,6 +185,26 @@ describe('SqliteAnalysisJobsRepository', () => {
     expect(counts.failed).toBe(1);
   });
 
+  it('reclaims stale running jobs back to queued', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create(newJob('job_stale'));
+    await repo.claimNext('worker-1'); // running
+
+    // Job is fresh right now — should not be reclaimed.
+    expect(await repo.reclaimStaleRunning(60_000)).toBe(0);
+
+    // Manually backdate started_at to 10 minutes ago.
+    db.prepare(
+      "UPDATE analysis_jobs SET started_at = datetime('now', '-10 minutes') WHERE id = 'job_stale'",
+    ).run();
+
+    expect(await repo.reclaimStaleRunning(60_000)).toBe(1);
+    const reclaimed = await repo.getById('job_stale');
+    expect(reclaimed!.status).toBe('queued');
+    expect(reclaimed!.claimedBy).toBeNull();
+    expect(reclaimed!.startedAt).toBeNull();
+  });
+
   it('migration 002 creates analysis_jobs table with expected columns', () => {
     const db = new Database(':memory:');
     runMigrations(db, MIGRATIONS_DIR);

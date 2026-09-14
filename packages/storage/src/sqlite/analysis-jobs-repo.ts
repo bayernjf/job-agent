@@ -145,6 +145,30 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
       .run();
   }
 
+  async reclaimStaleRunning(maxAgeMs: number): Promise<number> {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const now = new Date().toISOString();
+    const result = this.db
+      .update(analysisJobs)
+      .set({
+        status: 'queued',
+        stage: null,
+        errorMessage: 'Reclaimed: worker likely crashed mid-job',
+        claimedBy: null,
+        startedAt: null,
+        finishedAt: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(analysisJobs.status, 'running'),
+          lt(analysisJobs.startedAt, cutoff),
+        ),
+      )
+      .run();
+    return result.changes ?? 0;
+  }
+
   async listBySubject(
     subjectPlatform: string,
     subjectLogin: string,
