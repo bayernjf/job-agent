@@ -70,6 +70,40 @@ async function insertProfile(repos: StorageContext, profileId: string, skills: s
   });
 }
 
+/** 造带完整 SkillTag（含 evidenceRefs）的画像，并写入对应证据行（决策 #10 可解释性测试用）。 */
+async function insertProfileWithEvidence(
+  repos: StorageContext,
+  profileId: string,
+  tags: AbilityProfile['skillTags'],
+  evidence: Array<{ id: string; sourceType: string; url: string; claim: string; rawRef: string; layer?: string }>,
+): Promise<void> {
+  const p = profileWithSkills(
+    profileId,
+    tags.map((t) => t.name),
+  );
+  p.skillTags = tags;
+  await repos.profiles.insert({
+    id: profileId,
+    analyzerVersion: p.analyzerVersion,
+    subjectLogin: p.subject.login,
+    dataWindowSince: p.dataWindow.since,
+    dataWindowUntil: p.dataWindow.until,
+    status: 'complete',
+    snapshot: p,
+  });
+  for (const e of evidence) {
+    await repos.evidence.insert({
+      id: e.id,
+      profileId,
+      sourceType: e.sourceType,
+      url: e.url,
+      layer: e.layer ?? 'L1',
+      claim: e.claim,
+      rawRef: e.rawRef,
+    });
+  }
+}
+
 describe('GET /job-postings', () => {
   it('returns active postings', async () => {
     const { app } = await harness([job({ title: 'Python Engineer' }), job({ title: 'Sales Lead' })]);
@@ -174,6 +208,26 @@ describe('POST /job-postings/match', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('returns field breakdown and skill hits but no profile reasons for explicit skills', async () => {
+    const { app } = await harness([job({ title: 'Python Engineer', tags: ['python'] })]);
+    const res = await app.request('/job-postings/match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skills: ['Python'] }),
+    });
+    const body = (await res.json()) as {
+      evidence?: unknown;
+      matches: Array<Record<string, unknown>>;
+    };
+    const m = body.matches[0]!;
+    // No profile -> no skill metadata / evidence dictionary
+    expect(m.skillReasons).toBeUndefined();
+    expect(body.evidence).toBeUndefined();
+    // But the mechanical field-level breakdown is always present
+    expect(m.fieldScores).toEqual({ title: 3, tags: 2, description: 0 });
+    expect(m.skillHits).toEqual([{ skill: 'Python', score: 5, fields: ['title', 'tags'] }]);
+  });
 });
 
 describe('POST /job-postings/match with profileId', () => {
@@ -239,6 +293,39 @@ describe('POST /job-postings/match with profileId', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('attaches skill reasons and traceable evidence when matching by profileId', async () => {
+    const { app, repos } = await harness([job({ title: 'Python Engineer', tags: ['python'] })]);
+    await insertProfileWithEvidence(
+      repos,
+      'prof-py',
+      [{ name: 'Python', kind: 'language', depth: 'proficient', confidence: 0.8, evidenceRefs: ['py-1'] }],
+      [{ id: 'py-1', sourceType: 'pr', url: 'https://github.com/u/x/pull/2', claim: 'authored python PR', rawRef: '#2' }],
+    );
+    const res = await app.request('/job-postings/match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: 'prof-py' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      profileSkills: string[];
+      evidence: Record<string, { sourceType: string; url: string; claim: string }>;
+      matches: Array<{ skillReasons: Array<Record<string, unknown>> }>;
+    };
+    expect(body.profileSkills).toEqual(['Python']);
+    expect(body.matches[0]!.skillReasons[0]).toMatchObject({
+      skill: 'Python',
+      kind: 'language',
+      depth: 'proficient',
+      evidenceRefs: ['py-1'],
+    });
+    expect(body.evidence['py-1']).toEqual({
+      sourceType: 'pr',
+      url: 'https://github.com/u/x/pull/2',
+      claim: 'authored python PR',
+    });
+  });
 });
 
 describe('GET /profiles/:id/job-recommendations', () => {
@@ -300,5 +387,47 @@ describe('GET /profiles/:id/job-recommendations', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { total: number };
     expect(body.total).toBe(1);
+  });
+
+  it('explains matches via field scores, per-skill reasons and only referenced evidence', async () => {
+    const { app, repos } = await harness([
+      job({ title: 'Senior TypeScript Engineer', tags: ['typescript', 'react'], description: 'typescript and react' }),
+    ]);
+    await insertProfileWithEvidence(
+      repos,
+      'prof-explain',
+      [
+        { name: 'TypeScript', kind: 'language', depth: 'proficient', confidence: 0.9, evidenceRefs: ['ev-1', 'ev-2'] },
+        { name: 'React', kind: 'framework', depth: 'used', confidence: 0.6, evidenceRefs: ['ev-3'] },
+      ],
+      [
+        { id: 'ev-1', sourceType: 'pr', url: 'https://github.com/u/r/pull/1', claim: 'authored TS PR', rawRef: '#1' },
+        { id: 'ev-2', sourceType: 'commit', url: 'https://github.com/u/r/commit/c1', claim: 'TS commit', rawRef: 'c1' },
+        { id: 'ev-3', sourceType: 'repo', url: 'https://github.com/u/r', claim: 'react repo', rawRef: 'u/r', layer: 'L0' },
+        // Unreferenced evidence must not leak into the response dictionary
+        { id: 'ev-x', sourceType: 'issue', url: 'https://github.com/u/r/issues/9', claim: 'unrelated', rawRef: '#9' },
+      ],
+    );
+    const res = await app.request('/profiles/prof-explain/job-recommendations');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      evidence: Record<string, { sourceType: string; url: string; claim: string }>;
+      matches: Array<{
+        score: number;
+        fieldScores: { title: number; tags: number; description: number };
+        skillHits: Array<{ skill: string; score: number; fields: string[] }>;
+        skillReasons: Array<Record<string, unknown>>;
+      }>;
+    };
+    const m = body.matches[0]!;
+    // TS hits title+tags+description; React hits tags+description
+    expect(m.fieldScores).toEqual({ title: 3, tags: 4, description: 2 });
+    expect(m.score).toBe(9);
+    expect(m.skillHits.map((h) => h.skill)).toEqual(['TypeScript', 'React']);
+    expect(m.skillReasons[0]).toMatchObject({ skill: 'TypeScript', kind: 'language', depth: 'proficient' });
+    expect(m.skillReasons[1]).toMatchObject({ skill: 'React', kind: 'framework', depth: 'used' });
+    // Dictionary contains only evidence referenced by matched skills (ev-x excluded)
+    expect(Object.keys(body.evidence).sort()).toEqual(['ev-1', 'ev-2', 'ev-3']);
+    expect(body.evidence['ev-1']!.claim).toBe('authored TS PR');
   });
 });
