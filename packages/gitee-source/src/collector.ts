@@ -17,6 +17,7 @@ import {
   mapRepos,
   mapSubject,
   mergeSampledAndEventCommits,
+  summarizeGiteeEvents,
 } from './mappers.js';
 import {
   buildGiteeCommitEvidence,
@@ -154,6 +155,8 @@ export class GiteeSource {
       this.log.warn(`[gitee-source] events failed for ${login}: ${(err as Error).message}`);
     }
     const eventCommits = mapEventsToCommits(events, login);
+    // 方案 B-1：同一批 events 聚合为行为流摘要（跨仓广度/事件类型分布），供内核多样性信号
+    const behaviorEvents = summarizeGiteeEvents(events, login);
     // 按 repo:oid 去重合并、采样优先，merge 内部按时间升序
     const allCommits = mergeSampledAndEventCommits(commits, eventCommits);
     const eventCommitsAdded = allCommits.length - commits.length;
@@ -178,6 +181,7 @@ export class GiteeSource {
       pullRequests,
       issues,
       contributions: buildContributions(allCommits, pullRequests, issues, repos),
+      ...(behaviorEvents ? { behaviorEvents } : {}),
       evidence,
       missing,
       collectedAt: new Date().toISOString(),

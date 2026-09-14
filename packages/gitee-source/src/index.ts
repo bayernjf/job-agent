@@ -17,6 +17,7 @@ export {
   mapRepos,
   mapSubject,
   mergeSampledAndEventCommits,
+  summarizeGiteeEvents,
   toUtc,
 } from './mappers.js';
 export {

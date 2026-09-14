@@ -201,6 +201,21 @@ describe('GiteeSource.collect full happy path', () => {
 });
 
 describe('GiteeSource events behavior stream (§4.11)', () => {
+  it('summarizes self events into input.behaviorEvents (breadth and type counts)', async () => {
+    const f = routerFetch({ '/events/public': () => json(EVENTS) });
+    const { input } = await makeSource(f).collect('alice');
+    expect(input.behaviorEvents).toMatchObject({
+      totalEvents: 2,
+      distinctRepoCount: 2, // outside-top-repos + core
+      eventTypeCounts: { PushEvent: 1, IssueCommentEvent: 1 },
+    });
+  });
+
+  it('omits behaviorEvents when the events endpoint fails', async () => {
+    const f = routerFetch({ '/events/public': () => new Response(null, { status: 500 }) });
+    const { input } = await makeSource(f).collect('alice');
+    expect(input.behaviorEvents).toBeUndefined();
+  });
   it('fills sampled-missing recent commits from PushEvents, strips PII, advances window', async () => {
     const f = routerFetch({ '/events/public': () => json(EVENTS) });
     const { input, evidence, meta } = await makeSource(f).collect('alice');

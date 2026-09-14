@@ -10,6 +10,7 @@ import {
   mapRepos,
   mapSubject,
   mergeSampledAndEventCommits,
+  summarizeGiteeEvents,
   toUtc,
 } from './mappers.js';
 import type {
@@ -248,6 +249,30 @@ describe('events behavior stream (§4.11)', () => {
       ],
     },
     ...over,
+  });
+
+  it('summarizes self events into repo breadth, type counts and time window', () => {
+    const events: GiteeEventRaw[] = [
+      { type: 'PushEvent', actor: { login: 'alice' }, repo: { full_name: 'alice/a' }, created_at: '2026-04-01T12:00:00+08:00' },
+      { type: 'PushEvent', actor: { login: 'alice' }, repo: { full_name: 'alice/a' }, created_at: '2026-04-02T12:00:00+08:00' },
+      { type: 'PullRequestEvent', actor: { login: 'alice' }, repo: { full_name: 'org/b' }, created_at: '2026-04-03T12:00:00+08:00' },
+      { type: null, actor: { login: 'alice' }, repo: { full_name: 'alice/a' }, created_at: '2026-04-03T12:00:00+08:00' },
+      { type: 'PushEvent', actor: { login: 'someone-else' }, repo: { full_name: 'x/y' }, created_at: '2026-04-03T12:00:00+08:00' },
+    ];
+    const s = summarizeGiteeEvents(events, 'alice');
+    expect(s).not.toBeNull();
+    expect(s?.totalEvents).toBe(4); // 他人事件排除；null type 计数但不进 typeCounts
+    expect(s?.distinctRepoCount).toBe(2); // alice/a 与 org/b
+    expect(s?.eventTypeCounts).toEqual({ PushEvent: 2, PullRequestEvent: 1 });
+    expect(s?.since).toBe('2026-04-01T04:00:00.000Z');
+    expect(s?.until).toBe('2026-04-03T04:00:00.000Z');
+  });
+
+  it('returns null when there are no self events', () => {
+    expect(summarizeGiteeEvents([], 'alice')).toBeNull();
+    expect(
+      summarizeGiteeEvents([{ type: 'PushEvent', actor: { login: 'bob' }, repo: { full_name: 'b/b' } }], 'alice'),
+    ).toBeNull();
   });
 
   it('maps only PushEvent commits, strips PII, uses actor login and event time', () => {
