@@ -163,6 +163,12 @@ describe('GiteeSource.collect full happy path', () => {
     expect(profile.subject.platform).toBe('gitee');
     expect(AbilityProfileSchema.safeParse(profile).success).toBe(true);
   });
+
+  it('commits respect deterministic chronological ordering', async () => {
+    const collected = await makeSource(routerFetch()).collect('alice');
+    const dates = collected.input.commits.map((c) => c.committedAt);
+    expect(dates).toEqual([...dates].sort());
+  });
 });
 
 describe('GiteeSource error handling', () => {
