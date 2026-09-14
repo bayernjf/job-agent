@@ -25,5 +25,17 @@
   "auth.insufficient_data": "Insufficient data",
   "fill.summarySkillsLeadin": "Skills (verified on GitHub, with traceable evidence): ",
   "fill.skillSeparator": ", ",
+  "match.title": "Job matches",
+  "match.loading": "Loading matches…",
+  "match.empty": "No matching jobs",
+  "match.error": "Failed to load matches",
+  "match.retry": "Retry",
+  "match.refresh": "Refresh",
+  "match.basis": "Why this matches",
+  "match.scoreBreakdown": "Score breakdown",
+  "match.evidence": "Evidence",
+  "match.high": "High match",
+  "match.mid": "Partial match",
+  "match.low": "Weak match",
   "nav.language": "中文"
 }
