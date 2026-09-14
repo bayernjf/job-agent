@@ -50,6 +50,16 @@ describe('mapSubject', () => {
     expect(s.createdAt).toBe('2023-12-31T16:00:00.000Z');
     expect(s).toMatchObject({ login: 'alice', displayName: 'Alice', followers: 5, publicRepos: 2 });
   });
+
+  it('falls back to defaults when optional fields are missing', () => {
+    const s = mapSubject({ login: 'alice' }, 'alice');
+    expect(s.displayName).toBeNull();
+    expect(s.avatarUrl).toBeNull();
+    expect(s.profileUrl).toBe('https://gitee.com/alice');
+    expect(s.createdAt).toBeNull();
+    expect(s.followers).toBe(0);
+    expect(s.publicRepos).toBe(0);
+  });
 });
 
 describe('mapRepos', () => {
