@@ -12,6 +12,7 @@ import type {
   AnalyzerPullRequest,
   AnalyzerRepo,
   AnalyzerSubject,
+  BehaviorEventSummary,
   ContributionMonth,
 } from '@jobagent/analyzer-core';
 import type {
@@ -255,6 +256,43 @@ export function mapEventsToCommits(events: GiteeEventRaw[], login: string): Anal
 }
 
 /** 提交去重键：仓库内 sha，与 evidenceId `commit:${repo}:${oid}` 同口径 */
+/**
+ * 汇总本人 public events 为源无关 BehaviorEventSummary（方案 B-1，设计 §2/§4.1）：
+ * 只统计 actor 为本人的事件；distinctRepo 用 repo.full_name/human_name 去重；
+ * eventTypeCounts 统计非空 type；时间窗由 created_at（+08:00→UTC）min/max 得到；
+ * 无本人有效事件返回 null（不产生空摘要，内核据此走结构化降级）。
+ */
+export function summarizeGiteeEvents(
+  events: GiteeEventRaw[],
+  login: string,
+): BehaviorEventSummary | null {
+  const typeCounts = new Map<string, number>();
+  const repos = new Set<string>();
+  let earliest: string | null = null;
+  let latest: string | null = null;
+  let total = 0;
+  for (const ev of events) {
+    if (!ev || !sameLogin(ev.actor?.login, login)) continue;
+    total += 1;
+    if (ev.type) typeCounts.set(ev.type, (typeCounts.get(ev.type) ?? 0) + 1);
+    const repoName = ev.repo?.full_name ?? ev.repo?.human_name ?? null;
+    if (repoName) repos.add(repoName);
+    const at = toUtc(ev.created_at);
+    if (at) {
+      if (!earliest || at < earliest) earliest = at;
+      if (!latest || at > latest) latest = at;
+    }
+  }
+  if (total === 0) return null;
+  return {
+    totalEvents: total,
+    distinctRepoCount: repos.size,
+    eventTypeCounts: Object.fromEntries(typeCounts),
+    ...(earliest ? { since: earliest } : {}),
+    ...(latest ? { until: latest } : {}),
+  };
+}
+
 function commitKey(c: AnalyzerCommit): string {
   return `${c.repoName}:${c.oid}`;
 }
