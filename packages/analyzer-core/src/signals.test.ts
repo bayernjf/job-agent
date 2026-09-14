@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeAuthenticity, computeAuthenticitySignals } from './signals.js';
+import { computeActivity } from './activity.js';
 import { SIGNAL_CODES } from './rules.js';
 import { buildInput } from './test-input.js';
 import type { AnalyzerCommit, AnalyzerInput, AnalyzerPullRequest, AnalyzerRepo } from './input.js';
@@ -166,6 +167,163 @@ describe('computeAuthenticitySignals', () => {
     );
     expect(stale?.severity).toBe('warn');
     expectValidRefs(input);
+  });
+});
+
+describe('narrow activity scope (rule 0.2, plan B)', () => {
+  const narrowRepo: AnalyzerRepo = {
+    name: 'only-repo',
+    ownerLogin: 'dev-strong',
+    url: 'https://github.com/dev-strong/only-repo',
+    isFork: false,
+    isArchived: false,
+    primaryLanguage: 'TypeScript',
+    topics: [],
+    description: null,
+    stargazerCount: 5,
+    forkCount: 0,
+    pushedAt: '2026-08-20T00:00:00Z',
+    createdAt: '2024-01-01T00:00:00Z',
+  };
+  // 分布在 2026-01..09 各月，避免触发 commit_burst；默认全部落在同一仓库
+  const singleRepoCommits = (n: number, repo = 'dev-strong/only-repo'): AnalyzerCommit[] =>
+    Array.from({ length: n }, (_, i) => ({
+      oid: `nr${String(i).padStart(3, '0')}${'0'.repeat(34)}`,
+      committedAt: `2026-0${(i % 9) + 1}-15T10:00:00Z`,
+      authorName: 'Dev Strong',
+      authorEmail: 'dev.strong@example.com',
+      repoName: repo,
+      messageHeadline: `commit ${i}`,
+    }));
+  const narrowEvents = {
+    totalEvents: 20,
+    distinctRepoCount: 1,
+    eventTypeCounts: { PushEvent: 20 },
+  };
+  const base = {
+    repos: [narrowRepo],
+    commits: singleRepoCommits(40),
+    pullRequests: [],
+    issues: [],
+  };
+
+  it('warns when commits concentrate in one repo, no PRs and events are narrow too', () => {
+    const input = buildInput({ ...base, behaviorEvents: narrowEvents });
+    const narrow = computeAuthenticitySignals(input).find(
+      (s) => s.code === SIGNAL_CODES.NARROW_ACTIVITY_SCOPE,
+    );
+    expect(narrow?.severity).toBe('warn');
+    expectValidRefs(input);
+  });
+
+  it('still warns via structural fallback when behaviorEvents is missing', () => {
+    const input = buildInput(base);
+    const narrow = computeAuthenticitySignals(input).find(
+      (s) => s.code === SIGNAL_CODES.NARROW_ACTIVITY_SCOPE,
+    );
+    expect(narrow?.severity).toBe('warn');
+  });
+
+  it('is refuted by events spanning multiple repos (sampling bias)', () => {
+    const input = buildInput({
+      ...base,
+      behaviorEvents: { totalEvents: 20, distinctRepoCount: 3, eventTypeCounts: { PushEvent: 20 } },
+    });
+    expect(
+      computeAuthenticitySignals(input).some((s) => s.code === SIGNAL_CODES.NARROW_ACTIVITY_SCOPE),
+    ).toBe(false);
+  });
+
+  it('is refuted by collaborative event types (PR/Issue/Review/Comment)', () => {
+    const input = buildInput({
+      ...base,
+      behaviorEvents: {
+        totalEvents: 20,
+        distinctRepoCount: 1,
+        eventTypeCounts: { PushEvent: 18, PullRequestEvent: 2 },
+      },
+    });
+    expect(
+      computeAuthenticitySignals(input).some((s) => s.code === SIGNAL_CODES.NARROW_ACTIVITY_SCOPE),
+    ).toBe(false);
+  });
+
+  it('is exempted by an externally merged PR', () => {
+    // buildInput 默认 PR 中含 other-org 的 merged PR（外部协作）
+    const input = buildInput({
+      ...base,
+      pullRequests: [
+        {
+          number: 9,
+          title: 'upstream fix',
+          url: 'https://github.com/other-org/lib/pull/9',
+          state: 'MERGED' as const,
+          createdAt: '2026-06-01T08:00:00Z',
+          mergedAt: '2026-06-03T08:00:00Z',
+          repoNameWithOwner: 'other-org/lib',
+          repoIsFork: false,
+          repoOwnerIsSelf: false,
+          additions: 12,
+          deletions: 3,
+          changedFiles: 2,
+        },
+      ],
+      behaviorEvents: narrowEvents,
+    });
+    expect(
+      computeAuthenticitySignals(input).some((s) => s.code === SIGNAL_CODES.NARROW_ACTIVITY_SCOPE),
+    ).toBe(false);
+  });
+
+  it('does not trigger below the behavior-total floor', () => {
+    const input = buildInput({
+      ...base,
+      commits: singleRepoCommits(10),
+      behaviorEvents: narrowEvents,
+    });
+    expect(
+      computeAuthenticitySignals(input).some((s) => s.code === SIGNAL_CODES.NARROW_ACTIVITY_SCOPE),
+    ).toBe(false);
+  });
+
+  it('does not trigger when commits span multiple repos', () => {
+    const input = buildInput({
+      repos: [
+        narrowRepo,
+        { ...narrowRepo, name: 'second', url: 'https://github.com/dev-strong/second' },
+      ],
+      commits: [
+        ...singleRepoCommits(20, 'dev-strong/only-repo'),
+        ...singleRepoCommits(20, 'dev-strong/second'),
+      ],
+      pullRequests: [],
+      issues: [],
+      behaviorEvents: narrowEvents,
+    });
+    expect(
+      computeAuthenticitySignals(input).some((s) => s.code === SIGNAL_CODES.NARROW_ACTIVITY_SCOPE),
+    ).toBe(false);
+  });
+});
+
+describe('activity metrics behavior-event fields (plan B-1)', () => {
+  it('exposes commitRepoCount always and event* metrics only with behaviorEvents', () => {
+    const input0 = buildInput({});
+    const base = computeActivity(input0, computeAuthenticitySignals(input0));
+    expect(base.metrics!.commitRepoCount).toBeGreaterThanOrEqual(1);
+    expect(base.metrics).not.toHaveProperty('eventTotalEvents');
+
+    const input1 = buildInput({
+      behaviorEvents: {
+        totalEvents: 12,
+        distinctRepoCount: 3,
+        eventTypeCounts: { PushEvent: 10, IssuesEvent: 2 },
+      },
+    });
+    const withEvents = computeActivity(input1, computeAuthenticitySignals(input1));
+    expect(withEvents.metrics!.eventTotalEvents).toBe(12);
+    expect(withEvents.metrics!.eventDistinctRepos).toBe(3);
+    expect(withEvents.metrics!.eventTypeKinds).toBe(2);
   });
 });
 
