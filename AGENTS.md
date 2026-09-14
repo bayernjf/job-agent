@@ -77,6 +77,8 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 1. 接口收到用户名 → Zod 校验 → 命中未过期画像快照则直接返回。
 2. 否则创建 `analysis_jobs(queued)`，API 立即返回 `jobId`。
 3. Worker 认领：`github-source` 先取 **L0** 写一版 `partial:L0` 轻画像，再补 **L1** 行为时序。
+   - **错误重试策略**：`not_found`（账号/仓库不存在）直接失败不重试；`api_error`/`budget_exhausted` 等瞬时错误重试至多 3 次。
+   - **僵尸任务回收**：Worker 启动时将 >5 分钟仍 `running` 的任务重置为 `queued`（崩溃恢复）。
 4. `analyzer-core`（**纯函数、带版本、无 I/O**）计算真实性信号、能力标签、规则化面试题，产出完整 `AbilityProfile`。
 5. 画像以**不可变快照**写入 `profiles`，证据写入 `evidence`；分享链接永远指向生成时版本。
 6. 任一层失败必须显式标注缺失，**禁止输出"看似完整"的报告**。
