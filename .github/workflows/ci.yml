@@ -38,6 +38,20 @@ jobs:
       - name: Test
         run: pnpm -r test
 
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: pnpm e2e
+
+      - name: Docker build smoke
+        # Build the api target (exercises deps + full monorepo build) and the
+        # report target (verifies the Astro standalone entry path). The worker
+        # target reuses the same node-runtime layer as api and is covered by it.
+        run: |
+          docker build --target api -t jobagent-api:ci .
+          docker build --target report -t jobagent-report:ci .
+
       - name: Dependency audit
         run: pnpm audit --audit-level=high
 
