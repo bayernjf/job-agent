@@ -25,7 +25,7 @@
   "auth.mixed_signals": "信号混合",
   "auth.suspicious": "存在异常",
   "auth.insufficient_data": "证据不足",
-  "fill.summarySkillsLeadin": "技能（GitHub 验证，可回溯证据）：",
+  "fill.summarySkillsLeadin": "技能（{platform} 验证，可回溯证据）：",
   "fill.skillSeparator": "、",
   "match.title": "岗位匹配",
   "match.loading": "加载匹配中…",

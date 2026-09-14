@@ -1,6 +1,6 @@
 {
   "app.name": "JobAgent",
-  "app.tagline": "Verifiable ability profiles from GitHub behavioral evidence",
+  "app.tagline": "Verifiable ability profiles from code hosting platform behavioral evidence",
   "nav.home": "Home",
   "nav.report": "Report",
   "nav.language": "中文",
@@ -18,7 +18,7 @@
   "home.step2.title": "Rule-based analysis",
   "home.step2.desc": "Pure-function engine computes authenticity, skill tags and interview questions; versioned and reproducible",
   "home.step3.title": "Produce a trusted report",
-  "home.step3.desc": "Every conclusion is backed by evidence that links back to the original GitHub record",
+  "home.step3.desc": "Every conclusion is backed by evidence that links back to the original platform record",
   "job.queued": "Queued",
   "job.running": "Running",
   "job.succeeded": "Completed",
