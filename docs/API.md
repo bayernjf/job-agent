@@ -48,17 +48,17 @@
 
 ### `POST /analyze`
 
-为一个 GitHub 用户名创建异步分析任务。响应分三种情况：**缓存命中**、**任务去重命中**、**新建任务**。
+为一个用户名（GitHub 或 Gitee）创建异步分析任务。响应分三种情况：**缓存命中**、**任务去重命中**、**新建任务**。
 
 #### 请求体
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `username` | string | 是 | GitHub 登录名，1–39 字符，须符合 GitHub 用户名规则 |
-| `platform` | `"github"` | 否 | 默认 `github`（MVP 仅支持 github） |
+| `username` | string | 是 | 登录名，1–39 字符；GitHub 仅允许字母数字+中划线，Gitee 额外允许下划线 |
+| `platform` | `"github" \| "gitee"` | 否 | 证据源平台，默认 `github`；不同平台同 login 不互相去重 |
 
 ```json
-{ "username": "sindresorhus" }
+{ "username": "sindresorhus", "platform": "github" }
 ```
 
 #### 响应 A：新建任务（201）

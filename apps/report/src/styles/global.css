@@ -178,6 +178,41 @@ h4 { font-size: var(--ja-text-lg); }
 
 /* ─── AnalyzeForm React island ─────────────────────────────────────── */
 
+.analyze-form .platform-switch {
+  display: flex;
+  gap: var(--ja-space-1);
+  margin-bottom: var(--ja-space-3);
+}
+
+.analyze-form .platform-btn {
+  flex: 1;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-bg);
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.analyze-form .platform-btn:hover:not(:disabled) {
+  border-color: var(--ja-color-accent);
+  color: var(--ja-color-fg);
+}
+
+.analyze-form .platform-btn--active {
+  border-color: var(--ja-color-accent);
+  background: var(--ja-color-accent-bg);
+  color: var(--ja-color-accent);
+  font-weight: 600;
+}
+
+.analyze-form .platform-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .analyze-form .input-row {
   display: flex;
   gap: var(--ja-space-3);

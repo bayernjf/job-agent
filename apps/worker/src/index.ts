@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { analyze, type AnalyzerInput } from '@jobagent/analyzer-core';
+import { GiteeSource, type GiteeCollectedData } from '@jobagent/gitee-source';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
 import type { AbilityProfile } from '@jobagent/shared';
 import {
@@ -42,13 +43,22 @@ export interface WorkerRepos {
   profiles: IProfilesRepository;
 }
 
+/** 统一证据源接口：GitHubSource 与 GiteeSource 均满足此形态 */
+export interface EvidenceSource {
+  collect(login: string): Promise<GitHubCollectedData | GiteeCollectedData>;
+}
+
+export type SourceMap = Record<'github' | 'gitee', EvidenceSource>;
+
 export interface WorkerDeps {
-  /** 注入 GitHubSource（测试用 fake；生产默认 new GitHubSource） */
-  source?: { collect(login: string): Promise<GitHubCollectedData> };
+  /** 注入证据源 map（测试用 fake；生产默认 makeSources 创建） */
+  sources?: SourceMap;
   /** 注入仓储（测试用内存库；生产默认 createStorage） */
   repos?: WorkerRepos;
   /** 注入 GITHUB_TOKEN（生产从环境变量读） */
   token?: string;
+  /** 注入 GITEE_TOKEN（生产从环境变量读；Gitee 匿名可读，可为空） */
+  giteeToken?: string;
   /** Worker 标识（默认随机） */
   workerId?: string;
   /** 轮询间隔毫秒（默认 5000） */
@@ -66,19 +76,24 @@ export interface WorkerDeps {
 export interface ProcessJobResult {
   profileId: string;
   profile: AbilityProfile;
-  budgetUsed: GitHubCollectedData['meta']['budgetUsed'];
+  budgetUsed: GitHubCollectedData['meta']['budgetUsed'] | GiteeCollectedData['meta']['budgetUsed'];
   missing: string[];
 }
 
-function makeSource(deps: WorkerDeps): { collect(login: string): Promise<GitHubCollectedData> } {
-  if (deps.source) return deps.source;
-  const token = deps.token ?? process.env.GITHUB_TOKEN;
-  if (!token) {
+function makeSources(deps: WorkerDeps): SourceMap {
+  if (deps.sources) return deps.sources;
+  const githubToken = deps.token ?? process.env.GITHUB_TOKEN;
+  const giteeToken = deps.giteeToken ?? process.env.GITEE_TOKEN;
+  if (!githubToken) {
     throw new Error(
       'GITHUB_TOKEN is not set. Create a fine-grained PAT (public repo read-only) and put it in the environment.',
     );
   }
-  return new GitHubSource({ token, log: deps.logger ?? console });
+  const logger = deps.logger ?? console;
+  return {
+    github: new GitHubSource({ token: githubToken, log: logger }),
+    gitee: new GiteeSource({ token: giteeToken, log: logger }),
+  };
 }
 
 // ─── 核心逻辑 ───────────────────────────────────────────────────────────
@@ -91,11 +106,13 @@ function makeSource(deps: WorkerDeps): { collect(login: string): Promise<GitHubC
 export async function processJob(
   job: StoredAnalysisJob,
   repos: WorkerRepos,
-  source: { collect(login: string): Promise<GitHubCollectedData> },
+  sources: SourceMap,
   logger: Pick<Console, 'info' | 'warn' | 'error'> = console,
 ): Promise<ProcessJobResult> {
   const login = job.subjectLogin;
-  logger.info(`[worker] job ${job.id} start: collect ${login} (attempt ${job.attempts})`);
+  const platform = (job.subjectPlatform as 'github' | 'gitee') ?? 'github';
+  const source = sources[platform];
+  logger.info(`[worker] job ${job.id} start: collect ${login} (platform=${platform}, attempt ${job.attempts})`);
 
   // 1. 采集（L0 + L1）
   const collected = await source.collect(login);
@@ -113,6 +130,7 @@ export async function processJob(
   const profile = analyze(collected.input as AnalyzerInput, {
     profileId,
     claimed: false,
+    platform,
   });
   logger.info(
     `[worker] job ${job.id} analyzed: authenticity=${profile.authenticity.status} ` +
@@ -181,7 +199,7 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
   const shouldContinue = deps.shouldContinue ?? (() => true);
 
   const repos = deps.repos ?? (await createStorage());
-  const source = makeSource(deps);
+  const sources = makeSources(deps);
 
   logger.info(`[worker] ${workerId} started (poll=${pollIntervalMs}ms, maxRetries=${maxRetries})`);
 
@@ -193,7 +211,7 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
     }
 
     try {
-      await processJob(job, repos, source, logger);
+      await processJob(job, repos, sources, logger);
     } catch (err) {
       await handleJobFailure(job, repos, err as Error, maxRetries, logger);
     }
@@ -218,6 +236,7 @@ async function main(): Promise<void> {
   try {
     await runWorker({
       token: process.env.GITHUB_TOKEN,
+      giteeToken: process.env.GITEE_TOKEN,
       workerId: process.env.WORKER_ID,
       pollIntervalMs: process.env.POLL_INTERVAL_MS ? Number(process.env.POLL_INTERVAL_MS) : undefined,
       maxRetries: process.env.MAX_RETRIES ? Number(process.env.MAX_RETRIES) : undefined,

@@ -38,14 +38,14 @@ export class JobAgentApi {
   constructor(private readonly opts: ApiClientOptions) {}
 
   /**
-   * 输入 GitHub 用户名，返回可信画像（ExportableProfile）。
+   * 输入用户名（可选平台），返回可信画像（ExportableProfile）。
    * 未生成完的画像会轮询等待；校验失败/分析失败/超时抛错。
    */
-  async fetchProfile(username: string): Promise<ExportableProfile> {
+  async fetchProfile(username: string, platform: 'github' | 'gitee' = 'github'): Promise<ExportableProfile> {
     const { baseUrl, pollMs = 2000, timeoutMs = 60_000 } = this.opts;
     const fetchImpl = this.opts.fetchImpl ?? fetch;
 
-    const created = await this.postAnalyze(fetchImpl, baseUrl, username);
+    const created = await this.postAnalyze(fetchImpl, baseUrl, username, platform);
     let profileId: string | undefined = created.profileId;
 
     if (!profileId) {
@@ -68,11 +68,12 @@ export class JobAgentApi {
     fetchImpl: typeof fetch,
     baseUrl: string,
     username: string,
+    platform: 'github' | 'gitee' = 'github',
   ): Promise<{ jobId: string | undefined; profileId: string | undefined }> {
     const res = await fetchImpl(`${baseUrl}/analyze`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username }),
+      body: JSON.stringify({ username, platform }),
     });
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {

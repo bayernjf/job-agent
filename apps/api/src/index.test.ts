@@ -236,6 +236,64 @@ describe('POST /analyze', () => {
     const body = await res.json() as any;
     expect(body.error).toBe('invalid JSON body');
   });
+
+  it('creates a gitee-platform job when platform=gitee', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+
+    const res = await app.request('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'gitee_user', platform: 'gitee' }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json() as any;
+    expect(body.jobId).toMatch(/^job-/);
+
+    const job = await repos.jobs.getById(body.jobId);
+    expect(job).toBeDefined();
+    expect(job!.subjectPlatform).toBe('gitee');
+    expect(job!.subjectLogin).toBe('gitee_user');
+  });
+
+  it('does not dedup across different platforms for same login', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+
+    // GitHub user
+    const resGh = await app.request('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'same-user', platform: 'github' }),
+    });
+    const bodyGh = await resGh.json() as any;
+
+    // Gitee user with same login — should NOT dedup against GitHub
+    const resGitee = await app.request('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'same-user', platform: 'gitee' }),
+    });
+
+    expect(resGitee.status).toBe(201);
+    const bodyGitee = await resGitee.json() as any;
+    expect(bodyGitee.jobId).not.toBe(bodyGh.jobId);
+    expect(bodyGitee.dedup).toBe(false);
+
+    const queued = await repos.jobs.listQueued();
+    expect(queued).toHaveLength(2);
+  });
+
+  it('rejects invalid platform value', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test-user', platform: 'gitlab' }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('GET /jobs/:id', () => {
