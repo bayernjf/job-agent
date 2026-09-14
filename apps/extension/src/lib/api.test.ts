@@ -113,16 +113,16 @@ describe('matchJobs', () => {
       });
     }) as typeof fetch;
     const out = await matchJobs('http://api.test', 'prof-1', { limit: 3, fetchImpl });
-    expect(out).toHaveLength(1);
-    expect(out[0]!.score).toBe(7);
-    expect(out[0]!.matchedSkills).toEqual(['TypeScript', 'React']);
+    expect(out.matches).toHaveLength(1);
+    expect(out.matches[0]!.score).toBe(7);
+    expect(out.matches[0]!.matchedSkills).toEqual(['TypeScript', 'React']);
     expect(capturedBody).toEqual({ profileId: 'prof-1', limit: 3 });
   });
 
-  it('returns empty array when matches field is missing', async () => {
+  it('returns empty matches when matches field is missing', async () => {
     const fetchImpl = (async () => jsonResponse(200, {})) as typeof fetch;
     const out = await matchJobs('http://api.test', 'prof-1', { fetchImpl });
-    expect(out).toEqual([]);
+    expect(out.matches).toEqual([]);
   });
 
   it('passes through explainability fields (decision #10)', async () => {
@@ -150,15 +150,33 @@ describe('matchJobs', () => {
         ],
       })) as typeof fetch;
     const out = await matchJobs('http://api.test', 'prof-1', { fetchImpl });
-    expect(out[0]!.fieldScores).toEqual({ title: 3, tags: 2, description: 1 });
-    expect(out[0]!.skillHits).toEqual([
+    expect(out.matches[0]!.fieldScores).toEqual({ title: 3, tags: 2, description: 1 });
+    expect(out.matches[0]!.skillHits).toEqual([
       { skill: 'TypeScript', score: 6, fields: ['title', 'tags', 'description'] },
     ]);
-    expect(out[0]!.skillReasons?.[0]).toMatchObject({
+    expect(out.matches[0]!.skillReasons?.[0]).toMatchObject({
       skill: 'TypeScript',
       depth: 'proficient',
       evidenceRefs: ['ev-1'],
     });
+  });
+
+  it('passes through top-level evidence dictionary (decision #10)', async () => {
+    const fetchImpl = (async () =>
+      jsonResponse(200, {
+        matches: [{ score: 3, matchedSkills: ['TS'], posting: { title: 't', company: 'c', sourceUrl: 'u' } }],
+        evidence: { 'ev-1': { sourceType: 'commit', url: 'https://example.test/c', claim: 'added ts' } },
+      })) as typeof fetch;
+    const out = await matchJobs('http://api.test', 'prof-1', { fetchImpl });
+    expect(out.evidence).toBeDefined();
+    expect(out.evidence!['ev-1']!.url).toBe('https://example.test/c');
+  });
+
+  it('omits evidence field when absent (exactOptionalPropertyTypes)', async () => {
+    const fetchImpl = (async () =>
+      jsonResponse(200, { matches: [{ score: 1, matchedSkills: ['x'], posting: { title: 't', company: 'c', sourceUrl: 'u' } }] })) as typeof fetch;
+    const out = await matchJobs('http://api.test', 'prof-1', { fetchImpl });
+    expect('evidence' in out).toBe(false);
   });
 
   it('throws on HTTP error', async () => {

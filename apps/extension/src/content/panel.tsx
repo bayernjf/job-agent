@@ -13,7 +13,15 @@ import { createRoot } from 'react-dom/client';
 import type { AuthenticityStatus, ExportableProfile } from '@jobagent/shared';
 import type { AtsAdapter, LocalFields } from '../ats/index.js';
 import { toFillValues } from '../ats/index.js';
-import { DEFAULT_BASE, JobAgentApi } from '../lib/api.js';
+import {
+  DEFAULT_BASE,
+  JobAgentApi,
+  matchJobs,
+  type EvidenceBrief,
+  type JobMatchItem,
+  type JobMatchSkillReason,
+} from '../lib/api.js';
+import { matchTier, resolveEvidenceLinks } from './match-utils.js';
 import {
   LOCALE_STORAGE_KEY,
   createTranslator,
@@ -90,6 +98,10 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filled, setFilled] = useState<number | null>(null);
+  const [matchState, setMatchState] = useState<'idle' | 'loading' | 'empty' | 'error' | 'list'>('idle');
+  const [matches, setMatches] = useState<JobMatchItem[]>([]);
+  const [matchEvidence, setMatchEvidence] = useState<Record<string, EvidenceBrief> | undefined>(undefined);
+  const [matchError, setMatchError] = useState<string | null>(null);
 
   function switchLocale(): void {
     const next: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
@@ -107,15 +119,35 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     setError(null);
     setProfile(null);
     setLoading(true);
+    setMatchState('idle');
+    setMatches([]);
+    setMatchEvidence(undefined);
+    setMatchError(null);
     localStorage.setItem(API_BASE_KEY, apiBase);
     try {
       const api = new JobAgentApi({ baseUrl: apiBase.replace(/\/$/, '') });
       const p = await api.fetchProfile(username.trim());
       setProfile(p);
+      // 异步触发匹配，不阻塞画像展示与一键填充
+      void loadMatches(p.profileId);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadMatches(profileId: string): Promise<void> {
+    setMatchState('loading');
+    setMatchError(null);
+    try {
+      const resp = await matchJobs(apiBase.replace(/\/$/, ''), profileId, { limit: 5 });
+      setMatches(resp.matches);
+      setMatchEvidence(resp.evidence);
+      setMatchState(resp.matches.length > 0 ? 'list' : 'empty');
+    } catch (err) {
+      setMatchError((err as Error).message);
+      setMatchState('error');
     }
   }
 
@@ -187,6 +219,116 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
               skills: profile.skills.map((s) => s.name).join(t('fill.skillSeparator')) || t('panel.skillsEmpty'),
             })}
           </div>
+
+          {matchState !== 'idle' && (
+            <div className="ja-match">
+              <div className="ja-match-header">
+                <span className="ja-match-title">
+                  {t('match.title')}
+                  {matchState === 'list' && ` (${matches.length})`}
+                </span>
+                {(matchState === 'list' || matchState === 'empty' || matchState === 'error') && (
+                  <button
+                    type="button"
+                    className="ja-match-refresh"
+                    onClick={() => void loadMatches(profile.profileId)}
+                  >
+                    {t('match.refresh')}
+                  </button>
+                )}
+              </div>
+
+              {matchState === 'loading' && <div className="ja-match-loading">{t('match.loading')}</div>}
+
+              {matchState === 'empty' && <div className="ja-match-empty">{t('match.empty')}</div>}
+
+              {matchState === 'error' && (
+                <div className="ja-match-error">
+                  {t('match.error')}
+                  {matchError && <span className="ja-match-error-detail">: {matchError}</span>}
+                  <button type="button" className="ja-match-retry" onClick={() => void loadMatches(profile.profileId)}>
+                    {t('match.retry')}
+                  </button>
+                </div>
+              )}
+
+              {matchState === 'list' && (
+                <ul className="ja-match-list">
+                  {matches.map((m, idx) => {
+                    const tier = matchTier(m.score, m.matchedSkills);
+                    const links = resolveEvidenceLinks(
+                      m.skillReasons?.flatMap((r) => r.evidenceRefs) ?? [],
+                      matchEvidence,
+                    );
+                    return (
+                      <li key={`${m.posting.sourceUrl}-${idx}`} className="ja-match-item">
+                        <div className="ja-match-item-head">
+                          <span className={`ja-match-score ja-match-score-${tier}`}>{m.score}</span>
+                          <a
+                            className="ja-match-job"
+                            href={m.posting.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <span className="ja-match-title-text">{m.posting.title}</span>
+                            {m.posting.company && <span className="ja-match-company">@ {m.posting.company}</span>}
+                          </a>
+                        </div>
+                        <div className="ja-match-skills">
+                          {m.matchedSkills.map((s) => (
+                            <span key={s} className="ja-match-chip">
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                        {(m.fieldScores || m.skillReasons || m.skillHits || links.length > 0) && (
+                          <details className="ja-match-basis">
+                            <summary>{t('match.basis')}</summary>
+                            {m.fieldScores && (
+                              <div className="ja-match-breakdown">
+                                <span className="ja-match-breakdown-label">{t('match.scoreBreakdown')}:</span>
+                                <span className="ja-match-breakdown-chip">title {m.fieldScores.title}</span>
+                                <span className="ja-match-breakdown-chip">tags {m.fieldScores.tags}</span>
+                                <span className="ja-match-breakdown-chip">desc {m.fieldScores.description}</span>
+                              </div>
+                            )}
+                            {(m.skillReasons ?? m.skillHits) && (
+                              <ul className="ja-match-skill-reasons">
+                                {(m.skillReasons ?? m.skillHits ?? []).map((hit) => (
+                                  <li key={hit.skill} className="ja-match-skill-reason">
+                                    <strong>{hit.skill}</strong>
+                                    {'depth' in hit && (
+                                      <span className="ja-match-skill-depth"> · {(hit as JobMatchSkillReason).depth}</span>
+                                    )}
+                                    <span className="ja-match-skill-fields"> · {hit.fields.join('/')}</span>
+                                    <span className="ja-match-skill-score"> · {hit.score}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {links.length > 0 && (
+                              <div className="ja-match-evidence">
+                                <span className="ja-match-evidence-label">{t('match.evidence')}:</span>
+                                <ul>
+                                  {links.map((l) => (
+                                    <li key={l.url}>
+                                      <a href={l.url} target="_blank" rel="noopener noreferrer">
+                                        {l.label}
+                                      </a>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </details>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
 
           <details className="ja-details">
             <summary>{t('panel.localFields')}</summary>

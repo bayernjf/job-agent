@@ -7,6 +7,7 @@
  * 对缺少 fieldScores/skillReasons/evidence 的旧响应保持健壮：回退到仅展示命中技能。
  */
 import { useEffect, useState } from 'react';
+import { matchScoreTier } from '@jobagent/shared';
 
 type MatchField = 'title' | 'tags' | 'description';
 
@@ -90,11 +91,9 @@ function formatDate(iso: string | undefined, locale: string): string {
   }
 }
 
-/** 匹配分→语义色（复用真实性四态色板的 CSS 变量，不新增色） */
-function scoreClass(score: number): string {
-  if (score >= 6) return 'rec-score--high';
-  if (score >= 3) return 'rec-score--mid';
-  return 'rec-score--low';
+/** 匹配分→语义色 class（分档逻辑用 shared.matchScoreTier 相对比例，与扩展一致，不新增色） */
+function scoreClass(score: number, matchedSkillCount: number): string {
+  return `rec-score--${matchScoreTier(score, matchedSkillCount)}`;
 }
 
 /** 运行时填充 {count} 占位（模板来自服务端 i18n，组件不持有文案）。 */
@@ -218,7 +217,7 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
                   >
                     {m.posting.title}
                   </a>
-                  <span className={`rec-score ${scoreClass(m.score)}`} title={scoreLabel}>
+                  <span className={`rec-score ${scoreClass(m.score, m.matchedSkills.length)}`} title={scoreLabel}>
                     {m.score}
                   </span>
                 </div>

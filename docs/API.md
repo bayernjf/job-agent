@@ -262,9 +262,28 @@
     {
       "score": 9,
       "matchedSkills": ["TypeScript", "React"],
+      "fieldScores": { "title": 3, "tags": 4, "description": 2 },
+      "skillHits": [
+        { "skill": "TypeScript", "score": 5, "fields": ["title", "tags"] },
+        { "skill": "React", "score": 4, "fields": ["tags", "description"] }
+      ],
+      "skillReasons": [
+        {
+          "skill": "TypeScript",
+          "score": 5,
+          "fields": ["title", "tags"],
+          "kind": "language",
+          "depth": "proficient",
+          "confidence": 0.9,
+          "evidenceRefs": ["ev-001"]
+        }
+      ],
       "posting": { "jobId": "...", "source": "remoteok", "title": "...", "company": "...", "sourceUrl": "..." }
     }
   ],
+  "evidence": {
+    "ev-001": { "sourceType": "commit", "url": "https://github.com/...", "claim": "...", "occurredAt": "...", "layer": "L1" }
+  },
   "total": 1,
   "candidatePool": 120
 }
@@ -272,6 +291,11 @@
 
 - `profileSkills`：从画像快照提取的技能名（即实际参与匹配的技能集）。
 - `matches[]`：打分规则、字段语义与 `POST /job-postings/match` 完全一致（title×3 / tags×2 / description×1，至少命中一个技能才入选，按分降序）。
+- **可解释性字段（决策 #10）**：
+  - `fieldScores`：分数在标题/标签/正文上的分解，三项之和 = `score`。
+  - `skillHits`：每个命中技能各自命中了哪些字段、贡献多少分。
+  - `skillReasons`：仅 profileId 匹配时返回，在 `skillHits` 基础上挂画像技能元数据（`kind`/`depth`/`confidence`）与证据指针 `evidenceRefs`。
+  - `evidence`：**响应顶层**的去重证据字典，key = `evidenceRef`，供前端回溯证据原链；旧后端可能缺，前端应健壮降级。
 - `candidatePool`：过滤后、打分前的候选岗位数，便于解释「为什么只推荐这么少」。
 - 画像 `skillTags` 为空时返回 200，`matches` 为空数组（不报错）。
 
@@ -353,15 +377,27 @@
 ```json
 // 请求
 { "skills": ["Python", "React"], "remote": true, "limit": 5 }
-// 响应（200，传 profileId 时额外回显 profileSkills）
+// 响应（200，传 profileId 时额外回显 profileSkills 与顶层 evidence）
 {
   "matches": [
-    { "score": 5, "matchedSkills": ["Python", "React"], "posting": { "title": "...", "source": "remoteok", "sourceUrl": "..." } }
+    {
+      "score": 5,
+      "matchedSkills": ["Python", "React"],
+      "fieldScores": { "title": 3, "tags": 2, "description": 0 },
+      "skillHits": [
+        { "skill": "Python", "score": 3, "fields": ["title"] },
+        { "skill": "React", "score": 2, "fields": ["tags"] }
+      ],
+      "posting": { "title": "...", "source": "remoteok", "sourceUrl": "..." }
+    }
   ],
   "total": 1,
-  "profileSkills": ["Python", "React"]
+  "profileSkills": ["Python", "React"],
+  "evidence": { "ev-001": { "sourceType": "commit", "url": "...", "claim": "..." } }
 }
 ```
+
+- **可解释性字段（决策 #10）**：`fieldScores`（三项和=score）、`skillHits`（逐技能字段级命中）始终返回；`skillReasons`（挂画像元数据与证据指针）与顶层 `evidence` 字典仅在传 `profileId` 时返回；旧后端可能缺可解释字段，调用方应健壮降级。
 
 #### 错误
 

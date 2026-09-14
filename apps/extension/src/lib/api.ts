@@ -137,6 +137,15 @@ export interface JobMatchSkillReason extends JobMatchSkillHit {
   evidenceRefs: string[];
 }
 
+/** 精简证据字典项：只带前端可回溯所需，不搬运整行存储字段（与 API match-explain 对齐）。 */
+export interface EvidenceBrief {
+  sourceType: string;
+  url: string;
+  claim: string;
+  occurredAt?: string;
+  layer?: string;
+}
+
 /** 岗位匹配结果（POST /job-postings/match 返回的单条） */
 export interface JobMatchItem {
   score: number;
@@ -156,15 +165,24 @@ export interface JobMatchItem {
   };
 }
 
+/** POST /job-postings/match 响应：matches 在列表，evidence 在顶层（profileId 匹配时）。 */
+export interface JobMatchResponse {
+  matches: JobMatchItem[];
+  total?: number;
+  profileSkills?: string[];
+  /** 顶层去重证据字典，key = evidenceRef（仅 profileId 匹配时返回） */
+  evidence?: Record<string, EvidenceBrief>;
+}
+
 /**
- * 用画像 profileId 调 POST /job-postings/match，返回按匹配分排序的岗位。
- * 第一档轻量：扩展侧栏展示 top 1，不做当前 ATS 岗位精确匹配（见 design-match-wiring §3）。
+ * 用画像 profileId 调 POST /job-postings/match，返回按匹配分排序的岗位 + 顶层证据字典。
+ * evidence 在 API 响应顶层（不在每个 item 内），面板展示证据外链时从这里取。
  */
 export async function matchJobs(
   baseUrl: string,
   profileId: string,
   opts: { limit?: number; fetchImpl?: typeof fetch } = {},
-): Promise<JobMatchItem[]> {
+): Promise<JobMatchResponse> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const res = await fetchImpl(`${baseUrl}/job-postings/match`, {
     method: 'POST',
@@ -172,6 +190,12 @@ export async function matchJobs(
     body: JSON.stringify({ profileId, limit: opts.limit ?? 5 }),
   });
   if (!res.ok) throw apiError(`job match failed (HTTP ${res.status})`, res.status);
-  const body = (await res.json()) as { matches?: JobMatchItem[] };
-  return Array.isArray(body.matches) ? body.matches : [];
+  const body = (await res.json()) as Partial<JobMatchResponse>;
+  const evidence = body.evidence && typeof body.evidence === 'object' ? body.evidence : undefined;
+  return {
+    matches: Array.isArray(body.matches) ? body.matches : [],
+    ...(body.total !== undefined ? { total: body.total } : {}),
+    ...(body.profileSkills !== undefined ? { profileSkills: body.profileSkills } : {}),
+    ...(evidence !== undefined ? { evidence } : {}),
+  };
 }
