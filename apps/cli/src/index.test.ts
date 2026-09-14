@@ -135,7 +135,29 @@ describe('cli run', () => {
     expect(code).toBe(0);
     const parsed = JSON.parse(c.stdout) as AnalyzeResult;
     expect(parsed.profile.subject.login).toBe('dev-strong');
-    expect(parsed.meta.budgetUsed.graphqlPoints).toBe(10);
+    expect((parsed.meta.budgetUsed as { graphqlPoints?: number }).graphqlPoints).toBe(10);
+  });
+
+  it('forwards --platform gitee to the analyzer', async () => {
+    const c = capture();
+    const code = await run(
+      ['analyze', 'dev-strong', '--platform', 'gitee'],
+      c.deps({ collect: async (login) => fakeCollected(login) }),
+    );
+    expect(code).toBe(0);
+    const parsed = JSON.parse(c.stdout) as AnalyzeResult;
+    expect(parsed.profile.subject.platform).toBe('gitee');
+    expect(parsed.profile.caveats.some((m) => m.includes('Public Gitee data only'))).toBe(true);
+  });
+
+  it('exits 2 on an unknown --platform value', async () => {
+    const c = capture();
+    const code = await run(
+      ['analyze', 'dev-strong', '--platform', 'gitlab'],
+      c.deps({ collect: async (login) => fakeCollected(login) }),
+    );
+    expect(code).toBe(2);
+    expect(c.stderr).toContain('--platform');
   });
 
   it('analyze writes to --out file instead of stdout', async () => {
