@@ -16,6 +16,7 @@ import type {
 } from '@jobagent/analyzer-core';
 import type {
   GiteeCommitRaw,
+  GiteeEventRaw,
   GiteeIssueRaw,
   GiteePullRaw,
   GiteeRepoRaw,
@@ -220,4 +221,66 @@ export function buildDataWindow(
   ].filter((d): d is string => Boolean(d));
   const until = candidates.length > 0 ? [...candidates].sort().at(-1)! : since;
   return { since, until };
+}
+
+// ---------- events/public 行为流（设计 §4.11，2026-09-15） ----------
+
+/**
+ * 仅从 PushEvent 提取提交；非 Push 事件（PR/评论/创建/关注/null）不产生 commit。
+ * 时间取事件 created_at（push 时间近似提交时间）；authorName 取动作发出者 actor.login
+ * （本人），绝不使用 payload.commits[].author 明文姓名/邮箱，authorEmail 恒为 null；
+ * actor 非本人、缺仓库名/时间/sha 的条目跳过。
+ */
+export function mapEventsToCommits(events: GiteeEventRaw[], login: string): AnalyzerCommit[] {
+  const out: AnalyzerCommit[] = [];
+  for (const ev of events) {
+    if (!ev || ev.type !== 'PushEvent') continue;
+    if (!sameLogin(ev.actor?.login, login)) continue;
+    const repoName = ev.repo?.full_name ?? ev.repo?.human_name ?? null;
+    const committedAt = toUtc(ev.created_at);
+    if (!repoName || !committedAt) continue;
+    for (const c of ev.payload?.commits ?? []) {
+      if (!c?.sha) continue;
+      out.push({
+        oid: c.sha,
+        committedAt,
+        authorName: ev.actor?.login ?? null,
+        authorEmail: null, // PII 硬边界：payload.commits[].author.email 明文，不采集
+        repoName,
+        messageHeadline: (c.message ?? '').split('\n')[0] ?? '',
+      });
+    }
+  }
+  return out;
+}
+
+/** 提交去重键：仓库内 sha，与 evidenceId `commit:${repo}:${oid}` 同口径 */
+function commitKey(c: AnalyzerCommit): string {
+  return `${c.repoName}:${c.oid}`;
+}
+
+/**
+ * 合并逐仓采样 commits 与 events 补入 commits：按 `repo:oid` 去重、采样优先
+ * （采样带精确 commit author date），events 只补采样未覆盖的近期提交，结果按时间升序。
+ */
+export function mergeSampledAndEventCommits(
+  sampled: AnalyzerCommit[],
+  fromEvents: AnalyzerCommit[],
+): AnalyzerCommit[] {
+  const seen = new Set<string>();
+  const merged: AnalyzerCommit[] = [];
+  for (const c of sampled) {
+    const key = commitKey(c);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(c);
+  }
+  for (const c of fromEvents) {
+    const key = commitKey(c);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(c);
+  }
+  merged.sort((a, b) => a.committedAt.localeCompare(b.committedAt));
+  return merged;
 }
