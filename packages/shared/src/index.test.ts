@@ -106,6 +106,12 @@ describe('AbilityProfileSchema', () => {
     expect(parseAbilityProfile(validProfile())).not.toBeNull();
   });
 
+  it('accepts gitee as a subject platform', () => {
+    const p = validProfile();
+    p.subject.platform = 'gitee';
+    expect(AbilityProfileSchema.safeParse(p).success).toBe(true);
+  });
+
   it('exposes the schema version', () => {
     expect(SCHEMA_VERSION).toBe('0.1');
   });
