@@ -18,8 +18,8 @@
 | 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
 | 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
 | 看 AI 求职赛道的竞品认知、机会与跟进清单 | [市场调研-AI求职赛道-20260910.md](市场调研-AI求职赛道-20260910.md) |
-| 写用户可见文案 / 加双语 / 处理语言与分享链接 | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
-| 定颜色、间距、圆角、字号 / 改主题 | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
+| 写用户可见文案 / 加双语 / 处理语言与分享链接（含扩展面板、MV3 _locales） | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
+| 定颜色、间距、圆角、字号 / 改主题（共享 token 包、Shadow DOM 接入） | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
 | 让存储层同时支持 SQLite 与 Postgres / 新增数据库方言 | [design-storage-dual-dialect-20260911.md](design-storage-dual-dialect-20260911.md) ★ |
 | 看 P2 职位聚合的数据源结论、最小链路设计与推荐组合 | [设计-职位聚合-Spike-20260913.md](设计-职位聚合-Spike-20260913.md) ★ |
 | 写 P2 岗位采集管道代码（job_postings 建表 / 各源适配器 / 调度去重 / 分期） | [design-job-ingestion-20260913.md](design-job-ingestion-20260913.md) ★ |
