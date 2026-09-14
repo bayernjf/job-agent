@@ -7,7 +7,7 @@
  * 全部用内存 SQLite + 仓储注入，不启动服务器、不打网络。
  */
 import { describe, expect, it } from 'vitest';
-import type { JobPosting, JobSource } from '@jobagent/shared';
+import type { AbilityProfile, JobPosting, JobSource } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
 import type { Hono } from 'hono';
@@ -36,6 +36,38 @@ async function harness(rows: NewJobPosting[]): Promise<{ app: Hono; repos: Stora
   if (rows.length > 0) await repos.jobPostings.upsertBatch(rows, NOW);
   const app = await createApp({ repos });
   return { app, repos };
+}
+
+/** 造一个带指定技能的最小 AbilityProfile（用于匹配接线测试）。 */
+function profileWithSkills(profileId: string, skills: string[]): AbilityProfile {
+  return {
+    profileId,
+    analyzerVersion: 'schema-0.1-engine-0.1.0',
+    generatedAt: '2026-09-14T00:00:00.000Z',
+    dataWindow: { since: '2025-09-14T00:00:00.000Z', until: '2026-09-14T00:00:00.000Z' },
+    analysisLayers: ['L0', 'L1'],
+    subject: { platform: 'github', login: 'match-user', profileUrl: 'https://github.com/match-user', claimed: false },
+    summary: { headline: 'Match test developer' },
+    skillTags: skills.map((name) => ({ name, kind: 'language' as const, depth: 'proficient' as const, confidence: 0.8, evidenceRefs: [] })),
+    activity: { longevityMonths: 12 },
+    collaboration: { evidenceRefs: [] },
+    authenticity: { status: 'likely_authentic', confidence: 0.8, signals: [] },
+    interviewQuestions: [],
+    caveats: [],
+  };
+}
+
+async function insertProfile(repos: StorageContext, profileId: string, skills: string[]): Promise<void> {
+  const p = profileWithSkills(profileId, skills);
+  await repos.profiles.insert({
+    id: profileId,
+    analyzerVersion: p.analyzerVersion,
+    subjectLogin: p.subject.login,
+    dataWindowSince: p.dataWindow.since,
+    dataWindowUntil: p.dataWindow.until,
+    status: 'complete',
+    snapshot: p,
+  });
 }
 
 describe('GET /job-postings', () => {
@@ -141,5 +173,132 @@ describe('POST /job-postings/match', () => {
       body: JSON.stringify({ skills: [] }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /job-postings/match with profileId', () => {
+  it('resolves skills from profile snapshot and ranks matches', async () => {
+    const { app, repos } = await harness([
+      job({ title: 'Backend Engineer', description: 'we write python services' }),
+      job({ title: 'Senior Python Engineer', tags: ['python'], description: 'python' }),
+    ]);
+    await insertProfile(repos, 'prof-match', ['Python']);
+    const res = await app.request('/job-postings/match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: 'prof-match' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      total: number;
+      profileSkills: string[];
+      matches: Array<{ score: number; matchedSkills: string[]; posting: JobPosting }>;
+    };
+    expect(body.profileSkills).toEqual(['Python']);
+    expect(body.total).toBe(2);
+    expect(body.matches[0]!.posting.title).toBe('Senior Python Engineer');
+    expect(body.matches[0]!.matchedSkills).toEqual(['Python']);
+  });
+
+  it('returns 404 when profileId does not exist', async () => {
+    const { app } = await harness([job({ title: 'Python Engineer' })]);
+    const res = await app.request('/job-postings/match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: 'prof-nope' }),
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('profile not found');
+  });
+
+  it('profileId takes precedence over explicit skills', async () => {
+    const { app, repos } = await harness([
+      job({ title: 'Python Engineer' }),
+      job({ title: 'Rust Engineer' }),
+    ]);
+    await insertProfile(repos, 'prof-rust', ['Rust']);
+    const res = await app.request('/job-postings/match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: 'prof-rust', skills: ['Python'] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total: number; profileSkills: string[]; matches: Array<{ posting: JobPosting }> };
+    expect(body.profileSkills).toEqual(['Rust']);
+    expect(body.total).toBe(1);
+    expect(body.matches[0]!.posting.title).toBe('Rust Engineer');
+  });
+
+  it('returns 400 when neither skills nor profileId is provided', async () => {
+    const { app } = await harness([job({ title: 'Python Engineer' })]);
+    const res = await app.request('/job-postings/match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('GET /profiles/:id/job-recommendations', () => {
+  it('returns ranked job recommendations from profile skills', async () => {
+    const { app, repos } = await harness([
+      job({ title: 'Backend Engineer', description: 'we write python services' }),
+      job({ title: 'Senior Python Engineer', tags: ['python'], description: 'python' }),
+      job({ title: 'Sales Lead' }),
+    ]);
+    await insertProfile(repos, 'prof-rec', ['Python']);
+    const res = await app.request('/profiles/prof-rec/job-recommendations');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      profileId: string;
+      profileSkills: string[];
+      total: number;
+      candidatePool: number;
+      matches: Array<{ score: number; matchedSkills: string[]; posting: JobPosting }>;
+    };
+    expect(body.profileId).toBe('prof-rec');
+    expect(body.profileSkills).toEqual(['Python']);
+    expect(body.total).toBe(2);
+    expect(body.candidatePool).toBe(3);
+    expect(body.matches[0]!.posting.title).toBe('Senior Python Engineer');
+    expect(body.matches[0]!.matchedSkills).toEqual(['Python']);
+    expect(body.matches[0]!.score).toBeGreaterThan(body.matches[1]!.score);
+  });
+
+  it('returns 404 for non-existent profile', async () => {
+    const { app } = await harness([job({ title: 'Python Engineer' })]);
+    const res = await app.request('/profiles/prof-nope/job-recommendations');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns empty matches when profile has no skill tags', async () => {
+    const { app, repos } = await harness([job({ title: 'Python Engineer' })]);
+    await insertProfile(repos, 'prof-empty', []);
+    const res = await app.request('/profiles/prof-empty/job-recommendations');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total: number; matches: unknown[] };
+    expect(body.total).toBe(0);
+    expect(body.matches).toEqual([]);
+  });
+
+  it('rejects invalid source query param', async () => {
+    const { app, repos } = await harness([job({ title: 'Python Engineer' })]);
+    await insertProfile(repos, 'prof-src', ['Python']);
+    const res = await app.request('/profiles/prof-src/job-recommendations?sources=linkedin');
+    expect(res.status).toBe(400);
+  });
+
+  it('applies remote hard filter via query', async () => {
+    const { app, repos } = await harness([
+      job({ title: 'Python Engineer', remote: true }),
+      job({ title: 'Python Engineer', remote: false }),
+    ]);
+    await insertProfile(repos, 'prof-remote', ['Python']);
+    const res = await app.request('/profiles/prof-remote/job-recommendations?remote=true');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total: number };
+    expect(body.total).toBe(1);
   });
 });

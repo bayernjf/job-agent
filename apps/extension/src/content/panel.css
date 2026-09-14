@@ -1,56 +1,126 @@
-/* JobAgent Autofill 面板样式（挂 Shadow DOM，前缀 .ja- 避免污染页面） */
+/*
+ * JobAgent Autofill 面板与悬浮球样式（挂 Shadow DOM，前缀 .ja- 避免污染页面）。
+ * 颜色/间距/圆角/字号/阴影一律来自共享设计 token（@jobagent/ui-tokens，
+ * 由 content/index.tsx 在 shadow 内先于本样式表加载），本文件不得出现颜色字面量。
+ * 仅 :host 下的组件级 token 与 1px 边框/999px 胶囊等结构性字面量例外。
+ */
+
+/* Component 层：仅本组件使用的结构尺寸（design-tokens 第 2、8.3 节） */
+:host {
+  --ja-panel-width: 20rem; /* 320px 固定面板宽 */
+  --ja-fab-padding-block: var(--ja-space-2);
+  --ja-fab-padding-inline: var(--ja-space-4);
+}
+
+.ja-fab {
+  font-family: var(--ja-font-sans);
+  font-size: var(--ja-text-sm);
+  font-weight: 600;
+  color: var(--ja-color-accent-fg);
+  background: var(--ja-color-accent);
+  border: none;
+  border-radius: 999px; /* 胶囊形按钮，结构性 */
+  padding: var(--ja-fab-padding-block) var(--ja-fab-padding-inline);
+  box-shadow: var(--ja-shadow-elevated);
+  cursor: pointer;
+}
+
+.ja-fab:hover {
+  background: var(--ja-color-accent-hover);
+}
+
 .ja-panel {
-  width: 320px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.18);
-  padding: 14px;
+  width: var(--ja-panel-width);
+  background: var(--ja-color-surface);
+  border: 1px solid var(--ja-color-border); /* 1px 发丝边框，结构性 */
+  border-radius: var(--ja-radius-lg);
+  box-shadow: var(--ja-shadow-elevated);
+  padding: var(--ja-space-3);
   box-sizing: border-box;
-  color: #0f172a;
-  font-size: 13px;
-  line-height: 1.5;
+  color: var(--ja-color-fg);
+  font-family: var(--ja-font-sans);
+  font-size: var(--ja-text-sm);
+  line-height: var(--ja-leading-normal);
 }
 
 .ja-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--ja-space-2);
   font-weight: 600;
-  margin-bottom: 10px;
+  margin-bottom: var(--ja-space-2);
+}
+
+.ja-header-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ja-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  flex-shrink: 0;
 }
 
 .ja-ats {
   font-weight: 400;
-  color: #64748b;
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-lang {
+  font-family: var(--ja-font-sans);
+  font-size: var(--ja-text-xs);
+  color: var(--ja-color-fg-muted);
+  background: var(--ja-color-surface-muted);
+  border: 1px solid var(--ja-color-border); /* 1px 发丝边框，结构性 */
+  border-radius: var(--ja-radius-md);
+  padding: var(--ja-space-1) var(--ja-space-2);
+  cursor: pointer;
+}
+
+.ja-lang:hover {
+  color: var(--ja-color-accent);
+  border-color: var(--ja-color-accent);
 }
 
 .ja-label {
   display: block;
-  margin: 8px 0 4px;
-  color: #334155;
+  margin: var(--ja-space-2) 0 var(--ja-space-1);
+  color: var(--ja-color-fg);
 }
 
 .ja-input {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  margin-top: 2px;
-  padding: 6px 8px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 13px;
+  margin-top: var(--ja-space-1);
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border: 1px solid var(--ja-color-border); /* 1px 发丝边框，结构性 */
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font-family: var(--ja-font-sans);
+  font-size: var(--ja-text-sm);
+}
+
+.ja-input:focus {
+  outline: 1px solid var(--ja-color-accent); /* 1px 焦点环，结构性 */
+  border-color: var(--ja-color-accent);
 }
 
 .ja-btn {
-  margin-top: 10px;
+  margin-top: var(--ja-space-2);
   width: 100%;
-  padding: 8px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #f1f5f9;
-  color: #0f172a;
-  font-size: 13px;
+  padding: var(--ja-space-2);
+  border: 1px solid var(--ja-color-border); /* 1px 发丝边框，结构性 */
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg);
+  font-family: var(--ja-font-sans);
+  font-size: var(--ja-text-sm);
   cursor: pointer;
 }
 
@@ -60,52 +130,57 @@
 }
 
 .ja-btn-primary {
-  background: #2d6cdf;
-  border-color: #2d6cdf;
-  color: #ffffff;
+  background: var(--ja-color-accent);
+  border-color: var(--ja-color-accent);
+  color: var(--ja-color-accent-fg);
   font-weight: 600;
 }
 
+.ja-btn-primary:hover:not(:disabled) {
+  background: var(--ja-color-accent-hover);
+  border-color: var(--ja-color-accent-hover);
+}
+
 .ja-error {
-  margin-top: 8px;
-  padding: 8px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  color: #b91c1c;
+  margin-top: var(--ja-space-2);
+  padding: var(--ja-space-2);
+  background: var(--ja-color-danger-bg);
+  border: 1px solid var(--ja-color-danger-border); /* 1px 边框，结构性 */
+  border-radius: var(--ja-radius-md);
+  color: var(--ja-color-danger-fg);
   white-space: pre-wrap;
 }
 
 .ja-result {
-  margin-top: 10px;
-  border-top: 1px solid #e2e8f0;
-  padding-top: 10px;
+  margin-top: var(--ja-space-2);
+  border-top: 1px solid var(--ja-color-border); /* 1px 分隔线，结构性 */
+  padding-top: var(--ja-space-2);
 }
 
 .ja-row {
-  margin: 3px 0;
+  margin: var(--ja-space-1) 0;
 }
 
 .ja-badge {
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: #dcfce7;
-  color: #166534;
-  font-size: 11px;
+  margin-left: var(--ja-space-1);
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border-radius: 999px; /* 胶囊徽章，结构性 */
+  background: var(--ja-color-success-bg);
+  color: var(--ja-color-success-fg);
+  font-size: var(--ja-text-xs);
 }
 
 .ja-details {
-  margin: 8px 0;
+  margin: var(--ja-space-2) 0;
 }
 
 .ja-details summary {
   cursor: pointer;
-  color: #475569;
+  color: var(--ja-color-fg-muted);
 }
 
 .ja-note {
-  margin-top: 8px;
-  color: #166534;
-  font-size: 12px;
+  margin-top: var(--ja-space-2);
+  color: var(--ja-color-success-fg);
+  font-size: var(--ja-text-xs);
 }

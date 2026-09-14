@@ -4,19 +4,48 @@
  *
  * 数据边界：email/教育/工作经历不在画像契约中，由用户在面板补填并仅存本机
  * localStorage（不进 JobAgent 服务端）。
+ *
+ * i18n（design-i18n-20260910.md 第 8 节）：所有用户可见文案走 t()；
+ * 语言 = localStorage 显式选择优先，否则 navigator.languages 协商。
  */
-import { useState, type FormEvent, type JSX } from 'react';
+import { useMemo, useState, type FormEvent, type JSX } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { ExportableProfile } from '@jobagent/shared';
+import type { AuthenticityStatus, ExportableProfile } from '@jobagent/shared';
 import type { AtsAdapter, LocalFields } from '../ats/index.js';
 import { toFillValues } from '../ats/index.js';
 import { DEFAULT_BASE, JobAgentApi } from '../lib/api.js';
+import {
+  LOCALE_STORAGE_KEY,
+  createTranslator,
+  resolveLocale,
+  type Locale,
+  type MessageKey,
+} from '../i18n/index.js';
 
 const API_BASE_KEY = 'jobagent.apiBase';
 const LOCAL_FIELDS_KEY = 'jobagent.localFields';
 
+/** 真实性枚举 → 展示文案 key（术语与报告页保持一致） */
+const AUTH_STATUS_KEY: Record<AuthenticityStatus, MessageKey> = {
+  likely_authentic: 'auth.likely_authentic',
+  mixed_signals: 'auth.mixed_signals',
+  suspicious: 'auth.suspicious',
+  insufficient_data: 'auth.insufficient_data',
+};
+
 export interface PanelHandle {
   toggle(): void;
+}
+
+function initialLocale(): Locale {
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(LOCALE_STORAGE_KEY);
+  } catch {
+    stored = null;
+  }
+  const navLanguages = typeof navigator !== 'undefined' ? Array.from(navigator.languages) : null;
+  return resolveLocale(stored, navLanguages);
 }
 
 export function mountPanel(shadow: ShadowRoot, ats: AtsAdapter): PanelHandle {
@@ -52,6 +81,8 @@ function loadApiBase(): string {
 }
 
 function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
+  const [locale, setLocale] = useState<Locale>(initialLocale);
+  const t = useMemo(() => createTranslator(locale), [locale]);
   const [username, setUsername] = useState('');
   const [apiBase, setApiBase] = useState(loadApiBase);
   const [local, setLocal] = useState<LocalFields>(loadLocal);
@@ -59,6 +90,16 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filled, setFilled] = useState<number | null>(null);
+
+  function switchLocale(): void {
+    const next: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
+    setLocale(next);
+    try {
+      localStorage.setItem(LOCALE_STORAGE_KEY, next);
+    } catch {
+      // localStorage 不可用时仅本次会话生效
+    }
+  }
 
   async function handleAnalyze(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -81,7 +122,10 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   function handleFill(): void {
     if (!profile) return;
     saveLocal(local);
-    const values = toFillValues(profile, local);
+    const values = toFillValues(profile, local, {
+      skillsLeadin: t('fill.summarySkillsLeadin'),
+      skillSeparator: t('fill.skillSeparator'),
+    });
     const written = ats.fill(document, values);
     setFilled(written);
   }
@@ -89,32 +133,38 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   return (
     <div className="ja-panel">
       <div className="ja-header">
-        <span>JobAgent 自动填充</span>
-        <span className="ja-ats">ATS: {ats.name}</span>
+        <span className="ja-header-title">{t('panel.title')}</span>
+        <span className="ja-header-actions">
+          <span className="ja-ats">{t('panel.atsLabel', { name: ats.name })}</span>
+          {/* 语言切换器自身文案是 i18n 设计允许的硬编码豁免项（这里取另一语言名） */}
+          <button type="button" className="ja-lang" onClick={switchLocale}>
+            {t('nav.language')}
+          </button>
+        </span>
       </div>
 
       <form onSubmit={handleAnalyze}>
         <label className="ja-label">
-          GitHub 用户名
+          {t('panel.usernameLabel')}
           <input
             className="ja-input"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="例如 sindresorhus"
+            placeholder={t('panel.usernamePlaceholder')}
             required
           />
         </label>
         <label className="ja-label">
-          API 地址
+          {t('panel.apiBaseLabel')}
           <input
             className="ja-input"
             value={apiBase}
             onChange={(e) => setApiBase(e.target.value)}
-            placeholder="http://localhost:3000"
+            placeholder={t('panel.apiBasePlaceholder')}
           />
         </label>
         <button className="ja-btn" type="submit" disabled={loading}>
-          {loading ? '分析中…' : '获取可信画像'}
+          {loading ? t('panel.analyzing') : t('panel.analyze')}
         </button>
       </form>
 
@@ -124,17 +174,24 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
         <div className="ja-result">
           <div className="ja-row">
             <strong>{profile.subject.displayName ?? profile.subject.login}</strong>
-            {profile.subject.claimed && <span className="ja-badge">本人已验证</span>}
+            {profile.subject.claimed && <span className="ja-badge">{t('panel.claimedBadge')}</span>}
           </div>
           <div className="ja-row">
-            真实性：{profile.authenticity.status}（{(profile.authenticity.confidence * 100).toFixed(0)}%）
+            {t('panel.authenticityValue', {
+              status: t(AUTH_STATUS_KEY[profile.authenticity.status]),
+              confidence: (profile.authenticity.confidence * 100).toFixed(0),
+            })}
           </div>
-          <div className="ja-row">技能：{profile.skills.map((s) => s.name).join('、') || '—'}</div>
+          <div className="ja-row">
+            {t('panel.skillsValue', {
+              skills: profile.skills.map((s) => s.name).join(t('fill.skillSeparator')) || t('panel.skillsEmpty'),
+            })}
+          </div>
 
           <details className="ja-details">
-            <summary>本地补填（仅存本机，不上传）</summary>
+            <summary>{t('panel.localFields')}</summary>
             <label className="ja-label">
-              Email
+              {t('panel.emailLabel')}
               <input
                 className="ja-input"
                 value={local.email ?? ''}
@@ -142,7 +199,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
               />
             </label>
             <label className="ja-label">
-              电话
+              {t('panel.phoneLabel')}
               <input
                 className="ja-input"
                 value={local.phone ?? ''}
@@ -150,7 +207,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
               />
             </label>
             <label className="ja-label">
-              所在地
+              {t('panel.locationLabel')}
               <input
                 className="ja-input"
                 value={local.location ?? ''}
@@ -158,7 +215,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
               />
             </label>
             <label className="ja-label">
-              LinkedIn
+              {t('panel.linkedinLabel')}
               <input
                 className="ja-input"
                 value={local.linkedinUrl ?? ''}
@@ -168,10 +225,10 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
           </details>
 
           <button className="ja-btn ja-btn-primary" type="button" onClick={handleFill}>
-            填充到表单
+            {t('panel.fill')}
           </button>
           {filled !== null && (
-            <div className="ja-note">已写入 {filled} 个字段；未命中的字段请手动补充。</div>
+            <div className="ja-note">{t('panel.filledNote', { count: filled })}</div>
           )}
         </div>
       )}

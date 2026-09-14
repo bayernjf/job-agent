@@ -52,6 +52,13 @@ await build({
 // Static assets.
 await cp(path.join(root, 'src/manifest.json'), path.join(outdir, 'manifest.json'));
 await cp(path.join(root, 'src/content/panel.css'), path.join(outdir, 'panel.css'));
+// Shared design tokens (single source in packages/ui-tokens), loaded inside the shadow root before panel.css
+await cp(
+  path.join(root, 'node_modules/@jobagent/ui-tokens/tokens.css'),
+  path.join(outdir, 'tokens.css'),
+);
+// Chrome native i18n bundles (manifest __MSG_*__), en + zh_CN
+await cp(path.join(root, '_locales'), path.join(outdir, '_locales'), { recursive: true });
 await cp(path.join(root, 'src/icons/icon16.png'), path.join(outdir, 'icon16.png'));
 await cp(path.join(root, 'src/icons/icon48.png'), path.join(outdir, 'icon48.png'));
 await cp(path.join(root, 'src/icons/icon128.png'), path.join(outdir, 'icon128.png'));

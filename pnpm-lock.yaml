@@ -84,9 +84,15 @@ importers:
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@jobagent/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       '@types/chrome':
         specifier: ^0.0.287
         version: 0.0.287
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.20.2
       '@types/react':
         specifier: ^19.0.0
         version: 19.3.0
@@ -117,6 +123,9 @@ importers:
       '@jobagent/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@jobagent/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       '@types/react':
         specifier: ^19.0.0
         version: 19.3.0
@@ -246,6 +255,8 @@ importers:
       embedded-postgres:
         specifier: 18.1.0-beta.15
         version: 18.1.0-beta.15
+
+  packages/ui-tokens: {}
 
 packages:
 

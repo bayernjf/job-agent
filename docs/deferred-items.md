@@ -46,7 +46,8 @@
 | --- | --- | --- | --- |
 | 引入 i18n 框架（i18next / Paraglide 等） | 自研 `t()` + JSON 字典已覆盖 P0 需求，引框架会新增依赖与配置面（AGENTS：未经明确需求不引入新框架） | 需要复数/性别/复杂日期形态，或字典规模使手工维护明显吃力（如 >200 key），或要上第三语言 | [design-i18n](design-i18n-20260910.md)、[../AGENTS.md](../AGENTS.md) |
 | 第三语言与机翻 / 翻译协作管线 | 决策 #4 只要求海内外同步（中英），第三语言无需求信号 | 出现非中英市场的真实需求信号（用户来源分布或付费意向显著） | [design-i18n](design-i18n-20260910.md)、[待拍板决策清单 #4](待拍板决策清单-20260910.md) |
-| 报告页与落地页 token 体系统一（抽共享 token 包） | 落地页自有 `--lui-*` 且由负责人自行推进；MVP 两仓视觉不必共享 | 出现第二个需共享视觉的前端工程，或两仓视觉不一致已影响品牌一致性 | [design-tokens](design-tokens-20260910.md) |
+| 落地页 `--lui-*` 纳入共享 token 体系 | 落地页是独立仓库、自有变量体系，由负责人自行推进；本仓内 report 与 extension 已共享 `packages/ui-tokens`（2026-09-14，见 [design-tokens](design-tokens-20260910.md)） | 落地页需要与本仓视觉统一（品牌一致性成为硬需求）时 | [design-tokens](design-tokens-20260910.md) |
+| i18n 运行时抽共享包（`packages/i18n`） | 目前仅 report 与 extension 两个前端、字典各自演化，各持一份无 DOM 依赖的小运行时成本最低 | 出现第三个前端，或两端都需要复数/性别/复杂日期等复杂规则时 | [design-i18n §8.1](design-i18n-20260910.md) |
 | Stylelint / 自动化 token 与文案检查 | MVP 用单测 + 只读脚本即可守住"禁 hex""禁硬编码文案"，引 lint 增加工具链 | 硬编码 hex 或文案靠人工 review 漏过两次，或组件数量增长使人工 review 不可靠 | [design-tokens](design-tokens-20260910.md)、[design-i18n](design-i18n-20260910.md) |
 
 ### 合规线

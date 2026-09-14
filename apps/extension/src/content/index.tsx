@@ -21,7 +21,13 @@ function mountOverlay(ats: AtsAdapter): void {
   host.id = OVERLAY_ID;
   host.style.cssText =
     'all:initial;position:fixed;right:24px;bottom:24px;z-index:2147483647;font-family:system-ui,sans-serif;';
+  // 定位锚点属结构性样式（首帧样式表未加载也必须就位），刻意不走 token；视觉样式全部在 shadow 样式表内
   const shadow = host.attachShadow({ mode: 'open' });
+  // 先挂设计 token（:host 作用域），再挂组件样式，保证 var(--ja-*) 已定义
+  const tokensLink = document.createElement('link');
+  tokensLink.rel = 'stylesheet';
+  tokensLink.href = chrome.runtime.getURL('tokens.css');
+  shadow.appendChild(tokensLink);
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = chrome.runtime.getURL('panel.css');
@@ -33,13 +39,14 @@ function mountOverlay(ats: AtsAdapter): void {
   const buttonRoot = createRoot(buttonMount);
   buttonRoot.render(
     <button
+      className="ja-fab"
       type="button"
       onClick={(e) => {
         e.stopPropagation();
         if (handle) handle.toggle();
       }}
     >
-      JobAgent 填充
+      JobAgent
     </button>,
   );
 

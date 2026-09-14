@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成 + 工程化补全完成，P1·Chrome 扩展进入稳定期，P2 职位聚合完成前置 Spike**：pnpm workspaces 全仓（10 workspace）、`packages/shared` 契约（画像 + JobPosting 预留）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成 + 工程化补全完成，P1·Chrome 扩展进入稳定期，P2 职位聚合完成前置 Spike**：pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting 预留）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -11,7 +11,7 @@ AI 时代，以 GitHub 为"可验证工作证据"的招聘（B 端）+ 应聘（
 ## 当前阶段
 
 - **M1 完成**：W1 持久化层（SQLite/Postgres 双方言）→ W2 采集+分析内核+CLI → W3 服务化 → W4 报告+分享 → 端到端联调 + 真实性三轮校准（26 账号 0 误报/0 漏报）。MVP 最小闭环：输入 GitHub 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
-- **P1 进行中**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过，summary→自定义问题映射完成，待真实用户装扩展试用。
+- **P1 进行中**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过，summary→自定义问题映射完成，面板/悬浮球已补齐中英 i18n 与共享设计 token（2026-09-14），待真实用户装扩展试用。
 - **P2 准备完成**：职位聚合 Spike（决策 #16）实测 8 数据源、`JobPosting` 类型已预留 shared，MVP 建库组合已定（结论见 [docs/设计-职位聚合-Spike-20260913.md](docs/设计-职位聚合-Spike-20260913.md)）。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
 

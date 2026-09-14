@@ -1,15 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "JobAgent Autofill",
+  "name": "__MSG_appName__",
   "version": "0.1.0",
-  "description": "One-click autofill of ATS application forms from a GitHub-verified JobAgent profile.",
+  "default_locale": "en",
+  "description": "__MSG_appDescription__",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
   },
   "action": {
-    "default_title": "JobAgent Autofill"
+    "default_title": "__MSG_appName__"
   },
   "background": {
     "service_worker": "background.js",
