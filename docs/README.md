@@ -25,6 +25,7 @@
 | 写 P2 岗位采集管道代码（job_postings 建表 / 各源适配器 / 调度去重 / 分期） | [design-job-ingestion-20260913.md](design-job-ingestion-20260913.md) ★ |
 | 评估 / 未来新增 Gitee 证据源（v5 可行性、与 GitHub 差异、L0/L1 支撑度） | [design-gitee-source-spike-20260914.md](design-gitee-source-spike-20260914.md) ★ |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
+| 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 装 / 试用浏览器扩展，一键填充 ATS 表单 | [../apps/extension/README.md](../apps/extension/README.md) |
 | 快速了解项目门面与技术栈 | [../README.md](../README.md) |
 
