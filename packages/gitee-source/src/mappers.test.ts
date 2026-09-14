@@ -102,6 +102,20 @@ describe('mapCommits (PII cleaning)', () => {
       committedAt: '2026-03-01T02:00:00.000Z',
     });
   });
+
+  it('handles anonymous commits with no top-level author login', () => {
+    const rows: GiteeCommitRaw[] = [
+      {
+        sha: 'ccc333',
+        commit: { message: 'authored anonymously', author: { date: '2026-03-01T10:00:00+08:00' } },
+        author: null,
+      },
+    ];
+    const commits = mapCommits(rows, 'alice/core');
+    expect(commits).toHaveLength(1);
+    expect(commits[0]!.authorName).toBeNull();
+    expect(commits[0]!.authorEmail).toBeNull();
+  });
 });
 
 describe('mapPullRequests', () => {
