@@ -129,6 +129,42 @@
   cursor: not-allowed;
 }
 
+.ja-platform-switch {
+  display: flex;
+  gap: var(--ja-space-1);
+  margin-bottom: var(--ja-space-2);
+}
+
+.ja-platform-btn {
+  flex: 1;
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg-muted);
+  font-family: var(--ja-font-sans);
+  font-size: var(--ja-text-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ja-platform-btn:hover:not(:disabled) {
+  border-color: var(--ja-color-accent);
+  color: var(--ja-color-fg);
+}
+
+.ja-platform-btn--active {
+  border-color: var(--ja-color-accent);
+  background: var(--ja-color-accent-bg);
+  color: var(--ja-color-accent);
+  font-weight: 600;
+}
+
+.ja-platform-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .ja-btn-primary {
   background: var(--ja-color-accent);
   border-color: var(--ja-color-accent);
