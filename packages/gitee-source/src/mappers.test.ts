@@ -152,6 +152,7 @@ describe('mapPullRequests', () => {
       'some-org/shared',
     );
     expect(prs[0]!.repoOwnerIsSelf).toBe(false);
+    expect(prs[0]!.url).toBe('https://gitee.com/some-org/shared/pulls/3');
   });
 });
 
