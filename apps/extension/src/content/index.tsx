@@ -50,10 +50,8 @@ function mountOverlay(ats: AtsAdapter): void {
     </button>,
   );
 
-  // 面板用独立 root，避免与悬浮按钮互相替换（冒烟 #3 发现）
-  const panelMount = document.createElement('div');
-  panelMount.id = 'jobagent-autofill-panel';
-  shadow.appendChild(panelMount);
+  // 面板由 mountPanel 内部创建独立 root（避免与悬浮按钮互相替换，冒烟 #3 发现）；
+  // 此处不再额外建 panelMount，否则会留下一个同 id 的空 div（重复 id，E2E 发现）。
   handle = mountPanel(shadow, ats);
 }
 
