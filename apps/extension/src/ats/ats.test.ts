@@ -61,6 +61,22 @@ describe('toFillValues', () => {
     expect(byKey.summary).toContain('TypeScript (0.9)');
   });
 
+  it('uses Gitee platform label in summary for gitee profiles', () => {
+    const p = profile({
+      subject: {
+        platform: 'gitee',
+        login: 'gitee-dev',
+        displayName: 'Gitee Dev',
+        profileUrl: 'https://gitee.com/gitee-dev',
+        claimed: false,
+      },
+    });
+    const values = toFillValues(p, {});
+    const byKey = Object.fromEntries(values.map((v) => [v.key, v.value]));
+    expect(byKey.summary).toContain('Gitee 验证');
+    expect(byKey.github_url).toBe('https://gitee.com/gitee-dev');
+  });
+
   it('falls back to login when displayName is missing', () => {
     const p = profile();
     delete (p.subject as { displayName?: string }).displayName;
