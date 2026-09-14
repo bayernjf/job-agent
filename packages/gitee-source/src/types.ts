@@ -23,6 +23,10 @@ export interface GiteeCollectedData {
     budgetUsed: { restCalls: number };
     /** 显式缺失标注；空数组表示无缺失 */
     missing: string[];
+    /** events/public 取到的事件条数（行为流补充，设计 §4.11） */
+    eventsFetched?: number;
+    /** 由 events 的 PushEvent 补入、逐仓采样未覆盖的 commit 条数 */
+    eventCommitsAdded?: number;
   };
 }
 
@@ -125,4 +129,31 @@ export interface GiteeIssueRaw {
   state?: string | null;
   created_at?: string | null;
   user?: GiteeOwnerRaw | null;
+}
+
+/** PushEvent.payload.commits[] 单个提交；author 为明文（含邮箱形态），PII 出口不使用 */
+export interface GiteeEventCommitRaw {
+  sha?: string | null;
+  message?: string | null;
+  author?: { name?: string | null; email?: string | null } | null;
+}
+
+/**
+ * /users/{login}/events/public 单条事件（2026-09-15 行为流补充，设计 §4.11）。
+ * 实测：只返回最近 20 条，page/per_page 均被忽略、深翻重复第 1 页，故只取一次。
+ */
+export interface GiteeEventRaw {
+  id?: string | null;
+  /** PushEvent/PullRequestEvent/PullRequestCommentEvent/IssueCommentEvent/CreateEvent/FollowEvent；实测可能为 null */
+  type?: string | null;
+  actor?: GiteeOwnerRaw | null;
+  repo?: { full_name?: string | null; human_name?: string | null } | null;
+  created_at?: string | null;
+  payload?: {
+    ref?: string | null;
+    size?: number;
+    before?: string | null;
+    after?: string | null;
+    commits?: GiteeEventCommitRaw[] | null;
+  } | null;
 }
