@@ -68,7 +68,8 @@ export function toFillValues(
   local: LocalFields,
   labels: FillSummaryLabels = {},
 ): FillValue[] {
-  const skillsLeadin = labels.skillsLeadin ?? '技能（GitHub 验证，可回溯证据）：';
+  const platformLabel = profile.subject.platform === 'gitee' ? 'Gitee' : 'GitHub';
+  const skillsLeadin = labels.skillsLeadin ?? `技能（${platformLabel} 验证，可回溯证据）：`;
   const skillSeparator = labels.skillSeparator ?? '、';
   const values: FillValue[] = [];
   const fullName = profile.subject.displayName ?? profile.subject.login;
