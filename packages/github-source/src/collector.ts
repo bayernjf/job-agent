@@ -1,4 +1,4 @@
-import type { AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest } from '@jobagent/analyzer-core';
+import type { AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest, BehaviorEventSummary } from '@jobagent/analyzer-core';
 import type { EvidenceItem } from '@jobagent/shared';
 import type { Octokit } from 'octokit';
 import { BudgetTracker } from './budget.js';
@@ -24,7 +24,13 @@ import {
   type PullRequestsResponse,
   type RepoCommitsResponse,
 } from './graphql.js';
-import { fetchRepoCommitsCached, fetchUserEmailRest, HttpCache } from './rest.js';
+import {
+  fetchPublicEventsRest,
+  fetchRepoCommitsCached,
+  fetchUserEmailRest,
+  HttpCache,
+  summarizeGhEvents,
+} from './rest.js';
 import type { GitHubCollectedData, GitHubSourceOptions, L0Data, L1Data } from './types.js';
 
 /** 采集错误：not_found（账号不存在）/ api_error（GitHub 侧失败）/ budget_exhausted */
@@ -181,6 +187,17 @@ export class GitHubSource {
 
     const { l1, evidence: l1Evidence, missing } = await this.collectL1(login, l0);
 
+    // 方案 B-1：单次取 public events 第 1 页并聚合行为流摘要（REST +1；失败只记缺失，不阻塞）
+    let behaviorEvents: BehaviorEventSummary | undefined;
+    try {
+      this.budget.recordRest();
+      const eventRows = await fetchPublicEventsRest(this.octokit, login);
+      behaviorEvents = summarizeGhEvents(eventRows, login) ?? undefined;
+    } catch (err) {
+      missing.push('events');
+      this.log.warn(`[github-source] events failed for ${login}: ${(err as Error).message}`);
+    }
+
     const input: AnalyzerInput = {
       subject: { ...l0.subject, email },
       dataWindow: l0.dataWindow,
@@ -189,6 +206,7 @@ export class GitHubSource {
       pullRequests: l1.pullRequests,
       issues: l1.issues,
       contributions: l0.contributions,
+      ...(behaviorEvents ? { behaviorEvents } : {}),
       evidence: [...l0Evidence, ...l1Evidence],
       missing,
       collectedAt: new Date().toISOString(),
