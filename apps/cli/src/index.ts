@@ -172,7 +172,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     });
     const file = positionals[0];
     if (!file) {
-      logger.error('Usage: jobagent batch <file> [--out <file>]   # file: one username per line');
+      logger.error('Usage: jobagent batch <file> [--out <file>] [--platform github|gitee]   # file: one username per line');
       return 2;
     }
     let logins: string[];

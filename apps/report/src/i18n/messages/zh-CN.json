@@ -1,6 +1,6 @@
 {
   "app.name": "JobAgent",
-  "app.tagline": "基于 GitHub 行为痕迹的可信能力画像",
+  "app.tagline": "基于代码托管平台行为痕迹的可信能力画像",
   "nav.home": "首页",
   "nav.report": "报告",
   "nav.language": "English",
@@ -18,7 +18,7 @@
   "home.step2.title": "规则引擎分析",
   "home.step2.desc": "纯函数内核计算真实性分级、能力标签与面试题，版本化可复现",
   "home.step3.title": "产出可信报告",
-  "home.step3.desc": "每条结论绑定证据，可点击回溯到原始 GitHub 记录",
+  "home.step3.desc": "每条结论绑定证据，可点击回溯到原始平台记录",
   "job.queued": "排队中",
   "job.running": "分析中",
   "job.succeeded": "已完成",

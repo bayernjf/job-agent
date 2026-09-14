@@ -156,7 +156,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     if (!profile) return;
     saveLocal(local);
     const values = toFillValues(profile, local, {
-      skillsLeadin: t('fill.summarySkillsLeadin'),
+      skillsLeadin: t('fill.summarySkillsLeadin', { platform: profile.subject.platform === 'gitee' ? 'Gitee' : 'GitHub' }),
       skillSeparator: t('fill.skillSeparator'),
     });
     const written = ats.fill(document, values);
