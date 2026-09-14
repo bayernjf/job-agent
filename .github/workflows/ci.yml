@@ -8,17 +8,19 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Major versions pinned to node24-based actions to clear the Node 20
+      # deprecation warnings (verified action.yml inputs stay compatible).
+      - uses: actions/checkout@v7
         with:
           # gitleaks scans a base..head commit range and needs the parent commits;
           # a shallow clone (default depth 1) makes that range unresolvable.
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.12.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
@@ -56,6 +58,6 @@ jobs:
         run: pnpm audit --audit-level=high
 
       - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

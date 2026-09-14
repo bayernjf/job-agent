@@ -33,16 +33,20 @@ import {
   JobSourceSchema,
   type AbilityProfile,
   type JobSource,
+  type SkillTag,
 } from '@jobagent/shared';
 import {
   createStorage,
   type IAnalysisJobsRepository,
   type IProfilesRepository,
   type IJobPostingsRepository,
+  type IEvidenceRepository,
   type StoredAnalysisJob,
+  type StoredEvidence,
   type StoredProfile,
 } from '@jobagent/storage';
 import { matchJobs } from '@jobagent/job-source';
+import { skillTagMap, buildSkillReasons, collectEvidence } from './match-explain.js';
 
 // ─── 类型 ───────────────────────────────────────────────────────────────
 
@@ -50,6 +54,7 @@ export interface ApiRepos {
   jobs: IAnalysisJobsRepository;
   profiles: IProfilesRepository;
   jobPostings: IJobPostingsRepository;
+  evidence: IEvidenceRepository;
 }
 
 export interface ApiDeps {
@@ -287,6 +292,8 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
     if (!profile) return c.json({ error: 'profile not found' }, 404);
     if (!profile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
     const skills = profile.snapshot.skillTags.map((tag) => tag.name);
+    const tags = skillTagMap(profile.snapshot.skillTags);
+    const evidenceRows = await repos.evidence.listByProfile(parsed.data.id);
 
     const q = c.req.query();
     let remote: boolean | undefined;
@@ -325,10 +332,23 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
       orderBy: 'posted_desc',
     });
     const matches = matchJobs(candidates, { skills, remote, salaryMinUsd, sources, limit });
+    const serialized = matches.map((x) => {
+      const skillReasons = buildSkillReasons(x, tags);
+      const base = {
+        score: x.score,
+        matchedSkills: x.matchedSkills,
+        fieldScores: x.fieldScores,
+        skillHits: x.skillHits,
+        posting: x.posting,
+      };
+      return skillReasons ? { ...base, skillReasons } : base;
+    });
+    const allReasons = serialized.flatMap((x) => ('skillReasons' in x ? x.skillReasons : []));
     return c.json({
       profileId: parsed.data.id,
       profileSkills: skills,
-      matches: matches.map((x) => ({ score: x.score, matchedSkills: x.matchedSkills, posting: x.posting })),
+      matches: serialized,
+      evidence: collectEvidence(allReasons, evidenceRows),
       total: matches.length,
       candidatePool: candidates.length,
     });
@@ -399,11 +419,15 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
 
     // resolve skills: profileId takes precedence over explicit skills
     let skills: string[];
+    let tags: Map<string, SkillTag> | undefined;
+    let evidenceRows: StoredEvidence[] = [];
     if (m.profileId) {
       const profile = await repos.profiles.getById(m.profileId);
       if (!profile) return c.json({ error: 'profile not found' }, 404);
       if (!profile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
       skills = profile.snapshot.skillTags.map((tag) => tag.name);
+      tags = skillTagMap(profile.snapshot.skillTags);
+      evidenceRows = await repos.evidence.listByProfile(m.profileId);
     } else {
       skills = m.skills!;
     }
@@ -425,14 +449,23 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
       sources: m.sources,
       limit: m.limit ?? 50,
     });
-    return c.json({
-      matches: matches.map((x) => ({
+    const serialized = matches.map((x) => {
+      const skillReasons = buildSkillReasons(x, tags);
+      const base = {
         score: x.score,
         matchedSkills: x.matchedSkills,
+        fieldScores: x.fieldScores,
+        skillHits: x.skillHits,
         posting: x.posting,
-      })),
+      };
+      return skillReasons ? { ...base, skillReasons } : base;
+    });
+    const allReasons = serialized.flatMap((x) => ('skillReasons' in x ? x.skillReasons : []));
+    return c.json({
+      matches: serialized,
       total: matches.length,
       ...(m.profileId ? { profileSkills: skills } : {}),
+      ...(tags ? { evidence: collectEvidence(allReasons, evidenceRows) } : {}),
     });
   });
 
