@@ -35,8 +35,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // dev 模式即 SSR，免去每次 build；固定端口
-    command: 'pnpm --filter @jobagent/report dev --port 4321 --host 127.0.0.1',
+    // dev 模式即 SSR，免去每次 build；固定端口。
+    // --no-toolbar：关闭 Astro Dev Toolbar，其 island inspector 会在 shadow DOM
+    // 里以 <code> 渲染各 island 的 props（含全部 i18n 文案），会干扰文本定位。
+    command: 'pnpm --filter @jobagent/report dev --port 4321 --host 127.0.0.1 --no-toolbar',
     url: 'http://127.0.0.1:4321/en/',
     timeout: 120000,
     reuseExistingServer: false,
