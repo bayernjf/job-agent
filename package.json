@@ -19,7 +19,8 @@
     "check:migrations": "bash tools/check-migrations.sh",
     "prepare": "husky",
     "e2e": "playwright test",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "e2e:extension": "pnpm --filter @jobagent/extension build && playwright test -c playwright.extension.config.ts"
   },
   "devDependencies": {
     "@jobagent/shared": "workspace:*",
