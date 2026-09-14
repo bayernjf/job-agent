@@ -171,6 +171,13 @@ export async function handleJobFailure(
   logger: Pick<Console, 'info' | 'warn' | 'error'> = console,
 ): Promise<void> {
   const message = error.message;
+  const code = (error as { code?: string }).code;
+  // not_found (account/repo does not exist) is deterministic — retrying cannot help.
+  if (code === 'not_found') {
+    await repos.jobs.fail(job.id, message);
+    logger.error(`[worker] job ${job.id} not found, failing permanently: ${message}`);
+    return;
+  }
   if (job.attempts < maxRetries) {
     await repos.jobs.resetToQueued(job.id, message);
     logger.warn(
