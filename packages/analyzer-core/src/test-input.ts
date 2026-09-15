@@ -26,6 +26,7 @@ export interface InputSeed {
   contributions?: AnalyzerInput['contributions'];
   collectedAt?: string;
   missing?: string[];
+  behaviorEvents?: AnalyzerInput['behaviorEvents'];
 }
 
 const defaultRepos: AnalyzerRepo[] = [
@@ -252,6 +253,7 @@ export function buildInput(seed: InputSeed = {}): AnalyzerInput {
     contributions,
     evidence,
     missing: seed.missing ?? [],
+    ...(seed.behaviorEvents ? { behaviorEvents: seed.behaviorEvents } : {}),
     collectedAt,
   };
 }

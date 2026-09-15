@@ -27,6 +27,7 @@ export {
 } from './evidence.js';
 export {
   fetchRepoCommitsCached,
+  fetchPublicEventsRest,
   fetchRepoCommitsRest,
   fetchUserEmailRest,
   HttpCache,
@@ -34,3 +35,4 @@ export {
   parseRestCommits,
 } from './rest.js';
 export type { GitHubCollectedData, GitHubSourceOptions, L0Data, L1Data, ProfileBudget } from './types.js';
+export type { GitHubEventRow } from './rest.js';

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { GiteeSource, GiteeSourceError } from './index.js';
 import type {
   GiteeCommitRaw,
+  GiteeEventRaw,
   GiteeIssueRaw,
   GiteePullRaw,
   GiteeRepoRaw,
@@ -90,6 +91,30 @@ const ISSUES: GiteeIssueRaw[] = [
   { number: 9, title: 'theirs', state: 'open', created_at: '2026-03-04T10:00:00+08:00', user: { login: 'carol' } },
 ];
 
+// events 行为流夹具：一条 PushEvent（采样 top8 之外的组织/其他仓，时间最晚）+ 一条非 Push 事件
+const EVENTS: GiteeEventRaw[] = [
+  {
+    id: 'ev1',
+    type: 'PushEvent',
+    actor: { login: 'alice' },
+    repo: { full_name: 'alice/outside-top-repos' },
+    created_at: '2026-05-01T08:00:00+08:00',
+    payload: {
+      commits: [
+        { sha: 'ddd444', message: 'event-only commit', author: { name: 'Plaintext Name', email: 'secret@qq.com' } },
+      ],
+    },
+  },
+  {
+    id: 'ev2',
+    type: 'IssueCommentEvent',
+    actor: { login: 'alice' },
+    repo: { full_name: 'alice/core' },
+    created_at: '2026-05-01T09:00:00+08:00',
+    payload: {},
+  },
+];
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
 }
@@ -102,6 +127,8 @@ function routerFetch(overrides?: Record<string, () => Response>): typeof fetch {
         if (url.includes(needle)) return handler();
       }
     }
+    // events URL 含子串 "/users/alice"，其路由必须排在 "/users/alice" 之前；默认空事件流
+    if (url.includes('/events/public')) return json([]);
     if (url.includes('/users/alice/repos')) return json(REPOS);
     if (url.includes('/users/alice')) return json(USER);
     if (url.includes('/repos/alice/core/commits')) return json(COMMITS);
@@ -124,7 +151,7 @@ describe('GiteeSource.collect full happy path', () => {
     expect(input.repos.map((r) => r.name)).toEqual(['core', 'archived-old']);
     expect(input.subject.email).toBeNull();
 
-    // L1：只采集非归档的 core；PR/Issue 按作者过滤
+    // L1：只采集非归档的 core；PR/Issue 按作者过滤（默认 events 为空，不补 commit）
     expect(input.commits).toHaveLength(2);
     expect(input.commits.every((c) => c.authorEmail === null && c.authorName === 'alice')).toBe(true);
     expect(input.pullRequests).toHaveLength(1);
@@ -155,8 +182,10 @@ describe('GiteeSource.collect full happy path', () => {
       expect(ids.has(id)).toBe(true);
     }
 
-    // user(1)+repos(1)+core 的 commits/pulls/issues(各1) = 5 次请求
-    expect(meta.budgetUsed.restCalls).toBe(5);
+    // user(1)+repos(1)+core 的 commits/pulls/issues(各1)+events(1) = 6 次请求
+    expect(meta.budgetUsed.restCalls).toBe(6);
+    expect(meta.eventsFetched).toBe(0);
+    expect(meta.eventCommitsAdded).toBe(0);
 
     // 端到端过 analyzer 内核：平台标识正确、画像通过 schema
     const profile = analyze(input, { profileId: 'gitee-test-1', platform: 'gitee' });
@@ -168,6 +197,81 @@ describe('GiteeSource.collect full happy path', () => {
     const collected = await makeSource(routerFetch()).collect('alice');
     const dates = collected.input.commits.map((c) => c.committedAt);
     expect(dates).toEqual([...dates].sort());
+  });
+});
+
+describe('GiteeSource events behavior stream (§4.11)', () => {
+  it('summarizes self events into input.behaviorEvents (breadth and type counts)', async () => {
+    const f = routerFetch({ '/events/public': () => json(EVENTS) });
+    const { input } = await makeSource(f).collect('alice');
+    expect(input.behaviorEvents).toMatchObject({
+      totalEvents: 2,
+      distinctRepoCount: 2, // outside-top-repos + core
+      eventTypeCounts: { PushEvent: 1, IssueCommentEvent: 1 },
+    });
+  });
+
+  it('omits behaviorEvents when the events endpoint fails', async () => {
+    const f = routerFetch({ '/events/public': () => new Response(null, { status: 500 }) });
+    const { input } = await makeSource(f).collect('alice');
+    expect(input.behaviorEvents).toBeUndefined();
+  });
+  it('fills sampled-missing recent commits from PushEvents, strips PII, advances window', async () => {
+    const f = routerFetch({ '/events/public': () => json(EVENTS) });
+    const { input, evidence, meta } = await makeSource(f).collect('alice');
+
+    // 采样 2 条 + events 补 1 条（IssueCommentEvent 不产生 commit）
+    expect(input.commits.map((c) => c.oid).sort()).toEqual(['aaa111', 'bbb222', 'ddd444']);
+    const filled = input.commits.find((c) => c.oid === 'ddd444');
+    expect(filled).toMatchObject({
+      repoName: 'alice/outside-top-repos',
+      authorName: 'alice',
+      authorEmail: null, // payload 明文邮箱被剥离
+    });
+    expect(input.contributions.totalCommitContributions).toBe(3);
+    expect(evidence.some((e) => e.evidenceId === 'commit:alice/outside-top-repos:ddd444')).toBe(true);
+
+    // events 时间最晚（2026-05-01T08:00+08 → 00:00Z）→ dataWindow.until 被推进
+    expect(input.dataWindow.until).toBe('2026-05-01T00:00:00.000Z');
+    expect(meta.eventsFetched).toBe(2);
+    expect(meta.eventCommitsAdded).toBe(1);
+  });
+
+  it('dedupes an event commit already covered by sampling (same repo:oid), sampled wins', async () => {
+    const dupEvents: GiteeEventRaw[] = [
+      {
+        type: 'PushEvent',
+        actor: { login: 'alice' },
+        repo: { full_name: 'alice/core' },
+        created_at: '2026-05-01T08:00:00+08:00',
+        payload: { commits: [{ sha: 'aaa111' }] },
+      },
+    ];
+    const f = routerFetch({ '/events/public': () => json(dupEvents) });
+    const { input, meta } = await makeSource(f).collect('alice');
+    expect(input.commits).toHaveLength(2); // aaa111 已在采样中，不重复
+    expect(meta.eventCommitsAdded).toBe(0);
+    // 采样优先：保留采样的 03-01 时间，而非 events 的 05-01
+    expect(input.commits.find((c) => c.oid === 'aaa111')?.committedAt).toBe('2026-03-01T02:00:00.000Z');
+  });
+
+  it('records missing:events but keeps L0/L1 results when the events endpoint fails', async () => {
+    const f = routerFetch({ '/events/public': () => new Response(null, { status: 500 }) });
+    const { input, meta } = await makeSource(f).collect('alice');
+    expect(input.commits).toHaveLength(2);
+    expect(input.missing).toContain('events');
+    expect(meta.eventsFetched).toBe(0);
+  });
+
+  it('requests the events stream exactly once (no pagination)', async () => {
+    const calls: string[] = [];
+    const inner = routerFetch();
+    const f: typeof fetch = (async (url: string) => {
+      calls.push(url);
+      return inner(url);
+    }) as typeof fetch;
+    await makeSource(f).collect('alice');
+    expect(calls.filter((u) => u.includes('/events/public'))).toHaveLength(1);
   });
 });
 
@@ -199,6 +303,8 @@ describe('GiteeSource org-owned repo ownerLogin', () => {
     ];
     const f: typeof fetch = (async (url: string) => {
       calls.push(url);
+      // events URL 含子串 "/users/alice"，其路由必须排在前面
+      if (url.includes('/events/public')) return json([]);
       if (url.includes('/users/alice/repos')) return json(orgRepos);
       if (url.includes('/users/alice')) return json(USER);
       if (url.includes('/repos/someorg/core/commits')) return json(COMMITS);
