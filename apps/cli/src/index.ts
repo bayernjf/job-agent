@@ -6,6 +6,7 @@
  *   jobagent analyze <user> [--out <file>] [--format json|markdown|html] [--platform github|gitee|all]  # 单账号画像；all=GitHub+Gitee 去重融合
  *   jobagent batch <file> [--out <file>]        # 每行一个用户名 → JSONL
  *   jobagent waitlist [--status <s>] [--limit <n>] [--count]  # 只读查看落地页留资（MVP 无认证、不暴露 admin HTTP）
+ *   jobagent resume build --profile <id|file> --job <jobId>    # 岗位定向简历（md/html/json，见 resume-commands）
  *
  * 凭证：环境变量 GITHUB_TOKEN（本地 PAT，见 .env.example；绝不下发前端/不入 Git）。
  */
@@ -24,6 +25,7 @@ import { toHtml, toMarkdown } from './report-format.js';
 import type { JobSourceAdapter } from '@jobagent/job-source';
 import { runJobs } from './jobs-commands.js';
 import { runDemo } from './demo-commands.js';
+import { runResume } from './resume-commands.js';
 
 export interface CliDeps {
   /** 环境变量 GITHUB_TOKEN 的值（由调用方注入，便于测试） */
@@ -289,8 +291,12 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     return runDemo(rest, deps);
   }
 
+  if (command === 'resume') {
+    return runResume(rest, deps);
+  }
+
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup>',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | resume build --profile <id|file> --job <jobId>',
   );
   return 2;
 }
