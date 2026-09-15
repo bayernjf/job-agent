@@ -166,6 +166,26 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
       .run();
   }
 
+  async deferToQueued(id: string, note: string): Promise<void> {
+    const now = new Date().toISOString();
+    this.db
+      .update(analysisJobs)
+      .set({
+        status: 'queued',
+        stage: null,
+        claimedBy: null,
+        startedAt: null,
+        finishedAt: null,
+        // 抵消本次 claimNext 的 attempts+1，反复 defer 不耗尽重试预算
+        attempts: sql`MAX(${analysisJobs.attempts} - 1, 0)`,
+        updatedAt: now,
+        // note 仅作运维备注，不进 errorMessage（非失败）
+      })
+      .where(eq(analysisJobs.id, id))
+      .run();
+    void note;
+  }
+
   async reclaimStaleRunning(maxAgeMs: number): Promise<number> {
     const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
     const now = new Date().toISOString();

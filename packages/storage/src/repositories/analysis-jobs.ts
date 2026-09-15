@@ -25,6 +25,12 @@ export interface IAnalysisJobsRepository {
   ): Promise<void>;
   fail(id: string, errorMessage: string): Promise<void>;
   resetToQueued(id: string, lastError: string): Promise<void>;
+  /**
+   * 非失败性退回：Worker demo 并发闸把已认领但暂不处理的任务放回 queued。
+   * 与 resetToQueued 的区别：抵消本次 claimNext 的 attempts+1（下限 0）、不写 errorMessage，
+   * 因此反复 defer 不会耗尽重试预算而让任务永久停领。
+   */
+  deferToQueued(id: string, note: string): Promise<void>;
   listBySubject(
     subjectPlatform: string,
     subjectLogin: string,

@@ -132,6 +132,30 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(done?.budgetUsed).toEqual({ graphqlPoints: 3 });
   });
 
+  pgIt('defers an over-cap demo job back to queued without burning attempts', async (s) => {
+    const id = `job_defer_${randomUUID().slice(0, 8)}`;
+    await s.jobs.create({
+      id,
+      subjectLogin: `d_${id}`,
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+    const claimed = await s.jobs.claimNext('pg-test-worker');
+    expect(claimed?.id).toBe(id);
+    expect(claimed?.attempts).toBe(1);
+
+    await s.jobs.deferToQueued(id, 'Deferred: demo concurrency cap');
+    const back = await s.jobs.getById(id);
+    expect(back?.status).toBe('queued');
+    expect(back?.attempts).toBe(0);
+    expect(back?.claimedBy).toBeNull();
+    expect(back?.errorMessage).toBeNull();
+
+    // GREATEST 下限：再次认领→退回仍稳定在 0，不被 attempts<3 永久排除
+    const reclaimed = await s.jobs.claimNext('pg-test-worker');
+    expect(reclaimed?.id).toBe(id);
+  });
+
   pgIt('inserts and reads back a profile with boolean and JSON round-trip', async (s) => {
     const id = `prof_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
     const snapshot = minimalSnapshot(`pg_${randomUUID().slice(0, 6)}`);
