@@ -27,6 +27,7 @@
 | 行为多样性信号 / 双源 events 聚合（BehaviorEventSummary、narrow_activity_scope 弱信号、规则版本 0.2、缺失降级） | [design-behavior-diversity-20260915.md](design-behavior-diversity-20260915.md) ★ |
 | 改技能标签提取（技术词典 / topics·commit·PR 多信号 / 词边界防误匹配 / 深度与置信度） | [design-skill-extraction-20260915.md](design-skill-extraction-20260915.md) ★ |
 | 融合 GitHub+Gitee 双源（共享 commit oid 识别镜像去重 / fuseInputs 纯函数 / CLI --platform all） | [design-cross-source-fusion-20260915.md](design-cross-source-fusion-20260915.md) ★ |
+| 做免注册"试用演示"进入真实产品（三态身份 / 演示会话与配额闸 / 预置示例 / 006–008 迁移） | [design-demo-mode-20260915.md](design-demo-mode-20260915.md) ★ |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 装 / 试用浏览器扩展，一键填充 ATS 表单 | [../apps/extension/README.md](../apps/extension/README.md) |
