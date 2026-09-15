@@ -205,6 +205,74 @@ describe('SqliteAnalysisJobsRepository', () => {
     expect(reclaimed!.startedAt).toBeNull();
   });
 
+  it('defaults requester to public and persists demo requester columns', async () => {
+    const { repo } = freshRepo();
+    await repo.create(newJob('job_public'));
+    const pub = (await repo.getById('job_public'))!;
+    expect(pub.requesterKind).toBe('public');
+    expect(pub.demoSessionId).toBeNull();
+
+    await repo.create({
+      id: 'job_demo',
+      subjectLogin: 'someone',
+      requesterKind: 'demo',
+      demoSessionId: 'demo_sess_1',
+    });
+    const demo = (await repo.getById('job_demo'))!;
+    expect(demo.requesterKind).toBe('demo');
+    expect(demo.demoSessionId).toBe('demo_sess_1');
+  });
+
+  it('claims formal (public) jobs before demo jobs regardless of enqueue order', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create({
+      id: 'job_demo_first',
+      subjectLogin: 'a',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+    await repo.create({ id: 'job_public_later', subjectLogin: 'b' });
+
+    // 对齐 created_at，避免同毫秒插入顺序之外的干扰：demo 更早
+    db.prepare(
+      "UPDATE analysis_jobs SET created_at = ? WHERE id = 'job_demo_first'",
+    ).run('2026-09-10T00:00:00.000Z');
+    db.prepare(
+      "UPDATE analysis_jobs SET created_at = ? WHERE id = 'job_public_later'",
+    ).run('2026-09-10T01:00:00.000Z');
+
+    // 即使 demo 更早入队，正式任务仍优先
+    const first = await repo.claimNext('worker-1');
+    expect(first!.id).toBe('job_public_later');
+    const second = await repo.claimNext('worker-1');
+    expect(second!.id).toBe('job_demo_first');
+  });
+
+  it('counts running jobs by requester kind for the demo concurrency gate', async () => {
+    const { repo } = freshRepo();
+    await repo.create({
+      id: 'job_demo_1',
+      subjectLogin: 'a',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+    await repo.create({
+      id: 'job_demo_2',
+      subjectLogin: 'b',
+      requesterKind: 'demo',
+      demoSessionId: 's2',
+    });
+    await repo.create({ id: 'job_public_1', subjectLogin: 'c' });
+
+    expect(await repo.countRunningByRequesterKind('demo')).toBe(0);
+    await repo.claimNext('worker-1'); // public first
+    expect(await repo.countRunningByRequesterKind('public')).toBe(1);
+    expect(await repo.countRunningByRequesterKind('demo')).toBe(0);
+    await repo.claimNext('worker-1'); // demo
+    await repo.claimNext('worker-1'); // demo
+    expect(await repo.countRunningByRequesterKind('demo')).toBe(2);
+  });
+
   it('migration 002 creates analysis_jobs table with expected columns', () => {
     const db = new Database(':memory:');
     runMigrations(db, MIGRATIONS_DIR);

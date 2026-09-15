@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, lt, or, sql } from 'drizzle-orm';
+import type { RequesterKind } from '@jobagent/shared';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   toStoredJob,
@@ -9,10 +10,13 @@ import {
 import type { IAnalysisJobsRepository } from '../repositories/analysis-jobs.js';
 import { analysisJobs } from './schema.js';
 
+/** 正式（非 demo）任务优先认领的排序表达式：demo 排后，同级再按创建时间 FIFO */
+const formalFirst = sql`CASE WHEN ${analysisJobs.requesterKind} = 'demo' THEN 1 ELSE 0 END`;
+
 /**
  * analysis_jobs 仓储的 Postgres 实现。
- * 认领在 async 事务内两步完成（SELECT 最老 queued → UPDATE 特定 id 双校验）。
- * MVP 单 Worker，FOR UPDATE SKIP LOCKED 缓做（设计文档 §9）。
+ * 认领在 async 事务内两步完成（SELECT 最老 queued → UPDATE 特定 id 双校验）；
+ * 正式优先、同级 FIFO。MVP 单 Worker，FOR UPDATE SKIP LOCKED 缓做（设计文档 §9）。
  */
 export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
   constructor(private readonly db: PostgresJsDatabase) {}
@@ -24,6 +28,8 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
       subjectLogin: job.subjectLogin,
       status: 'queued',
       attempts: 0,
+      requesterKind: job.requesterKind ?? 'public',
+      demoSessionId: job.demoSessionId ?? null,
     });
   }
 
@@ -46,7 +52,8 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
             lt(analysisJobs.attempts, 3),
           ),
         )
-        .orderBy(asc(analysisJobs.createdAt))
+        // 正式（public/未来 user）优先于 demo，同级再按创建时间 FIFO
+        .orderBy(formalFirst, asc(analysisJobs.createdAt))
         .limit(1);
 
       if (oldest.length === 0) return;
@@ -74,6 +81,19 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
 
     if (!claimedId) return null;
     return (await this.getById(claimedId)) ?? null;
+  }
+
+  async countRunningByRequesterKind(kind: RequesterKind | 'public'): Promise<number> {
+    const rows = await this.db
+      .select({ count: sql<string>`count(*)` })
+      .from(analysisJobs)
+      .where(
+        and(
+          eq(analysisJobs.status, 'running'),
+          eq(analysisJobs.requesterKind, kind),
+        ),
+      );
+    return Number(rows[0]?.count ?? 0);
   }
 
   async updateStage(id: string, stage: JobStage): Promise<void> {
