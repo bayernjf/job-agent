@@ -3,7 +3,7 @@
  * 供决策 #8 的 20–50 账号去风险实验：批量导出 JSONL。
  *
  * 用法：
- *   jobagent analyze <user> [--out <file>] [--format json|markdown|html]   # 单账号 → 画像
+ *   jobagent analyze <user> [--out <file>] [--format json|markdown|html] [--platform github|gitee|all]  # 单账号画像；all=GitHub+Gitee 去重融合
  *   jobagent batch <file> [--out <file>]        # 每行一个用户名 → JSONL
  *   jobagent waitlist [--status <s>] [--limit <n>] [--count]  # 只读查看落地页留资（MVP 无认证、不暴露 admin HTTP）
  *
@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { analyze, type AnalyzerInput } from '@jobagent/analyzer-core';
+import { analyze, fuseInputs, type AnalyzerInput, type FusionReport } from '@jobagent/analyzer-core';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
 import { GiteeSource, type GiteeCollectedData } from '@jobagent/gitee-source';
 import type { SupportedPlatform } from '@jobagent/shared';
@@ -31,6 +31,10 @@ export interface CliDeps {
   giteeToken?: string;
   /** 采集器注入点（测试用 fake；生产默认 new GitHubSource） */
   source?: { collect(login: string): Promise<GitHubCollectedData | GiteeCollectedData> };
+  /** 分平台采集器注入点（--platform all 双源融合测试用；优先于 source） */
+  sources?: Partial<
+    Record<SupportedPlatform, { collect(login: string): Promise<GitHubCollectedData | GiteeCollectedData> }>
+  >;
   /** 持久化上下文注入点（waitlist 子命令用；测试注入临时库，生产默认 createStorage()） */
   storage?: StorageContext;
   /** Test injection for `jobs sync` (defaults to createDefaultAdapters) */
@@ -44,13 +48,15 @@ export interface CliDeps {
 
 export interface AnalyzeResult {
   profile: ReturnType<typeof analyze>;
-  meta: GitHubCollectedData['meta'] | GiteeCollectedData['meta'];
+  meta: (GitHubCollectedData['meta'] | GiteeCollectedData['meta']) & { fusion?: FusionReport };
 }
 
 function makeSource(
   deps: CliDeps,
   platform: SupportedPlatform,
 ): { collect(login: string): Promise<GitHubCollectedData | GiteeCollectedData> } {
+  const injected = deps.sources?.[platform];
+  if (injected) return injected;
   if (deps.source) return deps.source;
   if (platform === 'gitee') {
     // Gitee 匿名即可读公开数据，token 仅用于提额，因此不强制
@@ -84,8 +90,19 @@ class CliError extends Error {
 export async function analyzeLogin(
   login: string,
   deps: CliDeps,
-  platform: SupportedPlatform = 'github',
+  platform: SupportedPlatform | 'all' = 'github',
 ): Promise<AnalyzeResult> {
+  if (platform === 'all') {
+    // B-5 最小双源融合：分别采集 GitHub/Gitee，去重镜像后由同一内核分析（在线多源融合仍缓做）
+    const gh = await makeSource(deps, 'github').collect(login);
+    const ge = await makeSource(deps, 'gitee').collect(login);
+    const fused = fuseInputs(gh.input as AnalyzerInput, ge.input as AnalyzerInput, {
+      primary: 'github',
+      secondary: 'gitee',
+    });
+    const fusedProfile = analyze(fused.input, { profileId: randomUUID(), claimed: false, platform: 'github' });
+    return { profile: fusedProfile, meta: { ...gh.meta, fusion: fused.report } };
+  }
   const source = makeSource(deps, platform);
   const collected = await source.collect(login);
   const profile = analyze(collected.input as AnalyzerInput, {
@@ -97,9 +114,9 @@ export async function analyzeLogin(
 }
 
 /** 解析 --platform；缺省 github，非法值返回 undefined 由调用方报错退出 */
-function parsePlatform(value: string | undefined): SupportedPlatform | undefined {
+function parsePlatform(value: string | undefined): SupportedPlatform | 'all' | undefined {
   if (value === undefined) return 'github';
-  return value === 'github' || value === 'gitee' ? value : undefined;
+  return value === 'github' || value === 'gitee' || value === 'all' ? value : undefined;
 }
 
 function readBatchFile(file: string): string[] {
@@ -146,11 +163,11 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     const login = positionals[0];
     const platform = parsePlatform(values.platform);
     if (!platform) {
-      logger.error('--platform must be one of: github, gitee (default github)');
+      logger.error('--platform must be one of: github, gitee, all (default github; all = fused GitHub+Gitee, analyze only)');
       return 2;
     }
     if (!login) {
-      logger.error('Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] [--platform github|gitee]');
+      logger.error('Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] [--platform github|gitee|all]');
       return 2;
     }
     try {
@@ -188,7 +205,11 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     }
     const platform = parsePlatform(values.platform);
     if (!platform) {
-      logger.error('--platform must be one of: github, gitee (default github)');
+      logger.error('--platform must be one of: github, gitee, all (default github; all = fused GitHub+Gitee, analyze only)');
+      return 2;
+    }
+    if (platform === 'all') {
+      logger.error('batch does not support --platform all; run analyze <user> --platform all for a fused profile');
       return 2;
     }
     const lines: string[] = [];
