@@ -91,5 +91,13 @@
   "report.recommendations.basis": "Why this matches",
   "report.recommendations.fieldTitle": "Title",
   "report.recommendations.fieldTags": "Tags",
-  "report.recommendations.fieldDescription": "Description"
+  "report.recommendations.fieldDescription": "Description",
+  "demo.banner.label": "Demo mode",
+  "demo.banner.remaining": "You can start {remaining} more analysis in this demo",
+  "demo.banner.exit": "Exit demo",
+  "demo.starting": "Starting your demo…",
+  "demo.quotaExceeded": "All free demo analyses are used up; please try again after {resetAt}",
+  "demo.rateLimited": "Too many requests, please try again later",
+  "demo.presets.title": "No account handy? Explore these sample reports",
+  "demo.presets.view": "View sample report"
 }

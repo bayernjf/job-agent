@@ -38,6 +38,7 @@ JobAgent 当前状态，截至 2026-09-15。
 - [docs/design-behavior-diversity-20260915.md](docs/design-behavior-diversity-20260915.md) — 方案 B 设计：双源 events 聚合源无关 BehaviorEventSummary、analyzer 保守弱信号 narrow_activity_scope（规则 0.1→0.2）、缺失降级矩阵、校准与原子提交规划（现行）
 - [docs/design-skill-extraction-20260915.md](docs/design-skill-extraction-20260915.md) — B-4 技能标签精确提取：技术词典单一事实源、topics/描述/仓名/commit/PR 多信号、词边界防误匹配与别名归一、深度与置信度公式（现行）
 - [docs/design-cross-source-fusion-20260915.md](docs/design-cross-source-fusion-20260915.md) — B-5 跨源镜像去重与最小双源融合：共享 commit oid 识别镜像、fuseInputs 纯函数逐字段融合规则、CLI --platform all、在线多源融合缓做边界（现行）
+- [docs/design-demo-mode-20260915.md](docs/design-demo-mode-20260915.md) — 演示模式设计：anonymous/demo/user 三态 Principal、权限矩阵、会话+IP+Worker 三道配额闸、迁移 006–008 双方言、IDemoSessionsRepository、/demo/* 端点与 /analyze 配额改造、预置快照秒进、report/extension/cli 落地、5 项待拍板（现行，**步骤 1–9 已全部落地，见活跃待办 item17**）
 
 ## 当前状态
 
@@ -48,7 +49,7 @@ JobAgent 当前状态，截至 2026-09-15。
 - **2026-09-14 #10 匹配可解释性贯穿四层 + Gitee 证据源 Spike + CI actions 升 Node24（6 个功能原子提交，已 push、CI 全绿）**：①可解释匹配——matchJobs 拆出 title/tags/description 三项 fieldScores（权重 3/2/1、和=总分）与逐技能 skillHits（保留 matchedSkills 向后兼容），API 为 profileId 推荐挂逐技能 skillReasons（命中字段/depth/confidence）与去重 evidence 字典、每个命中可回溯画像证据，报告页增可展开「匹配依据」（分数分解+证据外链、旧响应健壮回退）与 4 个中英 key，扩展补类型/透传（面板匹配 UI 仍为第一档遗留待办）；E2E 全量 15。②Gitee Spike 仅出文档不实现（design-gitee-source-spike-20260914）：v5 REST-only、L0 充分/L1 基本可行、内核不改、实现仍缓做（deferred #12 更新触发条件）。③CI 四 action 升 node24 大版本清 Node20 deprecation，待 push 后 CI 验证。全仓 typecheck/单测/build/check-migrations/E2E 全绿。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`；脚手架、CI 修复（`e7730fe`）、调研文档、PRD v0.2/双市场与 M1·W1 持久化层（`73f5172`/`86f6d86`/`946c25c`/`2cb8842`）均已 push 至 `origin/dev`，本地与远端一致。
 - 落地页已上线：https://job-agent.bayjf.com （仓库 `bayernjf/job-agent-landing`，Cloudflare Pages，详见其 handoff）。
-- 待办：活跃待办 item 1–15 全部 ✅ 完成。下一步方向见 deferred-items.md（缓做项需外部条件）与用户后续拍板。
+- 待办：活跃待办 item 1–16 全部 ✅ 完成；**item 17 演示模式代码（步骤 1–9）已全部落地，仅剩需外部条件的拍板/部署/真人项（见 item17 与已知限制）**。下一步方向见 deferred-items.md（缓做项需外部条件）与用户后续拍板。
 
 ## 活跃待办（下一步）
 
@@ -134,9 +135,24 @@ JobAgent 当前状态，截至 2026-09-15。
     - 非目标（继续缓做）：不改 shared 契约与 PlatformSchema 枚举、**不改 RULE_VERSION**（融合是输入预处理、非真实性信号）、不动 API/Worker/report/extension 在线链路、不做跨源 PR/issue 同帖去重与 L2 内容比对；真实 GitHub+Gitee 双源 `--platform all` 端到端需进程内同时有 GITHUB_TOKEN 与 GITEE_TOKEN。
     - ✅ 已完成并 push（`b69372b` feat(analyzer) + `ce6e6ae` feat(cli) + `894b540` docs）。
 
+17. **演示模式 Demo Mode（2026-09-15，设计 [docs/design-demo-mode-20260915.md](docs/design-demo-mode-20260915.md)，九步原子提交，代码已全部落地、未 push）**：新用户免注册点「试用演示」即获服务端临时身份（HttpOnly Cookie `jobagent_demo`）进入**真实产品**，身份介于 anonymous 与 user 之间，只对"触发新分析"这个消耗平台配额的动作加三道闸。
+    - ✅ **步骤1 shared（`e391389`）**：REQUESTER_KINDS / DEMO_RATE_KINDS、三态 Principal、DemoMe/DemoPreset Zod 契约、DEMO_ERROR_CODES（DEMO_REQUIRED/QUOTA_EXCEEDED/RATE_LIMITED），shared 33 测试。
+    - ✅ **步骤2 双方言迁移（`3bc2a5a`）**：006_create_demo_sessions、007_create_demo_rate_events、008_add_requester_to_analysis_jobs，sqlite/postgres 同名对称、含 DOWN（SQLite 删列前先 DROP INDEX），check-migrations 0 warning。
+    - ✅ **步骤3 storage 仓储（`1351809`）**：IDemoSessionsRepository（create/getActive/单条条件 UPDATE 原子扣减 acquireAnalyzeSlot/release 补偿/incrementMatch/touch/exit/IP 滑窗 count+insert/purge*）、analysis_jobs 加 requester_kind/demo_session_id 与 deferToQueued、countRunningByRequesterKind，双方言实现，storage 83 测试（含真实 PG）。
+    - ✅ **步骤4 API（`1f9d527`）**：demo-config（可配默认、env 解析）、principal（Cookie/坏会话静默降级匿名/XFF 仅 trustProxy 采信/加盐 SHA-256 IP）、POST /demo/sessions（幂等+IP 会话窗）、GET /demo/me、GET /demo/presets、POST /demo/exit；POST /analyze 改为「schema→画像缓存（任何身份放行不扣配额）→匿名 403→demo 去重→IP analyze 窗 429→原子扣减→建任务（失败补偿回补）」，match 仅观测不拦截；CORS 配白名单才回显 Origin+credentials；docs/API.md 同步。api 68 测试。
+    - ✅ **步骤5 Worker（`1c58a6c`）**：claimNext 正式优先 FIFO；仅对 demo 任务做并发闸（默认 cap=1，超闸用专用 deferToQueued 退回且抵消 attempts、不写 errorMessage、不耗尽重试），formal(public) 永不被闸；DEMO_MAX_CONCURRENT/DEMO_BACKOFF_MS 可配。worker 16 测试。
+    - ✅ **步骤6 report（`ff23258`）**：全局 DemoBanner island（剩余次数+退出）、首页 PresetList（只显示 ready、点缓存快照秒进不耗配额）、AnalyzeForm 带 credentials、遇 403 自动建会话并重试一次、429 分配额耗尽/限流两文案、缓存命中直跳；8 个中英同构 i18n key（key 对齐守护）、全 `--ja-*` token；新增 e2e/demo-flow.spec.ts 5 用例，前端 E2E 共 21 全绿。
+    - ✅ **步骤7 extension（`0e6a710`）**：严格只在面板加一个普通新标签外链（rel=noopener）跳网页端语言首页，**扩展不携带/共享 demo Cookie**；1 个中英 key、token 样式，扩展 56 单测 + E2E 7 全绿。
+    - ✅ **步骤8 CLI + 环境变量（`29bb399`）**：`jobagent demo seed`（只读就绪检查，逐预置账号查 complete 快照、报告 ready/missing，规则同 /demo/presets，不依赖 token）、`jobagent demo cleanup [--retain-hours 24]`（清过期/退出会话与旧限流事件，供 cron）；.env.example 登记全部 DEMO_*/CORS_ALLOW_ORIGINS/TRUST_PROXY；cli 41 测试。
+    - ✅ **步骤9 文档回写（本提交）**：handoff / docs README 场景入口 / AGENTS 概览同步。
+    - **验证**：全仓 `pnpm -r typecheck/test/build` 全绿、check-migrations 8 对迁移对齐 0 warning、前端 E2E 21 + 扩展 E2E 7 全绿、git diff --check 干净；**未改 analyzer-core / AbilityProfile / RULE_VERSION（演示是身份与配额层，不动分析内核）**。
+    - ⏳ **剩余项均需外部条件（非纯代码可闭环，不得宣称已完成，对应设计 §16 五待拍板）**：①拍板配额具体数值（现走 demo-config 建议默认：3 次/会话、会话窗 5、分析窗 10/h、匹配窗 60/h、TTL 7d）；②拍板是否允许自选真实用户名（现按"允许"实现）；③拍板部署形态——A 同域反代（推荐）/ B 跨子域，**现状 CORS `origin:'*'` 与凭证 Cookie 不兼容，上线前必须配 CORS_ALLOW_ORIGINS + HTTPS + TRUST_PROXY**；④从 26 校准账号选 likely/mixed/suspicious 各 1 作为预置（不写死，走 DEMO_PRESET_LOGINS），并在有 GITHUB_TOKEN/GITEE_TOKEN 时实跑 `analyze` 预热 + `demo seed` 验证；⑤生产挂 `demo cleanup` 定时任务、真人试用与配额压测。
+
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
 ## 最近变更
+- 2026-09-15：**演示模式 Demo Mode 九步全部落地（9 个原子提交，本地未 push）**——按 [docs/design-demo-mode-20260915.md](docs/design-demo-mode-20260915.md) §15 一次性落完步骤 1–9：`0f25466` 设计文档、`e391389` shared 三态/契约、`3bc2a5a` 双方言迁移 006–008、`1351809` storage 演示仓储+原子扣减+deferToQueued、`1f9d527` API（/demo 四端点 + /analyze 配额闸 + CORS 凭证策略 + docs/API.md）、`1c58a6c` Worker（正式优先 + demo 并发闸，formal 永不被闸）、`ff23258` report（DemoBanner/PresetList/AnalyzeForm 自动建会话重试与 429 两分支 + 5 E2E）、`0e6a710` extension（仅网页端外链、不携带 Cookie）、`29bb399` CLI（demo seed 只读就绪检查 / demo cleanup 清理 + .env.example 登记）。核心语义：anonymous 只看公开缓存、demo=HttpOnly Cookie 临时会话、user 仅预留；唯一受限动作是"触发新分析"，画像缓存命中先于权限、任何身份放行不扣配额；三道闸＝会话单条条件 UPDATE 原子扣减 / IP 加盐哈希滑窗（落库不引 Redis）/ Worker demo 并发闸。验证：全仓 typecheck/test/build 全绿、check-migrations 8 对 0 warning、前端 E2E 21 + 扩展 E2E 7 全绿，**未改 analyzer-core 与 RULE_VERSION**。剩余仅外部条件项（§16 配额/TTL/部署形态拍板、选 3 预置账号并实跑预热、生产 cleanup cron、真人试用与压测），见活跃待办 item17。
+- 2026-09-15：**演示模式（Demo Mode）实现设计落文档（纯文档，未写实现代码、未拍板启动）**——新增 [docs/design-demo-mode-20260915.md](docs/design-demo-mode-20260915.md)（现行）。目标：新用户免注册点「试用演示」即以临时身份进入**真实产品**（真实采集分析、真实报告页），身份介于未登录与登录之间。方案要点：①三态 Principal（anonymous 只看公开 / demo=HttpOnly Cookie `jobagent_demo`+服务端 TTL 会话 / user 仅预留不实现，不重启 deferred 账号体系）；②权限矩阵——只读公开端点（profiles/exportable/job-postings/jobs 轮询/match）全放行，唯一受限的是"触发新分析"，画像缓存命中先于权限检查、任何身份放行且不扣配额（预置示例秒进靠它）；③配额三道闸——会话级单条条件 UPDATE 原子扣减（禁 select-then-update）、IP 滑动窗口（只存加盐 SHA-256、落库不引 Redis）、Worker claimNext 正式优先排序+demo 并发闸；④数据层规划迁移 006_create_demo_sessions / 007_create_demo_rate_events / 008_add_requester_to_analysis_jobs（双方言对称、含 DOWN），新增 IDemoSessionsRepository 与 analysis_jobs 的 requester_kind/demo_session_id 列；⑤API 新增 POST /demo/sessions、GET /demo/me、GET /demo/presets、POST /demo/exit，改造 POST /analyze（403 DEMO_REQUIRED / 429 DEMO_QUOTA_EXCEEDED / DEMO_RATE_LIMITED 结构化错误码）；⑥CLI demo seed（离线预置 likely/mixed/suspicious 三态快照）/ demo cleanup（日更 cron）；⑦report 新增 DemoBanner、首页预设入口、AnalyzeForm 自动建会话重试与 waitlist 引导（新文案走 t() 中英 key、样式只用 --ja-* token），扩展只加网页端外链、不携带 demo Cookie；⑧安全（256bit 随机会话 id、HttpOnly/SameSite=Lax/Secure、会话查询强制 sessionId scope、CSRF 边界）、9 步原子提交规划、分层测试清单。**5 项待拍板（文档 §16，均为建议值非已决策）**：配额数值（建议 3 次/会话等）、是否允许自选真实用户名（建议允许）、TTL（建议 7d）、同域反代 vs 跨子域（现状 CORS origin:'*' 与凭证 Cookie 不兼容，上线前必拍）、3 个预置账号选谁（从 26 校准账号挑、seed 复跑验证）。同步 docs/README 场景入口。
 - 2026-09-15：**B-5 跨源镜像去重 + 最小双源融合落地（已 push，`b69372b`+`ce6e6ae`+`894b540`）**——analyzer-core 新增纯函数 `fuseInputs`（共享 commit oid 为铁证识别镜像、一对一合并；仅同名无共享 oid 只进 `suspectedMirrors` 不并；镜像仓 topics 并集 / star·fork 取 max 不相加 / 重复 oid 去重计 dedupedCommitCount / 镜像独有 commit·PR 重映射 repoRef / evidence 只重写 evidenceId 的 repo 段并保留 Gitee 原始 url / contributions 以主源为基底不与辅源相加 / behaviorEvents 计数相加而跨仓广度取 max / dataWindow 取并），FusionReport 仅随 CLI `meta.fusion` 输出、不进持久化画像；CLI 新增 `analyze --platform all`（双源 collect→fuseInputs→同一内核 analyze，CliDeps 分平台 sources 注入点，batch 显式拒 all）。刻意不碰在线 API/Worker 单源链路、不改 shared 契约与 RULE_VERSION，在线多源融合 / 跨源 PR·issue 同帖去重 / L2 内容比对仍缓做（deferred #12 已更新触发条件）。fusion 7 单测 + cli 2 用例，analyzer-core 45→52、全仓 442 单测全绿，typecheck/build/git diff --check 全过；真实双源端到端待 GITEE_TOKEN，当前以确定性夹具为准。设计 design-cross-source-fusion-20260915。
 - 2026-09-15：**B-4 技能标签精确提取落地（已 push，`e1ffd81`+`86dfb62`）**——新增 analyzer-core 技术词典 `skills-catalog.ts`（约 54 framework + 7 domain 单一事实源），重写 `skills.ts` framework/domain 提取：topics 精确 + description/仓名/commit/PR 标题词边界多信号、别名归一（k8s→kubernetes、pg→postgresql）、行为证据挂 commit:/pr:、深度与置信度分层；language 段、SkillTag 契约、RULE_VERSION 均不动。skills 测试 3→7、analyzer-core 45 全绿，全仓 typecheck/test/build 全绿；真实 bayernjf 14→17 标签（新检出 postgresql/docker/electron/next.js）。设计 design-skill-extraction-20260915，同步 docs/README 场景入口。
 - 2026-09-15：**方案 B GitHub 侧真实回归（26 账号，零误伤）**——用 `gh auth token` 跑 `cli batch data/regress-accounts.txt`（22 正 + 4 负），26/26 成功：`narrow_activity_scope` **零触发零误伤**，逐账号 confidence 与第三轮校准一致（规则 0.2 无回归），events 聚合真实生效（bayernjf 100 事件/18 仓/4 型）；观察到 L1 采样恒取约 10 仓致 commitRepoCount≈10、近期无公开事件账号正常降级。**双源（GitHub 26 + Gitee 9）均零误伤闭环，无需调阈值**。回归产物 data/regress-*.jsonl 为真实账号数据、gitignore 不入库。
@@ -233,10 +249,11 @@ JobAgent 当前状态，截至 2026-09-15。
 - **P1 扩展开放项**：分发策略已建议 **CRX/unpacked 手动加载先行**（用户"好的"采纳，正式图标留 CWS 上架前，当前为占位蓝底 L 形）；**Workday 端到端待验证**——实测 4 家真实租户（NVIDIA 302 官网、GM 维护页、Walmart/FMC 只渲染导航壳且 cxs API 反爬 403）无法取得可填表单，适配器已具备 shadow DOM 定位 + first/last 拆分，待找到直渲染表单的真实 Workday 租户页再端到端验证（触发条件：某 Workday 客户岗位页直接渲染 `data-automation-id` 表单且 API 可访问）；Greenhouse 表单的 summary 需映射到 question_* 自定义字段（当前 cover_letter 为 file input 不命中，未填）；填充字段命中依赖用户本地补填（email/phone/linkedin/location，仅存本机 localStorage）。
 - GitHub API 限额为 2026-09-10 官方文档核实值，开工前需复核非企业 GitHub App 精确额度（来源见技术选型文档）。
 - 托管价格、LLM 厂商/单价待当期 spike；本机访问 GitHub 直连不稳定（全局代理 127.0.0.1:7897 常未开启，需临时直连重试，勿改全局配置）。
+- **演示模式上线前外部项（代码已闭环，见 item17 / 设计 §16）**：配额与 TTL 数值待拍板（当前为可配建议默认）；部署形态 A 同域反代（推荐）/B 跨子域待定——**现状 CORS `origin:'*'` 与凭证 Cookie 不兼容，生产必须配 CORS_ALLOW_ORIGINS + HTTPS，反代后置 TRUST_PROXY=true**；3 个预置示例账号待从 26 校准账号选定并在有 token 时 `analyze` 预热 + `jobagent demo seed` 校验；生产需挂 `jobagent demo cleanup` 定时任务；真人试用与配额压测未做。
 
 ## Git 状态
 
 - 当前工作分支：`dev`（track `origin/dev`）；分支策略：日常改动直接在 `dev` 提交，`main` 仍需 PR（细节见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)）。
-- **截至 2026-09-15**：本地 `dev` 与 `origin/dev` 完全同步（0 ahead / 0 behind），工作区干净。所有批次（Gitee G-A/G-B、events 方案 A、行为多样性方案 B、B-4 技能提取、worker 弹性增强、Docker 验证、文档同步等）均已 push 至 `origin/dev`。
-- `origin/dev` 顶部为 `86dfb62`（docs: record B-4 skill extraction design and progress）。
+- **截至 2026-09-15**：演示模式九步提交（`0f25466` 设计 + `e391389`..`29bb399` 步骤 1–8）与本次文档回写**均在本地 `dev`、未 push**（提交前本地领先 `origin/dev` 9 个功能提交）；此前各批次（Gitee、events、行为多样性、B-4/B-5、工程化等）均已 push。
+- `origin/dev` 顶部为 `86dfb62`；本地 `dev` 顶部为演示模式收尾提交。
 - 历史批次并入 main 路径：PR #23（第一档匹配接线）、PR #24（工程化组合一）、PR #27（扩展匹配 UI + E2E）、PR #30（Gitee G-A）、PR #31（Gitee G-B）。

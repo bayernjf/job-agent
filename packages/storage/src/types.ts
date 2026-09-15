@@ -1,5 +1,6 @@
 import type {
   IAnalysisJobsRepository,
+  IDemoSessionsRepository,
   IEvidenceRepository,
   IJobPostingsRepository,
   IProfilesRepository,
@@ -31,6 +32,7 @@ export interface StorageContext {
   evidence: IEvidenceRepository;
   waitlist: IWaitlistRepository;
   jobPostings: IJobPostingsRepository;
+  demoSessions: IDemoSessionsRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /** 关闭底层连接/连接池 */

@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, lt, or, sql } from 'drizzle-orm';
+import type { RequesterKind } from '@jobagent/shared';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredJob,
@@ -9,9 +10,12 @@ import {
 import type { IAnalysisJobsRepository } from '../repositories/analysis-jobs.js';
 import { analysisJobs } from './schema.js';
 
+/** 正式（非 demo）任务优先认领的排序表达式：demo 排后，同级再按创建时间 FIFO */
+const formalFirst = sql`CASE WHEN ${analysisJobs.requesterKind} = 'demo' THEN 1 ELSE 0 END`;
+
 /**
  * analysis_jobs 仓储的 SQLite 实现（异步接口、同步驱动）。
- * 认领操作为本地同步事务：queued -> running，attempts+1，只认领最老一行。
+ * 认领操作为本地同步事务：queued -> running，attempts+1，正式优先、同级最老一行。
  */
 export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
   constructor(private readonly db: BetterSQLite3Database) {}
@@ -25,6 +29,8 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
         subjectLogin: job.subjectLogin,
         status: 'queued',
         attempts: 0,
+        requesterKind: job.requesterKind ?? 'public',
+        demoSessionId: job.demoSessionId ?? null,
       })
       .run();
   }
@@ -50,7 +56,8 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
             lt(analysisJobs.attempts, 3), // 避免无限重试
           ),
         )
-        .orderBy(asc(analysisJobs.createdAt))
+        // 正式（public/未来 user）优先于 demo，同级再按创建时间 FIFO
+        .orderBy(formalFirst, asc(analysisJobs.createdAt))
         .limit(1)
         .get();
 
@@ -82,6 +89,20 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
 
     if (!claimedId) return null;
     return (await this.getById(claimedId)) ?? null;
+  }
+
+  async countRunningByRequesterKind(kind: RequesterKind | 'public'): Promise<number> {
+    const row = this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(analysisJobs)
+      .where(
+        and(
+          eq(analysisJobs.status, 'running'),
+          eq(analysisJobs.requesterKind, kind),
+        ),
+      )
+      .get();
+    return Number(row?.count ?? 0);
   }
 
   async updateStage(id: string, stage: JobStage): Promise<void> {
@@ -143,6 +164,26 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
       })
       .where(eq(analysisJobs.id, id))
       .run();
+  }
+
+  async deferToQueued(id: string, note: string): Promise<void> {
+    const now = new Date().toISOString();
+    this.db
+      .update(analysisJobs)
+      .set({
+        status: 'queued',
+        stage: null,
+        claimedBy: null,
+        startedAt: null,
+        finishedAt: null,
+        // 抵消本次 claimNext 的 attempts+1，反复 defer 不耗尽重试预算
+        attempts: sql`MAX(${analysisJobs.attempts} - 1, 0)`,
+        updatedAt: now,
+        // note 仅作运维备注，不进 errorMessage（非失败）
+      })
+      .where(eq(analysisJobs.id, id))
+      .run();
+    void note;
   }
 
   async reclaimStaleRunning(maxAgeMs: number): Promise<number> {

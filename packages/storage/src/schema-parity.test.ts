@@ -31,7 +31,15 @@ function columnMap(table: unknown): Record<string, string> {
   return out;
 }
 
-const TABLES = ['profiles', 'analysisJobs', 'evidence', 'waitlist', 'jobPostings'] as const;
+const TABLES = [
+  'profiles',
+  'analysisJobs',
+  'evidence',
+  'waitlist',
+  'jobPostings',
+  'demoSessions',
+  'demoRateEvents',
+] as const;
 
 describe('sqlite/postgres schema parity', () => {
   it.each(TABLES)('table %s exposes identical JS keys and physical columns', (tableKey) => {

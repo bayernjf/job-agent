@@ -361,3 +361,127 @@ describe('runWorker', () => {
     expect(source.collect).not.toHaveBeenCalled();
   });
 });
+
+describe('demo concurrency gate', () => {
+  async function createJob(
+    repos: WorkerRepos,
+    id: string,
+    login: string,
+    requesterKind: 'public' | 'demo' = 'public',
+  ): Promise<void> {
+    await repos.jobs.create({
+      id,
+      subjectLogin: login,
+      requesterKind,
+      demoSessionId: requesterKind === 'demo' ? 'demo-session-1' : undefined,
+    });
+  }
+
+  it('processes the first demo job within the cap', async () => {
+    const repos = await freshRepos();
+    await createJob(repos, 'demo-1', 'demo-one', 'demo');
+    const source = makeFakeSource();
+
+    let loops = 0;
+    await runWorker({
+      repos,
+      sources: asSources(source),
+      workerId: 'w',
+      pollIntervalMs: 10,
+      demoMaxConcurrent: 1,
+      sleep: async () => {},
+      shouldContinue: () => (loops += 1) <= 2,
+    });
+
+    expect((await repos.jobs.getById('demo-1'))!.status).toBe('succeeded');
+  });
+
+  it('defers an over-cap demo job without burning attempts and backs off', async () => {
+    const repos = await freshRepos();
+    await createJob(repos, 'demo-a', 'demo-a', 'demo');
+    const runningA = (await repos.jobs.claimNext('w'))!; // A 已在 running
+    await createJob(repos, 'demo-b', 'demo-b', 'demo');
+    const source = makeFakeSource();
+    const sleep = vi.fn(async () => {});
+
+    let loops = 0;
+    await runWorker({
+      repos,
+      sources: asSources(source),
+      workerId: 'w',
+      pollIntervalMs: 10,
+      demoMaxConcurrent: 1,
+      demoBackoffMs: 50,
+      sleep,
+      shouldContinue: () => (loops += 1) <= 1,
+    });
+
+    // B 被退回队列、attempts 抵消回 0、未采集、按 backoff 退避
+    const b = (await repos.jobs.getById('demo-b'))!;
+    expect(b.status).toBe('queued');
+    expect(b.attempts).toBe(0);
+    expect(b.claimedBy).toBeNull();
+    expect(b.errorMessage).toBeNull();
+    expect(source.collect).not.toHaveBeenCalled();
+    expect(sleep).toHaveBeenCalledWith(50);
+
+    // A 释放后，B 仍可被认领并成功（证明反复 defer 没耗尽重试预算）
+    await repos.jobs.succeed(runningA.id, 'prof-a');
+    let loops2 = 0;
+    await runWorker({
+      repos,
+      sources: asSources(source),
+      workerId: 'w',
+      pollIntervalMs: 10,
+      demoMaxConcurrent: 1,
+      sleep: async () => {},
+      shouldContinue: () => (loops2 += 1) <= 2,
+    });
+    expect((await repos.jobs.getById('demo-b'))!.status).toBe('succeeded');
+  });
+
+  it('never blocks formal (public) jobs even when demo cap is full', async () => {
+    const repos = await freshRepos();
+    await createJob(repos, 'demo-a', 'demo-a', 'demo');
+    await repos.jobs.claimNext('w'); // 一个 demo 已在 running，占满 cap=1
+    await createJob(repos, 'formal-1', 'formal-one', 'public');
+    const source = makeFakeSource();
+
+    let loops = 0;
+    await runWorker({
+      repos,
+      sources: asSources(source),
+      workerId: 'w',
+      pollIntervalMs: 10,
+      demoMaxConcurrent: 1,
+      sleep: async () => {},
+      shouldContinue: () => (loops += 1) <= 2,
+    });
+
+    expect((await repos.jobs.getById('formal-1'))!.status).toBe('succeeded');
+    expect(source.collect).toHaveBeenCalledTimes(1);
+  });
+
+  it('claims a later formal job before an earlier queued demo job', async () => {
+    const repos = await freshRepos();
+    await createJob(repos, 'demo-first', 'demo-first', 'demo'); // 先入队
+    await createJob(repos, 'formal-later', 'formal-later', 'public'); // 后入队
+    const source = makeFakeSource();
+
+    let loops = 0;
+    await runWorker({
+      repos,
+      sources: asSources(source),
+      workerId: 'w',
+      pollIntervalMs: 10,
+      demoMaxConcurrent: 1,
+      sleep: async () => {},
+      shouldContinue: () => (loops += 1) <= 3,
+    });
+
+    // 正式任务先被采集，随后 demo 在 cap 内也被处理
+    expect(source.collect.mock.calls[0]![0]).toBe('formal-later');
+    expect((await repos.jobs.getById('formal-later'))!.status).toBe('succeeded');
+    expect((await repos.jobs.getById('demo-first'))!.status).toBe('succeeded');
+  });
+});

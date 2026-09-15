@@ -24,6 +24,17 @@ test.describe('extension match panel', () => {
     await expect(extPage.getByPlaceholder('e.g. sindresorhus')).toBeVisible();
   });
 
+  test('links to the web demo without sharing extension credentials', async ({ extPage, openPanel }) => {
+    await openPanel();
+    const link = extPage.locator('.ja-web-demo');
+    await expect(link).toBeVisible();
+    await expect(link).toContainText(/free demo/i);
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', /noopener/);
+    // 指向网页端语言首页
+    await expect(link).toHaveAttribute('href', /\/en\/$/);
+  });
+
   test('renders three-tier match list with score class, title@company and skill chips', async ({
     extPage,
     openPanel,

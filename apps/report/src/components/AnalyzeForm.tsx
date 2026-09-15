@@ -23,6 +23,12 @@ interface AnalyzeFormProps {
   attemptsLabel: string;
   platformGithubLabel: string;
   platformGiteeLabel: string;
+  /** 演示模式：首次 403 DEMO_REQUIRED 时自动建会话的提示文案 */
+  startingDemoLabel: string;
+  /** 演示模式：会话分析配额用尽（429 DEMO_QUOTA_EXCEEDED，含 {resetAt}） */
+  quotaExceededLabel: string;
+  /** 演示模式：IP 限流（429 DEMO_RATE_LIMITED） */
+  rateLimitedLabel: string;
 }
 
 type Phase = 'idle' | 'creating' | 'polling' | 'done' | 'error';
@@ -54,6 +60,9 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     attemptsLabel,
     platformGithubLabel,
     platformGiteeLabel,
+    startingDemoLabel,
+    quotaExceededLabel,
+    rateLimitedLabel,
   } = props;
 
   const [username, setUsername] = useState('');
@@ -74,7 +83,9 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     (jobId: string) => {
       const timer = setTimeout(async () => {
         try {
-          const res = await fetch(`${apiBase}/jobs/${jobId}`);
+          const res = await fetch(`${apiBase}/jobs/${jobId}`, {
+            credentials: 'same-origin',
+          });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const job = (await res.json()) as {
             status: string;
@@ -138,21 +149,77 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
       setStatusText(pollingLabel);
 
       try {
-        const res = await fetch(`${apiBase}/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: trimmed, platform }),
-        });
+        const postAnalyze = () =>
+          fetch(`${apiBase}/analyze`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: trimmed, platform }),
+          });
+
+        let res = await postAnalyze();
+
+        // 匿名触发新分析被拒：自动开启一次演示会话后重发（仅重试一次）
+        if (res.status === 403) {
+          const forbidden = (await res.json().catch(() => null)) as { code?: string } | null;
+          if (forbidden?.code === 'DEMO_REQUIRED') {
+            setStatusText(startingDemoLabel);
+            const started = await fetch(`${apiBase}/demo/sessions`, {
+              method: 'POST',
+              credentials: 'same-origin',
+            });
+            if (started.ok) res = await postAnalyze();
+          }
+        }
+
+        // 演示配额 / IP 限流：给出可理解的文案，不再继续
+        if (res.status === 429) {
+          const limited = (await res.json().catch(() => ({}))) as {
+            code?: string;
+            resetAt?: string;
+          };
+          setPhase('error');
+          if (limited.code === 'DEMO_QUOTA_EXCEEDED') {
+            const resetText = limited.resetAt
+              ? new Date(limited.resetAt).toLocaleString(locale)
+              : '';
+            setErrorText(quotaExceededLabel.replace('{resetAt}', resetText));
+          } else {
+            setErrorText(rateLimitedLabel);
+          }
+          return;
+        }
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { jobId: string };
+        const data = (await res.json()) as { jobId?: string; profileId?: string; cached?: boolean };
+
+        // 画像缓存命中：直接跳报告页，无需轮询
+        if (data.profileId) {
+          setPhase('done');
+          window.location.href = `/${locale}/report/${data.profileId}`;
+          return;
+        }
+
         setPhase('polling');
-        pollJob(data.jobId);
+        pollJob(data.jobId!);
       } catch (err) {
         setPhase('error');
         setErrorText(err instanceof Error ? err.message : String(err));
       }
     },
-    [username, apiBase, invalidLabel, pollingLabel, pollJob, stopPolling],
+    [
+      username,
+      platform,
+      locale,
+      apiBase,
+      invalidLabel,
+      pollingLabel,
+      pollJob,
+      stopPolling,
+      startingDemoLabel,
+      quotaExceededLabel,
+      rateLimitedLabel,
+    ],
   );
 
   const handleReset = useCallback(() => {
