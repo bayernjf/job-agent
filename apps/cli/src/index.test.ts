@@ -101,6 +101,100 @@ function fakeCollected(login: string): GitHubCollectedData {
   };
 }
 
+/** 自洽的双源 fixture：commit.repoName 与 repoRef 对齐，供 --platform all 融合测试 */
+function fusableInput(login: string, platform: 'github' | 'gitee', oids: string[]): GitHubCollectedData['input'] {
+  const ref = `${login}/proj`;
+  return {
+    subject: {
+      login,
+      displayName: `Person ${login}`,
+      avatarUrl: null,
+      profileUrl: `https://example.com/${login}`,
+      bio: null,
+      company: null,
+      location: null,
+      email: null,
+      createdAt: '2024-01-01T00:00:00Z',
+      followers: 1,
+      following: 0,
+      publicRepos: 1,
+    },
+    dataWindow: { since: '2024-01-01T00:00:00Z', until: '2026-01-01T00:00:00Z' },
+    repos: [
+      {
+        name: 'proj',
+        ownerLogin: login,
+        url: `https://example.com/${ref}`,
+        isFork: false,
+        isArchived: false,
+        primaryLanguage: 'TypeScript',
+        topics: [],
+        description: null,
+        stargazerCount: 1,
+        forkCount: 0,
+        pushedAt: '2025-12-01T00:00:00Z',
+        createdAt: '2024-01-01T00:00:00Z',
+      },
+    ],
+    commits: oids.map((oid, i) => ({
+      oid,
+      committedAt: `2025-1${i}-01T00:00:00Z`,
+      authorName: `Person ${login}`,
+      authorEmail: null,
+      repoName: ref,
+      messageHeadline: 'wip',
+    })),
+    pullRequests: [],
+    issues: [],
+    contributions: {
+      totalCommitContributions: oids.length,
+      totalPullRequestContributions: 0,
+      totalIssueContributions: 0,
+      totalRepositoryContributions: 1,
+      contributionMonths: [],
+    },
+    evidence: [
+      {
+        evidenceId: `user:${login}`,
+        sourcePlatform: platform,
+        sourceType: 'contribution',
+        url: `https://example.com/${login}`,
+        occurredAt: '2024-01-01T00:00:00Z',
+        layer: 'L0',
+        claim: 'u',
+        rawRef: login,
+      },
+      {
+        evidenceId: `repo:${ref}`,
+        sourcePlatform: platform,
+        sourceType: 'repo',
+        url: `https://example.com/${ref}`,
+        occurredAt: '2025-12-01T00:00:00Z',
+        layer: 'L0',
+        claim: 'r',
+        rawRef: ref,
+      },
+      ...oids.map((oid) => ({
+        evidenceId: `commit:${ref}:${oid}`,
+        sourcePlatform: platform,
+        sourceType: 'commit' as const,
+        url: `https://example.com/${ref}/commit/${oid}`,
+        occurredAt: '2025-11-01T00:00:00Z',
+        layer: 'L1' as const,
+        claim: 'wip',
+        rawRef: `${ref}#${oid}`,
+      })),
+    ],
+    missing: [],
+    collectedAt: '2026-09-11T00:00:00.000Z',
+  };
+}
+
+function fuseCollected(login: string, platform: 'github' | 'gitee', oids: string[]): GitHubCollectedData {
+  const input = fusableInput(login, platform, oids);
+  return { input, evidence: input.evidence, meta: { budgetUsed: { graphqlPoints: 1, restCalls: 1 }, missing: [] } };
+}
+
 function capture(): { stdout: string; stderr: string; deps: (source: CliDeps['source']) => CliDeps } {
   let out = '';
   let err = '';
@@ -148,6 +242,43 @@ describe('cli run', () => {
     const parsed = JSON.parse(c.stdout) as AnalyzeResult;
     expect(parsed.profile.subject.platform).toBe('gitee');
     expect(parsed.profile.caveats.some((m) => m.includes('Public Gitee data only'))).toBe(true);
+  });
+
+  it('analyze --platform all fuses GitHub and Gitee and reports mirrors', async () => {
+    const c = capture();
+    const shared = 'x'.repeat(40);
+    const giteeOnly = 'y'.repeat(40);
+    const deps: CliDeps = {
+      ...c.deps(undefined),
+      sources: {
+        github: { collect: async () => fuseCollected('alice', 'github', [shared]) },
+        gitee: { collect: async () => fuseCollected('alice', 'gitee', [shared, giteeOnly]) },
+      },
+    };
+    const code = await run(['analyze', 'alice', '--platform', 'all'], deps);
+    expect(code).toBe(0);
+    const parsed = JSON.parse(c.stdout) as AnalyzeResult;
+    expect(parsed.meta.fusion).toBeDefined();
+    expect(parsed.meta.fusion?.mergedMirrors).toHaveLength(1);
+    // 共享 oid 去重 1 条，Gitee 独有提交保留
+    expect(parsed.meta.fusion?.dedupedCommitCount).toBe(1);
+    expect(parsed.meta.fusion?.counts.fusedCommits).toBe(2);
+    // 融合画像以主源 GitHub 标识
+    expect(parsed.profile.subject.platform).toBe('github');
+  });
+
+  it('rejects --platform all for batch', async () => {
+    const c = capture();
+    const { writeFileSync, rmSync } = await import('node:fs');
+    const file = `${import.meta.dirname}/tmp-batch-all.txt`;
+    writeFileSync(file, 'alice\n', 'utf8');
+    const code = await run(
+      ['batch', file, '--platform', 'all'],
+      c.deps({ collect: async (login) => fakeCollected(login) }),
+    );
+    rmSync(file, { force: true });
+    expect(code).toBe(2);
+    expect(c.stderr).toContain('batch does not support --platform all');
   });
 
   it('exits 2 on an unknown --platform value', async () => {

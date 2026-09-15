@@ -18,6 +18,8 @@ export { RULE_VERSION } from './rules.js';
 export { SIGNAL_CODES } from './rules.js';
 export { computeAuthenticity, computeAuthenticitySignals } from './signals.js';
 export { computeSkillTags } from './skills.js';
+export { fuseInputs } from './fusion.js';
+export type { FusionReport, FusionResult, MirrorPair, SuspectedMirror } from './fusion.js';
 export { computeActivity } from './activity.js';
 export { generateInterviewQuestions } from './questions.js';
 export { computeSummary } from './summary.js';
