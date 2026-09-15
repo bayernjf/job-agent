@@ -4,14 +4,18 @@ import {
   buildContributions,
   buildDataWindow,
   mapCommits,
+  mapEventsToCommits,
   mapIssues,
   mapPullRequests,
   mapRepos,
   mapSubject,
+  mergeSampledAndEventCommits,
+  summarizeGiteeEvents,
   toUtc,
 } from './mappers.js';
 import type {
   GiteeCommitRaw,
+  GiteeEventRaw,
   GiteeIssueRaw,
   GiteePullRaw,
   GiteeRepoRaw,
@@ -227,5 +231,103 @@ describe('aggregation', () => {
     const w = buildDataWindow('2023-12-31T16:00:00.000Z', repos, commits);
     expect(w.since).toBe('2023-12-31T16:00:00.000Z');
     expect(w.until).toBe('2026-03-02T01:00:00.000Z');
+  });
+});
+
+describe('events behavior stream (§4.11)', () => {
+  const pushEvent = (over: Partial<GiteeEventRaw>): GiteeEventRaw => ({
+    id: 'e1',
+    type: 'PushEvent',
+    actor: { login: 'alice' },
+    repo: { full_name: 'alice/other' },
+    created_at: '2026-04-01T12:00:00+08:00',
+    payload: {
+      commits: [
+        { sha: 'ddd444', message: 'from event\nbody', author: { name: 'Plaintext', email: 'secret@qq.com' } },
+        { sha: 'eee555', author: { name: 'x', email: 'y@qq.com' } },
+        { message: 'missing sha', author: { name: 'z' } },
+      ],
+    },
+    ...over,
+  });
+
+  it('summarizes self events into repo breadth, type counts and time window', () => {
+    const events: GiteeEventRaw[] = [
+      { type: 'PushEvent', actor: { login: 'alice' }, repo: { full_name: 'alice/a' }, created_at: '2026-04-01T12:00:00+08:00' },
+      { type: 'PushEvent', actor: { login: 'alice' }, repo: { full_name: 'alice/a' }, created_at: '2026-04-02T12:00:00+08:00' },
+      { type: 'PullRequestEvent', actor: { login: 'alice' }, repo: { full_name: 'org/b' }, created_at: '2026-04-03T12:00:00+08:00' },
+      { type: null, actor: { login: 'alice' }, repo: { full_name: 'alice/a' }, created_at: '2026-04-03T12:00:00+08:00' },
+      { type: 'PushEvent', actor: { login: 'someone-else' }, repo: { full_name: 'x/y' }, created_at: '2026-04-03T12:00:00+08:00' },
+    ];
+    const s = summarizeGiteeEvents(events, 'alice');
+    expect(s).not.toBeNull();
+    expect(s?.totalEvents).toBe(4); // 他人事件排除；null type 计数但不进 typeCounts
+    expect(s?.distinctRepoCount).toBe(2); // alice/a 与 org/b
+    expect(s?.eventTypeCounts).toEqual({ PushEvent: 2, PullRequestEvent: 1 });
+    expect(s?.since).toBe('2026-04-01T04:00:00.000Z');
+    expect(s?.until).toBe('2026-04-03T04:00:00.000Z');
+  });
+
+  it('returns null when there are no self events', () => {
+    expect(summarizeGiteeEvents([], 'alice')).toBeNull();
+    expect(
+      summarizeGiteeEvents([{ type: 'PushEvent', actor: { login: 'bob' }, repo: { full_name: 'b/b' } }], 'alice'),
+    ).toBeNull();
+  });
+
+  it('maps only PushEvent commits, strips PII, uses actor login and event time', () => {
+    const out = mapEventsToCommits([pushEvent({})], 'alice');
+    expect(out).toHaveLength(2); // 缺 sha 的条目跳过
+    expect(out[0]).toMatchObject({
+      oid: 'ddd444',
+      repoName: 'alice/other',
+      authorName: 'alice', // 动作发出者，而非 payload 明文 name
+      authorEmail: null, // payload 明文邮箱被剥离
+      messageHeadline: 'from event', // 只取首行
+      committedAt: '2026-04-01T04:00:00.000Z',
+    });
+  });
+
+  it('ignores non-Push events, null type, other actors and missing repo/time', () => {
+    const events: GiteeEventRaw[] = [
+      { type: 'IssueCommentEvent', actor: { login: 'alice' }, repo: { full_name: 'alice/other' }, created_at: '2026-04-01T12:00:00+08:00', payload: {} },
+      { type: null, actor: { login: 'alice' }, repo: { full_name: 'alice/other' }, created_at: '2026-04-01T12:00:00+08:00' },
+      pushEvent({ id: 'e2', actor: { login: 'someone-else' } }),
+      pushEvent({ id: 'e3', repo: null }),
+      pushEvent({ id: 'e4', created_at: 'bad-date' }),
+    ];
+    expect(mapEventsToCommits(events, 'alice')).toHaveLength(0);
+  });
+
+  it('merges with sampled commits by repo:oid, sampled wins, sorted by time', () => {
+    const sampled = mapCommits(
+      [{ sha: 'aaa111', commit: { author: { date: '2026-03-01T10:00:00+08:00' } }, author: { login: 'alice' } }],
+      'alice/core',
+    );
+    const fromEvents = mapEventsToCommits(
+      [
+        pushEvent({ id: 'dup', repo: { full_name: 'alice/core' }, created_at: '2026-05-01T10:00:00+08:00', payload: { commits: [{ sha: 'aaa111' }] } }),
+        pushEvent({ id: 'new', repo: { full_name: 'alice/other' }, created_at: '2026-04-01T12:00:00+08:00', payload: { commits: [{ sha: 'ddd444' }] } }),
+      ],
+      'alice',
+    );
+    const merged = mergeSampledAndEventCommits(sampled, fromEvents);
+    expect(merged).toHaveLength(2);
+    // 采样优先：重复 repo:oid 保留采样的 03-01 时间，而非 events 的 05-01
+    const dup = merged.find((c) => c.oid === 'aaa111');
+    expect(dup?.committedAt).toBe('2026-03-01T02:00:00.000Z');
+    // 按时间升序
+    expect(merged.map((c) => c.oid)).toEqual(['aaa111', 'ddd444']);
+  });
+
+  it('does not dedupe the same sha when it belongs to different repos', () => {
+    const sampled = [
+      { oid: 's1', committedAt: '2026-03-01T02:00:00.000Z', authorName: null, authorEmail: null, repoName: 'alice/a', messageHeadline: '' },
+    ];
+    const fromEvents = [
+      { oid: 's1', committedAt: '2026-04-01T02:00:00.000Z', authorName: 'alice', authorEmail: null, repoName: 'alice/b', messageHeadline: '' },
+    ];
+    const merged = mergeSampledAndEventCommits(sampled as never, fromEvents as never);
+    expect(merged).toHaveLength(2);
   });
 });

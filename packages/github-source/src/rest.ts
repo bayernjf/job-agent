@@ -5,7 +5,7 @@
  * - 极简 ETag 条件请求缓存（GraphQL 官方不支持 ETag，REST 层做）。
  */
 
-import type { AnalyzerCommit } from '@jobagent/analyzer-core';
+import type { AnalyzerCommit, BehaviorEventSummary } from '@jobagent/analyzer-core';
 import type { Octokit } from 'octokit';
 
 export interface RestCommitRow {
@@ -42,6 +42,61 @@ export function parseRestCommits(rows: RestCommitRow[], owner: string, repo: str
       repoName: `${owner}/${repo}`,
       messageHeadline: (r.commit?.message ?? '').split('\n')[0] ?? '',
     }));
+}
+
+/** GET /users/{username}/events/public 单条事件（只声明使用到的字段） */
+export interface GitHubEventRow {
+  type?: string | null;
+  actor?: { login?: string | null } | null;
+  repo?: { name?: string | null } | null; // GitHub repo.name 已是 owner/name
+  created_at?: string | null;
+}
+
+/** 单次取第 1 页公开事件（per_page=100）：只需多样性概览，不深翻（设计 §4.2，REST +1） */
+export async function fetchPublicEventsRest(
+  octokit: Octokit,
+  login: string,
+): Promise<GitHubEventRow[]> {
+  const res = await octokit.request('GET /users/{username}/events/public', {
+    username: login,
+    per_page: 100,
+  });
+  return res.data as GitHubEventRow[];
+}
+
+/**
+ * 汇总 public events 为源无关 BehaviorEventSummary（方案 B-1）。该端点即本人公开事件，
+ * 仍防御性过滤 actor=login；repo.name 已是 owner/name、created_at 为 UTC Z；无有效事件返回 null。
+ */
+export function summarizeGhEvents(
+  rows: GitHubEventRow[],
+  login: string,
+): BehaviorEventSummary | null {
+  const typeCounts = new Map<string, number>();
+  const repos = new Set<string>();
+  let earliest: string | null = null;
+  let latest: string | null = null;
+  let total = 0;
+  for (const ev of rows) {
+    if (!ev) continue;
+    if (ev.actor?.login && ev.actor.login.toLowerCase() !== login.toLowerCase()) continue;
+    total += 1;
+    if (ev.type) typeCounts.set(ev.type, (typeCounts.get(ev.type) ?? 0) + 1);
+    if (ev.repo?.name) repos.add(ev.repo.name);
+    const at = ev.created_at ?? null;
+    if (at && Number.isFinite(Date.parse(at))) {
+      if (!earliest || at < earliest) earliest = at;
+      if (!latest || at > latest) latest = at;
+    }
+  }
+  if (total === 0) return null;
+  return {
+    totalEvents: total,
+    distinctRepoCount: repos.size,
+    eventTypeCounts: Object.fromEntries(typeCounts),
+    ...(earliest ? { since: earliest } : {}),
+    ...(latest ? { until: latest } : {}),
+  };
 }
 
 /** 用户公开 email（GitHub 只在用户公开该字段时返回；绝大多数为 null） */

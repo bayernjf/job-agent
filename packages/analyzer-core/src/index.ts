@@ -29,6 +29,7 @@ export type {
   AnalyzerRepo,
   AnalyzerSubject,
   ContributionMonth,
+  BehaviorEventSummary,
 } from './input.js';
 export type { AnalyzeOptions } from './profile.js';
 export type { AbilityProfile };

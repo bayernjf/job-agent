@@ -11,10 +11,13 @@ export {
   buildContributions,
   buildDataWindow,
   mapCommits,
+  mapEventsToCommits,
   mapIssues,
   mapPullRequests,
   mapRepos,
   mapSubject,
+  mergeSampledAndEventCommits,
+  summarizeGiteeEvents,
   toUtc,
 } from './mappers.js';
 export {
@@ -28,6 +31,8 @@ export type {
   GiteeBudget,
   GiteeCollectedData,
   GiteeCommitRaw,
+  GiteeEventCommitRaw,
+  GiteeEventRaw,
   GiteeIssueRaw,
   GiteePullRaw,
   GiteeRepoRaw,

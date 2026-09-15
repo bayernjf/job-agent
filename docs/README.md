@@ -24,6 +24,7 @@
 | 看 P2 职位聚合的数据源结论、最小链路设计与推荐组合 | [设计-职位聚合-Spike-20260913.md](设计-职位聚合-Spike-20260913.md) ★ |
 | 写 P2 岗位采集管道代码（job_postings 建表 / 各源适配器 / 调度去重 / 分期） | [design-job-ingestion-20260913.md](design-job-ingestion-20260913.md) ★ |
 | Gitee 证据源已落地（v5 REST 采集 / AnalyzerInput 映射 / PII 清洗 / CLI--platform + API/Worker/报告页/扩展在线选源） | [design-gitee-source-20260914.md](design-gitee-source-20260914.md) ★ |
+| 行为多样性信号 / 双源 events 聚合（BehaviorEventSummary、narrow_activity_scope 弱信号、规则版本 0.2、缺失降级） | [design-behavior-diversity-20260915.md](design-behavior-diversity-20260915.md) ★ |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 装 / 试用浏览器扩展，一键填充 ATS 表单 | [../apps/extension/README.md](../apps/extension/README.md) |

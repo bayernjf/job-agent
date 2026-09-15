@@ -42,6 +42,14 @@ export function computeActivity(
     totalStars: input.repos.reduce((sum, r) => sum + r.stargazerCount, 0),
     totalForks: input.repos.reduce((sum, r) => sum + r.forkCount, 0),
     activeMonths: months,
+    commitRepoCount: new Set(input.commits.map((c) => c.repoName)).size,
+    ...(input.behaviorEvents
+      ? {
+          eventTotalEvents: input.behaviorEvents.totalEvents,
+          eventDistinctRepos: input.behaviorEvents.distinctRepoCount,
+          eventTypeKinds: Object.keys(input.behaviorEvents.eventTypeCounts).length,
+        }
+      : {}),
   };
 
   return {

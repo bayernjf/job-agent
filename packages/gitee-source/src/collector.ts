@@ -11,10 +11,13 @@ import {
   buildContributions,
   buildDataWindow,
   mapCommits,
+  mapEventsToCommits,
   mapIssues,
   mapPullRequests,
   mapRepos,
   mapSubject,
+  mergeSampledAndEventCommits,
+  summarizeGiteeEvents,
 } from './mappers.js';
 import {
   buildGiteeCommitEvidence,
@@ -26,6 +29,7 @@ import {
 import type {
   GiteeCollectedData,
   GiteeCommitRaw,
+  GiteeEventRaw,
   GiteeIssueRaw,
   GiteePullRaw,
   GiteeRepoRaw,
@@ -132,30 +136,52 @@ export class GiteeSource {
       }
     }
 
-    commits.sort((a, b) => a.committedAt.localeCompare(b.committedAt));
     pullRequests.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     issues.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+    // events/public 行为流（设计 §4.11）：只取一次——page/per_page 均被 Gitee 忽略、
+    // 深翻会原样重复第 1 页，故严禁 listAll。用 PushEvent 补采样未覆盖的近期提交；
+    // 端点失败只记 missing，不影响 L0/L1（budget_exhausted 仍上抛）。
+    let events: GiteeEventRaw[] = [];
+    try {
+      const rows = await this.client.get<GiteeEventRaw[]>(
+        `/users/${encodeURIComponent(login)}/events/public`,
+        { page: 1, per_page: 20 },
+      );
+      events = Array.isArray(rows) ? rows : [];
+    } catch (err) {
+      if ((err as GiteeSourceError).code === 'budget_exhausted') throw err;
+      missing.push('events');
+      this.log.warn(`[gitee-source] events failed for ${login}: ${(err as Error).message}`);
+    }
+    const eventCommits = mapEventsToCommits(events, login);
+    // 方案 B-1：同一批 events 聚合为行为流摘要（跨仓广度/事件类型分布），供内核多样性信号
+    const behaviorEvents = summarizeGiteeEvents(events, login);
+    // 按 repo:oid 去重合并、采样优先，merge 内部按时间升序
+    const allCommits = mergeSampledAndEventCommits(commits, eventCommits);
+    const eventCommitsAdded = allCommits.length - commits.length;
 
     // Gitee PR 恒无增删行，只要采到 PR 就显式标注该维度缺失（设计 4.4）
     if (pullRequests.length > 0) missing.push('pr_code_stats');
 
-    const dataWindow = buildDataWindow(subject.createdAt, repos, commits);
+    const dataWindow = buildDataWindow(subject.createdAt, repos, allCommits);
     const evidence: EvidenceItem[] = [
       buildGiteeSubjectEvidence(subject, dataWindow),
       ...repos.map(buildGiteeRepoEvidence),
       ...pullRequests.map(buildGiteePullRequestEvidence),
       ...issues.map(buildGiteeIssueEvidence),
-      ...commits.map(buildGiteeCommitEvidence),
+      ...allCommits.map(buildGiteeCommitEvidence),
     ];
 
     const input: AnalyzerInput = {
       subject,
       dataWindow,
       repos,
-      commits,
+      commits: allCommits,
       pullRequests,
       issues,
-      contributions: buildContributions(commits, pullRequests, issues, repos),
+      contributions: buildContributions(allCommits, pullRequests, issues, repos),
+      ...(behaviorEvents ? { behaviorEvents } : {}),
       evidence,
       missing,
       collectedAt: new Date().toISOString(),
@@ -167,6 +193,8 @@ export class GiteeSource {
       meta: {
         budgetUsed: { restCalls: this.client.restCalls },
         missing,
+        eventsFetched: events.length,
+        eventCommitsAdded,
       },
     };
   }

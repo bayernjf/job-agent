@@ -312,6 +312,61 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
     }
   }
 
+  // 8b. 行为高度集中在单一仓库且缺乏协作（规则 0.2 新增，方案 B；设计 design-behavior-diversity-20260915）。
+  // 封顶 warn：单仓专注的独立开发者是正常形态，需多条件叠加，且被外部 merged PR 豁免、
+  // 被"事件流显示多仓活动 / 协作型事件"反向豁免（采样 top 仓之外的活动只能从 events 看到）。
+  const scopeBehaviorTotal = input.commits.length + input.pullRequests.length + input.issues.length;
+  const commitsByRepo = new Map<string, number>();
+  for (const c of input.commits) {
+    commitsByRepo.set(c.repoName, (commitsByRepo.get(c.repoName) ?? 0) + 1);
+  }
+  const commitRepoCount = commitsByRepo.size;
+  const top1CommitShare =
+    input.commits.length > 0 ? Math.max(...commitsByRepo.values()) / input.commits.length : 0;
+  const scopeExternalMerged = input.pullRequests.filter(
+    (p) => !p.repoOwnerIsSelf && p.state === 'MERGED',
+  ).length;
+  const structurallyNarrow =
+    scopeBehaviorTotal >= 30 &&
+    scopeExternalMerged === 0 &&
+    input.pullRequests.length < 3 &&
+    (commitRepoCount <= 1 || top1CommitShare >= 0.9);
+  if (structurallyNarrow) {
+    const be = input.behaviorEvents;
+    const collaborativeEventCount = be
+      ? Object.entries(be.eventTypeCounts)
+          .filter(([type]) => /PullRequest|Issue|Review|Comment/i.test(type))
+          .reduce((sum, [, n]) => sum + n, 0)
+      : 0;
+    // 事件流反证：多仓活动或协作型事件，说明结构化"单仓"是采样偏差 → 豁免
+    const eventsRefuteNarrow =
+      be !== undefined && (be.distinctRepoCount >= 2 || collaborativeEventCount > 0);
+    if (!eventsRefuteNarrow) {
+      const topRepo = [...commitsByRepo.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+      const typeKinds = be ? Object.keys(be.eventTypeCounts).length : 0;
+      const narrowRepoRefs = input.repos
+        .filter((r) => repoRef(r) === topRepo)
+        .map((r) => `repo:${repoRef(r)}`);
+      const narrowCommitRefs = input.commits
+        .filter((c) => c.repoName === topRepo)
+        .slice(0, 3)
+        .map((c) => `commit:${c.repoName}:${c.oid}`);
+      signals.push({
+        code: SIGNAL_CODES.NARROW_ACTIVITY_SCOPE,
+        severity: 'warn',
+        label: 'Activity concentrated in a single repository with little collaboration',
+        detail: be
+          ? `${Math.round(top1CommitShare * 100)}% of sampled commits are in one repository, with fewer than 3 PRs, no externally merged PR, and only ${typeKinds} public event type(s) across ${be.distinctRepoCount} repo(s)`
+          : `${Math.round(top1CommitShare * 100)}% of sampled commits are in one repository, with fewer than 3 PRs and no externally merged PR`,
+        evidenceRefs: validRefs(input, [
+          ...narrowRepoRefs,
+          ...narrowCommitRefs,
+          `user:${input.subject.login}`,
+        ]).slice(0, 5),
+      });
+    }
+  }
+
   // 9. 正向信号抵消（2026-09-11 S3 校准；batch2 校准扩展到 star_to_commit_ratio）：
   // 有外部项目合并的 PR 时，author_inconsistency / star_activity_mismatch /
   // star_to_commit_ratio 的 risk 降级为 warn。
