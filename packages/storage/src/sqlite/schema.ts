@@ -69,6 +69,8 @@ export const analysisJobs = sqliteTable(
       .default(sql`(CURRENT_TIMESTAMP)`),
     startedAt: text('started_at'),
     finishedAt: text('finished_at'),
+    requesterKind: text('requester_kind').notNull().default('public'),
+    demoSessionId: text('demo_session_id'),
   },
   (table) => [
     index('idx_analysis_jobs_status_created').on(table.status, table.createdAt),
@@ -77,6 +79,8 @@ export const analysisJobs = sqliteTable(
       table.subjectLogin,
       table.createdAt,
     ),
+    index('idx_analysis_jobs_requester_status').on(table.requesterKind, table.status),
+    index('idx_analysis_jobs_demo_session').on(table.demoSessionId),
   ],
 );
 
@@ -196,3 +200,60 @@ export const jobPostings = sqliteTable(
 
 export type JobPostingInsert = typeof jobPostings.$inferInsert;
 export type JobPostingSelect = typeof jobPostings.$inferSelect;
+
+
+/**
+ * demo_sessions 表——免注册演示会话（design-demo-mode-20260915，迁移 006）。
+ * id 即 Cookie 值；不存明文 IP，只存加盐 SHA-256；TTL 到期视为匿名并由 cleanup 清理。
+ */
+export const demoSessions = sqliteTable(
+  'demo_sessions',
+  {
+    id: text('id').primaryKey(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    lastSeenAt: text('last_seen_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    expiresAt: text('expires_at').notNull(),
+    analyzeCount: integer('analyze_count').notNull().default(0),
+    matchCount: integer('match_count').notNull().default(0),
+    analyzedLogins: text('analyzed_logins').notNull().default('[]'),
+    ipHash: text('ip_hash'),
+    status: text('status').notNull().default('active'),
+  },
+  (table) => [
+    index('idx_demo_sessions_expires').on(table.expiresAt),
+    index('idx_demo_sessions_ip_created').on(table.ipHash, table.createdAt),
+  ],
+);
+
+export type DemoSessionInsert = typeof demoSessions.$inferInsert;
+export type DemoSessionSelect = typeof demoSessions.$inferSelect;
+
+/**
+ * demo_rate_events 表——IP 滑动窗口限流的追加式计数（迁移 007，MVP 不引 Redis）。
+ * cleanup 删除 24h 前的行。
+ */
+export const demoRateEvents = sqliteTable(
+  'demo_rate_events',
+  {
+    id: text('id').primaryKey(),
+    ipHash: text('ip_hash').notNull(),
+    kind: text('kind').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_demo_rate_events_ip_kind_created').on(
+      table.ipHash,
+      table.kind,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type DemoRateEventInsert = typeof demoRateEvents.$inferInsert;
+export type DemoRateEventSelect = typeof demoRateEvents.$inferSelect;

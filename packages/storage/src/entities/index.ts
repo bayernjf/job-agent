@@ -39,3 +39,19 @@ export {
   jobPostingSignature,
   toStoredJobPosting,
 } from './job-posting.js';
+
+export type {
+  DemoSessionStatus,
+  DemoRateKind,
+  AnalyzedLogin,
+  NewDemoSession,
+  StoredDemoSession,
+  RawDemoSessionRow,
+  DemoSlotDenyReason,
+  DemoSlotResult,
+} from './demo-session.js';
+export {
+  DEMO_SESSION_STATUSES,
+  DEMO_RATE_KINDS,
+  toStoredDemoSession,
+} from './demo-session.js';
