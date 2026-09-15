@@ -1,11 +1,20 @@
 /**
- * 能力标签：从仓库语言分布（L0）推导 language，从 topics/description（L0）匹配
- * framework/domain。MVP 只做浅层信号，标签必挂证据；置信度按证据强度保守估计。
+ * 能力标签：
+ * - language：从仓库主语言分布（L0）推导（B-4 未改动，逻辑已合理）。
+ * - framework/domain：B-4 起从 topics / description / 仓库名 / commit 标题 / PR 标题多信号提取，
+ *   词典见 skills-catalog.ts，词边界防误匹配、别名归一、标签必挂真实证据。
+ * 标签必挂证据；置信度按证据强度保守估计。设计：docs/design-skill-extraction-20260915.md。
  */
 
 import type { SkillTag } from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
 import { repoRef } from './input.js';
+import {
+  SKILL_CATALOG,
+  compileEntryRegex,
+  topicMatchesEntry,
+  type SkillEntry,
+} from './skills-catalog.js';
 
 interface LangStat {
   name: string;
@@ -14,42 +23,12 @@ interface LangStat {
   commitCount: number;
 }
 
-const FRAMEWORK_PATTERNS: Array<{ name: string; patterns: RegExp[] }> = [
-  { name: 'react', patterns: [/react/i] },
-  { name: 'vue', patterns: [/vue/i] },
-  { name: 'next.js', patterns: [/next\.?js/i] },
-  { name: 'astro', patterns: [/astro/i] },
-  { name: 'hono', patterns: [/hono/i] },
-  { name: 'express', patterns: [/express/i] },
-  { name: 'drizzle', patterns: [/drizzle/i] },
-  { name: 'spring', patterns: [/spring/i] },
-  { name: 'django', patterns: [/django/i] },
-  { name: 'fastapi', patterns: [/fastapi/i] },
-  { name: 'flutter', patterns: [/flutter/i] },
-  { name: 'react native', patterns: [/react native/i] },
-  { name: 'electron', patterns: [/electron/i] },
-];
-
-const DOMAIN_PATTERNS: Array<{ name: string; patterns: RegExp[] }> = [
-  { name: 'frontend', patterns: [/frontend/i, /web app/i, /ui/i, /landing/i] },
-  { name: 'backend', patterns: [/backend/i, /server/i, /api/i, /database/i] },
-  { name: 'data-ml', patterns: [/data/i, /machine learning/i, /ml\b/i, /llm/i, /ai\b/i, /pytorch/i, /tensorflow/i] },
-  { name: 'devops', patterns: [/devops/i, /docker/i, /kubernetes/i, /k8s/i, /terraform/i, /ci\/cd/i, /actions/i] },
-  { name: 'mobile', patterns: [/android/i, /ios/i, /mobile/i] },
-  { name: 'blockchain', patterns: [/blockchain/i, /web3/i, /ethereum/i, /solidity/i] },
-  { name: 'game', patterns: [/game/i, /unity/i, /unreal/i] },
-];
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function repoText(repo: AnalyzerInput['repos'][number]): string {
-  return [repo.name, repo.description ?? '', ...repo.topics].join(' ');
-}
-
-function matchTags(text: string, table: Array<{ name: string; patterns: RegExp[] }>): string[] {
-  return table.filter((t) => t.patterns.some((p) => p.test(text))).map((t) => t.name);
+function pushUnique(arr: string[], value: string): void {
+  if (!arr.includes(value)) arr.push(value);
 }
 
 export function computeSkillTags(input: AnalyzerInput): SkillTag[] {
@@ -57,7 +36,7 @@ export function computeSkillTags(input: AnalyzerInput): SkillTag[] {
   const known = new Set(input.evidence.map((e) => e.evidenceId));
   const refs = (names: string[]) => names.filter((n) => known.has(`repo:${n}`)).map((n) => `repo:${n}`);
 
-  // --- language：按仓库主语言聚合 ---
+  // --- language：按仓库主语言聚合（保持原逻辑） ---
   const stats = new Map<string, LangStat>();
   for (const repo of input.repos) {
     if (!repo.primaryLanguage) continue;
@@ -93,41 +72,110 @@ export function computeSkillTags(input: AnalyzerInput): SkillTag[] {
     .slice(0, 6);
   tags.push(...languageTags);
 
-  // --- framework / domain：按 topics + description 匹配词典 ---
-  const matchedFrameworks = new Map<string, string[]>();
-  const matchedDomains = new Map<string, string[]>();
-  for (const repo of input.repos) {
-    const text = repoText(repo);
-    for (const fw of matchTags(text, FRAMEWORK_PATTERNS)) {
-      matchedFrameworks.set(fw, [...(matchedFrameworks.get(fw) ?? []), repoRef(repo)]);
-    }
-    for (const dm of matchTags(text, DOMAIN_PATTERNS)) {
-      matchedDomains.set(dm, [...(matchedDomains.get(dm) ?? []), repoRef(repo)]);
-    }
-  }
-  const frameworkTags: SkillTag[] = [...matchedFrameworks.entries()]
-    .map(([name, repoNames]) => ({
-      name,
-      kind: 'framework' as const,
-      depth: (repoNames.length >= 2 ? 'proficient' : 'used') as 'proficient' | 'used',
-      confidence: clamp(Math.round((0.4 + 0.1 * repoNames.length) * 100) / 100, 0.3, 0.7),
-      evidenceRefs: refs(repoNames.slice(0, 3)),
-    }))
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 4);
-  tags.push(...frameworkTags);
-
-  const domainTags: SkillTag[] = [...matchedDomains.entries()]
-    .map(([name, repoNames]) => ({
-      name,
-      kind: 'domain' as const,
-      depth: (repoNames.length >= 3 ? 'proficient' : 'used') as 'proficient' | 'used',
-      confidence: clamp(Math.round((0.4 + 0.08 * repoNames.length) * 100) / 100, 0.3, 0.7),
-      evidenceRefs: refs(repoNames.slice(0, 3)),
-    }))
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 4);
-  tags.push(...domainTags);
+  // --- framework / domain：多信号精确提取（B-4） ---
+  tags.push(...computeCatalogTags(input, known));
 
   return tags;
+}
+
+/** 单个技术词条在全部信号源上的聚合命中 */
+interface SkillAggregate {
+  entry: SkillEntry;
+  /** 在 topics/description/name 命中的仓 */
+  repoHits: Set<string>;
+  /** 其中经 topics 精确命中的仓（强信号子集） */
+  topicRepos: Set<string>;
+  /** commit/PR 标题命中条数（行为佐证） */
+  behaviorCount: number;
+  /** 候选证据 id（repo:/commit:/pr:），保序去重 */
+  refList: string[];
+}
+
+function computeCatalogTags(input: AnalyzerInput, known: Set<string>): SkillTag[] {
+  const aggregates = new Map<string, SkillAggregate>();
+
+  for (const entry of SKILL_CATALOG) {
+    const regex = compileEntryRegex(entry);
+    const agg: SkillAggregate = {
+      entry,
+      repoHits: new Set(),
+      topicRepos: new Set(),
+      behaviorCount: 0,
+      refList: [],
+    };
+    let touched = false;
+
+    // 仓库级信号：topics 精确 + description/name 词边界
+    for (const repo of input.repos) {
+      const ref = repoRef(repo);
+      let hit = false;
+      if (repo.topics.some((topic) => topicMatchesEntry(topic, entry))) {
+        agg.topicRepos.add(ref);
+        hit = true;
+      }
+      // 仓库名的 -/_ 视为词分隔，便于 nextjs-blog 命中 nextjs
+      const freeText = `${repo.name.replace(/[-_]/g, ' ')} ${repo.description ?? ''}`;
+      if (regex.test(freeText)) hit = true;
+      if (hit) {
+        agg.repoHits.add(ref);
+        pushUnique(agg.refList, `repo:${ref}`);
+        touched = true;
+      }
+    }
+
+    // 行为级信号：commit / PR 标题
+    for (const commit of input.commits) {
+      if (regex.test(commit.messageHeadline)) {
+        agg.behaviorCount += 1;
+        pushUnique(agg.refList, `commit:${commit.repoName}:${commit.oid}`);
+        touched = true;
+      }
+    }
+    for (const pr of input.pullRequests) {
+      if (regex.test(pr.title)) {
+        agg.behaviorCount += 1;
+        pushUnique(agg.refList, `pr:${pr.repoNameWithOwner}:${pr.number}`);
+        touched = true;
+      }
+    }
+
+    if (touched) aggregates.set(entry.name, agg);
+  }
+
+  const produced: SkillTag[] = [];
+  for (const agg of aggregates.values()) {
+    // repo 证据最多 3、行为证据最多 2，且必须真实存在
+    const repoEvidence = agg.refList.filter((r) => r.startsWith('repo:')).slice(0, 3);
+    const behaviorEvidence = agg.refList.filter((r) => !r.startsWith('repo:')).slice(0, 2);
+    const evidenceRefs = [...repoEvidence, ...behaviorEvidence].filter((r) => known.has(r));
+    if (evidenceRefs.length === 0) continue; // 无证据不下结论
+
+    const repoCount = agg.repoHits.size;
+    const hasTopic = agg.topicRepos.size > 0;
+    const hasBehavior = agg.behaviorCount > 0;
+    const depth: 'proficient' | 'used' =
+      repoCount >= 2 || (hasTopic && hasBehavior) || agg.behaviorCount >= 3 ? 'proficient' : 'used';
+
+    const cap = agg.entry.kind === 'domain' ? 0.7 : 0.85;
+    const raw = 0.4 + (hasTopic ? 0.15 : 0) + 0.06 * Math.max(0, repoCount - 1) + (hasBehavior ? 0.1 : 0);
+    const confidence = clamp(Math.round(raw * 100) / 100, 0.3, cap);
+
+    produced.push({
+      name: agg.entry.name,
+      kind: agg.entry.kind,
+      depth,
+      confidence,
+      evidenceRefs,
+    });
+  }
+
+  const frameworks = produced
+    .filter((t) => t.kind === 'framework')
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 8);
+  const domains = produced
+    .filter((t) => t.kind === 'domain')
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 4);
+  return [...frameworks, ...domains];
 }
