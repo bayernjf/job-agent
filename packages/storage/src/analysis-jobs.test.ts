@@ -273,6 +273,33 @@ describe('SqliteAnalysisJobsRepository', () => {
     expect(await repo.countRunningByRequesterKind('demo')).toBe(2);
   });
 
+  it('deferToQueued returns the job to queued and cancels the claim attempt', async () => {
+    const { repo } = freshRepo();
+    await repo.create({
+      id: 'job_defer',
+      subjectLogin: 'd',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+
+    // 反复认领→退回多轮：attempts 每次认领 +1、defer 抵消回 0，任务始终可再认领
+    for (let round = 1; round <= 3; round += 1) {
+      const claimed = await repo.claimNext('worker-1');
+      expect(claimed!.attempts).toBe(1); // 上轮 defer 已抵消，每轮认领都从 0 增到 1
+      await repo.deferToQueued(claimed!.id, 'Deferred: demo concurrency cap');
+      const back = (await repo.getById('job_defer'))!;
+      expect(back.status).toBe('queued');
+      expect(back.attempts).toBe(0); // 抵消，不耗尽重试预算
+      expect(back.claimedBy).toBeNull();
+      expect(back.startedAt).toBeNull();
+      expect(back.errorMessage).toBeNull(); // 非失败，不写错误信息
+    }
+
+    // 仍可被认领（未被 attempts<3 条件永久排除）
+    const final = await repo.claimNext('worker-1');
+    expect(final!.id).toBe('job_defer');
+  });
+
   it('migration 002 creates analysis_jobs table with expected columns', () => {
     const db = new Database(':memory:');
     runMigrations(db, MIGRATIONS_DIR);

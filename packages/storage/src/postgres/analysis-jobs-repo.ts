@@ -148,6 +148,24 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
       .where(eq(analysisJobs.id, id));
   }
 
+  async deferToQueued(id: string, note: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db
+      .update(analysisJobs)
+      .set({
+        status: 'queued',
+        stage: null,
+        claimedBy: null,
+        startedAt: null,
+        finishedAt: null,
+        // 抵消本次 claimNext 的 attempts+1，反复 defer 不耗尽重试预算
+        attempts: sql`GREATEST(${analysisJobs.attempts} - 1, 0)`,
+        updatedAt: now,
+      })
+      .where(eq(analysisJobs.id, id));
+    void note;
+  }
+
   async reclaimStaleRunning(maxAgeMs: number): Promise<number> {
     const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
     const now = new Date().toISOString();
