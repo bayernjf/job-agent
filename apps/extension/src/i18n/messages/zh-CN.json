@@ -39,5 +39,6 @@
   "match.high": "高度匹配",
   "match.mid": "部分匹配",
   "match.low": "弱覆盖",
+  "panel.tryWebDemo": "没有账号？在网页端免费试用演示",
   "nav.language": "English"
 }

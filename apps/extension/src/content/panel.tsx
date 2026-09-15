@@ -176,6 +176,16 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
         </span>
       </div>
 
+      {/* 网页端演示入口：普通外链新标签打开，扩展不携带/共享演示 Cookie（设计 §10） */}
+      <a
+        className="ja-web-demo"
+        href={`${apiBase.replace(/\/$/, '')}/${locale}/`}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {t('panel.tryWebDemo')}
+      </a>
+
       <form onSubmit={handleAnalyze}>
         <div className="ja-platform-switch" role="group" aria-label="Platform">
           <button
