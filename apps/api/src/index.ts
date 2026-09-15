@@ -8,7 +8,11 @@
  * - 所有 DB 访问收敛到 storage 仓储层（业务模块禁裸 SQL、不感知 SQLite/Postgres 方言）
  *
  * 端点：
- *   POST /analyze        — 创建分析任务（去重：同一用户有 active job 则返回现有 jobId）
+ *   POST /analyze        — 创建分析任务（演示模式配额闸；画像缓存先于身份、任何身份可读缓存）
+ *   POST /demo/sessions  — 免注册创建/幂等获取演示会话（HttpOnly Cookie）
+ *   GET  /demo/me        — 当前演示身份与配额状态
+ *   GET  /demo/presets   — 预置示例账号就绪情况（公开只读）
+ *   POST /demo/exit      — 退出演示、清 Cookie
  *   GET  /jobs/:id       — 查询任务状态（queued/running/succeeded/failed + stage + profileId）
  *   GET  /profiles/:id   — 查询画像快照（完整 AbilityProfile JSON）
  *   GET  /job-postings   — 岗位检索（P2-D 职位聚合消费侧）
@@ -24,20 +28,26 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
-import { Hono } from 'hono';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
+import { deleteCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
 import {
   toExportableProfile,
   JobSourceSchema,
+  DEMO_ERROR_CODES,
   type AbilityProfile,
+  type DemoMe,
+  type DemoPreset,
   type JobSource,
+  type Principal,
   type SkillTag,
 } from '@jobagent/shared';
 import {
   createStorage,
   type IAnalysisJobsRepository,
+  type IDemoSessionsRepository,
   type IProfilesRepository,
   type IJobPostingsRepository,
   type IEvidenceRepository,
@@ -47,6 +57,18 @@ import {
 } from '@jobagent/storage';
 import { matchJobs } from '@jobagent/job-source';
 import { skillTagMap, buildSkillReasons, collectEvidence } from './match-explain.js';
+import {
+  loadDemoConfig,
+  oneHourAgo,
+  type DemoConfig,
+} from './demo-config.js';
+import {
+  DEMO_COOKIE,
+  clientIp,
+  generateSessionId,
+  hashIp,
+  resolvePrincipal,
+} from './principal.js';
 
 // ─── 类型 ───────────────────────────────────────────────────────────────
 
@@ -55,6 +77,7 @@ export interface ApiRepos {
   profiles: IProfilesRepository;
   jobPostings: IJobPostingsRepository;
   evidence: IEvidenceRepository;
+  demoSessions: IDemoSessionsRepository;
 }
 
 export interface ApiDeps {
@@ -62,6 +85,8 @@ export interface ApiDeps {
   repos?: ApiRepos;
   /** 注入"现在"（测试确定性） */
   now?: () => string;
+  /** 注入演示配置（测试用；默认从环境变量加载） */
+  demoConfig?: DemoConfig;
 }
 
 // ─── 输入校验 Schema ────────────────────────────────────────────────────
@@ -125,6 +150,8 @@ function formatJob(job: StoredAnalysisJob) {
       platform: job.subjectPlatform,
       login: job.subjectLogin,
     },
+    // 只回身份类，绝不回 demoSessionId（它等同会话凭证，见设计 §7.4）
+    requester: { kind: job.requesterKind },
     status: job.status,
     stage: job.stage,
     attempts: job.attempts,
@@ -136,6 +163,31 @@ function formatJob(job: StoredAnalysisJob) {
     updatedAt: job.updatedAt,
     startedAt: job.startedAt,
     finishedAt: job.finishedAt,
+  };
+}
+
+/** 把 Principal 序列化为 GET /demo/me 响应体（demo 带配额状态）。 */
+function toDemoMe(principal: Principal, analyzeQuota: number): DemoMe {
+  if (principal.kind !== 'demo') return { kind: 'anonymous' };
+  return {
+    kind: 'demo',
+    sessionId: principal.sessionId,
+    expiresAt: principal.expiresAt,
+    analyzeQuota,
+    analyzeUsed: principal.analyzeCount,
+    analyzeRemaining: Math.max(0, analyzeQuota - principal.analyzeCount),
+  };
+}
+
+/** 演示 Cookie 统一属性（设计 §7.6）；生产 HTTPS 才加 Secure。 */
+function demoCookieOptions(cfg: DemoConfig, nowIso: string) {
+  return {
+    httpOnly: true,
+    sameSite: 'Lax' as const,
+    path: '/',
+    secure: cfg.isProduction,
+    maxAge: Math.floor(cfg.sessionTtlMs / 1000),
+    expires: new Date(Date.parse(nowIso) + cfg.sessionTtlMs),
   };
 }
 
@@ -166,20 +218,134 @@ function formatProfile(profile: StoredProfile) {
  * 创建 Hono 应用（可注入依赖，便于测试）。
  * 生产环境缺省走 createStorage（按 DB_DRIVER 选择方言），测试注入内存仓储。
  */
-export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
-  const repos: ApiRepos = deps.repos ?? (await createStorage());
-  const app = new Hono();
+export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
+  Variables: { principal: Principal };
+}>> {
+  const repos: ApiRepos = deps.repos ?? ((await createStorage()) as unknown as ApiRepos);
+  const now = deps.now ?? (() => new Date().toISOString());
+  const cfg = deps.demoConfig ?? loadDemoConfig();
+  // DEMO_IP_SALT 缺省时进程内随机盐（重启后历史 IP 窗口失效，仅本地/实验可接受）
+  const effectiveSalt = cfg.ipSalt || randomBytes(16).toString('hex');
 
-  // CORS：允许落地页跨域调用
-  app.use('*', cors({
-    origin: '*', // MVP 阶段开放；生产环境收紧为落地页域名
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
-  }));
+  const app = new Hono<{ Variables: { principal: Principal } }>();
+
+  // CORS：默认 '*' 保持现状（不发凭证 Cookie）；配置 CORS_ALLOW_ORIGINS 后回显具体 Origin 并允许凭证（形态 B）
+  const allowOrigins = [...cfg.corsAllowOrigins];
+  app.use(
+    '*',
+    cors({
+      origin:
+        allowOrigins.length > 0
+          ? (origin) => (origin && allowOrigins.includes(origin) ? origin : null)
+          : '*',
+      allowMethods: ['GET', 'POST', 'OPTIONS'],
+      allowHeaders: ['Content-Type'],
+      ...(allowOrigins.length > 0 ? { credentials: true } : {}),
+    }),
+  );
+
+  // Principal 全局解析：每个请求解析一次演示身份，下游 handler 只读 c.get('principal')
+  app.use('*', async (c, next) => {
+    c.set(
+      'principal',
+      await resolvePrincipal(c.req.header('Cookie'), repos.demoSessions, now),
+    );
+    await next();
+  });
+
+  /** 计算当前请求的加盐 IP 哈希；无可信 IP 时返回 null（不做 IP 限流）。 */
+  const ipHashOf = (c: Context): string | null => {
+    const ip = clientIp(c, cfg.trustProxy);
+    return ip ? hashIp(ip, effectiveSalt) : null;
+  };
 
   // 健康检查
   app.get('/health', (c) => {
     return c.json({ status: 'ok', service: 'jobagent-api', time: new Date().toISOString() });
+  });
+
+  // ── 演示模式端点（必须注册在 /analyze 之前）────────────────────────────
+
+  // POST /demo/sessions：免注册创建（或幂等返回）演示会话
+  app.post('/demo/sessions', async (c) => {
+    const principal = c.get('principal');
+    const nowIso = now();
+    if (principal.kind === 'demo') {
+      return c.json(toDemoMe(principal, cfg.analyzeQuota), 200); // 幂等，不重复建/不占窗口
+    }
+
+    const ipHash = ipHashOf(c);
+    if (ipHash) {
+      const recent = await repos.demoSessions.countRateEvents(
+        ipHash,
+        'session',
+        oneHourAgo(nowIso),
+      );
+      if (recent >= cfg.sessionRatePerHour) {
+        return c.json(
+          {
+            error: 'demo session rate limit exceeded',
+            code: DEMO_ERROR_CODES.rateLimited,
+            bucket: 'session',
+            retryAfterSeconds: 3600,
+          },
+          429,
+        );
+      }
+    }
+
+    const id = generateSessionId();
+    const expiresAt = new Date(Date.parse(nowIso) + cfg.sessionTtlMs).toISOString();
+    await repos.demoSessions.create({ id, expiresAt, ipHash });
+    if (ipHash) await repos.demoSessions.insertRateEvent(ipHash, 'session', nowIso);
+    setCookie(c, DEMO_COOKIE, id, demoCookieOptions(cfg, nowIso));
+
+    return c.json(
+      {
+        kind: 'demo',
+        sessionId: id,
+        expiresAt,
+        analyzeQuota: cfg.analyzeQuota,
+        analyzeUsed: 0,
+        analyzeRemaining: cfg.analyzeQuota,
+      } satisfies DemoMe,
+      201,
+    );
+  });
+
+  // GET /demo/me：当前演示身份与配额状态
+  app.get('/demo/me', (c) => {
+    return c.json(toDemoMe(c.get('principal'), cfg.analyzeQuota));
+  });
+
+  // GET /demo/presets：预置示例账号的就绪情况（只读、公开）
+  app.get('/demo/presets', async (c) => {
+    const presets: DemoPreset[] = [];
+    for (const preset of cfg.presetLogins) {
+      const profile = await repos.profiles.latestBySubject(preset.platform, preset.login);
+      const ready = !!profile && profile.status === 'complete' && !!profile.snapshot;
+      const authenticity = ready
+        ? ((profile!.snapshot as AbilityProfile).authenticity?.status ?? 'unknown')
+        : 'unknown';
+      presets.push({
+        platform: preset.platform,
+        login: preset.login,
+        authenticity,
+        profileId: ready ? profile!.id : null,
+        ready,
+      });
+    }
+    return c.json(presets);
+  });
+
+  // POST /demo/exit：退出演示（匿名调用为 no-op）
+  app.post('/demo/exit', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind === 'demo') {
+      await repos.demoSessions.exit(principal.sessionId, now());
+    }
+    deleteCookie(c, DEMO_COOKIE, { path: '/' });
+    return c.json({ kind: 'anonymous' });
   });
 
   // POST /analyze：创建分析任务
@@ -214,7 +380,28 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
       });
     }
 
-    // 去重：同一用户有 active（queued/running）任务则返回现有 jobId
+    // 画像缓存命中已在上方直接返回（任何身份放行、不扣配额）。
+    // 缓存未命中、需要触发新分析——这是唯一被演示身份限制的动作。
+    const principal = c.get('principal');
+    if (principal.kind === 'anonymous') {
+      return c.json(
+        {
+          error: 'demo session required to start a new analysis',
+          code: DEMO_ERROR_CODES.demoRequired,
+          message: 'Create a demo session (POST /demo/sessions) then retry once.',
+        },
+        403,
+      );
+    }
+    if (principal.kind === 'user') {
+      // 'user' 为账号里程碑预留，本期不会产生
+      return c.json({ error: 'accounts are not available yet' }, 501);
+    }
+
+    const sessionId = principal.sessionId;
+    const nowIso = now();
+
+    // active 去重先于配额扣减：已有在跑任务直接复用，不白扣一次会话名额
     const existing = await repos.jobs.latestActiveBySubject(platform, username);
     if (existing) {
       return c.json({
@@ -225,16 +412,81 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
       });
     }
 
-    // 创建新任务
-    const jobId = `job-${randomUUID()}`;
-    await repos.jobs.create({ id: jobId, subjectPlatform: platform, subjectLogin: username });
+    // 第二道闸：IP 分析滑动窗口（防清 Cookie 重置）
+    const ipHash = ipHashOf(c);
+    if (ipHash) {
+      const recent = await repos.demoSessions.countRateEvents(
+        ipHash,
+        'analyze',
+        oneHourAgo(nowIso),
+      );
+      if (recent >= cfg.analyzeRatePerHour) {
+        return c.json(
+          {
+            error: 'demo analyze rate limit exceeded',
+            code: DEMO_ERROR_CODES.rateLimited,
+            bucket: 'analyze',
+            retryAfterSeconds: 3600,
+          },
+          429,
+        );
+      }
+    }
 
-    return c.json({
-      jobId,
-      status: 'queued',
-      dedup: false,
-      message: 'Analysis job created. Poll GET /jobs/:id for status.',
-    }, 201);
+    // 第一道闸：会话级原子扣减（单条条件 UPDATE，严禁 select-then-update）
+    const slot = await repos.demoSessions.acquireAnalyzeSlot(
+      sessionId,
+      cfg.analyzeQuota,
+      nowIso,
+    );
+    if (!slot.granted) {
+      if (slot.reason === 'quota_exceeded') {
+        return c.json(
+          {
+            error: 'demo analyze quota exhausted',
+            code: DEMO_ERROR_CODES.quotaExceeded,
+            analyzeQuota: cfg.analyzeQuota,
+            analyzeUsed: slot.used,
+            analyzeRemaining: 0,
+            resetAt: principal.expiresAt,
+          },
+          429,
+        );
+      }
+      // 会话过期/退出/不存在：Cookie 已失效，回 DEMO_REQUIRED 让前端重建会话后重试
+      return c.json(
+        { error: 'demo session invalid or expired', code: DEMO_ERROR_CODES.demoRequired },
+        403,
+      );
+    }
+    if (ipHash) await repos.demoSessions.insertRateEvent(ipHash, 'analyze', nowIso);
+
+    // 创建新任务；若落库失败必须补偿已扣名额
+    const jobId = `job-${randomUUID()}`;
+    try {
+      await repos.jobs.create({
+        id: jobId,
+        subjectPlatform: platform,
+        subjectLogin: username,
+        requesterKind: 'demo',
+        demoSessionId: sessionId,
+      });
+    } catch (err) {
+      await repos.demoSessions.releaseAnalyzeSlot(sessionId);
+      throw err;
+    }
+    await repos.demoSessions.touch(sessionId, nowIso, { platform, login: username });
+
+    return c.json(
+      {
+        jobId,
+        status: 'queued',
+        dedup: false,
+        demo: { remaining: slot.remaining },
+        message: 'Analysis job created. Poll GET /jobs/:id for status.',
+      },
+      201,
+    );
   });
 
   // GET /jobs/:id：查询任务状态
@@ -462,6 +714,11 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono> {
       return skillReasons ? { ...base, skillReasons } : base;
     });
     const allReasons = serialized.flatMap((x) => ('skillReasons' in x ? x.skillReasons : []));
+    // match 保持公开可用；demo 调用仅做会话观测计数（不设硬配额，设计 §7.4）
+    const matchPrincipal = c.get('principal');
+    if (matchPrincipal.kind === 'demo') {
+      await repos.demoSessions.incrementMatch(matchPrincipal.sessionId, now());
+    }
     return c.json({
       matches: serialized,
       total: matches.length,
@@ -494,7 +751,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, GET /health`);
   });
 }
 

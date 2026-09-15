@@ -35,7 +35,15 @@ function indexNames(sql: string): string[] {
   );
 }
 
-const TABLES = ['profiles', 'analysis_jobs', 'evidence', 'waitlist', 'job_postings'];
+const TABLES = [
+  'profiles',
+  'analysis_jobs',
+  'evidence',
+  'waitlist',
+  'job_postings',
+  'demo_sessions',
+  'demo_rate_events',
+];
 
 describe('sqlite/postgres migration parity', () => {
   it('has identical, strictly consecutive file sets in both dialect directories', () => {

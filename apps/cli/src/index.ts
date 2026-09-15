@@ -23,6 +23,7 @@ import type { StorageContext, WaitlistStatus } from '@jobagent/storage';
 import { toHtml, toMarkdown } from './report-format.js';
 import type { JobSourceAdapter } from '@jobagent/job-source';
 import { runJobs } from './jobs-commands.js';
+import { runDemo } from './demo-commands.js';
 
 export interface CliDeps {
   /** 环境变量 GITHUB_TOKEN 的值（由调用方注入，便于测试） */
@@ -284,8 +285,12 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     return runJobs(rest, deps);
   }
 
+  if (command === 'demo') {
+    return runDemo(rest, deps);
+  }
+
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match>',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup>',
   );
   return 2;
 }

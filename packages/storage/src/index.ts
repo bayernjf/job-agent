@@ -23,6 +23,7 @@ export type {
   JobPostingQuery,
   UpsertCounts,
 } from './repositories/job-posting.js';
+export type { IDemoSessionsRepository } from './repositories/demo-sessions.js';
 
 // 实体领域类型
 export type {
@@ -48,6 +49,15 @@ export type {
   NewJobPosting,
   StoredJobPosting,
 } from './entities/job-posting.js';
+export type {
+  DemoSessionStatus,
+  DemoRateKind,
+  AnalyzedLogin,
+  NewDemoSession,
+  StoredDemoSession,
+  DemoSlotDenyReason,
+  DemoSlotResult,
+} from './entities/demo-session.js';
 
 // 状态枚举与纯映射（测试/工具可用）
 export {
@@ -63,6 +73,9 @@ export {
   makeJobPostingId,
   jobPostingSignature,
   toStoredJobPosting,
+  DEMO_SESSION_STATUSES,
+  DEMO_RATE_KINDS,
+  toStoredDemoSession,
   parseJson,
 } from './entities/index.js';
 

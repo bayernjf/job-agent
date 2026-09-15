@@ -205,6 +205,101 @@ describe('SqliteAnalysisJobsRepository', () => {
     expect(reclaimed!.startedAt).toBeNull();
   });
 
+  it('defaults requester to public and persists demo requester columns', async () => {
+    const { repo } = freshRepo();
+    await repo.create(newJob('job_public'));
+    const pub = (await repo.getById('job_public'))!;
+    expect(pub.requesterKind).toBe('public');
+    expect(pub.demoSessionId).toBeNull();
+
+    await repo.create({
+      id: 'job_demo',
+      subjectLogin: 'someone',
+      requesterKind: 'demo',
+      demoSessionId: 'demo_sess_1',
+    });
+    const demo = (await repo.getById('job_demo'))!;
+    expect(demo.requesterKind).toBe('demo');
+    expect(demo.demoSessionId).toBe('demo_sess_1');
+  });
+
+  it('claims formal (public) jobs before demo jobs regardless of enqueue order', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create({
+      id: 'job_demo_first',
+      subjectLogin: 'a',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+    await repo.create({ id: 'job_public_later', subjectLogin: 'b' });
+
+    // 对齐 created_at，避免同毫秒插入顺序之外的干扰：demo 更早
+    db.prepare(
+      "UPDATE analysis_jobs SET created_at = ? WHERE id = 'job_demo_first'",
+    ).run('2026-09-10T00:00:00.000Z');
+    db.prepare(
+      "UPDATE analysis_jobs SET created_at = ? WHERE id = 'job_public_later'",
+    ).run('2026-09-10T01:00:00.000Z');
+
+    // 即使 demo 更早入队，正式任务仍优先
+    const first = await repo.claimNext('worker-1');
+    expect(first!.id).toBe('job_public_later');
+    const second = await repo.claimNext('worker-1');
+    expect(second!.id).toBe('job_demo_first');
+  });
+
+  it('counts running jobs by requester kind for the demo concurrency gate', async () => {
+    const { repo } = freshRepo();
+    await repo.create({
+      id: 'job_demo_1',
+      subjectLogin: 'a',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+    await repo.create({
+      id: 'job_demo_2',
+      subjectLogin: 'b',
+      requesterKind: 'demo',
+      demoSessionId: 's2',
+    });
+    await repo.create({ id: 'job_public_1', subjectLogin: 'c' });
+
+    expect(await repo.countRunningByRequesterKind('demo')).toBe(0);
+    await repo.claimNext('worker-1'); // public first
+    expect(await repo.countRunningByRequesterKind('public')).toBe(1);
+    expect(await repo.countRunningByRequesterKind('demo')).toBe(0);
+    await repo.claimNext('worker-1'); // demo
+    await repo.claimNext('worker-1'); // demo
+    expect(await repo.countRunningByRequesterKind('demo')).toBe(2);
+  });
+
+  it('deferToQueued returns the job to queued and cancels the claim attempt', async () => {
+    const { repo } = freshRepo();
+    await repo.create({
+      id: 'job_defer',
+      subjectLogin: 'd',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+
+    // 反复认领→退回多轮：attempts 每次认领 +1、defer 抵消回 0，任务始终可再认领
+    for (let round = 1; round <= 3; round += 1) {
+      const claimed = await repo.claimNext('worker-1');
+      expect(claimed!.attempts).toBe(1); // 上轮 defer 已抵消，每轮认领都从 0 增到 1
+      await repo.deferToQueued(claimed!.id, 'Deferred: demo concurrency cap');
+      const back = (await repo.getById('job_defer'))!;
+      expect(back.status).toBe('queued');
+      expect(back.attempts).toBe(0); // 抵消，不耗尽重试预算
+      expect(back.claimedBy).toBeNull();
+      expect(back.startedAt).toBeNull();
+      expect(back.errorMessage).toBeNull(); // 非失败，不写错误信息
+    }
+
+    // 仍可被认领（未被 attempts<3 条件永久排除）
+    const final = await repo.claimNext('worker-1');
+    expect(final!.id).toBe('job_defer');
+  });
+
   it('migration 002 creates analysis_jobs table with expected columns', () => {
     const db = new Database(':memory:');
     runMigrations(db, MIGRATIONS_DIR);

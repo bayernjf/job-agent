@@ -277,3 +277,62 @@ export function matchScoreTier(score: number, matchedSkillCount: number): MatchS
   if (ratio >= 0.4) return 'mid';
   return 'low';
 }
+
+/**
+ * 演示模式契约（2026-09-15，对应 docs/design-demo-mode-20260915.md）。
+ *
+ * 三态请求身份：anonymous 匿名访客 / demo 免注册临时演示会话 / user 正式用户。
+ * 'user' 仅为未来账号体系（OAuth/认领，当前缓做）预留，本期没有任何代码路径产生它。
+ */
+export const REQUESTER_KINDS = ['anonymous', 'demo', 'user'] as const;
+export const RequesterKindSchema = z.enum(REQUESTER_KINDS);
+export type RequesterKind = z.infer<typeof RequesterKindSchema>;
+
+/** IP 滑动窗口限流的桶类型：建会话 / 触发分析 */
+export const DEMO_RATE_KINDS = ['session', 'analyze'] as const;
+export const DemoRateKindSchema = z.enum(DEMO_RATE_KINDS);
+export type DemoRateKind = z.infer<typeof DemoRateKindSchema>;
+
+/**
+ * 三态 Principal（API 边缘中间件解析一次，下游 handler 只读，不各自解析 Cookie）。
+ * 坏/过期 Cookie 静默降级为 anonymous；sessionId 即 Cookie 值、也是 demo_sessions 主键。
+ */
+export type Principal =
+  | { kind: 'anonymous' }
+  | {
+      kind: 'demo';
+      sessionId: string;
+      analyzeCount: number; // 本会话已用新分析次数
+      matchCount: number; // match 观测计数（默认无硬配额）
+      expiresAt: string; // ISO8601
+    }
+  | { kind: 'user'; userId: string }; // reserved for accounts milestone, never produced today
+
+/** GET /demo/me 响应体：anonymous 只回 kind；demo 另带配额状态 */
+export const DemoMeSchema = z.object({
+  kind: RequesterKindSchema,
+  sessionId: z.string().optional(), // 仅 kind='demo'
+  expiresAt: z.string().optional(),
+  analyzeQuota: z.number().int().nonnegative().optional(),
+  analyzeUsed: z.number().int().nonnegative().optional(),
+  analyzeRemaining: z.number().int().nonnegative().optional(),
+});
+export type DemoMe = z.infer<typeof DemoMeSchema>;
+
+/** GET /demo/presets 单项：预置示例账号及其画像快照是否就绪（未 seed 时 ready=false，前端隐藏） */
+export const DemoPresetSchema = z.object({
+  platform: PlatformSchema,
+  login: z.string().min(1),
+  authenticity: z.string(), // AuthenticityStatus；缺失时允许 'unknown'
+  profileId: z.string().nullable(),
+  ready: z.boolean(),
+});
+export type DemoPreset = z.infer<typeof DemoPresetSchema>;
+
+/** 演示模式结构化错误码（前后端共用单一事实源，避免前端硬编码字符串） */
+export const DEMO_ERROR_CODES = {
+  demoRequired: 'DEMO_REQUIRED', // 403：匿名且缓存未命中触发新分析，前端据此自动建会话重试
+  quotaExceeded: 'DEMO_QUOTA_EXCEEDED', // 429：会话分析次数用尽
+  rateLimited: 'DEMO_RATE_LIMITED', // 429：IP 滑动窗口超限
+} as const;
+export type DemoErrorCode = (typeof DEMO_ERROR_CODES)[keyof typeof DEMO_ERROR_CODES];

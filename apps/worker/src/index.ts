@@ -20,6 +20,8 @@
  *   WORKER_ID      — Worker 标识（默认 worker-<随机8位>）
  *   POLL_INTERVAL_MS — 轮询间隔毫秒（默认 5000）
  *   MAX_RETRIES    — 最大重试次数（默认 3）
+ *   DEMO_MAX_CONCURRENT — 同时处理的演示任务上限（默认 1；正式任务不限、永远优先）
+ *   DEMO_BACKOFF_MS     — 演示任务被并发闸退回后的退避毫秒（默认 15000）
  */
 
 import { randomUUID } from 'node:crypto';
@@ -65,6 +67,10 @@ export interface WorkerDeps {
   pollIntervalMs?: number;
   /** 最大重试次数（默认 3） */
   maxRetries?: number;
+  /** 同时处理的演示任务上限（默认 1；正式任务不限且永远优先认领） */
+  demoMaxConcurrent?: number;
+  /** 演示任务被并发闸退回后的退避毫秒（默认 15000） */
+  demoBackoffMs?: number;
   /** 日志注入（默认 console） */
   logger?: Pick<Console, 'info' | 'warn' | 'error'>;
   /** 注入 sleep（测试用） */
@@ -202,13 +208,25 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
   const workerId = deps.workerId ?? `worker-${randomUUID().slice(0, 8)}`;
   const pollIntervalMs = deps.pollIntervalMs ?? 5000;
   const maxRetries = deps.maxRetries ?? 3;
+  const envPositiveInt = (v: string | undefined): number | undefined => {
+    if (v === undefined) return undefined;
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 0 ? n : undefined;
+  };
+  const demoMaxConcurrent =
+    deps.demoMaxConcurrent ?? envPositiveInt(process.env.DEMO_MAX_CONCURRENT) ?? 1;
+  const demoBackoffMs =
+    deps.demoBackoffMs ?? envPositiveInt(process.env.DEMO_BACKOFF_MS) ?? 15_000;
   const sleep = deps.sleep ?? defaultSleep;
   const shouldContinue = deps.shouldContinue ?? (() => true);
 
   const repos = deps.repos ?? (await createStorage());
   const sources = makeSources(deps);
 
-  logger.info(`[worker] ${workerId} started (poll=${pollIntervalMs}ms, maxRetries=${maxRetries})`);
+  logger.info(
+    `[worker] ${workerId} started (poll=${pollIntervalMs}ms, maxRetries=${maxRetries}, ` +
+      `demoCap=${demoMaxConcurrent}, demoBackoff=${demoBackoffMs}ms)`,
+  );
 
   // Reclaim running jobs left by a crashed worker before the previous shutdown.
   // A job running for >5 minutes is almost certainly orphaned (single analysis takes <1 min).
@@ -222,6 +240,21 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
     if (!job) {
       await sleep(pollIntervalMs);
       continue;
+    }
+
+    // 演示并发闸：只约束 demo 任务（正式任务不限，且 claimNext 已让正式任务优先）。
+    // 此刻该 job 已被认领为 running，故计数包含它自己：cap=1 时首个 demo 计数为 1，放行。
+    if (job.requesterKind === 'demo') {
+      const demoRunning = await repos.jobs.countRunningByRequesterKind('demo');
+      if (demoRunning > demoMaxConcurrent) {
+        await repos.jobs.deferToQueued(job.id, 'Deferred: demo concurrency cap');
+        logger.info(
+          `[worker] demo job ${job.id} deferred (demoRunning=${demoRunning} > cap=${demoMaxConcurrent}); ` +
+            `back off ${demoBackoffMs}ms`,
+        );
+        await sleep(demoBackoffMs);
+        continue;
+      }
     }
 
     try {

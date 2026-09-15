@@ -46,6 +46,8 @@ describe('migrations', () => {
     expect(tables.map((t) => t.name)).toContain('evidence');
     expect(tables.map((t) => t.name)).toContain('waitlist');
     expect(tables.map((t) => t.name)).toContain('job_postings');
+    expect(tables.map((t) => t.name)).toContain('demo_sessions');
+    expect(tables.map((t) => t.name)).toContain('demo_rate_events');
     expect(tables.map((t) => t.name)).toContain('schema_migrations');
 
     const postingColumns = db.prepare('PRAGMA table_info(job_postings)').all() as Array<{ name: string }>;
@@ -118,6 +120,8 @@ describe('migrations', () => {
       'updated_at',
       'started_at',
       'finished_at',
+      'requester_kind',
+      'demo_session_id',
     ]) {
       expect(jobNames).toContain(expected);
     }
@@ -132,6 +136,33 @@ describe('migrations', () => {
       .all() as Array<{ name: string }>;
     expect(jobIndexes.map((i) => i.name)).toContain('idx_analysis_jobs_status_created');
     expect(jobIndexes.map((i) => i.name)).toContain('idx_analysis_jobs_subject_created');
+    expect(jobIndexes.map((i) => i.name)).toContain('idx_analysis_jobs_requester_status');
+    expect(jobIndexes.map((i) => i.name)).toContain('idx_analysis_jobs_demo_session');
+
+    const demoSessionColumns = db.prepare('PRAGMA table_info(demo_sessions)').all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'created_at',
+      'last_seen_at',
+      'expires_at',
+      'analyze_count',
+      'match_count',
+      'analyzed_logins',
+      'ip_hash',
+      'status',
+    ]) {
+      expect(demoSessionColumns.map((c) => c.name)).toContain(expected);
+    }
+
+    const demoRateColumns = db.prepare('PRAGMA table_info(demo_rate_events)').all() as Array<{ name: string }>;
+    for (const expected of ['id', 'ip_hash', 'kind', 'created_at']) {
+      expect(demoRateColumns.map((c) => c.name)).toContain(expected);
+    }
+
+    const demoRateIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='demo_rate_events'")
+      .all() as Array<{ name: string }>;
+    expect(demoRateIndexes.map((i) => i.name)).toContain('idx_demo_rate_events_ip_kind_created');
 
     db.close();
   });
@@ -149,7 +180,32 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
-    // 第零步：回滚最新的 005（job_postings）
+    // 第零步 a：回滚 008（analysis_jobs 移除 requester 两列，表本身仍在）
+    const result8 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result8.version).toBe('008');
+    const jobColsAfter8 = db.prepare('PRAGMA table_info(analysis_jobs)').all() as Array<{ name: string }>;
+    expect(jobColsAfter8.map((c) => c.name)).not.toContain('requester_kind');
+    expect(jobColsAfter8.map((c) => c.name)).not.toContain('demo_session_id');
+
+    // 第零步 b：回滚 007（demo_rate_events）
+    const result7 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result7.version).toBe('007');
+    let demoTables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(demoTables.map((t) => t.name)).not.toContain('demo_rate_events');
+    expect(demoTables.map((t) => t.name)).toContain('demo_sessions'); // 006 还在
+
+    // 第零步 c：回滚 006（demo_sessions）
+    const result6 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result6.version).toBe('006');
+    demoTables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(demoTables.map((t) => t.name)).not.toContain('demo_sessions');
+    expect(demoTables.map((t) => t.name)).toContain('job_postings'); // 005 还在
+
+    // 第一步：回滚最新的 005（job_postings）
     const result5 = rollbackLatestMigration(db, MIGRATIONS_DIR);
     expect(result5.version).toBe('005');
 

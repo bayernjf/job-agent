@@ -91,5 +91,13 @@
   "report.recommendations.basis": "匹配依据",
   "report.recommendations.fieldTitle": "标题",
   "report.recommendations.fieldTags": "标签",
-  "report.recommendations.fieldDescription": "岗位描述"
+  "report.recommendations.fieldDescription": "岗位描述",
+  "demo.banner.label": "演示模式",
+  "demo.banner.remaining": "本次演示还可发起 {remaining} 次新分析",
+  "demo.banner.exit": "退出演示",
+  "demo.starting": "正在开启演示…",
+  "demo.quotaExceeded": "本次演示的免费分析次数已用完，请 {resetAt} 后再试",
+  "demo.rateLimited": "操作过于频繁，请稍后再试",
+  "demo.presets.title": "没有账号？先看看这些示例报告",
+  "demo.presets.view": "查看示例报告"
 }

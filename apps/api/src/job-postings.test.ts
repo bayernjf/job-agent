@@ -10,7 +10,6 @@ import { describe, expect, it } from 'vitest';
 import type { AbilityProfile, JobPosting, JobSource } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
-import type { Hono } from 'hono';
 
 const NOW = '2026-09-13T00:00:00.000Z';
 let seq = 0;
@@ -31,7 +30,9 @@ function job(overrides: Partial<JobPosting> & { title: string }): NewJobPosting 
   return { ...base, ...overrides, normalizedKey: `nk-${seq}` };
 }
 
-async function harness(rows: NewJobPosting[]): Promise<{ app: Hono; repos: StorageContext }> {
+async function harness(
+  rows: NewJobPosting[],
+): Promise<{ app: Awaited<ReturnType<typeof createApp>>; repos: StorageContext }> {
   const repos = await createStorage({ sqlitePath: ':memory:' });
   if (rows.length > 0) await repos.jobPostings.upsertBatch(rows, NOW);
   const app = await createApp({ repos });

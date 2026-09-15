@@ -5,6 +5,7 @@
  */
 import Layout from '../../layouts/Layout.astro';
 import AnalyzeForm from '../../components/AnalyzeForm.tsx';
+import PresetList from '../../components/PresetList.tsx';
 import { isLocale, type Locale } from '../../i18n/index.js';
 import { createTranslator } from '../../i18n/index.js';
 
@@ -44,8 +45,26 @@ const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
           attemptsLabel={t('job.attempts')}
           platformGithubLabel={t('home.platform.github')}
           platformGiteeLabel={t('home.platform.gitee')}
+          startingDemoLabel={t('demo.starting')}
+          quotaExceededLabel={t('demo.quotaExceeded')}
+          rateLimitedLabel={t('demo.rateLimited')}
         />
       </div>
+
+      <PresetList
+        client:load
+        locale={locale}
+        apiBase={apiBase}
+        title={t('demo.presets.title')}
+        viewLabel={t('demo.presets.view')}
+        authLabels={{
+          likely_authentic: t('report.authenticity.likely_authentic'),
+          mixed_signals: t('report.authenticity.mixed_signals'),
+          suspicious: t('report.authenticity.suspicious'),
+          insufficient_data: t('report.authenticity.insufficient_data'),
+          unknown: t('report.authenticity.insufficient_data'),
+        }}
+      />
     </section>
 
     <section class="how-it-works">
