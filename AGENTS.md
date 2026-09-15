@@ -37,6 +37,7 @@ job-agent/
 │  ├─ github-source/  # Octokit、GraphQL 查询、L0/L1 采集、限频/缓存（首个 EvidenceSource）
 │  ├─ gitee-source/   # 第二个 EvidenceSource：Gitee v5 REST-only 采集→证据源无关 AnalyzerInput（CLI --platform 选源；设计见 docs/design-gitee-source-20260914.md）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
+│  ├─ resume-core/    # 纯函数：画像+岗位+匹配→岗位定向简历 ResumeDraft（rank/tailor/render md+html；只重排不造事实，设计见 docs/design-targeted-resume-20260915.md）
 │  ├─ llm/            # LLM 端口 + 结构化输出校验（P1 才启用，见 deferred）
 │  └─ ui-tokens/      # 设计 token 单一事实源（无构建静态 CSS，--ja-* 变量；report 与 extension 共用，设计见 docs/design-tokens-20260910.md）
 ├─ apps/
@@ -67,6 +68,8 @@ pnpm migrate:up / migrate:down / migrate:status          # SQLite 应用/回滚�
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号/文件头 + 文件名集合对齐（可传单目录参数）
 pnpm e2e                         # report 页 Playwright E2E（拉起 Astro，mock API）
 pnpm e2e:extension               # 扩展 E2E：--headless=new 加载 unpacked MV3、零网络（先 build dist；设计见 docs/design-extension-e2e-20260914.md）
+# 岗位定向简历（P-R1）：库模式 --profile <profileId> --job <jobId>；离线模式 --profile <画像.json> --job-file <岗位.json> [--evidence e.json] [--local-fields l.json] [--format md|html|json] [--locale zh-CN|en] [-o out]
+pnpm --filter @jobagent/cli build && node apps/cli/dist/index.js resume build --profile <id|file> --job <jobId> --format md -o resume.md
 docker compose up -d             # Docker 运行时 smoke（SQLite；--profile with-pg 加 PG；需 GITHUB_TOKEN 给 worker）
 ```
 
