@@ -70,6 +70,18 @@
   color: var(--ja-color-fg-muted);
 }
 
+.ja-web-demo {
+  display: block;
+  margin-bottom: var(--ja-space-2);
+  font-size: var(--ja-text-xs);
+  color: var(--ja-color-accent);
+  text-decoration: none;
+}
+
+.ja-web-demo:hover {
+  text-decoration: underline;
+}
+
 .ja-lang {
   font-family: var(--ja-font-sans);
   font-size: var(--ja-text-xs);

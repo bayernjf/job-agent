@@ -39,5 +39,6 @@
   "match.high": "High match",
   "match.mid": "Partial match",
   "match.low": "Weak match",
+  "panel.tryWebDemo": "No account? Try the free demo on the web",
   "nav.language": "中文"
 }
