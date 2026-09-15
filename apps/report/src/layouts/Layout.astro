@@ -6,6 +6,7 @@
 import '../styles/tokens.css';
 import '../styles/global.css';
 import { createTranslator, type Locale, type MessageKey } from '../i18n/index.js';
+import DemoBanner from '../components/DemoBanner.tsx';
 
 interface Props {
   locale: Locale;
@@ -16,6 +17,9 @@ interface Props {
 const { locale, titleKey, title } = Astro.props;
 const t = createTranslator(locale);
 const otherLocale: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
+
+// API 地址：与各页一致，默认同源
+const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
 
 const pageTitle = title
   ? `${title} · ${t('app.name')}`
@@ -38,6 +42,13 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     <title>{pageTitle}</title>
   </head>
   <body>
+    <DemoBanner
+      client:load
+      apiBase={apiBase}
+      label={t('demo.banner.label')}
+      remainingLabel={t('demo.banner.remaining')}
+      exitLabel={t('demo.banner.exit')}
+    />
     <header class="header">
       <div class="header-inner">
         <a href={`/${locale}/`} class="logo">
