@@ -17,6 +17,24 @@ async function freshRepos(): Promise<StorageContext> {
   return createStorage({ sqlitePath: ':memory:' });
 }
 
+/** 直接在仓储层建一个有效演示会话，返回可放进请求头的 Cookie 字符串。 */
+async function demoSessionCookie(
+  repos: StorageContext,
+  id = 'demo-test-session',
+): Promise<string> {
+  await repos.demoSessions.create({
+    id,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    ipHash: null,
+  });
+  return `jobagent_demo=${id}`;
+}
+
+/** 带 demo Cookie 的 JSON 请求头。 */
+function demoJsonHeaders(cookie: string): Record<string, string> {
+  return { 'Content-Type': 'application/json', Cookie: cookie };
+}
+
 function sampleProfile(profileId: string, login = 'test-user'): AbilityProfile {
   return {
     profileId,
@@ -59,10 +77,11 @@ describe('POST /analyze', () => {
   it('creates a new analysis job and returns jobId', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
 
     const res = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'test-user' }),
     });
 
@@ -72,30 +91,34 @@ describe('POST /analyze', () => {
     expect(body.jobId).toMatch(/^job-/);
     expect(body.status).toBe('queued');
     expect(body.dedup).toBe(false);
+    expect(body.demo.remaining).toBe(2);
 
-    // 任务确实被创建
+    // 任务确实被创建，且标记为 demo 请求者
     const job = await repos.jobs.getById(body.jobId);
     expect(job).toBeDefined();
     expect(job!.subjectLogin).toBe('test-user');
     expect(job!.status).toBe('queued');
+    expect(job!.requesterKind).toBe('demo');
+    expect(job!.demoSessionId).toBe('demo-test-session');
   });
 
   it('returns existing jobId when user has an active job (dedup)', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
 
     // 第一次创建
     const res1 = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'dedup-user' }),
     });
     const body1 = await res1.json() as any;
 
-    // 第二次创建（同一用户，应该去重）
+    // 第二次创建（同一用户，应该去重，且不额外扣会话名额）
     const res2 = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'dedup-user' }),
     });
 
@@ -108,16 +131,24 @@ describe('POST /analyze', () => {
     const queued = await repos.jobs.listQueued();
     expect(queued).toHaveLength(1);
     expect(queued[0]!.id).toBe(body1.jobId);
+
+    // 去重不扣配额：analyze_count 仍为 1
+    const session = await repos.demoSessions.getActive(
+      'demo-test-session',
+      new Date().toISOString(),
+    );
+    expect(session!.analyzeCount).toBe(1);
   });
 
   it('creates new job when previous job is not active (succeeded)', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
 
     // 第一次创建并标记成功
     const res1 = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'done-user' }),
     });
     const body1 = await res1.json() as any;
@@ -127,7 +158,7 @@ describe('POST /analyze', () => {
     // 第二次创建（同一用户，但之前的任务已成功，应该创建新任务）
     const res2 = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'done-user' }),
     });
 
@@ -176,6 +207,7 @@ describe('POST /analyze', () => {
   it('creates a new job when cached profile is partial (not complete)', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
 
     // 插入一个 partial 画像（L0 only，未完成）
     const snapshot = sampleProfile('prof-partial-001', 'partial-user');
@@ -192,7 +224,7 @@ describe('POST /analyze', () => {
 
     const res = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'partial-user' }),
     });
 
@@ -240,10 +272,11 @@ describe('POST /analyze', () => {
   it('creates a gitee-platform job when platform=gitee', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
 
     const res = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'gitee_user', platform: 'gitee' }),
     });
 
@@ -260,11 +293,12 @@ describe('POST /analyze', () => {
   it('does not dedup across different platforms for same login', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos, 'demo-multi-platform');
 
     // GitHub user
     const resGh = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'same-user', platform: 'github' }),
     });
     const bodyGh = await resGh.json() as any;
@@ -272,7 +306,7 @@ describe('POST /analyze', () => {
     // Gitee user with same login — should NOT dedup against GitHub
     const resGitee = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'same-user', platform: 'gitee' }),
     });
 
@@ -300,11 +334,12 @@ describe('GET /jobs/:id', () => {
   it('returns job status for existing job', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
 
     // 创建任务
     const createRes = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'status-user' }),
     });
     const { jobId } = await createRes.json() as any;
@@ -325,10 +360,11 @@ describe('GET /jobs/:id', () => {
   it('returns updated status after job is claimed and succeeds', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
 
     const createRes = await app.request('/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: demoJsonHeaders(cookie),
       body: JSON.stringify({ username: 'progress-user' }),
     });
     const { jobId } = await createRes.json() as any;
