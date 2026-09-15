@@ -336,3 +336,131 @@ export const DEMO_ERROR_CODES = {
   rateLimited: 'DEMO_RATE_LIMITED', // 429：IP 滑动窗口超限
 } as const;
 export type DemoErrorCode = (typeof DEMO_ERROR_CODES)[keyof typeof DEMO_ERROR_CODES];
+
+// ─── 岗位定向简历（2026-09-15，对应 docs/design-targeted-resume-20260915.md）────────
+//
+// 设计原则（三铁律）：
+//  1. no-fabrication：简历每条 profile 来源条目必须挂 evidenceRefs，可回溯 EvidenceItem；
+//     画像不提供的字段（教育/工作经历/联系方式）只走 LocalResumeFields 本地补填、标 source:'local'；
+//  2. 定向 = 选择 + 排序 + 模板组装，不改写画像事实；
+//  3. provenance：规则/分析版本随草稿输出，保证可复现。
+
+/** 简历装配规则版本：排序/模板逻辑变更时递增，写入 ResumeDraft.provenance */
+export const RESUME_RULE_VERSION = '0.1';
+
+/** 简历支持的语言（P-R1 用户手选，默认 zh-CN；技能名等事实保持画像原文不翻译） */
+export const ResumeLocaleSchema = z.enum(['zh-CN', 'en']);
+export type ResumeLocale = z.infer<typeof ResumeLocaleSchema>;
+
+/**
+ * 用户本地补填字段（画像不提供，绝不臆造）。
+ * 仅在请求/本机存在：CLI 读 --local-fields JSON，P-R2 网页端存 localStorage，服务端不持久化。
+ */
+export const LocalResumeEducationSchema = z.object({
+  school: z.string().min(1),
+  degree: z.string().min(1),
+  period: z.string().optional(), // 自由文本，如 "2018–2022"，不做日期强校验
+});
+export const LocalResumeWorkSchema = z.object({
+  company: z.string().min(1),
+  role: z.string().min(1),
+  period: z.string().optional(),
+  detail: z.string().optional(),
+});
+export const LocalResumeFieldsSchema = z.object({
+  fullName: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  location: z.string().optional(),
+  personalSite: z.string().url().optional(),
+  education: z.array(LocalResumeEducationSchema).optional(),
+  workHistory: z.array(LocalResumeWorkSchema).optional(),
+});
+export type LocalResumeFields = z.infer<typeof LocalResumeFieldsSchema>;
+
+/** 简历条目来源：profile=画像证据（refs 必须非空）；local=用户本地补填（refs 为空） */
+export const ResumeEntrySourceSchema = z.enum(['profile', 'local']);
+export type ResumeEntrySource = z.infer<typeof ResumeEntrySourceSchema>;
+
+/**
+ * 一条可回溯的简历条目（技能 / 证据亮点 / 协作 / 补填经历统一形状）。
+ * source:'profile' 时 evidenceRefs 必须非空（no-fabrication 的结构化抓手）。
+ */
+export const ResumeEntrySchema = z
+  .object({
+    text: z.string().min(1), // 展示文本：技能名 / 证据 claim / 补填文本，不新造事实
+    evidenceRefs: z.array(z.string().min(1)), // -> EvidenceItem.evidenceId；local 条目为空数组
+    source: ResumeEntrySourceSchema,
+    url: z.string().url().optional(), // 证据原始 URL（commit/PR/Issue）
+    occurredAt: z.string().optional(),
+    supportsSkills: z.array(z.string()).default([]), // 该条目支撑哪些「岗位命中技能」
+    kind: z.string().optional(), // 技能条目记 SkillTag.kind（language/framework/domain），其余省略
+    depth: SkillTagDepthSchema.optional(), // 技能条目记深度
+  })
+  .superRefine((entry, ctx) => {
+    if (entry.source === 'profile' && entry.evidenceRefs.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'profile-sourced resume entry must carry at least one evidenceRef',
+        path: ['evidenceRefs'],
+      });
+    }
+  });
+export type ResumeEntry = z.infer<typeof ResumeEntrySchema>;
+
+/** 针对岗位的改进提示（只提示、不写进简历正文） */
+export const ResumeSuggestionSchema = z.object({
+  kind: z.enum(['missing_skill', 'missing_field', 'low_match']),
+  text: z.string().min(1),
+});
+export type ResumeSuggestion = z.infer<typeof ResumeSuggestionSchema>;
+
+/** 岗位定向简历草稿（resume-core 纯函数产出，渲染层据此出 Markdown/HTML） */
+export const ResumeDraftSchema = z.object({
+  schemaVersion: z.string().min(1),
+  ruleVersion: z.string().min(1),
+  generatedAt: z.string().datetime(),
+  subject: z.object({
+    login: z.string().min(1),
+    displayName: z.string().optional(),
+    profileUrl: z.string().url(),
+  }),
+  targetJob: z.object({
+    jobId: z.string().min(1),
+    title: z.string().min(1),
+    company: z.string().min(1),
+    sourceUrl: z.string().url(),
+    matchScore: z.number(),
+    tier: z.enum(['high', 'mid', 'low']), // 与 shared MatchScoreTier 同值
+    matchedSkills: z.array(z.string()),
+    fieldScores: z.object({ title: z.number(), tags: z.number(), description: z.number() }),
+  }),
+  header: z.object({
+    name: z.string().min(1),
+    headline: z.string().min(1),
+    contact: z.record(z.string(), z.string()).optional(),
+  }),
+  summary: z.string().min(1), // 模板组装，槽位全部来自画像/匹配，不新增事实
+  matchedSkills: z.array(ResumeEntrySchema), // 岗位命中、置顶（ATS 关键词覆盖）
+  otherSkills: z.array(ResumeEntrySchema), // 画像有、岗位未提（保留不删，排序在后）
+  evidenceHighlights: z.array(ResumeEntrySchema), // 支撑命中技能的证据，按强度排序
+  collaboration: z.array(ResumeEntrySchema).default([]), // 外部 merged PR 等强信号
+  localSections: z.object({
+    education: z.array(ResumeEntrySchema).default([]),
+    workHistory: z.array(ResumeEntrySchema).default([]),
+  }),
+  suggestions: z.array(ResumeSuggestionSchema),
+  gaps: z.array(z.string()), // 画像缺失、需用户补填的字段
+  provenance: z.object({
+    profileId: z.string().min(1),
+    analyzerVersion: z.string().min(1),
+    ruleVersion: z.string().min(1),
+  }),
+});
+export type ResumeDraft = z.infer<typeof ResumeDraftSchema>;
+
+/** 解析简历草稿（对外统一入口；失败返回 null，由调用方决定降级） */
+export function parseResumeDraft(input: unknown): ResumeDraft | null {
+  const result = ResumeDraftSchema.safeParse(input);
+  return result.success ? result.data : null;
+}

@@ -75,6 +75,9 @@ importers:
       '@jobagent/job-source':
         specifier: workspace:*
         version: link:../../packages/job-source
+      '@jobagent/resume-core':
+        specifier: workspace:*
+        version: link:../../packages/resume-core
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -235,6 +238,12 @@ importers:
         version: 8.10.2
 
   packages/llm:
+    dependencies:
+      '@jobagent/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/resume-core:
     dependencies:
       '@jobagent/shared':
         specifier: workspace:*
