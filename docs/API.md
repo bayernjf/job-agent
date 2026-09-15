@@ -1,12 +1,12 @@
-# JobAgent HTTP API 参考（M1 + P2 职位聚合）
+# JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式）
 
-- 状态：现行（M1 + P2）
+- 状态：现行（M1 + P2 + Demo Mode）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
 - 内容类型：请求/响应均为 `application/json`（健康检查除外）
-- CORS：MVP 阶段 `*` 开放，生产环境收紧为落地页域名
-- 最后更新：2026-09-14
+- CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）
+- 最后更新：2026-09-15
 
-> 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`。
+> 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`，演示模式完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
 
 ---
 
@@ -17,19 +17,22 @@
 所有 4xx/5xx 返回统一结构：
 
 ```json
-{ "error": "machine-readable message", "details": { } }
+{ "error": "machine-readable message", "code": "STABLE_CODE", "details": { } }
 ```
 
-`details` 仅在 400 校验失败时出现（Zod `flatten()` 结果）。
+- `details` 仅在 400 校验失败时出现（Zod `flatten()` 结果）。
+- `code` 为稳定错误码；演示模式相关为 `DEMO_REQUIRED` / `DEMO_QUOTA_EXCEEDED` / `DEMO_RATE_LIMITED`（前端据此分支处理，常量单一事实源在 `@jobagent/shared` 的 `DEMO_ERROR_CODES`）。
 
 ### 状态码约定
 
 | 码 | 含义 |
 | --- | --- |
-| 200 | 成功（含去重命中、缓存命中） |
-| 201 | 新建分析任务成功 |
+| 200 | 成功（含去重命中、缓存命中、幂等返回） |
+| 201 | 新建分析任务 / 新建演示会话成功 |
 | 400 | 请求体/参数非法 |
+| 403 | 匿名触发新分析但缺少演示会话（`DEMO_REQUIRED`），前端应自动建会话后重试一次 |
 | 404 | 任务或画像不存在 |
+| 429 | 演示会话配额用尽或 IP 滑动窗口超限（`DEMO_QUOTA_EXCEEDED` / `DEMO_RATE_LIMITED`） |
 | 500 | 服务内部错误 |
 
 ### 环境变量
@@ -41,6 +44,17 @@
 | `DB_PATH` | `data/job-agent.db` | SQLite 文件路径（sqlite 时） |
 | `DATABASE_URL` | — | Postgres 连接串（postgres 时） |
 | `PROFILE_CACHE_TTL_MS` | `86400000`（24h） | 完整画像缓存有效期 |
+| `DEMO_SESSION_TTL_MS` | `604800000`（7d） | 演示会话有效期 / Cookie Max-Age |
+| `DEMO_ANALYZE_QUOTA` | `3` | 单会话可触发的新分析次数 |
+| `DEMO_SESSION_RATE_PER_HOUR` | `5` | 单 IP 每小时建会话上限 |
+| `DEMO_ANALYZE_RATE_PER_HOUR` | `10` | 单 IP 每小时触发分析上限 |
+| `DEMO_MATCH_RATE_PER_HOUR` | `60` | match 计算 IP 兜底窗口（仅观测/防刷） |
+| `DEMO_IP_SALT` | 空（进程内随机） | IP 哈希盐，生产必填 |
+| `DEMO_PRESET_LOGINS` | 空 | 预置示例清单，形如 `github:alice,gitee:bob` |
+| `CORS_ALLOW_ORIGINS` | 空 | 跨域 Origin 白名单（逗号分隔） |
+| `TRUST_PROXY` | `false` | 反代后置 true，才采信 X-Forwarded-For |
+
+> Worker 侧另有 `DEMO_MAX_CONCURRENT`（默认 1）、`DEMO_BACKOFF_MS`（默认 15000），全部演示变量的权威表见设计文档 §13。
 
 ---
 
@@ -48,7 +62,14 @@
 
 ### `POST /analyze`
 
-为一个用户名（GitHub 或 Gitee）创建异步分析任务。响应分三种情况：**缓存命中**、**任务去重命中**、**新建任务**。
+为一个用户名（GitHub 或 Gitee）创建异步分析任务。处理顺序（演示模式的关键约束）：
+
+1. 校验请求体（400）；
+2. **画像缓存命中先于一切身份检查**——任何身份（含匿名）命中未过期完整画像都直接返回、不扣配额；
+3. 缓存未命中需要"触发新分析"时：匿名 → `403 DEMO_REQUIRED`；演示会话再依次过 active 去重（不扣配额）→ IP 窗口 → 会话原子配额；
+4. 全部通过才入队，任务携带 `requesterKind=demo` 与 `demoSessionId`。
+
+响应分三种成功情况：**缓存命中**、**任务去重命中**、**新建任务**。
 
 #### 请求体
 
@@ -57,19 +78,22 @@
 | `username` | string | 是 | 登录名，1–39 字符；GitHub 仅允许字母数字+中划线，Gitee 额外允许下划线 |
 | `platform` | `"github" \| "gitee"` | 否 | 证据源平台，默认 `github`；不同平台同 login 不互相去重 |
 
+请求需携带演示 Cookie `jobagent_demo`（由 `POST /demo/sessions` 下发），除非命中画像缓存。CLI 不走 HTTP，不受此限。
+
 ```json
 { "username": "sindresorhus", "platform": "github" }
 ```
 
 #### 响应 A：新建任务（201）
 
-无未过期完整画像、也无进行中任务时创建。
+无未过期完整画像、也无进行中任务，且演示会话有剩余配额时创建。`demo.remaining` 为本会话剩余新分析次数。
 
 ```json
 {
   "jobId": "job-5f8d-...",
   "status": "queued",
   "dedup": false,
+  "demo": { "remaining": 2 },
   "message": "Analysis job created. Poll GET /jobs/:id for status."
 }
 ```
@@ -111,6 +135,73 @@
 1. `POST /analyze` 拿到 `jobId`（缓存命中时直接拿 `profileId`，跳到第 3 步）。
 2. 轮询 `GET /jobs/:id`，直到 `status` 为 `succeeded`/`failed`。
 3. `succeeded` 后用 `profileId` 调 `GET /profiles/:id` 取完整画像。
+
+#### 演示模式错误（403 / 429）
+
+匿名且缓存未命中：
+
+```json
+{ "error": "demo session required to start a new analysis", "code": "DEMO_REQUIRED" }
+```
+
+会话分析次数用尽（`429`，带重置时间即会话过期时间）：
+
+```json
+{
+  "error": "demo analyze quota exhausted",
+  "code": "DEMO_QUOTA_EXCEEDED",
+  "analyzeQuota": 3, "analyzeUsed": 3, "analyzeRemaining": 0,
+  "resetAt": "2026-09-22T12:00:00.000Z"
+}
+```
+
+IP 滑动窗口超限（`429`，`bucket` 为 `session` 或 `analyze`）：
+
+```json
+{ "error": "...", "code": "DEMO_RATE_LIMITED", "bucket": "analyze", "retryAfterSeconds": 3600 }
+```
+
+---
+
+## 1.1 演示模式（免注册试用，/demo/*）
+
+新用户无需注册，`POST /demo/sessions` 即获得服务端临时身份，凭 HttpOnly Cookie `jobagent_demo` 进入**真实产品**（真实跑分析、看真实报告）。身份介于匿名与登录用户之间，只对"触发新分析"这一消耗外部配额的动作设三道闸（会话硬配额、IP 滑动窗口、Worker 并发闸）；全部只读 GET 端点与画像缓存对任何身份开放。完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
+
+### `POST /demo/sessions`
+
+无请求体（或空对象）。已是有效演示会话时幂等返回 `200`，否则新建并通过 `Set-Cookie` 下发会话，返回 `201`。
+
+Cookie 属性：`HttpOnly; SameSite=Lax; Path=/; Max-Age=<TTL>`，仅生产 HTTPS 加 `Secure`。
+
+```json
+{
+  "kind": "demo",
+  "sessionId": "demo-...",
+  "expiresAt": "2026-09-22T12:00:00.000Z",
+  "analyzeQuota": 3, "analyzeUsed": 0, "analyzeRemaining": 3
+}
+```
+
+超过单 IP 建会话窗口返回 `429 DEMO_RATE_LIMITED`（`bucket: "session"`）。
+
+### `GET /demo/me`
+
+返回当前身份与配额状态。匿名：`{ "kind": "anonymous" }`；演示：同上结构并带 `analyzeUsed/analyzeRemaining`。坏/过期 Cookie 静默降级为匿名。
+
+### `GET /demo/presets`
+
+公开只读。返回预置示例账号数组（由 `DEMO_PRESET_LOGINS` 配置），每项标注画像快照是否就绪，前端只展示 `ready: true` 项以实现"秒进"：
+
+```json
+[
+  { "platform": "github", "login": "alice", "authenticity": "likely_authentic", "profileId": "prof-...", "ready": true },
+  { "platform": "github", "login": "bob", "authenticity": "unknown", "profileId": null, "ready": false }
+]
+```
+
+### `POST /demo/exit`
+
+演示会话置为 `exited` 并清除 Cookie，返回 `{ "kind": "anonymous" }`；匿名调用为 no-op。
 
 ---
 
