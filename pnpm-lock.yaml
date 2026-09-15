@@ -240,6 +240,12 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/resume-core:
+    dependencies:
+      '@jobagent/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/shared:
     dependencies:
       zod:
