@@ -13,7 +13,7 @@
 
 ## 项目概览
 
-JobAgent 把开发者的 GitHub 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展进入稳定期、P2 职位聚合完成前置 Spike**（阶段与待办以 handoff.md 为准）。
+JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**（阶段与待办以 handoff.md 为准）。
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
@@ -82,6 +82,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 4. `analyzer-core`（**纯函数、带版本、无 I/O**）计算真实性信号、能力标签、规则化面试题，产出完整 `AbilityProfile`。
 5. 画像以**不可变快照**写入 `profiles`，证据写入 `evidence`；分享链接永远指向生成时版本。
 6. 任一层失败必须显式标注缺失，**禁止输出"看似完整"的报告**。
+7. **演示模式三态身份（anonymous/demo/user，设计见 docs/design-demo-mode-20260915.md）**：只读公开端点全放行；唯一受限是"触发新分析"，画像缓存命中先于权限检查、任何身份放行且不扣配额；demo（HttpOnly Cookie `jobagent_demo`）经受三道闸——会话单条条件 UPDATE 原子扣减、IP 加盐哈希滑窗、Worker demo 并发闸（formal 永不被闸）。改 `/analyze`、Worker 认领或配额逻辑时必须保持这些顺序与错误码（DEMO_REQUIRED/QUOTA_EXCEEDED/RATE_LIMITED），且**不得把 analyzer-core 拖入身份/配额逻辑**。
 
 ### 内核与 I/O 分离（硬约束）
 
