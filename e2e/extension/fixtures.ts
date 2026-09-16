@@ -60,6 +60,7 @@ export const THREE_TIER_MATCHES = {
         },
       ],
       posting: {
+        id: 'row-job-high',
         jobId: 'job-high',
         source: 'lever',
         sourceUrl: 'https://example.test/job-high',
@@ -79,6 +80,7 @@ export const THREE_TIER_MATCHES = {
         { skill: 'React', score: 2, fields: ['title', 'description'] },
       ],
       posting: {
+        id: 'row-job-mid',
         jobId: 'job-mid',
         source: 'remoteok',
         sourceUrl: 'https://example.test/job-mid',
@@ -95,6 +97,7 @@ export const THREE_TIER_MATCHES = {
       fieldScores: { title: 2, tags: 0, description: 0 },
       skillHits: [{ skill: 'React', score: 2, fields: ['title'] }],
       posting: {
+        id: 'row-job-low',
         jobId: 'job-low',
         source: 'remotive',
         sourceUrl: 'https://example.test/job-low',
