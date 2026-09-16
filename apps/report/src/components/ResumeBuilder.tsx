@@ -6,18 +6,24 @@
  * `POST /resumes/build`（format=html）→ iframe 预览服务端渲染的可打印 HTML。
  *
  * 隐私（设计 §5.4 三铁律之 provenance / no-fabrication）：
- *  - 本地补填（联系方式/教育/工作经历）只存 localStorage（`jobagent.localResumeFields`），
- *    仅在请求体中随本次生成发送，服务端不入库、不记日志；
+ *  - 本地补填（联系方式/教育/工作经历）只存 localStorage（canonical 键
+ *    `jobagent.localProfile`，与扩展共用同一 LocalProfileFields 形状，各自本域存储），
+ *    仅在请求体中投影为简历字段随本次生成发送，服务端不入库、不记日志；
  *  - 简历正文只含画像证据可支撑的技能与成果，缺失项进 suggestions/gaps 提示，绝不臆造。
  *  - 打印/导出 PDF 走浏览器打印（HTML 已内置 @media print），不引入服务端 puppeteer。
  * 所有用户可见文案由 Astro 经 labels 传入，组件不硬编码（i18n 在服务端完成）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LocalResumeFields, ResumeDraft } from '@jobagent/shared';
+import type { LocalProfileFields, LocalResumeFields, ResumeDraft } from '@jobagent/shared';
+import {
+  LEGACY_RESUME_FIELDS_STORAGE_KEY,
+  LOCAL_PROFILE_STORAGE_KEY,
+  legacyResumeToLocalProfile,
+  localProfileToResumeFields,
+  sanitizeLocalProfile,
+} from '@jobagent/shared';
 
 export const BUILD_RESUME_EVENT = 'jobagent:build-resume';
-/** 报告页本地补填字段存储键；与扩展 ATS 的 jobagent.localFields 形状不同，故独立成键。 */
-const LOCAL_RESUME_FIELDS_KEY = 'jobagent.localResumeFields';
 
 export interface BuildResumeDetail {
   jobId: string;
@@ -65,7 +71,8 @@ export interface ResumeLabels {
   gapsTitle: string;
   schoolPlaceholder: string;
   degreePlaceholder: string;
-  periodPlaceholder: string;
+  startPlaceholder: string;
+  endPlaceholder: string;
   companyPlaceholder: string;
   rolePlaceholder: string;
   detailPlaceholder: string;
@@ -90,42 +97,41 @@ interface ResumeBuilderProps {
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
 
-function loadLocal(): LocalResumeFields {
+/** 读 canonical 本地档案；无则一次性迁移旧简历补填键（迁移后删旧键）。 */
+function loadLocal(): LocalProfileFields {
   try {
-    const raw = localStorage.getItem(LOCAL_RESUME_FIELDS_KEY);
-    return raw ? (JSON.parse(raw) as LocalResumeFields) : {};
+    const raw = localStorage.getItem(LOCAL_PROFILE_STORAGE_KEY);
+    if (raw) return sanitizeLocalProfile(JSON.parse(raw) as LocalProfileFields);
+    const legacyRaw = localStorage.getItem(LEGACY_RESUME_FIELDS_STORAGE_KEY);
+    if (legacyRaw) {
+      const migrated = legacyResumeToLocalProfile(JSON.parse(legacyRaw) as LocalResumeFields);
+      persistLocal(migrated);
+      try {
+        localStorage.removeItem(LEGACY_RESUME_FIELDS_STORAGE_KEY);
+      } catch {
+        // 旧键清理失败不影响本次使用
+      }
+      return migrated;
+    }
   } catch {
-    return {};
+    // 损坏的本地数据按空处理，绝不阻塞生成
+  }
+  return {};
+}
+
+/** 规整后写入 canonical 键（localStorage 不可用时静默降级为本次会话态）。 */
+function persistLocal(fields: LocalProfileFields): void {
+  try {
+    localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(sanitizeLocalProfile(fields)));
+  } catch {
+    // 隐私模式 / 配额受限时仅本次会话生效
   }
 }
 
-/** 剔除空白字符串与不完整行（school/degree、company/role 均为契约必填），避免 400。 */
-function sanitizeLocal(f: LocalResumeFields): LocalResumeFields | undefined {
-  const str = (v?: string): string | undefined => {
-    const t = v?.trim();
-    return t ? t : undefined;
-  };
-  const education = (f.education ?? [])
-    .map((e) => ({ school: str(e.school) ?? '', degree: str(e.degree) ?? '', period: str(e.period) }))
-    .filter((e) => e.school && e.degree);
-  const workHistory = (f.workHistory ?? [])
-    .map((w) => ({
-      company: str(w.company) ?? '',
-      role: str(w.role) ?? '',
-      period: str(w.period),
-      detail: str(w.detail),
-    }))
-    .filter((w) => w.company && w.role);
-  const out: LocalResumeFields = {
-    fullName: str(f.fullName),
-    email: str(f.email),
-    phone: str(f.phone),
-    location: str(f.location),
-    personalSite: str(f.personalSite),
-  };
-  if (education.length > 0) out.education = education;
-  if (workHistory.length > 0) out.workHistory = workHistory;
-  return Object.values(out).some((v) => v !== undefined) ? out : undefined;
+/** canonical → 简历请求字段；全空时返回 undefined（请求不带 local）。 */
+function toResumeRequest(fields: LocalProfileFields): LocalResumeFields | undefined {
+  const projected = localProfileToResumeFields(fields);
+  return Object.values(projected).some((v) => v !== undefined) ? projected : undefined;
 }
 
 function slug(s: string): string {
@@ -139,7 +145,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
   const [html, setHtml] = useState('');
   const [markdown, setMarkdown] = useState('');
   const [showLocal, setShowLocal] = useState(false);
-  const [local, setLocal] = useState<LocalResumeFields>(loadLocal);
+  const [local, setLocal] = useState<LocalProfileFields>(loadLocal);
   const [frameHeight, setFrameHeight] = useState(480);
   const [downloading, setDownloading] = useState(false);
   const [polishOn, setPolishOn] = useState(false);
@@ -150,7 +156,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
   const seqRef = useRef(0);
 
   const build = useCallback(
-    async (job: BuildResumeDetail, fields: LocalResumeFields, polish?: boolean) => {
+    async (job: BuildResumeDetail, fields: LocalProfileFields, polish?: boolean) => {
       const seq = ++seqRef.current;
       const wantPolish = polish ?? polishOn;
       setTarget(job);
@@ -167,7 +173,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
             jobId: job.jobId,
             locale,
             format: 'html',
-            local: sanitizeLocal(fields),
+            local: toResumeRequest(fields),
             ...(wantPolish ? { polish: true } : {}),
           }),
         });
@@ -275,7 +281,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
   };
 
   const applyLocal = (): void => {
-    localStorage.setItem(LOCAL_RESUME_FIELDS_KEY, JSON.stringify(local));
+    persistLocal(local);
     if (target) void build(target, local);
   };
 
@@ -289,24 +295,26 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
     setPolishResult(null);
   };
 
-  // ── 本地补填表单的行编辑 helper ──
+  // ── 本地补填表单的行编辑 helper（编辑模型为 canonical LocalProfileFields）──
   const eduRows = local.education ?? [];
   const workRows = local.workHistory ?? [];
-  const setSimple = (key: keyof LocalResumeFields, value: string): void =>
+  type ScalarKey = 'fullName' | 'email' | 'phone' | 'location' | 'personalSite' | 'linkedinUrl';
+  const setSimple = (key: ScalarKey, value: string): void =>
     setLocal((f) => ({ ...f, [key]: value }));
-  const updateEdu = (i: number, patch: Partial<NonNullable<LocalResumeFields['education']>[number]>): void =>
-    setLocal((f) => ({ ...f, education: eduRows.map((e, j) => (j === i ? { ...e, ...patch } : e)) }));
+  const updateEdu = (
+    i: number,
+    patch: Partial<NonNullable<LocalProfileFields['education']>[number]>,
+  ): void => setLocal((f) => ({ ...f, education: eduRows.map((e, j) => (j === i ? { ...e, ...patch } : e)) }));
   const addEdu = (): void =>
-    setLocal((f) => ({ ...f, education: [...(f.education ?? []), { school: '', degree: '', period: '' }] }));
+    setLocal((f) => ({ ...f, education: [...(f.education ?? []), { school: '' }] }));
   const removeEdu = (i: number): void =>
     setLocal((f) => ({ ...f, education: eduRows.filter((_, j) => j !== i) }));
-  const updateWork = (i: number, patch: Partial<NonNullable<LocalResumeFields['workHistory']>[number]>): void =>
-    setLocal((f) => ({ ...f, workHistory: workRows.map((w, j) => (j === i ? { ...w, ...patch } : w)) }));
+  const updateWork = (
+    i: number,
+    patch: Partial<NonNullable<LocalProfileFields['workHistory']>[number]>,
+  ): void => setLocal((f) => ({ ...f, workHistory: workRows.map((w, j) => (j === i ? { ...w, ...patch } : w)) }));
   const addWork = (): void =>
-    setLocal((f) => ({
-      ...f,
-      workHistory: [...(f.workHistory ?? []), { company: '', role: '', period: '', detail: '' }],
-    }));
+    setLocal((f) => ({ ...f, workHistory: [...(f.workHistory ?? []), { company: '' }] }));
   const removeWork = (i: number): void =>
     setLocal((f) => ({ ...f, workHistory: workRows.filter((_, j) => j !== i) }));
 
@@ -471,10 +479,16 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
                       onChange={(ev) => updateEdu(i, { degree: ev.target.value })}
                     />
                     <input
-                      aria-label={labels.periodPlaceholder}
-                      placeholder={labels.periodPlaceholder}
-                      value={e.period ?? ''}
-                      onChange={(ev) => updateEdu(i, { period: ev.target.value })}
+                      aria-label={labels.startPlaceholder}
+                      placeholder={labels.startPlaceholder}
+                      value={e.start ?? ''}
+                      onChange={(ev) => updateEdu(i, { start: ev.target.value })}
+                    />
+                    <input
+                      aria-label={labels.endPlaceholder}
+                      placeholder={labels.endPlaceholder}
+                      value={e.end ?? ''}
+                      onChange={(ev) => updateEdu(i, { end: ev.target.value })}
                     />
                     <button type="button" className="ja-btn ja-btn--ghost resume-row-remove" onClick={() => removeEdu(i)}>
                       {labels.remove}
@@ -503,10 +517,16 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
                       onChange={(ev) => updateWork(i, { role: ev.target.value })}
                     />
                     <input
-                      aria-label={labels.periodPlaceholder}
-                      placeholder={labels.periodPlaceholder}
-                      value={w.period ?? ''}
-                      onChange={(ev) => updateWork(i, { period: ev.target.value })}
+                      aria-label={labels.startPlaceholder}
+                      placeholder={labels.startPlaceholder}
+                      value={w.start ?? ''}
+                      onChange={(ev) => updateWork(i, { start: ev.target.value })}
+                    />
+                    <input
+                      aria-label={labels.endPlaceholder}
+                      placeholder={labels.endPlaceholder}
+                      value={w.end ?? ''}
+                      onChange={(ev) => updateWork(i, { end: ev.target.value })}
                     />
                     <button type="button" className="ja-btn ja-btn--ghost resume-row-remove" onClick={() => removeWork(i)}>
                       {labels.remove}

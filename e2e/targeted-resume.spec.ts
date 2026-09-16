@@ -13,7 +13,8 @@ import { FIXTURE_PROFILE_ID } from './fixtures/sample-profile.js';
 
 const RECOMMENDATIONS_URL = '**/profiles/*/job-recommendations**';
 const BUILD_URL = '**/resumes/build';
-const LOCAL_FIELDS_KEY = 'jobagent.localResumeFields';
+const LOCAL_FIELDS_KEY = 'jobagent.localProfile';
+const LEGACY_FIELDS_KEY = 'jobagent.localResumeFields';
 
 const ONE_MATCH = {
   profileId: FIXTURE_PROFILE_ID,
@@ -155,6 +156,42 @@ test.describe('targeted resume builder', () => {
     // 仅落本机 localStorage
     const stored = await page.evaluate((key) => localStorage.getItem(key), LOCAL_FIELDS_KEY);
     expect(stored).toContain('Alice Zhang');
+  });
+
+  test('migrates the legacy resume localStorage key to canonical once, splitting free-text period', async ({
+    page,
+  }) => {
+    const requests: unknown[] = [];
+    await mockRecommendations(page);
+    await mockBuild(page, requests);
+    // 模拟老版本写入的旧键（period 为自由文本）
+    await page.addInitScript(
+      ([key, value]) => localStorage.setItem(key, JSON.stringify(value)),
+      [
+        LEGACY_FIELDS_KEY,
+        {
+          fullName: 'Legacy Li',
+          education: [{ school: 'ZJU', degree: 'BS', period: '2018–2022' }],
+          workHistory: [{ company: 'ACME', role: 'SDE', period: '2022 - present' }],
+        },
+      ] as const,
+    );
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+
+    // 组件挂载即完成一次性迁移：canonical 写入、旧键删除
+    const canonical = await page.evaluate((k) => localStorage.getItem(k), LOCAL_FIELDS_KEY);
+    expect(canonical).toContain('"start":"2018"');
+    expect(canonical).toContain('"end":"2022"');
+    const legacy = await page.evaluate((k) => localStorage.getItem(k), LEGACY_FIELDS_KEY);
+    expect(legacy).toBeNull();
+
+    // 迁移后的 canonical 经投影进入简历请求，period 由结构化 start/end 重新派生
+    await page.locator('.job-recs .rec-resume-button').first().click();
+    await expect.poll(() => requests.length).toBe(1);
+    expect((requests[0] as Record<string, unknown>).local).toMatchObject({
+      fullName: 'Legacy Li',
+      education: [{ school: 'ZJU', degree: 'BS', period: '2018 – 2022' }],
+    });
   });
 
   test('shows an error with retry and recovers', async ({ page }) => {
