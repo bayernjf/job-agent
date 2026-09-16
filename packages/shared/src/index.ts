@@ -416,6 +416,15 @@ export const ResumeSuggestionSchema = z.object({
 export type ResumeSuggestion = z.infer<typeof ResumeSuggestionSchema>;
 
 /** 岗位定向简历草稿（resume-core 纯函数产出，渲染层据此出 Markdown/HTML） */
+/** LLM 受约束润色溯源（B 档，设计 §7）：仅润色成功并通过校验时写入，保证可复现。 */
+export const ResumePolishProvenanceSchema = z.object({
+  provider: z.string().min(1), // LLM 提供方标识，如 'openai' / 'anthropic' / 'fake'
+  model: z.string().min(1), // 模型 id
+  promptVersion: z.string().min(1), // 提示词模板版本
+  appliedAt: z.string().datetime(),
+});
+export type ResumePolishProvenance = z.infer<typeof ResumePolishProvenanceSchema>;
+
 export const ResumeDraftSchema = z.object({
   schemaVersion: z.string().min(1),
   ruleVersion: z.string().min(1),
@@ -455,6 +464,8 @@ export const ResumeDraftSchema = z.object({
     profileId: z.string().min(1),
     analyzerVersion: z.string().min(1),
     ruleVersion: z.string().min(1),
+    // B 档 LLM 润色溯源；规则版（A 档）无此字段
+    polish: ResumePolishProvenanceSchema.optional(),
   }),
 });
 export type ResumeDraft = z.infer<typeof ResumeDraftSchema>;
