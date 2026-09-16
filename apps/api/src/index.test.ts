@@ -290,6 +290,58 @@ describe('POST /analyze', () => {
     expect(job!.subjectLogin).toBe('gitee_user');
   });
 
+  it('creates a fused dual-source job when platform=all', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
+
+    const res = await app.request('/analyze', {
+      method: 'POST',
+      headers: demoJsonHeaders(cookie),
+      body: JSON.stringify({ username: 'dual_user', platform: 'all' }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json() as any;
+    expect(body.jobId).toMatch(/^job-/);
+
+    const job = await repos.jobs.getById(body.jobId);
+    expect(job).toBeDefined();
+    expect(job!.subjectPlatform).toBe('all');
+    expect(job!.subjectLogin).toBe('dual_user');
+  });
+
+  it('does not serve a single-source github profile as an all (fused) cache hit', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    const cookie = await demoSessionCookie(repos);
+
+    // 只有一张 github 单源完整画像（insert 默认 subject_platform=github）
+    const profileId = 'prof-gh-only';
+    const snapshot = sampleProfile(profileId, 'dual-user');
+    await repos.profiles.insert({
+      id: profileId,
+      analyzerVersion: snapshot.analyzerVersion,
+      subjectLogin: 'dual-user',
+      subjectClaimed: false,
+      dataWindowSince: snapshot.dataWindow.since,
+      dataWindowUntil: snapshot.dataWindow.until,
+      status: 'complete',
+      snapshot,
+    });
+
+    // platform=all 只认真融合画像，不应命中 github 单源缓存，应新建融合 job
+    const res = await app.request('/analyze', {
+      method: 'POST',
+      headers: demoJsonHeaders(cookie),
+      body: JSON.stringify({ username: 'dual-user', platform: 'all' }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json() as any;
+    expect(body.jobId).toBeTruthy();
+    expect(body.cached).toBeUndefined();
+  });
+
   it('does not dedup across different platforms for same login', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });

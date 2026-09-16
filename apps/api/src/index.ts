@@ -120,7 +120,8 @@ const AnalyzeRequestSchema = z.object({
     .max(39, 'username too long')
     // 兼容 GitHub（字母数字+中划线）与 Gitee（额外允许下划线）
     .regex(/^[a-zA-Z0-9](?:[a-zA-Z0-9]|[-_](?=[a-zA-Z0-9]))*$/, 'invalid username format'),
-  platform: z.enum(['github', 'gitee']).default('github'),
+  // all=一次作业同时采 GitHub+Gitee 并镜像去重融合成一张画像（见 design-cross-source-fusion §8）
+  platform: z.enum(['github', 'gitee', 'all']).default('github'),
 });
 
 const JobIdParamSchema = z.object({
@@ -514,7 +515,11 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       await repos.demoSessions.releaseAnalyzeSlot(sessionId);
       throw err;
     }
-    await repos.demoSessions.touch(sessionId, nowIso, { platform, login: username });
+    // all 融合作业主体在主源 GitHub，demo 观测的 analyzedLogins 平台仅接受 github/gitee，故归到 github。
+    await repos.demoSessions.touch(sessionId, nowIso, {
+      platform: platform === 'all' ? 'github' : platform,
+      login: username,
+    });
 
     return c.json(
       {
