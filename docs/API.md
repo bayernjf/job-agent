@@ -521,6 +521,7 @@ Cookie 属性：`HttpOnly; SameSite=Lax; Path=/; Max-Age=<TTL>`，仅生产 HTTP
 | `locale` | `"zh-CN"` \| `"en"` | 否 | 文案语言，默认 `zh-CN`；非法值 400 |
 | `format` | `"json"` \| `"md"` \| `"html"` | 否 | 默认 `json`（仅结构化草稿）；`md`/`html` 额外返回渲染字符串 |
 | `highlightLimit` | number | 否 | 证据亮点上限，正整数，最大 50；默认取内核常量（10） |
+| `polish` | boolean | 否 | 是否请求 **B 档 LLM 措辞润色**，默认 `false`（纯规则版，零费用、零数据外发）。见下「LLM 措辞润色」 |
 
 `local` 子结构（全部可选；空白字符串与不完整行会被服务端/客户端剔除；`personalSite` 须为合法 URL）：
 
@@ -568,7 +569,29 @@ Cookie 属性：`HttpOnly; SameSite=Lax; Path=/; Max-Age=<TTL>`，仅生产 HTTP
 
 - `tier`：`high` / `mid` / `low`，由 `matchScoreTier(score, matchedSkills.length)` 相对分档，与推荐/扩展一致。
 - `suggestions[].kind`：`missing_skill`（岗位要求但画像没有，仅提示不写进正文）/ `missing_field`（缺联系方式/教育/工作）/ `low_match`（零命中或低分）。
-- **HTML 已内置 `@media print` 的 A4 适配**：前端用浏览器"打印 → 另存 PDF"即可，服务端不引入 puppeteer（待拍板 #3，设计建议打印 CSS）。
+- **HTML 已内置 `@media print` 的 A4 适配**：前端用浏览器"打印 → 另存 PDF"即可，服务端不引入 puppeteer（设计 §10 #3 **已决策**：保持浏览器打印 CSS）。
+
+#### LLM 措辞润色（B 档，可选，默认关闭）
+
+- 仅当请求体 `polish:true` 且服务端配置了 OpenAI 兼容 LLM（环境变量 `LLM_API_KEY` + `LLM_MODEL`，可选 `LLM_BASE_URL`/`LLM_PROVIDER`/`LLM_TIMEOUT_MS`，见 `.env.example`）时才会调用模型；未配置时直接返回规则版，**不报错、不产生费用、不外发数据**。
+- 模型只允许润色 `summary` 与证据亮点的**措辞**，不能新增/删除/重排任何条目，也**不得引入任何新数字**（年份、百分比、指标等）。润色结果经 `resume-core` 纯安全层复核：长度、下标、数字集合（新文本数字必须是规则版草稿数字的子集）与 `ResumeDraftSchema` 复校；任一违例或模型/网络错误都**整条回退规则版**。
+- 无论是否真正润色，`polish:true` 的响应都带一个 `polish` 状态对象（不请求时该字段缺省）：
+
+```json
+// 润色通过
+{ "draft": { "...": "summary 已为模型措辞，provenance.polish 记录来源",
+  "provenance": { "profileId": "p-abc", "ruleVersion": "0.1",
+    "polish": { "provider": "deepseek", "model": "deepseek-chat",
+      "promptVersion": "resume-polish-0.1", "appliedAt": "2026-09-16T00:00:00.000Z" } } },
+  "polish": { "requested": true, "applied": true } }
+
+// 未配置 LLM / 安全层拒绝（fabrication_detected | validation_failed）/ provider_error → 回退规则版
+{ "draft": { "...": "原规则版，provenance 无 polish" },
+  "polish": { "requested": true, "applied": false, "reason": "not_configured" } }
+```
+
+- `reason`：`not_configured`（服务端未配 LLM）/ `provider_error`（HTTP、超时、非 JSON 输出）/ `validation_failed`（长度或结构违例）/ `fabrication_detected`（模型吐出规则版中不存在的新数字）。
+- 前端报告页当前默认不发 `polish`（规则版）；AI 润色开关属于后续 UI 项（见 handoff item19）。
 
 #### 错误
 
