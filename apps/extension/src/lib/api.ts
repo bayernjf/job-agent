@@ -156,6 +156,8 @@ export interface JobMatchItem {
   skillHits?: JobMatchSkillHit[];
   skillReasons?: JobMatchSkillReason[];
   posting: {
+    /** 岗位内部主键（job_postings.id），用于构造简历生成深链 ?resumeJob=<id> */
+    id?: string;
     title: string;
     company: string;
     location?: string | null;

@@ -36,3 +36,32 @@ export function resolveEvidenceLinks(
   }
   return out;
 }
+
+/**
+ * 报告页基址：生产同域反代（部署形态 A）下报告页与 API 同 origin，故默认取 apiBase 的 origin；
+ * 本地开发 API(3000)/Report(4321) 跨端口时，用户可在设置里用 reportBase 覆盖。
+ */
+export function resolveReportBase(apiBase: string, reportBaseOverride?: string | null): string {
+  const override = reportBaseOverride?.trim();
+  if (override) return override.replace(/\/+$/, '');
+  try {
+    return new URL(apiBase).origin;
+  } catch {
+    return apiBase.replace(/\/+$/, '');
+  }
+}
+
+/**
+ * 岗位定向简历深链：新标签打开报告页并经 ?resumeJob=<jobId> 自动触发 ResumeBuilder。
+ * 深链只携带 profileId 与岗位内部 id，不附加任何 demo 会话标识（普通 anchor 导航）。
+ */
+export function resumeDeepLink(
+  reportBase: string,
+  locale: 'zh-CN' | 'en',
+  profileId: string,
+  jobId: string,
+): string {
+  const base = reportBase.replace(/\/+$/, '');
+  const loc = locale === 'en' ? 'en' : 'zh-CN';
+  return `${base}/${loc}/report/${encodeURIComponent(profileId)}?resumeJob=${encodeURIComponent(jobId)}`;
+}
