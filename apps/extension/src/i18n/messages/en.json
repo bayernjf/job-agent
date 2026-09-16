@@ -8,6 +8,8 @@
   "panel.platformGitee": "Gitee",
   "panel.apiBaseLabel": "API endpoint",
   "panel.apiBasePlaceholder": "http://localhost:3000",
+  "panel.reportBaseLabel": "Report page URL (optional)",
+  "panel.reportBasePlaceholder": "Leave blank to use the API origin; local dev: http://localhost:4321",
   "panel.analyze": "Load verified profile",
   "panel.analyzing": "Analyzing…",
   "panel.claimedBadge": "Verified owner",
@@ -39,6 +41,7 @@
   "match.high": "High match",
   "match.mid": "Partial match",
   "match.low": "Weak match",
+  "match.resume": "Build a targeted resume",
   "panel.tryWebDemo": "No account? Try the free demo on the web",
   "nav.language": "中文"
 }

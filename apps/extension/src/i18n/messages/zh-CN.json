@@ -8,6 +8,8 @@
   "panel.platformGitee": "Gitee",
   "panel.apiBaseLabel": "API 地址",
   "panel.apiBasePlaceholder": "http://localhost:3000",
+  "panel.reportBaseLabel": "报告页地址（可选）",
+  "panel.reportBasePlaceholder": "留空则与 API 同源；本地开发可填 http://localhost:4321",
   "panel.analyze": "获取可信画像",
   "panel.analyzing": "分析中…",
   "panel.claimedBadge": "本人已验证",
@@ -39,6 +41,7 @@
   "match.high": "高度匹配",
   "match.mid": "部分匹配",
   "match.low": "弱覆盖",
+  "match.resume": "针对此岗生成简历",
   "panel.tryWebDemo": "没有账号？在网页端免费试用演示",
   "nav.language": "English"
 }
