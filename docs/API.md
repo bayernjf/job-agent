@@ -1,10 +1,10 @@
-# JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式）
+# JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历）
 
-- 状态：现行（M1 + P2 + Demo Mode）
+- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
 - 内容类型：请求/响应均为 `application/json`（健康检查除外）
 - CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）
-- 最后更新：2026-09-15
+- 最后更新：2026-09-16
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`，演示模式完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
 
@@ -496,6 +496,87 @@ Cookie 属性：`HttpOnly; SameSite=Lax; Path=/; Max-Age=<TTL>`，仅生产 HTTP
 | --- | --- |
 | 400 | 非法 JSON；请求体校验失败；`skills` 与 `profileId` 都未提供 |
 | 404 | 传了 `profileId` 但画像不存在或无快照 |
+
+---
+
+## 3.4 岗位定向简历生成（P-R2）
+
+### `POST /resumes/build`
+
+针对**一个岗位**，把画像快照中**有证据可回溯**的技能与成果，经选择、排序、模板装配成一份岗位定向简历（设计文档 `docs/design-targeted-resume-20260915.md`）。纯计算、只读：**不触发新分析、不消耗平台采集配额、不写库、不写访问日志内容**；匹配分在请求时基于该岗位现算，零命中走 `low` 分档降级。与 GET 画像/推荐一样对所有身份公开。
+
+三条不变量（no-fabrication）：
+
+1. 正文里 `source:'profile'` 的每条目都带非空 `evidenceRefs`，指向该画像的 `EvidenceItem.evidenceId`；**画像里 `evidenceRefs` 为空的技能 tag 不会写进简历正文**（完整技能仍在画像页展示）；
+2. 画像不提供的字段（联系方式、教育、工作经历）只来自请求体 `local`，标 `source:'local'`、refs 为空，服务端不持久化；
+3. 输出经 `ResumeDraftSchema` 校验并带 `provenance`（profileId / analyzerVersion / ruleVersion），规则版本变更时 bump `RESUME_RULE_VERSION`。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `profileId` | string | **是** | 画像 id；不存在或无快照返回 404 |
+| `jobId` | string | **是** | 岗位**内部主键**（`job_postings.id`，即推荐/检索响应里 `posting.id`，非外部 `jobId`）；不存在返回 404 |
+| `local` | object | 否 | 本地补填字段，仅用于本次渲染，**不入库、不落日志**；结构见下 |
+| `locale` | `"zh-CN"` \| `"en"` | 否 | 文案语言，默认 `zh-CN`；非法值 400 |
+| `format` | `"json"` \| `"md"` \| `"html"` | 否 | 默认 `json`（仅结构化草稿）；`md`/`html` 额外返回渲染字符串 |
+| `highlightLimit` | number | 否 | 证据亮点上限，正整数，最大 50；默认取内核常量（10） |
+
+`local` 子结构（全部可选；空白字符串与不完整行会被服务端/客户端剔除；`personalSite` 须为合法 URL）：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `fullName` / `email` / `phone` / `location` | string | 联系信息 |
+| `personalSite` | string(url) | 个人主页 |
+| `education[]` | `{ school(必填), degree(必填), period? }` | 教育经历，`period` 自由文本如 `"2018–2022"` |
+| `workHistory[]` | `{ company(必填), role(必填), period?, detail? }` | 工作经历 |
+
+#### 请求 / 响应
+
+```json
+// 请求
+{
+  "profileId": "p-abc",
+  "jobId": "job-uuid",
+  "locale": "zh-CN",
+  "format": "html",
+  "local": { "fullName": "Alice Zhang", "email": "alice@example.com" }
+}
+```
+
+```json
+// format 省略 / json → 200
+{ "draft": { "schemaVersion": "...", "ruleVersion": "0.1", "generatedAt": "...",
+  "subject": { "login": "alice", "profileUrl": "..." },
+  "targetJob": { "jobId": "ext-1", "title": "Senior TypeScript Engineer", "company": "Acme",
+    "sourceUrl": "...", "matchScore": 7, "tier": "high",
+    "matchedSkills": ["typescript"], "fieldScores": { "title": 3, "tags": 2, "description": 2 } },
+  "header": { "...": "name/headline/contact" },
+  "summary": "…（仅由画像/岗位/匹配槽位模板组装）",
+  "matchedSkills": [ { "text": "typescript", "source": "profile", "evidenceRefs": ["ev-ts1"], "depth": "proficient" } ],
+  "otherSkills": [ { "text": "rust", "source": "profile", "evidenceRefs": ["ev-rs"] } ],
+  "evidenceHighlights": [ { "text": "Merged a TypeScript fix", "source": "profile", "evidenceRefs": ["ev-ts1"], "url": "..." } ],
+  "collaboration": [],
+  "localSections": { "education": [], "workHistory": [] },
+  "suggestions": [ { "kind": "missing_skill", "text": "…" } ],
+  "gaps": [ "…（画像缺失、需用户补填的字段）" ],
+  "provenance": { "profileId": "p-abc", "analyzerVersion": "…", "ruleVersion": "0.1" } } }
+
+// format=html → 200：{ "format": "html", "draft": { /* 同上 */ }, "html": "<!DOCTYPE html>…（含 @media print，可直接 iframe srcDoc 预览/打印为 PDF）" }
+// format=md   → 200：{ "format": "md",   "draft": { /* 同上 */ }, "markdown": "# …" }
+```
+
+- `tier`：`high` / `mid` / `low`，由 `matchScoreTier(score, matchedSkills.length)` 相对分档，与推荐/扩展一致。
+- `suggestions[].kind`：`missing_skill`（岗位要求但画像没有，仅提示不写进正文）/ `missing_field`（缺联系方式/教育/工作）/ `low_match`（零命中或低分）。
+- **HTML 已内置 `@media print` 的 A4 适配**：前端用浏览器"打印 → 另存 PDF"即可，服务端不引入 puppeteer（待拍板 #3，设计建议打印 CSS）。
+
+#### 错误
+
+| 码 | 情形 |
+| --- | --- |
+| 400 | 非法 JSON；缺 `profileId`/`jobId`；`locale`/`format` 非法；`highlightLimit` 越界；`local` 校验失败（如 `personalSite` 非 URL、education 缺 school/degree） |
+| 404 | 画像不存在/无快照，或岗位不存在 |
+| 500 | 已存储的岗位记录不符合契约（数据异常，正常不会发生） |
 
 ---
 
