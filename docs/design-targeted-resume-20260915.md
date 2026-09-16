@@ -1,6 +1,6 @@
 # 设计：岗位定向简历生成（Targeted Resume）
 
-- 状态：现行（**P-R1 规则版闭环 2026-09-15 落地；P-R2 在线消费 + P-R3 可纯代码闭环子项 2026-09-16 落地**：shared 契约 + `packages/resume-core`（含 polish 安全层）+ `packages/llm`（端口/fake/OpenAI 兼容 client/env 工厂，默认关闭）+ CLI `resume build`/`batch` + API `POST /resumes/build`（含可选 `polish`）+ 报告页 ResumeBuilder island（含 `?resumeJob=` 深链）+ 扩展面板深链 CTA。**§10 五项 2026-09-16 已决策**：不持久化、只存本机、浏览器打印 PDF、LLM 默认关闭+OpenAI 兼容自配、语言手选；版本管理入 deferred，本地档案统一列 handoff item19）
+- 状态：现行（**P-R1 规则版闭环 2026-09-15 落地；P-R2 在线消费 + P-R3 可纯代码闭环子项 2026-09-16 落地**：shared 契约 + `packages/resume-core`（含 polish 安全层）+ `packages/llm`（端口/fake/OpenAI 兼容 client/env 工厂，默认关闭）+ CLI `resume build`/`batch` + API `POST /resumes/build`（含可选 `polish`）+ 报告页 ResumeBuilder island（含 `?resumeJob=` 深链）+ 扩展面板深链 CTA。**§10 五项 2026-09-16 已决策**：不持久化、只存本机、浏览器打印 PDF、LLM 默认关闭+OpenAI 兼容自配、语言手选；版本管理入 deferred。**本地档案 canonical 统一已落地（item19 ①，2026-09-16，见 §5.4.1），跨端自动互通仍缓做**）
 - 日期：2026-09-15
 - 需求来源：用户需求——"在求职者的画像范围内，针对不同职位，生成匹配度高的简历"
 - 关联：[PRD.md](PRD.md)、[design-match-wiring-20260914.md](design-match-wiring-20260914.md)（画像↔岗位匹配）、[design-job-ingestion-20260913.md](design-job-ingestion-20260913.md)（岗位库）、[讨论记录-02](讨论记录-02-投递功能与竞品分析-20260911.md)（竞品简历定制）
@@ -253,7 +253,7 @@ LocalProfileFields   = {
 | --- | --- | --- | --- |
 | **P-R1（规则版闭环，建议先做）✅ 已落地 2026-09-15** | shared ResumeDraft/LocalResumeFields 契约；resume-core（rank/tailor/render md+html）；CLI `jobagent resume build --profile <file|id> --job <id> [--local-fields f.json] [--format md|html|json] -o out`；全套单测 | 小（1–1.5 天） | 已有画像/岗位库/匹配，无新外部依赖 |
 | **P-R2（在线消费）✅ 已落地 2026-09-16** | API `POST /resumes/build`（body: profileId+jobId+可选 local，返回 ResumeDraft；不入库）；报告页岗位卡片加"针对此岗生成简历"（island：预览 md/html、打印 PDF、local 补填表单存 localStorage）；docs/API.md §3.4；E2E（含 `?resumeJob=` 深链自动触发）。实现增补：CLI/API 共用 `fromJobMatch` 映射；storage 共享 `toEvidenceItem(s)`；修复无 evidenceRefs 弱信号技能误标 source:'profile' 的内核 bug | 中（2–3 天） | P-R1 |
-| **P-R3 🟡 可闭环子项已落地 2026-09-16，余外部/缓做项** | 已做：B 档 LLM **端口 + Fake + 受约束润色安全层**（§7，`resume-core/polish.ts` 数字防臆造闸门）+ **OpenAI 兼容客户端与 env 工厂**（`packages/llm/openai-compatible-client.ts`，默认关闭）+ **API `POST /resumes/build` 可选 `polish` 接线（未配置/失败回退规则版）**；扩展面板生成（深链 CTA）；多岗位批量简历（CLI `resume batch`）；**报告页「AI 润色措辞」开关 UI（2026-09-16，item19 ②，勾选带 `polish:true`、诚实回退提示、中英 i18n + 2 E2E）**。仍缓做/外部：真实启用需用户自配 LLM env（厂商/费用由用户决定）、简历版本管理（随服务端持久化，见 deferred）、本地档案 canonical 统一（item19 ①） | — | 触发条件见 §7/§10 |
+| **P-R3 🟡 可闭环子项已落地 2026-09-16，余外部/缓做项** | 已做：B 档 LLM **端口 + Fake + 受约束润色安全层**（§7，`resume-core/polish.ts` 数字防臆造闸门）+ **OpenAI 兼容客户端与 env 工厂**（`packages/llm/openai-compatible-client.ts`，默认关闭）+ **API `POST /resumes/build` 可选 `polish` 接线（未配置/失败回退规则版）**；扩展面板生成（深链 CTA）；多岗位批量简历（CLI `resume batch`）；**报告页「AI 润色措辞」开关 UI（2026-09-16，item19 ②，勾选带 `polish:true`、诚实回退提示、中英 i18n + 2 E2E）**。仍缓做/外部：真实启用需用户自配 LLM env（厂商/费用由用户决定）、简历版本管理（随服务端持久化，见 deferred）、本地档案跨端自动互通（schema 统一见 §5.4.1，仅自动同步待账号体系/chrome.storage） | — | 触发条件见 §7/§10 |
 
 CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或本地库 profileId；`--job` 读本地 job_postings 的 jobId（storage 只读），保持"内核零 I/O、I/O 在 CLI/API 薄封装"的分层。
 
@@ -268,12 +268,12 @@ CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或�
 > 用户 2026-09-16「按你的建议来」确认以下默认决策；除 #4 的代码已落地外，其余维持现状即可。
 
 1. **服务端是否持久化简历 → 决策：不持久化**。按需生成、隐私最小化；简历不入库、不记日志内容。"简历版本管理"随之缓做（见 docs/deferred-items.md，触发条件＝未来明确需要服务端存档/版本对比时再建表）。
-2. **补填信息存储 → 决策：只存本机，服务端不落库**。报告页 `jobagent.localResumeFields` localStorage、CLI `--local-fields` 本地 JSON、扩展 ATS 域 `jobagent.localFields`；详见 §5.4 与 item19 的统一说明。
+2. **补填信息存储 → 决策：只存本机，服务端不落库**。报告页 localStorage、CLI `--local-fields` 本地 JSON、扩展 ATS 域 localStorage；两端报告页/扩展自 2026-09-16（item19 ①）起统一读写 canonical `jobagent.localProfile`，旧键 `jobagent.localResumeFields` / `jobagent.localFields` 一次性迁移后删除，详见 §5.4 与 §5.4.1。
 3. **PDF 方案 → 决策：浏览器打印 CSS（`@media print`），不引入 puppeteer**。零重依赖、零服务端渲染开销；服务端出 PDF 缓做，触发条件＝出现明确的"无浏览器/服务端批量出 PDF"需求。
 4. **B 档 LLM → 决策：默认关闭 + OpenAI 兼容端点自配，不锁定付费厂商**。已落地 `OpenAICompatibleClient` 与 env 工厂（§7）：未设 `LLM_API_KEY` 走纯规则版（零费用、零数据外发）；设置后支持任意 OpenAI 兼容 `/chat/completions`（OpenAI/DeepSeek/通义兼容/本地模型等），`LLM_MODEL` 必填（不替用户默认付费模型），具体型号与单价以厂商当期官方定价为准、代码不内置。请求需显式 `polish:true`，未配置或安全层拒绝一律回退规则版。
 5. **简历语言 → 决策：用户手选 + 默认 locale 可配**（P-R1 已实现：`locale` 默认 `zh-CN`，可选 `en`；技能名等事实保持画像原文不翻译）。
 
-**衍生项（不在原五项内，单列 handoff item19）**：扩展 ATS `LocalFields` 与简历 `LocalResumeFields` 的形状/存储统一——决策方向为"统一 canonical schema、各自本机存储、不自动同步"（跨 ATS 域/产品域 + 不持久化导致物理隔离，见 §5.4），实现作为独立批次。
+**衍生项（单列 handoff item19）**：扩展 ATS `LocalFields` 与简历 `LocalResumeFields` 的形状/存储统一——决策为"统一 canonical schema、各自本机存储、不自动同步"（跨 ATS 域/产品域 + 不持久化导致物理隔离，见 §5.4）。**✅ 已落地（item19 ①，2026-09-16，见 §5.4.1）**：shared `LocalProfileFields` 契约 + 两投影/旧键迁移纯函数，两端改用 `jobagent.localProfile`；跨端自动互通仍缓做。
 
 
 ## 11. 验收（P-R1 完成标准）
@@ -301,4 +301,5 @@ CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或�
 - [x] 扩展面板每个匹配岗位「针对此岗生成简历」深链 CTA：新开报告页 `<locale>/report/<profileId>?resumeJob=<内部 posting.id>`，普通 anchor 不附 demo 会话标识；可选 reportBase 设置（生产同域取 apiBase origin，本地跨端口可覆盖）；match-utils 4 单测 + 扩展 E2E 1 用例。
 - [x] 全仓单测全绿、report E2E 5 + 扩展 E2E 8 全过、typecheck/build/check-migrations/`git diff --check` 通过。
 - [x] **报告页「AI 润色措辞」开关 UI（2026-09-16，item19 ②）**：ResumeBuilder ready 面板加 checkbox（默认关）+ hint + `role=status` 状态；勾选且有目标岗位即带 `polish:true` 重新生成、下载 Markdown 跟随；applied=true 绿色已润色、applied=false 橙色回退并映射四 reason 中英文案；中英各 8 i18n key、全 `--ja-*` token、E2E 2 用例（回退/成功），真实浏览器中英回退路径复验。
-- [ ] （缓做/外部，非阻塞）真实启用需用户自配 LLM env（厂商/费用用户决定）；服务端 PDF（puppeteer，触发条件见 §10 #3）；简历版本管理（随服务端持久化，见 deferred）；本地档案 canonical 统一与自动互通（handoff item19 ①，需账号体系或 chrome.storage 通道）。
+- [ ] （缓做/外部，非阻塞）真实启用需用户自配 LLM env（厂商/费用用户决定）；服务端 PDF（puppeteer，触发条件见 §10 #3）；简历版本管理（随服务端持久化，见 deferred）；本地档案**跨端自动互通**（schema 统一已落地见 §5.4.1，自动同步需账号体系或 chrome.storage 通道）。
+- [x] **本地档案 canonical 统一（2026-09-16，item19 ①）**：shared `LocalProfileFields` + ATS 投影类型 + 投影/迁移/合并纯函数（23 单测）；报告页与扩展都存 `jobagent.localProfile`、旧键一次性迁移删除；报告页表单 period 拆 start/end；targeted-resume E2E 8/8 + 扩展 E2E 8/8 + 真实浏览器迁移/投影复验。
