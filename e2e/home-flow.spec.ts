@@ -72,9 +72,9 @@ test.describe('locale negotiation and home render', () => {
     await expect(input).toBeVisible();
     await expect(input).toHaveAttribute('placeholder', /torvalds/);
     await expect(page.getByRole('button', { name: 'Generate Profile' })).toBeVisible();
-    // 平台切换按钮可见
-    await expect(page.getByRole('button', { name: 'GitHub' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Gitee' })).toBeVisible();
+    // 平台切换按钮可见（exact 避免命中 "GitHub + Gitee (fused)" 融合按钮）
+    await expect(page.getByRole('button', { name: 'GitHub', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Gitee', exact: true })).toBeVisible();
   });
 
   test('Chinese home renders localized copy', async ({ page }) => {
@@ -147,11 +147,11 @@ test.describe('AnalyzeForm flow', () => {
     await waitForHydrated(page);
 
     // 默认选中 GitHub
-    await expect(page.getByRole('button', { name: 'GitHub' })).toHaveClass(/platform-btn--active/);
+    await expect(page.getByRole('button', { name: 'GitHub', exact: true })).toHaveClass(/platform-btn--active/);
 
     // 切换到 Gitee
-    await page.getByRole('button', { name: 'Gitee' }).click();
-    await expect(page.getByRole('button', { name: 'Gitee' })).toHaveClass(/platform-btn--active/);
+    await page.getByRole('button', { name: 'Gitee', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Gitee', exact: true })).toHaveClass(/platform-btn--active/);
 
     await page.getByLabel('username').fill('gitee_user');
     await page.getByRole('button', { name: 'Generate Profile' }).click();
@@ -159,5 +159,47 @@ test.describe('AnalyzeForm flow', () => {
     // 验证 POST body 包含 platform=gitee
     await page.waitForURL(new RegExp(`/en/report/${MOCK_PROFILE_ID}`), { timeout: 15000 });
     expect(postedPlatform).toBe('gitee');
+  });
+
+  test('sends platform=all when the fused GitHub+Gitee option is selected', async ({ page }) => {
+    let postedPlatform = '';
+    await page.route('**/analyze', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      postedPlatform = body.platform;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ jobId: 'job-mock-all', status: 'queued', dedup: false }),
+      });
+    });
+    await page.route('**/jobs/job-mock-all', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 'job-mock-all', status: 'succeeded', stage: 'L1', profileId: MOCK_PROFILE_ID }),
+      }),
+    );
+
+    await page.goto('/en/');
+    await waitForHydrated(page);
+
+    const allButton = page.getByRole('button', { name: 'GitHub + Gitee (fused)' });
+    await expect(allButton).toBeVisible();
+    await allButton.click();
+    await expect(allButton).toHaveClass(/platform-btn--active/);
+    // 选中态必须真正着色：绿框（--ja-color-accent）+ 浅绿底（--ja-color-accent-subtle）
+    await expect(allButton).toHaveCSS('border-color', 'rgb(22, 163, 74)');
+    await expect(allButton).toHaveCSS('background-color', 'rgb(240, 253, 244)');
+    // 原默认选中的 GitHub 应取消高亮（边框回到中性灰）
+    await expect(page.getByRole('button', { name: 'GitHub', exact: true })).toHaveCSS(
+      'border-color',
+      'rgb(226, 232, 240)',
+    );
+
+    await page.getByLabel('username').fill('dual_user');
+    await page.getByRole('button', { name: 'Generate Profile' }).click();
+
+    await page.waitForURL(new RegExp(`/en/report/${MOCK_PROFILE_ID}`), { timeout: 15000 });
+    expect(postedPlatform).toBe('all');
   });
 });

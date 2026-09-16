@@ -12,6 +12,7 @@
   "home.invalidUsername": "请输入有效的用户名",
   "home.platform.github": "GitHub",
   "home.platform.gitee": "Gitee",
+  "home.platform.all": "GitHub + Gitee（融合）",
   "home.howItWorks": "工作原理",
   "home.step1.title": "采集行为痕迹",
   "home.step1.desc": "仅采集公开的 L0 元数据与 L1 行为时序，不 clone 仓库",

@@ -23,6 +23,7 @@ interface AnalyzeFormProps {
   attemptsLabel: string;
   platformGithubLabel: string;
   platformGiteeLabel: string;
+  platformAllLabel: string;
   /** 演示模式：首次 403 DEMO_REQUIRED 时自动建会话的提示文案 */
   startingDemoLabel: string;
   /** 演示模式：会话分析配额用尽（429 DEMO_QUOTA_EXCEEDED，含 {resetAt}） */
@@ -32,12 +33,13 @@ interface AnalyzeFormProps {
 }
 
 type Phase = 'idle' | 'creating' | 'polling' | 'done' | 'error';
-type Platform = 'github' | 'gitee';
+type Platform = 'github' | 'gitee' | 'all';
 
-// GitHub username 规则（与 API Zod 校验一致）；Gitee 额外允许下划线
+// GitHub username 规则（与 API Zod 校验一致）；Gitee 额外允许下划线；all 以 GitHub 为主源，取 Gitee 宽松超集
 const USERNAME_RES: Record<Platform, RegExp> = {
   github: /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/,
   gitee: /^[a-zA-Z0-9](?:[a-zA-Z0-9]|[-_](?=[a-zA-Z0-9])){0,38}$/,
+  all: /^[a-zA-Z0-9](?:[a-zA-Z0-9]|[-_](?=[a-zA-Z0-9])){0,38}$/,
 };
 
 const POLL_INTERVAL_MS = 2000;
@@ -60,6 +62,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     attemptsLabel,
     platformGithubLabel,
     platformGiteeLabel,
+    platformAllLabel,
     startingDemoLabel,
     quotaExceededLabel,
     rateLimitedLabel,
@@ -249,6 +252,14 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
           disabled={isBusy}
         >
           {platformGiteeLabel}
+        </button>
+        <button
+          type="button"
+          className={`platform-btn ${platform === 'all' ? 'platform-btn--active' : ''}`}
+          onClick={() => setPlatform('all')}
+          disabled={isBusy}
+        >
+          {platformAllLabel}
         </button>
       </div>
       <div className="input-row">
