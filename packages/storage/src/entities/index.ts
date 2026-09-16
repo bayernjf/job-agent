@@ -55,3 +55,22 @@ export {
   DEMO_RATE_KINDS,
   toStoredDemoSession,
 } from './demo-session.js';
+
+export type {
+  ApplicationStatus,
+  ApplicationOrigin,
+  StoredApplication,
+  NewApplication,
+  ApplicationPatch,
+  RawApplicationRow,
+} from './application.js';
+export { APPLICATION_STATUSES, APPLICATION_ORIGINS, toStoredApplication } from './application.js';
+
+export type {
+  CandidateSkill,
+  CandidateSummary,
+  CandidateSortBy,
+  CandidateSearchQuery,
+  CandidateSearchResult,
+} from './candidate.js';
+export { toCandidateSummary, searchCandidates } from './candidate.js';
