@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AnalyzerInput } from '@jobagent/analyzer-core';
 import type { AbilityProfile, EvidenceItem } from '@jobagent/shared';
 import type { GitHubCollectedData } from '@jobagent/github-source';
+import type { GiteeCollectedData } from '@jobagent/gitee-source';
 import { createStorage, type StorageContext } from '@jobagent/storage';
 import { handleJobFailure, processJob, runWorker, type WorkerRepos } from './index.js';
 
@@ -103,6 +104,26 @@ function makeFakeSource(data?: GitHubCollectedData, shouldFail = false) {
 /** 把单个 fake source 包装为 {github, gitee} map（两平台共用同一 fake） */
 function asSources(source: ReturnType<typeof makeFakeSource>) {
   return { github: source, gitee: source };
+}
+
+/** 构造 Gitee 形状采集结果（REST-only 预算 {restCalls}、subject 指向 gitee.com），复用最小 input 夹具 */
+function fakeGiteeData(login: string, missing: string[] = []): GiteeCollectedData {
+  const base = fakeCollectedData(login);
+  base.input.subject.profileUrl = `https://gitee.com/${login}`;
+  return {
+    input: base.input,
+    evidence: [],
+    meta: { budgetUsed: { restCalls: 3 }, missing },
+  } as unknown as GiteeCollectedData;
+}
+
+function makeFakeGiteeSource(data: GiteeCollectedData, error?: { code: string; message: string }) {
+  return {
+    collect: vi.fn(async (): Promise<GiteeCollectedData> => {
+      if (error) throw Object.assign(new Error(error.message), { code: error.code });
+      return data;
+    }),
+  };
 }
 
 async function createQueuedJob(repos: WorkerRepos, login = 'test-user'): Promise<string> {
@@ -196,6 +217,82 @@ describe('processJob', () => {
     // 画像 platform 为 gitee
     expect(result.profile.subject.platform).toBe('gitee');
     expect(result.profile.subject.login).toBe('gitee-user');
+  });
+
+  it('fuses GitHub+Gitee for platform=all and persists under the all lookup key', async () => {
+    const repos = await freshRepos();
+    const jobId = `job-${randomUUID().slice(0, 8)}`;
+    await repos.jobs.create({ id: jobId, subjectPlatform: 'all', subjectLogin: 'dual-user' });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+
+    const ghSource = makeFakeSource(fakeCollectedData('dual-user')); // budget {graphqlPoints:10, restCalls:2}
+    const geSource = makeFakeGiteeSource(fakeGiteeData('dual-user', ['events'])); // budget {restCalls:3}
+
+    const result = await processJob(job, repos, { github: ghSource, gitee: geSource });
+
+    expect(ghSource.collect).toHaveBeenCalledWith('dual-user');
+    expect(geSource.collect).toHaveBeenCalledWith('dual-user');
+
+    // 两源都成功：检索键列存 all，但 snapshot 主源视角仍是 github
+    const stored = await repos.profiles.getById(result.profileId);
+    expect(stored!.subjectPlatform).toBe('all');
+    expect(result.profile.subject.platform).toBe('github');
+    expect(result.secondaryAvailable).toBe(true);
+    expect(result.fusion).toBeDefined();
+
+    const done = (await repos.jobs.getById(jobId))!;
+    expect(done.status).toBe('succeeded');
+    // 预算合并：graphqlPoints 仅 GitHub；restCalls 两源相加 2+3=5
+    expect(done.budgetUsed).toEqual({ graphqlPoints: 10, restCalls: 5 });
+    // 辅源缺失项加 gitee: 前缀
+    expect(done.missing).toEqual(['gitee:events']);
+  });
+
+  it('falls back to a GitHub-only profile when Gitee has no such account (not_found)', async () => {
+    const repos = await freshRepos();
+    const jobId = `job-${randomUUID().slice(0, 8)}`;
+    await repos.jobs.create({ id: jobId, subjectPlatform: 'all', subjectLogin: 'gh-only' });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+
+    const ghSource = makeFakeSource(fakeCollectedData('gh-only'));
+    const geSource = makeFakeGiteeSource(fakeGiteeData('gh-only'), {
+      code: 'not_found',
+      message: 'Gitee resource not found: /users/gh-only',
+    });
+
+    const result = await processJob(job, repos, { github: ghSource, gitee: geSource });
+
+    expect(ghSource.collect).toHaveBeenCalledWith('gh-only');
+    // 不抛错、作业成功；产物按 github 持久化，不冒充融合
+    const stored = await repos.profiles.getById(result.profileId);
+    expect(stored!.subjectPlatform).toBe('github');
+    expect(result.secondaryAvailable).toBe(false);
+    expect(result.fusion).toBeUndefined();
+
+    const done = (await repos.jobs.getById(jobId))!;
+    expect(done.status).toBe('succeeded');
+    expect(done.budgetUsed).toEqual({ graphqlPoints: 10, restCalls: 2 });
+    expect(done.missing).toContain('gitee:account_not_found');
+  });
+
+  it('propagates a transient Gitee api_error so the platform=all job is retried', async () => {
+    const repos = await freshRepos();
+    const jobId = `job-${randomUUID().slice(0, 8)}`;
+    await repos.jobs.create({ id: jobId, subjectPlatform: 'all', subjectLogin: 'dual-user' });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+
+    const ghSource = makeFakeSource(fakeCollectedData('dual-user'));
+    const geSource = makeFakeGiteeSource(fakeGiteeData('dual-user'), {
+      code: 'api_error',
+      message: 'Gitee rate limited',
+    });
+
+    await expect(
+      processJob(job, repos, { github: ghSource, gitee: geSource }),
+    ).rejects.toThrow('Gitee rate limited');
+
+    // 主源已采、辅源瞬时错误：作业保持 running，交由 handleJobFailure 重试（不静默降级）
+    expect((await repos.jobs.getById(jobId))!.status).toBe('running');
   });
 });
 

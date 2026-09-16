@@ -203,7 +203,7 @@ h4 { font-size: var(--ja-text-lg); }
 
 .analyze-form .platform-btn--active {
   border-color: var(--ja-color-accent);
-  background: var(--ja-color-accent-bg);
+  background: var(--ja-color-accent-subtle);
   color: var(--ja-color-accent);
   font-weight: 600;
 }

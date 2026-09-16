@@ -27,7 +27,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { analyze, type AnalyzerInput } from '@jobagent/analyzer-core';
+import { analyze, fuseInputs, type AnalyzerInput, type FusionReport } from '@jobagent/analyzer-core';
 import { GiteeSource, type GiteeCollectedData } from '@jobagent/gitee-source';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
 import type { AbilityProfile } from '@jobagent/shared';
@@ -82,8 +82,31 @@ export interface WorkerDeps {
 export interface ProcessJobResult {
   profileId: string;
   profile: AbilityProfile;
-  budgetUsed: GitHubCollectedData['meta']['budgetUsed'] | GiteeCollectedData['meta']['budgetUsed'];
+  budgetUsed: Record<string, number>;
   missing: string[];
+  /** platform=all 且两源都成功时的融合报告（仅日志/测试，不持久化，见 fusion 设计 §8.4） */
+  fusion?: FusionReport;
+  /** platform=all 时辅源 Gitee 是否真的采到（false=Gitee 无同名账号，已降级纯 GitHub） */
+  secondaryAvailable?: boolean;
+}
+
+/** 合并两源预算计量：同 key 累加（graphqlPoints 仅 GitHub 有；restCalls 两源相加）。 */
+function mergeBudget(
+  primary: Record<string, number>,
+  secondary?: Record<string, number>,
+): Record<string, number> {
+  const out: Record<string, number> = { ...primary };
+  if (secondary) {
+    for (const [key, value] of Object.entries(secondary)) {
+      out[key] = (out[key] ?? 0) + value;
+    }
+  }
+  return out;
+}
+
+/** 合并两源缺失标注：辅源项统一加 gitee: 前缀后与主源并集去重，避免歧义。 */
+function mergeMissing(primary: string[], secondary: string[]): string[] {
+  return [...new Set([...primary, ...secondary.map((m) => `gitee:${m}`)])];
 }
 
 function makeSources(deps: WorkerDeps): SourceMap {
@@ -116,38 +139,102 @@ export async function processJob(
   logger: Pick<Console, 'info' | 'warn' | 'error'> = console,
 ): Promise<ProcessJobResult> {
   const login = job.subjectLogin;
-  const platform = (job.subjectPlatform as 'github' | 'gitee') ?? 'github';
-  const source = sources[platform];
-  logger.info(`[worker] job ${job.id} start: collect ${login} (platform=${platform}, attempt ${job.attempts})`);
-
-  // 1. 采集（L0 + L1）
-  const collected = await source.collect(login);
+  const requestedPlatform = job.subjectPlatform ?? 'github';
   logger.info(
-    `[worker] job ${job.id} collected: ${collected.input.repos.length} repos, ` +
-      `${collected.input.commits.length} commits, ${collected.input.pullRequests.length} PRs, ` +
-      `missing=${collected.meta.missing.length}`,
+    `[worker] job ${job.id} start: collect ${login} (platform=${requestedPlatform}, attempt ${job.attempts})`,
   );
+
+  // 1. 采集（L0 + L1）并准备分析输入。
+  //    platform=all：主源 GitHub + 辅源 Gitee 双采、fuseInputs 镜像去重（fusion 设计 §8）；
+  //    辅源 404（无同名账号）正常降级纯 GitHub，辅源临时错误上抛重试。
+  let analyzerInput: AnalyzerInput;
+  let budgetUsed: Record<string, number>;
+  let missing: string[];
+  let analyzePlatform: 'github' | 'gitee';
+  let persistPlatform: 'github' | 'gitee' | 'all';
+  let fusionReport: FusionReport | undefined;
+  let secondaryAvailable: boolean | undefined;
+
+  if (requestedPlatform === 'all') {
+    // 主源 GitHub：not_found/其他错误都上抛，由 handleJobFailure 决定永久失败或重试。
+    const gh = await sources.github.collect(login);
+
+    // 辅源 Gitee：404=该用户无 Gitee 账号（常态），降级主源；其余错误上抛重试，不静默降级。
+    let ge: GitHubCollectedData | GiteeCollectedData | undefined;
+    try {
+      ge = await sources.gitee.collect(login);
+    } catch (err) {
+      if ((err as { code?: string }).code === 'not_found') {
+        ge = undefined;
+        logger.warn(
+          `[worker] job ${job.id} gitee account '${login}' not found; falling back to a GitHub-only profile`,
+        );
+      } else {
+        throw err;
+      }
+    }
+
+    if (ge) {
+      const fused = fuseInputs(gh.input as AnalyzerInput, ge.input as AnalyzerInput, {
+        primary: 'github',
+        secondary: 'gitee',
+      });
+      analyzerInput = fused.input;
+      fusionReport = fused.report;
+      secondaryAvailable = true;
+      budgetUsed = mergeBudget(gh.meta.budgetUsed, ge.meta.budgetUsed);
+      missing = mergeMissing(gh.meta.missing, ge.meta.missing);
+      persistPlatform = 'all';
+      logger.info(
+        `[worker] job ${job.id} fused GitHub+Gitee: ${fused.report.mergedMirrors.length} mirror(s) merged, ` +
+          `${fused.report.dedupedCommitCount} duplicate commit(s) dropped, ${fused.input.repos.length} repos`,
+      );
+    } else {
+      // Gitee 无同名账号：产物本质是纯 GitHub 画像，按 'github' 持久化（不冒充融合）。
+      analyzerInput = gh.input as AnalyzerInput;
+      budgetUsed = { ...gh.meta.budgetUsed };
+      missing = [...new Set([...gh.meta.missing, 'gitee:account_not_found'])];
+      persistPlatform = 'github';
+      secondaryAvailable = false;
+    }
+    analyzePlatform = 'github'; // 内核主源视角，snapshot.subject.platform 恒为 github（设计 §8.1）
+  } else {
+    const platform = requestedPlatform === 'gitee' ? 'gitee' : 'github';
+    const source = sources[platform];
+    const collected = await source.collect(login);
+    analyzerInput = collected.input as AnalyzerInput;
+    budgetUsed = { ...collected.meta.budgetUsed };
+    missing = collected.meta.missing;
+    analyzePlatform = platform;
+    persistPlatform = platform;
+    logger.info(
+      `[worker] job ${job.id} collected: ${collected.input.repos.length} repos, ` +
+        `${collected.input.commits.length} commits, ${collected.input.pullRequests.length} PRs, ` +
+        `missing=${collected.meta.missing.length}`,
+    );
+  }
 
   // 2. 更新进度阶段
   await repos.jobs.updateStage(job.id, 'L1');
 
   // 3. 分析（纯函数，无 I/O）
   const profileId = randomUUID();
-  const profile = analyze(collected.input as AnalyzerInput, {
+  const profile = analyze(analyzerInput, {
     profileId,
     claimed: false,
-    platform,
+    platform: analyzePlatform,
   });
   logger.info(
     `[worker] job ${job.id} analyzed: authenticity=${profile.authenticity.status} ` +
       `(confidence=${profile.authenticity.confidence}), ${profile.skillTags.length} skill tags`,
   );
 
-  // 4. 写入不可变画像快照
+  // 4. 写入不可变画像快照。
+  //    融合画像在检索键列存 'all'（与单源隔离），snapshot 内 subject.platform 仍为主源 github。
   await repos.profiles.insert({
     id: profileId,
     analyzerVersion: profile.analyzerVersion,
-    subjectPlatform: profile.subject.platform,
+    subjectPlatform: persistPlatform,
     subjectLogin: profile.subject.login,
     subjectClaimed: profile.subject.claimed,
     dataWindowSince: profile.dataWindow.since,
@@ -158,10 +245,17 @@ export async function processJob(
   });
 
   // 5. 标记任务成功
-  await repos.jobs.succeed(job.id, profileId, collected.meta.budgetUsed, collected.meta.missing);
-  logger.info(`[worker] job ${job.id} succeeded: profile ${profileId}`);
+  await repos.jobs.succeed(job.id, profileId, budgetUsed, missing);
+  logger.info(`[worker] job ${job.id} succeeded: profile ${profileId} (persisted as ${persistPlatform})`);
 
-  return { profileId, profile, budgetUsed: collected.meta.budgetUsed, missing: collected.meta.missing };
+  return {
+    profileId,
+    profile,
+    budgetUsed,
+    missing,
+    ...(fusionReport ? { fusion: fusionReport } : {}),
+    ...(requestedPlatform === 'all' ? { secondaryAvailable } : {}),
+  };
 }
 
 /**
