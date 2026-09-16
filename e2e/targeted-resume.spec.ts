@@ -178,9 +178,16 @@ test.describe('targeted resume builder', () => {
     );
     await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
 
-    // 组件挂载即完成一次性迁移：canonical 写入、旧键删除
+    // ResumeBuilder 是 client:load island，hydration 异步；goto 的 load 事件不保证
+    // island 已挂载、useState(loadLocal) 已跑。等迁移写入 canonical 键这一真实信号，
+    // 再断言（避免 CI 冷启动/慢负载下立刻读 localStorage 得到 null 的时序抖动）。
+    await expect
+      .poll(async () => page.evaluate((k) => localStorage.getItem(k), LOCAL_FIELDS_KEY), {
+        timeout: 10_000,
+        message: 'canonical profile should be migrated once ResumeBuilder hydrates',
+      })
+      .toContain('"start":"2018"');
     const canonical = await page.evaluate((k) => localStorage.getItem(k), LOCAL_FIELDS_KEY);
-    expect(canonical).toContain('"start":"2018"');
     expect(canonical).toContain('"end":"2022"');
     const legacy = await page.evaluate((k) => localStorage.getItem(k), LEGACY_FIELDS_KEY);
     expect(legacy).toBeNull();
