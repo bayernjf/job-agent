@@ -229,3 +229,34 @@ export const demoRateEvents = pgTable(
 
 export type DemoRateEventInsert = typeof demoRateEvents.$inferInsert;
 export type DemoRateEventSelect = typeof demoRateEvents.$inferSelect;
+
+/** applications 表——求职者画像侧投递记录（迁移 009）；列集合与 sqlite/schema.ts 对齐。 */
+export const applications = pgTable(
+  'applications',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    jobId: text('job_id'),
+    source: text('source'),
+    targetTitle: text('target_title').notNull(),
+    targetCompany: text('target_company').notNull(),
+    targetUrl: text('target_url'),
+    status: text('status').notNull().default('applied'),
+    note: text('note'),
+    origin: text('origin').notNull().default('manual'),
+    appliedAt: text('applied_at').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_applications_profile_status').on(table.profileId, table.status),
+    index('idx_applications_profile_applied').on(table.profileId, table.appliedAt),
+  ],
+);
+
+export type ApplicationInsert = typeof applications.$inferInsert;
+export type ApplicationSelect = typeof applications.$inferSelect;

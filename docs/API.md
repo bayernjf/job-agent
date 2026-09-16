@@ -1,6 +1,6 @@
-# JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历）
+# JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历 + 企业人才检索/投递追踪）
 
-- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2）
+- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
 - 内容类型：请求/响应均为 `application/json`（健康检查除外）
 - CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）
@@ -602,6 +602,150 @@ Cookie 属性：`HttpOnly; SameSite=Lax; Path=/; Max-Age=<TTL>`，仅生产 HTTP
 | 400 | 非法 JSON；缺 `profileId`/`jobId`；`locale`/`format` 非法；`highlightLimit` 越界；`local` 校验失败（如 `personalSite` 非 URL、education 缺 school/degree） |
 | 404 | 画像不存在/无快照，或岗位不存在 |
 | 500 | 已存储的岗位记录不符合契约（数据异常，正常不会发生） |
+
+---
+
+## 3.5 企业人才检索（筛选工作台）
+
+### `GET /candidates`
+
+在**已生成的完整画像**（`profiles.status='complete'`）范围内做多维筛选与排序，供企业侧人才筛选工作台（报告站 `/[locale]/recruit`，首屏由 SSR 直连只读仓储渲染，交互过滤调本端点）使用。**只读，不触发任何新采集**，也不暴露画像之外的个人信息。
+
+实现上仓储层先用一条粗筛 SQL 取最近不超过 1000 条 complete 画像（刻意规避 SQLite/Postgres 的 JSON 查询方言差异），技能/真实性/置信度/关键词等精细过滤与排序全部在源无关的纯函数层（`packages/storage` 的 `searchCandidates`）完成。
+
+#### Query 参数（全部可选）
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `keyword` | string | 自由文本，按空白拆词，**词间 AND**，每个词需命中 login / displayName / headline / 技能名之一（大小写不敏感） |
+| `skills` | string | 逗号分隔的技能名，按技能名双向包含匹配（大小写不敏感） |
+| `skillMatch` | `any` \| `all` | 多技能匹配方式：`any`=命中任一（默认，召回优先）；`all`=全部命中（精准） |
+| `authenticity` | string | 逗号分隔的真实性状态白名单（OR），取值 `likely_authentic` / `mixed_signals` / `suspicious` / `insufficient_data`；含未知值整体 400 |
+| `minConfidence` | number(0..1) | 仅保留 `authenticity.confidence >= 该值` |
+| `platform` | `github` \| `gitee` | 按证据源平台过滤 |
+| `sortBy` | `confidence_desc` \| `skill_count_desc` \| `recent` | 排序，默认 `confidence_desc`（真实性置信度优先） |
+| `limit` | int(1..100) | 每页条数，默认 20 |
+| `offset` | int(≥0) | 分页偏移，默认 0 |
+
+#### 响应（200）
+
+```json
+{
+  "items": [
+    {
+      "profileId": "prof...",
+      "platform": "github",
+      "login": "alice",
+      "displayName": "Alice",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/...",
+      "profileUrl": "https://github.com/alice",
+      "claimed": false,
+      "headline": "frontend developer",
+      "seniorityBand": "mid",
+      "authenticity": { "status": "likely_authentic", "confidence": 0.9 },
+      "skills": [
+        { "name": "TypeScript", "kind": "language", "depth": "proficient", "confidence": 0.8 }
+      ],
+      "skillCount": 2,
+      "matchedSkills": ["TypeScript"],
+      "updatedAt": "2026-09-16T00:00:00.000Z"
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+- `items[]` 为候选人**摘要**（`CandidateSummary`）；完整画像走 [`GET /profiles/:id`](#3-查询画像快照)，招聘方核验视图走 `/[locale]/report/<profileId>?view=recruiter`。
+- `total` 为过滤后、分页前的总数；`matchedSkills` 回填本次技能过滤命中的技能名（未按技能过滤时为空）。
+- 无可选画像时返回 `{ "items": [], "total": 0, ... }`。
+
+#### 错误
+
+| 码 | 情形 |
+| --- | --- |
+| 400 | 非法枚举（`skillMatch`/`platform`/`sortBy`/`authenticity` 含未知值）、`minConfidence` 越界、`limit`/`offset` 非整数或越界 |
+
+## 3.6 投递记录追踪（求职者侧）
+
+以画像为归属记录求职者的投递动作与进展，供报告页「投递追踪」island 与（后续）浏览器扩展回写。**只做新增与状态流转，不物理删除**；撤回用 `status=withdrawn` 表达。
+
+`status` 取值：`saved`（待投递）/ `applied`（已投递，默认）/ `viewed`（被查看/初筛）/ `interview`（面试中）/ `offer` / `rejected` / `withdrawn`（主动撤回）。
+`origin` 取值：`manual`（报告页手录，默认）/ `report` / `extension`（扩展回写）。
+
+### `GET /profiles/:id/applications`
+
+列出某画像的全部投递记录，按 `applied_at` 倒序。
+
+#### 响应（200）
+
+```json
+{
+  "items": [
+    {
+      "id": "app-<uuid>",
+      "profileId": "prof...",
+      "jobId": null,
+      "source": "greenhouse",
+      "targetTitle": "Senior Engineer",
+      "targetCompany": "Acme",
+      "targetUrl": "https://example.test/job/1",
+      "status": "interview",
+      "note": "约了一面",
+      "origin": "manual",
+      "appliedAt": "2026-09-16T00:00:00.000Z",
+      "createdAt": "2026-09-16T00:00:00.000Z",
+      "updatedAt": "2026-09-16T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+画像不存在返回 404；画像存在但无记录返回 `{ "items": [] }`。
+
+### `POST /profiles/:id/applications`
+
+新增一条投递记录。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `targetTitle` | string | 是 | 目标岗位名称 |
+| `targetCompany` | string | 是 | 目标公司 |
+| `targetUrl` | string(url) | 否 | 岗位链接 |
+| `jobId` | string | 否 | 内部 `job_postings.id`（从推荐岗位投递时回填） |
+| `source` | string | 否 | 岗位来源 key（remoteok/greenhouse/…） |
+| `status` | enum | 否 | 默认 `applied` |
+| `origin` | enum | 否 | 默认 `manual` |
+| `note` | string | 否 | 备注 |
+| `appliedAt` | string(ISO8601 datetime) | 否 | 默认服务端当前时间 |
+
+#### 响应
+
+- `201`：返回创建后的完整记录（字段同 GET 单项，`id` 形如 `app-<uuid>`）。
+- `400`：非法 JSON、缺 `targetTitle`/`targetCompany`、`targetUrl` 非 URL、枚举非法、`appliedAt` 非 ISO 时间。
+- `404`：画像不存在。
+
+### `PATCH /applications/:id`
+
+局部更新一条投递记录（状态流转、备注、投递时间、岗位链接）。
+
+#### 请求体（至少一个字段）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `status` | enum | 新状态；主动撤回传 `withdrawn` |
+| `note` | string \| null | 备注，传 `null` 清空 |
+| `appliedAt` | string(ISO8601 datetime) | 更正投递时间 |
+| `targetUrl` | string(url) \| null | 岗位链接，传 `null` 清空 |
+
+#### 响应
+
+- `200`：返回更新后的完整记录。
+- `400`：非法 JSON、请求体为空（无任何可更新字段）、枚举/URL/时间格式非法。
+- `404`：投递记录不存在。
 
 ---
 

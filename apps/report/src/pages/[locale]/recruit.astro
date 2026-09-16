@@ -1,0 +1,101 @@
+---
+/**
+ * 企业侧人才筛选工作台 /[locale]/recruit（痛点解决方案批次 2，P-A/P-B）。
+ * SSR 直连只读 storage 渲染首屏候选人；过滤/分页交互由 CandidateWorkspace
+ * island 调同源 GET /candidates 完成。
+ */
+import Layout from '../../layouts/Layout.astro';
+import CandidateWorkspace from '../../components/CandidateWorkspace.tsx';
+import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
+import { loadInitialCandidates } from '../../lib/db.js';
+
+const { locale: rawLocale } = Astro.params;
+if (!isLocale(rawLocale)) {
+  return Astro.redirect('/en/');
+}
+const locale: Locale = rawLocale;
+const t = createTranslator(locale);
+
+const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
+const reportBasePath = `/${locale}/report`;
+// SSR 首屏候选人（只读 storage）；岛屿后续过滤/分页走同源 GET /candidates
+const initial = await loadInitialCandidates({ limit: 12 });
+---
+
+<Layout locale={locale} titleKey="recruit.title">
+  <div class="recruit-page">
+    <header class="recruit-header">
+      <h1>{t('recruit.title')}</h1>
+      <p class="ja-muted">{t('recruit.subtitle')}</p>
+    </header>
+
+    <CandidateWorkspace
+      client:load
+      apiBase={apiBase}
+      locale={locale}
+      reportBasePath={reportBasePath}
+      initialItems={initial.items}
+      initialTotal={initial.total}
+      labels={{
+        keyword: t('recruit.keyword'),
+        keywordPlaceholder: t('recruit.keywordPlaceholder'),
+        skills: t('recruit.skills'),
+        skillsPlaceholder: t('recruit.skillsPlaceholder'),
+        skillMatch: t('recruit.skillMatch'),
+        skillMatchAny: t('recruit.skillMatchAny'),
+        skillMatchAll: t('recruit.skillMatchAll'),
+        authenticity: t('recruit.authenticity'),
+        authenticityAny: t('recruit.authenticityAny'),
+        minConfidence: t('recruit.minConfidence'),
+        platform: t('recruit.platform'),
+        platformAll: t('recruit.platformAll'),
+        platformGithub: t('home.platform.github'),
+        platformGitee: t('home.platform.gitee'),
+        sortBy: t('recruit.sortBy'),
+        sortConfidence: t('recruit.sort.confidence'),
+        sortSkills: t('recruit.sort.skills'),
+        sortRecent: t('recruit.sort.recent'),
+        search: t('recruit.search'),
+        reset: t('recruit.reset'),
+        searching: t('recruit.searching'),
+        loading: t('recruit.loading'),
+        error: t('recruit.error'),
+        empty: t('recruit.empty'),
+        resultsCount: t('recruit.resultsCount'),
+        viewReport: t('recruit.viewReport'),
+        skillCount: t('recruit.skillCount'),
+        matchedSkills: t('recruit.matchedSkills'),
+        updatedAt: t('recruit.updatedAt'),
+        confidence: t('recruit.confidence'),
+        shortlist: t('recruit.shortlist'),
+        shortlisted: t('recruit.shortlisted'),
+        shortlistTitle: t('recruit.shortlistTitle'),
+        prev: t('recruit.prev'),
+        next: t('recruit.next'),
+        authenticityLabels: {
+          likely_authentic: t('report.authenticity.likely_authentic'),
+          mixed_signals: t('report.authenticity.mixed_signals'),
+          suspicious: t('report.authenticity.suspicious'),
+          insufficient_data: t('report.authenticity.insufficient_data'),
+        },
+      }}
+    />
+  </div>
+</Layout>
+
+<style>
+  .recruit-page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: var(--ja-space-6) var(--ja-space-5);
+  }
+
+  .recruit-header {
+    margin-bottom: var(--ja-space-5);
+  }
+
+  .recruit-header h1 {
+    font-size: var(--ja-text-2xl);
+    margin-bottom: var(--ja-space-2);
+  }
+</style>

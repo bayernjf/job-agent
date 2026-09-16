@@ -24,6 +24,7 @@ export type {
   UpsertCounts,
 } from './repositories/job-posting.js';
 export type { IDemoSessionsRepository } from './repositories/demo-sessions.js';
+export type { IApplicationsRepository } from './repositories/applications.js';
 
 // 实体领域类型
 export type {
@@ -58,6 +59,20 @@ export type {
   DemoSlotDenyReason,
   DemoSlotResult,
 } from './entities/demo-session.js';
+export type {
+  ApplicationStatus,
+  ApplicationOrigin,
+  StoredApplication,
+  NewApplication,
+  ApplicationPatch,
+} from './entities/application.js';
+export type {
+  CandidateSkill,
+  CandidateSummary,
+  CandidateSortBy,
+  CandidateSearchQuery,
+  CandidateSearchResult,
+} from './entities/candidate.js';
 
 // 状态枚举与纯映射（测试/工具可用）
 export {
@@ -79,6 +94,11 @@ export {
   DEMO_RATE_KINDS,
   toStoredDemoSession,
   parseJson,
+  APPLICATION_STATUSES,
+  APPLICATION_ORIGINS,
+  toStoredApplication,
+  toCandidateSummary,
+  searchCandidates,
 } from './entities/index.js';
 
 // 迁移（CLI/脚本/测试）

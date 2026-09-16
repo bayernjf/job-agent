@@ -724,3 +724,301 @@ h4 { font-size: var(--ja-text-lg); }
   border-radius: var(--ja-radius-md);
   background: var(--ja-color-neutral-0);
 }
+
+/* ─── 投递追踪 ApplicationTracker ──────────────────────────────────── */
+
+.apptrk-head h2 {
+  margin-bottom: 0;
+}
+
+.apptrk-hint {
+  font-size: var(--ja-text-sm);
+  margin: var(--ja-space-2) 0 var(--ja-space-3);
+}
+
+.apptrk-error {
+  color: var(--ja-color-danger);
+  font-size: var(--ja-text-sm);
+}
+
+.apptrk-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ja-space-3);
+  margin-bottom: var(--ja-space-4);
+}
+
+.apptrk-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+}
+
+.apptrk-field--wide {
+  grid-column: 1 / -1;
+}
+
+.apptrk-field label {
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.apptrk-actions {
+  display: flex;
+  gap: var(--ja-space-2);
+}
+
+.apptrk-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.apptrk-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-3);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+  flex-wrap: wrap;
+}
+
+.apptrk-item-title {
+  display: flex;
+  gap: var(--ja-space-1);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.apptrk-note {
+  font-size: var(--ja-text-sm);
+  margin-top: var(--ja-space-1);
+}
+
+.apptrk-item-meta {
+  display: flex;
+  gap: var(--ja-space-3);
+  margin-top: var(--ja-space-1);
+  font-size: var(--ja-text-sm);
+}
+
+.apptrk-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  flex: none;
+}
+
+.apptrk-status-label {
+  font-size: var(--ja-text-xs);
+}
+
+.apptrk-select {
+  width: auto;
+  padding: var(--ja-space-1) var(--ja-space-2);
+}
+
+.apptrk .spinner,
+.recruit .spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: var(--ja-space-2);
+  border: 2px solid var(--ja-color-border);
+  border-top-color: var(--ja-color-accent);
+  border-radius: 50%;
+  vertical-align: -0.15em;
+  animation: ja-spin 0.7s linear infinite;
+}
+
+/* ─── 人才筛选工作台 CandidateWorkspace ────────────────────────────── */
+
+.recruit-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ja-space-3);
+  margin-bottom: var(--ja-space-4);
+}
+
+.recruit-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+}
+
+.recruit-field--wide {
+  grid-column: 1 / -1;
+}
+
+.recruit-field label {
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.recruit-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--ja-space-2);
+}
+
+.recruit-shortlist {
+  margin-bottom: var(--ja-space-4);
+}
+
+.recruit-shortlist-list {
+  margin-top: var(--ja-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.recruit-shortlist-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-2);
+}
+
+.recruit-shortlist-remove {
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-lg);
+  line-height: 1;
+  padding: 0 var(--ja-space-1);
+}
+
+.recruit-results-meta {
+  margin-bottom: var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+}
+
+.recruit-error {
+  color: var(--ja-color-danger);
+}
+
+.recruit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--ja-space-4);
+}
+
+.recruit-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.recruit-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-3);
+}
+
+.recruit-avatar {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--ja-radius-md);
+  border: 1px solid var(--ja-color-border);
+  object-fit: cover;
+}
+
+.recruit-avatar--placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ja-color-surface-muted);
+  font-size: var(--ja-text-xl);
+  font-weight: 600;
+}
+
+.recruit-id {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.recruit-name {
+  font-weight: 600;
+}
+
+.recruit-login {
+  font-size: var(--ja-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recruit-star {
+  flex: none;
+  font-size: var(--ja-text-xl);
+  line-height: 1;
+  color: var(--ja-color-fg-muted);
+}
+
+.recruit-star--on {
+  color: var(--ja-color-warning);
+}
+
+.recruit-headline {
+  font-size: var(--ja-text-sm);
+  min-height: 2.4em;
+}
+
+.recruit-auth {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  flex-wrap: wrap;
+  font-size: var(--ja-text-sm);
+}
+
+.recruit-tags {
+  min-height: var(--ja-space-5);
+}
+
+.recruit-tag--matched {
+  outline: 2px solid var(--ja-color-accent);
+  outline-offset: 1px;
+}
+
+.recruit-more {
+  font-size: var(--ja-text-xs);
+  align-self: center;
+}
+
+.recruit-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-2);
+  font-size: var(--ja-text-xs);
+}
+
+.recruit-view {
+  margin-top: auto;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+  text-align: center;
+}
+
+.recruit-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ja-space-4);
+  margin-top: var(--ja-space-5);
+}
+
+@media (max-width: 640px) {
+  .recruit-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .apptrk-form {
+    grid-template-columns: 1fr;
+  }
+}
