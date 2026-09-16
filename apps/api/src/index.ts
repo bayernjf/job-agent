@@ -18,6 +18,10 @@
  *   GET  /job-postings   — 岗位检索（P2-D 职位聚合消费侧）
  *   POST /job-postings/match — 按画像技能匹配岗位
  *   POST /resumes/build  — 岗位定向简历按需生成（P-R2，不入库；body: profileId+jobId+可选 local/locale/format）
+ *   GET  /candidates     — 企业侧人才检索（公开只读，筛选工作台 P-A）
+ *   GET  /profiles/:id/applications — 列出某画像的投递记录
+ *   POST /profiles/:id/applications — 新增投递记录
+ *   PATCH /applications/:id         — 更新投递状态/备注
  *   GET  /health         — 健康检查
  *
  * 环境变量：
@@ -40,8 +44,10 @@ import {
   JobPostingSchema,
   LocalResumeFieldsSchema,
   ResumeLocaleSchema,
+  AUTHENTICITY_STATUSES,
   DEMO_ERROR_CODES,
   type AbilityProfile,
+  type AuthenticityStatus,
   type DemoMe,
   type DemoPreset,
   type JobSource,
@@ -53,11 +59,16 @@ import {
 import {
   createStorage,
   toEvidenceItems,
+  APPLICATION_STATUSES,
+  APPLICATION_ORIGINS,
   type IAnalysisJobsRepository,
+  type IApplicationsRepository,
   type IDemoSessionsRepository,
   type IProfilesRepository,
   type IJobPostingsRepository,
   type IEvidenceRepository,
+  type ApplicationOrigin,
+  type ApplicationStatus,
   type StoredAnalysisJob,
   type StoredEvidence,
   type StoredProfile,
@@ -94,6 +105,7 @@ export interface ApiRepos {
   jobPostings: IJobPostingsRepository;
   evidence: IEvidenceRepository;
   demoSessions: IDemoSessionsRepository;
+  applications: IApplicationsRepository;
 }
 
 export interface ApiDeps {
@@ -177,6 +189,51 @@ const ResumeBuildRequestSchema = z.object({
   // 静默回退规则版，并在响应 polish.applied=false + reason 中如实标注，绝不臆造、绝不因润色失败而报错。
   polish: z.boolean().optional(),
 });
+
+// ── 企业侧人才检索（筛选工作台 P-A/P-B）──────────────────────────────────
+// 全是 query string（字符串），枚举集合/数字在 handler 内逐项转换校验。
+const CandidateSearchQuerySchema = z.object({
+  keyword: z.string().trim().min(1).optional(),
+  skills: z.string().trim().min(1).optional(), // 逗号分隔技能名
+  skillMatch: z.enum(['any', 'all']).optional(),
+  authenticity: z.string().trim().min(1).optional(), // 逗号分隔真实性状态
+  minConfidence: z.coerce.number().min(0).max(1).optional(),
+  platform: z.enum(['github', 'gitee']).optional(),
+  sortBy: z.enum(['confidence_desc', 'skill_count_desc', 'recent']).optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
+});
+
+// ── 投递记录（applications，痛点解决方案批次 2）────────────────────────────
+const ApplicationStatusSchema = z.enum(
+  APPLICATION_STATUSES as unknown as [ApplicationStatus, ...ApplicationStatus[]],
+);
+const ApplicationOriginSchema = z.enum(
+  APPLICATION_ORIGINS as unknown as [ApplicationOrigin, ...ApplicationOrigin[]],
+);
+
+const ApplicationCreateSchema = z.object({
+  jobId: z.string().min(1).nullish(),
+  source: z.string().min(1).nullish(),
+  targetTitle: z.string().min(1, 'targetTitle is required'),
+  targetCompany: z.string().min(1, 'targetCompany is required'),
+  targetUrl: z.string().url().nullish(),
+  status: ApplicationStatusSchema.optional(),
+  note: z.string().nullish(),
+  origin: ApplicationOriginSchema.optional(),
+  appliedAt: z.string().datetime().optional(),
+});
+
+const ApplicationPatchSchema = z
+  .object({
+    status: ApplicationStatusSchema.optional(),
+    note: z.string().nullable().optional(),
+    appliedAt: z.string().datetime().optional(),
+    targetUrl: z.string().url().nullable().optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'at least one field to update is required',
+  });
 
 // ─── 响应格式化 ──────────────────────────────────────────────────────────
 
@@ -854,6 +911,104 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     return c.json({ draft: finalDraft, ...(polish ? { polish } : {}) });
   });
 
+  // ── 企业侧人才检索（筛选工作台 P-A/P-B）：只读已生成画像，不触发新采集 ──
+  app.get('/candidates', async (c) => {
+    const parsed = CandidateSearchQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+      return c.json({ error: 'invalid query', details: parsed.error.flatten() }, 400);
+    }
+    const q = parsed.data;
+
+    // 真实性状态是逗号分隔的枚举集合，逐个校验，拒绝未知值
+    let authenticity: AuthenticityStatus[] | undefined;
+    if (q.authenticity) {
+      const picked = q.authenticity
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const invalid = picked.filter((s) => !AUTHENTICITY_STATUSES.includes(s as AuthenticityStatus));
+      if (invalid.length > 0) {
+        return c.json({ error: 'invalid authenticity value', values: invalid }, 400);
+      }
+      authenticity = picked as AuthenticityStatus[];
+    }
+
+    const skills = q.skills
+      ? q.skills
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
+
+    const limit = q.limit ?? 20;
+    const offset = q.offset ?? 0;
+    const result = await repos.profiles.searchCandidates({
+      ...(q.keyword ? { keyword: q.keyword } : {}),
+      ...(skills && skills.length > 0 ? { skills } : {}),
+      ...(q.skillMatch ? { skillMatch: q.skillMatch } : {}),
+      ...(authenticity ? { authenticity } : {}),
+      ...(q.minConfidence !== undefined ? { minConfidence: q.minConfidence } : {}),
+      ...(q.platform ? { platform: q.platform } : {}),
+      ...(q.sortBy ? { sortBy: q.sortBy } : {}),
+      limit,
+      offset,
+    });
+    return c.json({ items: result.items, total: result.total, limit, offset });
+  });
+
+  // ── 投递记录：列出某画像的投递（按 applied_at 倒序）──
+  app.get('/profiles/:id/applications', async (c) => {
+    const param = ProfileIdParamSchema.safeParse(c.req.param());
+    if (!param.success) return c.json({ error: 'invalid profile id' }, 400);
+    const profile = await repos.profiles.getById(param.data.id);
+    if (!profile) return c.json({ error: 'profile not found' }, 404);
+    const items = await repos.applications.listByProfile(param.data.id);
+    return c.json({ items });
+  });
+
+  // ── 投递记录：新增（求职者在报告页/扩展记录投递动作）──
+  app.post('/profiles/:id/applications', async (c) => {
+    const param = ProfileIdParamSchema.safeParse(c.req.param());
+    if (!param.success) return c.json({ error: 'invalid profile id' }, 400);
+    const profile = await repos.profiles.getById(param.data.id);
+    if (!profile) return c.json({ error: 'profile not found' }, 404);
+
+    const parsed = ApplicationCreateSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid application', details: parsed.error.flatten() }, 400);
+    }
+    const data = parsed.data;
+    const id = `app-${randomUUID()}`;
+    await repos.applications.insert({
+      id,
+      profileId: param.data.id,
+      jobId: data.jobId ?? null,
+      source: data.source ?? null,
+      targetTitle: data.targetTitle,
+      targetCompany: data.targetCompany,
+      targetUrl: data.targetUrl ?? null,
+      status: data.status ?? 'applied',
+      note: data.note ?? null,
+      origin: data.origin ?? 'manual',
+      appliedAt: data.appliedAt ?? new Date().toISOString(),
+    });
+    const stored = await repos.applications.getById(id);
+    return c.json(stored, 201);
+  });
+
+  // ── 投递记录：局部更新状态/备注/投递时间/链接（撤回用 status=withdrawn，不物理删除）──
+  app.patch('/applications/:id', async (c) => {
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'invalid application id' }, 400);
+    const parsed = ApplicationPatchSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid patch', details: parsed.error.flatten() }, 400);
+    }
+    const updated = await repos.applications.update(id, parsed.data);
+    if (!updated) return c.json({ error: 'application not found' }, 404);
+    return c.json(updated);
+  });
+
   // 404 兜底
   app.notFound((c) => {
     return c.json({ error: 'not found', path: c.req.path }, 404);
@@ -878,7 +1033,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, GET /health`);
   });
 }
 
