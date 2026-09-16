@@ -4,8 +4,15 @@
  * 经 createStorage 选择方言（DB_DRIVER），readonly 连接不自动迁移、不执行 PRAGMA。
  */
 
-import type { AbilityProfile } from '@jobagent/shared';
-import { createStorage, type StorageContext } from '@jobagent/storage';
+import type { AbilityProfile, EvidenceItem } from '@jobagent/shared';
+import {
+  createStorage,
+  toEvidenceItems,
+  type StorageContext,
+  type CandidateSummary,
+  type CandidateSearchQuery,
+  type CandidateSearchResult,
+} from '@jobagent/storage';
 
 const DB_PATH = process.env.DB_PATH ?? 'data/job-agent.db';
 
@@ -28,5 +35,37 @@ export async function loadProfile(profileId: string): Promise<AbilityProfile | n
     return record?.snapshot ?? null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 按 profileId 读取证据明细（含完整外链 URL）。
+ * 画像快照里只存 evidenceId，核验视图/面试准备包需要可点击的原始链接，故单独加载。
+ * 不存在或失败返回空数组（降级为不展示外链，不拖垮整页）。
+ */
+export async function loadEvidence(profileId: string): Promise<EvidenceItem[]> {
+  try {
+    const storage = await getStorage();
+    const rows = await storage.evidence.listByProfile(profileId);
+    return toEvidenceItems(rows);
+  } catch {
+    return [];
+  }
+}
+
+
+/**
+ * 人才库页首屏候选人（SSR 直连只读 storage，与报告页同源）。
+ * 仅取默认第一页；岛屿上的过滤/分页交互改走 GET /candidates（同源 API）。
+ * 任何失败降级为空结果，不阻塞页面渲染。
+ */
+export async function loadInitialCandidates(
+  query: CandidateSearchQuery = {},
+): Promise<CandidateSearchResult> {
+  try {
+    const storage = await getStorage();
+    return await storage.profiles.searchCandidates(query);
+  } catch {
+    return { items: [] as CandidateSummary[], total: 0 };
   }
 }
