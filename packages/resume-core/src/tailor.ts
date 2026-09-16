@@ -133,10 +133,14 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
   const copy = resumeCopy(locale);
 
   // 1) 技能定向排序
+  // 简历正文只列可回溯（evidenceRefs 非空）的技能：技能条目同属 source:'profile'，
+  // 契约强制 refs 非空（设计 §3 契约要点、§6 no-fabrication）。无证据的技能 tag 不臆造为
+  // 简历陈述——简历是证据子集而非技能全集，完整技能仍在画像页展示。
+  const evidencedSkills = profile.skillTags.filter((s) => s.evidenceRefs.length > 0);
   const hitScoreByName = new Map<string, number>(
     match.skillHits.map((h) => [normalizeName(h.skill), h.score]),
   );
-  const ranked = rankSkills(profile.skillTags, match.matchedSkills, hitScoreByName);
+  const ranked = rankSkills(evidencedSkills, match.matchedSkills, hitScoreByName);
   const matchedEntries = ranked.matched.map((r) => skillToEntry(r.skill, true));
   const otherEntries = ranked.other.map((r) => skillToEntry(r.skill, false));
 
