@@ -211,4 +211,61 @@ test.describe('targeted resume builder', () => {
     await expect(builder.locator('.resume-panel-head')).toContainText('Senior TypeScript Engineer');
     await expect(page.frameLocator('.resume-iframe').locator('#marker')).toBeVisible();
   });
+
+  test('polish toggle sends polish=true and honestly reports the rule-based fallback', async ({ page }) => {
+    const requests: Record<string, unknown>[] = [];
+    await mockRecommendations(page);
+    await page.route(BUILD_URL, async (route) => {
+      const post = route.request().postDataJSON() as Record<string, unknown>;
+      requests.push(post);
+      const polish =
+        post.polish === true ? { polish: { requested: true, applied: false, reason: 'not_configured' } } : {};
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ format: 'html', draft: DRAFT, html: RESUME_HTML, ...polish }),
+      });
+    });
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+    await page.locator('.job-recs .rec-resume-button').first().click();
+
+    await expect.poll(() => requests.length).toBe(1);
+    expect(requests[0].polish).toBeUndefined();
+
+    const builder = page.locator('.resume-builder');
+    await builder.getByRole('checkbox', { name: 'Polish wording with AI' }).check();
+
+    // 勾选即重新生成，第二次请求带 polish=true
+    await expect.poll(() => requests.length).toBe(2);
+    expect(requests[1].polish).toBe(true);
+
+    // 未配置模型时如实显示回退状态 + 原因，不假装已润色
+    const status = builder.locator('.resume-polish-status--fallback');
+    await expect(status).toContainText('AI polish unavailable');
+    await expect(status).toContainText('No model configured');
+  });
+
+  test('shows the applied state when the server returns a polished draft', async ({ page }) => {
+    const requests: Record<string, unknown>[] = [];
+    await mockRecommendations(page);
+    await page.route(BUILD_URL, async (route) => {
+      const post = route.request().postDataJSON() as Record<string, unknown>;
+      requests.push(post);
+      const polish = post.polish === true ? { polish: { requested: true, applied: true } } : {};
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ format: 'html', draft: DRAFT, html: RESUME_HTML, ...polish }),
+      });
+    });
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+    await page.locator('.job-recs .rec-resume-button').first().click();
+
+    const builder = page.locator('.resume-builder');
+    await builder.getByRole('checkbox', { name: 'Polish wording with AI' }).check();
+    await expect.poll(() => requests.length).toBe(2);
+
+    await expect(builder.locator('.resume-polish-status--ok')).toContainText('AI wording polish applied');
+    await expect(builder.locator('.resume-polish-status--fallback')).toHaveCount(0);
+  });
 });

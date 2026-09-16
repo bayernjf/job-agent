@@ -595,6 +595,42 @@ h4 { font-size: var(--ja-text-lg); }
   font-weight: 600;
 }
 
+.resume-polish {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+}
+
+.resume-polish-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.resume-polish-hint {
+  font-size: var(--ja-text-xs);
+}
+
+.resume-polish-status {
+  margin: 0;
+  font-size: var(--ja-text-xs);
+}
+
+.resume-polish-status--ok {
+  color: var(--ja-color-success);
+}
+
+.resume-polish-status--fallback {
+  color: var(--ja-color-warning);
+}
+
 .resume-actions {
   display: flex;
   flex-wrap: wrap;
