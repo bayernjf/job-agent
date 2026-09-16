@@ -212,7 +212,7 @@ header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier �
 
 ## 7. B 档：LLM 受约束润色（已实现，默认关闭）
 
-**状态（2026-09-16，§10 #4 已决策）**：不再是"仅预留端口"。已落地 provider-agnostic 的 OpenAI 兼容客户端 `packages/llm/src/openai-compatible-client.ts`（一个实现覆盖 OpenAI / DeepSeek / 通义兼容模式 / 智谱、Moonshot 兼容网关 / 本地 vLLM 等），由服务端 env `LLM_API_KEY` + `LLM_MODEL`（可选 `LLM_BASE_URL`/`LLM_PROVIDER`/`LLM_TIMEOUT_MS`）配置；**未配置 key 时默认关闭、走纯规则版，零费用、零数据外发**，不锁定具体付费厂商、不内置单价。API `POST /resumes/build` 仅在请求体 `polish:true` 时调用，未配置/任何失败都回退规则版并在响应 `polish` 字段如实标注（见 docs/API.md §3.4）。报告页"AI 润色"开关 UI 仍缓做（handoff item19）。
+**状态（2026-09-16，§10 #4 已决策）**：不再是"仅预留端口"。已落地 provider-agnostic 的 OpenAI 兼容客户端 `packages/llm/src/openai-compatible-client.ts`（一个实现覆盖 OpenAI / DeepSeek / 通义兼容模式 / 智谱、Moonshot 兼容网关 / 本地 vLLM 等），由服务端 env `LLM_API_KEY` + `LLM_MODEL`（可选 `LLM_BASE_URL`/`LLM_PROVIDER`/`LLM_TIMEOUT_MS`）配置；**未配置 key 时默认关闭、走纯规则版，零费用、零数据外发**，不锁定具体付费厂商、不内置单价。API `POST /resumes/build` 仅在请求体 `polish:true` 时调用，未配置/任何失败都回退规则版并在响应 `polish` 字段如实标注（见 docs/API.md §3.4）。**报告页「AI 润色措辞」开关 UI 已落地（2026-09-16，handoff item19 ②）**：ResumeBuilder 勾选即带 `polish:true` 重新生成、下载 Markdown 跟随，按 `polish.applied/reason` 显示绿色已润色或橙色回退原因（not_configured/provider_error/validation_failed/fabrication_detected 中英映射），默认关闭、全 token 样式、2 个 E2E 守护。
 
 设计初衷（触发条件）：A 档上线后用户明确反馈"模板措辞太硬、需要更自然表达"，再开启 env 配置。硬约束（已由 `resume-core/polish.ts` 纯安全层强制，测试守护）：
 
@@ -229,7 +229,7 @@ header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier �
 | --- | --- | --- | --- |
 | **P-R1（规则版闭环，建议先做）✅ 已落地 2026-09-15** | shared ResumeDraft/LocalResumeFields 契约；resume-core（rank/tailor/render md+html）；CLI `jobagent resume build --profile <file|id> --job <id> [--local-fields f.json] [--format md|html|json] -o out`；全套单测 | 小（1–1.5 天） | 已有画像/岗位库/匹配，无新外部依赖 |
 | **P-R2（在线消费）✅ 已落地 2026-09-16** | API `POST /resumes/build`（body: profileId+jobId+可选 local，返回 ResumeDraft；不入库）；报告页岗位卡片加"针对此岗生成简历"（island：预览 md/html、打印 PDF、local 补填表单存 localStorage）；docs/API.md §3.4；E2E（含 `?resumeJob=` 深链自动触发）。实现增补：CLI/API 共用 `fromJobMatch` 映射；storage 共享 `toEvidenceItem(s)`；修复无 evidenceRefs 弱信号技能误标 source:'profile' 的内核 bug | 中（2–3 天） | P-R1 |
-| **P-R3 🟡 可闭环子项已落地 2026-09-16，余外部/缓做项** | 已做：B 档 LLM **端口 + Fake + 受约束润色安全层**（§7，`resume-core/polish.ts` 数字防臆造闸门）+ **OpenAI 兼容客户端与 env 工厂**（`packages/llm/openai-compatible-client.ts`，默认关闭）+ **API `POST /resumes/build` 可选 `polish` 接线（未配置/失败回退规则版）**；扩展面板生成（深链 CTA）；多岗位批量简历（CLI `resume batch`）。仍缓做/外部：报告页"AI 润色"开关 UI（handoff item19）、真实启用需用户自配 LLM env（厂商/费用由用户决定）、简历版本管理（随服务端持久化，见 deferred）、本地档案 canonical 统一（item19） | — | 触发条件见 §7/§10 |
+| **P-R3 🟡 可闭环子项已落地 2026-09-16，余外部/缓做项** | 已做：B 档 LLM **端口 + Fake + 受约束润色安全层**（§7，`resume-core/polish.ts` 数字防臆造闸门）+ **OpenAI 兼容客户端与 env 工厂**（`packages/llm/openai-compatible-client.ts`，默认关闭）+ **API `POST /resumes/build` 可选 `polish` 接线（未配置/失败回退规则版）**；扩展面板生成（深链 CTA）；多岗位批量简历（CLI `resume batch`）；**报告页「AI 润色措辞」开关 UI（2026-09-16，item19 ②，勾选带 `polish:true`、诚实回退提示、中英 i18n + 2 E2E）**。仍缓做/外部：真实启用需用户自配 LLM env（厂商/费用由用户决定）、简历版本管理（随服务端持久化，见 deferred）、本地档案 canonical 统一（item19 ①） | — | 触发条件见 §7/§10 |
 
 CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或本地库 profileId；`--job` 读本地 job_postings 的 jobId（storage 只读），保持"内核零 I/O、I/O 在 CLI/API 薄封装"的分层。
 
@@ -276,4 +276,5 @@ CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或�
 - [x] CLI `resume batch`：显式 `--jobs`（含零命中 low 降级）或全库 top `--limit` 自动匹配，逐岗写 md/html 到 `--out-dir`，5 测试。
 - [x] 扩展面板每个匹配岗位「针对此岗生成简历」深链 CTA：新开报告页 `<locale>/report/<profileId>?resumeJob=<内部 posting.id>`，普通 anchor 不附 demo 会话标识；可选 reportBase 设置（生产同域取 apiBase origin，本地跨端口可覆盖）；match-utils 4 单测 + 扩展 E2E 1 用例。
 - [x] 全仓单测全绿、report E2E 5 + 扩展 E2E 8 全过、typecheck/build/check-migrations/`git diff --check` 通过。
-- [ ] （缓做/外部，非阻塞）报告页"AI 润色"开关 UI（后端 `polish` 已就绪）；真实启用需用户自配 LLM env（厂商/费用用户决定）；服务端 PDF（puppeteer，触发条件见 §10 #3）；简历版本管理（随服务端持久化，见 deferred）；本地档案 canonical 统一与自动互通（handoff item19，需账号体系或 chrome.storage 通道）。
+- [x] **报告页「AI 润色措辞」开关 UI（2026-09-16，item19 ②）**：ResumeBuilder ready 面板加 checkbox（默认关）+ hint + `role=status` 状态；勾选且有目标岗位即带 `polish:true` 重新生成、下载 Markdown 跟随；applied=true 绿色已润色、applied=false 橙色回退并映射四 reason 中英文案；中英各 8 i18n key、全 `--ja-*` token、E2E 2 用例（回退/成功），真实浏览器中英回退路径复验。
+- [ ] （缓做/外部，非阻塞）真实启用需用户自配 LLM env（厂商/费用用户决定）；服务端 PDF（puppeteer，触发条件见 §10 #3）；简历版本管理（随服务端持久化，见 deferred）；本地档案 canonical 统一与自动互通（handoff item19 ①，需账号体系或 chrome.storage 通道）。
