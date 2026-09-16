@@ -63,7 +63,15 @@ import {
   type StoredProfile,
 } from '@jobagent/storage';
 import { matchJobs } from '@jobagent/job-source';
-import { buildResume, renderHtml, renderMarkdown, fromJobMatch } from '@jobagent/resume-core';
+import {
+  buildResume,
+  renderHtml,
+  renderMarkdown,
+  fromJobMatch,
+  polishResume,
+  type ResumePolishProvider,
+} from '@jobagent/resume-core';
+import { createResumePolishProviderFromEnv } from '@jobagent/llm';
 import { skillTagMap, buildSkillReasons, collectEvidence } from './match-explain.js';
 import {
   loadDemoConfig,
@@ -95,6 +103,12 @@ export interface ApiDeps {
   now?: () => string;
   /** 注入演示配置（测试用；默认从环境变量加载） */
   demoConfig?: DemoConfig;
+  /**
+   * 简历 LLM 润色 provider（设计 §7/§10 #4）。
+   * 不传（undefined）= 按服务端 LLM_* 环境变量自动构造（无 LLM_API_KEY 则为 null，默认关闭走规则版）；
+   * 显式传 null = 强制关闭；测试注入 FakeLlmClient 包装的 provider。
+   */
+  resumePolish?: ResumePolishProvider | null;
 }
 
 // ─── 输入校验 Schema ────────────────────────────────────────────────────
@@ -158,6 +172,9 @@ const ResumeBuildRequestSchema = z.object({
   locale: ResumeLocaleSchema.optional(),
   format: z.enum(['json', 'md', 'html']).optional(), // 默认 json（仅结构化草稿）
   highlightLimit: z.number().int().positive().max(50).optional(),
+  // 是否请求 B 档 LLM 措辞润色（设计 §7）：默认 false 走纯规则版；true 且服务端未配置/润色被安全层拒绝时，
+  // 静默回退规则版，并在响应 polish.applied=false + reason 中如实标注，绝不臆造、绝不因润色失败而报错。
+  polish: z.boolean().optional(),
 });
 
 // ─── 响应格式化 ──────────────────────────────────────────────────────────
@@ -243,6 +260,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
   const repos: ApiRepos = deps.repos ?? ((await createStorage()) as unknown as ApiRepos);
   const now = deps.now ?? (() => new Date().toISOString());
   const cfg = deps.demoConfig ?? loadDemoConfig();
+  // 简历 LLM 润色：默认按服务端 LLM_* env 构造，未配置 LLM_API_KEY 时为 null（规则版兜底，零费用）。
+  const polishProvider: ResumePolishProvider | null =
+    deps.resumePolish === undefined ? createResumePolishProviderFromEnv() : deps.resumePolish;
   // DEMO_IP_SALT 缺省时进程内随机盐（重启后历史 IP 窗口失效，仅本地/实验可接受）
   const effectiveSalt = cfg.ipSalt || randomBytes(16).toString('hex');
 
@@ -783,7 +803,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     const match = fromJobMatch(matched ?? null);
 
     const locale: ResumeLocale = req.locale ?? 'zh-CN';
-    const draft = buildResume({
+    const ruleDraft = buildResume({
       profile,
       evidence,
       posting,
@@ -792,13 +812,41 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       options: { locale, highlightLimit: req.highlightLimit, now: now() },
     });
 
+    // 可选 B 档 LLM 措辞润色：只改措辞、安全层防臆造，任何失败/未配置都回退规则版（draft 引用不变）。
+    let finalDraft = ruleDraft;
+    let polish: { requested: boolean; applied: boolean; reason?: string } | undefined;
+    if (req.polish === true) {
+      polish = { requested: true, applied: false };
+      if (!polishProvider) {
+        polish.reason = 'not_configured';
+      } else {
+        const result = await polishResume(ruleDraft, posting, polishProvider, {
+          locale,
+          now: now(),
+        });
+        finalDraft = result.draft;
+        polish.applied = result.applied;
+        if (!result.applied && result.reason) polish.reason = result.reason;
+      }
+    }
+
     if (req.format === 'html') {
-      return c.json({ format: 'html' as const, draft, html: renderHtml(draft, locale) });
+      return c.json({
+        format: 'html' as const,
+        draft: finalDraft,
+        html: renderHtml(finalDraft, locale),
+        ...(polish ? { polish } : {}),
+      });
     }
     if (req.format === 'md') {
-      return c.json({ format: 'md' as const, draft, markdown: renderMarkdown(draft, locale) });
+      return c.json({
+        format: 'md' as const,
+        draft: finalDraft,
+        markdown: renderMarkdown(finalDraft, locale),
+        ...(polish ? { polish } : {}),
+      });
     }
-    return c.json({ draft });
+    return c.json({ draft: finalDraft, ...(polish ? { polish } : {}) });
   });
 
   // 404 兜底
