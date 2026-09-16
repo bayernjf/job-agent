@@ -7,10 +7,11 @@ import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
-import { loadProfile } from '../../../lib/db';
+import ApplicationTracker from '../../../components/ApplicationTracker.tsx';
+import { loadProfile, loadEvidence } from '../../../lib/db';
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
-import type { SkillTagKind } from '@jobagent/shared';
+import type { EvidenceItem, SkillTagKind } from '@jobagent/shared';
 
 const { locale: rawLocale, profileId } = Astro.params;
 if (!isLocale(rawLocale)) {
@@ -29,6 +30,20 @@ if (!profile) {
   return Astro.redirect(`/${locale}/?notfound=1`);
 }
 
+// 视角：默认求职者；?view=recruiter 为招聘方核验视图（只看可核验证据，隐藏求职建议）
+const isRecruiter = Astro.url.searchParams.get('view') === 'recruiter';
+const pathname = Astro.url.pathname;
+const recruiterUrl = `${pathname}?view=recruiter`;
+const candidateUrl = pathname;
+
+// 证据明细（含完整外链 URL）：画像快照里只有 evidenceId，核验视图/面试准备包需要可点击链接
+const evidenceList = profileId ? await loadEvidence(profileId) : [];
+const evidenceById = new Map(evidenceList.map((e) => [e.evidenceId, e]));
+const resolveEvidence = (refs: string[] | undefined | null): EvidenceItem[] =>
+  (refs ?? [])
+    .map((ref) => evidenceById.get(ref))
+    .filter((e): e is EvidenceItem => Boolean(e && e.url));
+
 // 真实性状态文案 key
 const authLabelKey = `report.authenticity.${profile.authenticity.status}` as MessageKey;
 const authClass = authenticityClass(profile.authenticity.status);
@@ -46,6 +61,18 @@ const resumeJobId = Astro.url.searchParams.get('resumeJob') ?? undefined;
 const generatedAt = formatDateTime(profile.generatedAt, locale);
 const since = formatDateTime(profile.dataWindow.since, locale);
 const until = formatDateTime(profile.dataWindow.until, locale);
+const interviewKitUrl = `${pathname}/interview-kit.md`;
+
+// 投递状态文案映射（传给 ApplicationTracker island）
+const applicationStatusLabels = {
+  saved: t('applications.status.saved'),
+  applied: t('applications.status.applied'),
+  viewed: t('applications.status.viewed'),
+  interview: t('applications.status.interview'),
+  offer: t('applications.status.offer'),
+  rejected: t('applications.status.rejected'),
+  withdrawn: t('applications.status.withdrawn'),
+};
 ---
 
 <Layout locale={locale} title={profile.subject.login}>
@@ -67,6 +94,13 @@ const until = formatDateTime(profile.dataWindow.until, locale);
       </div>
       <div class="header-meta">
         <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
+        <a
+          class="ja-btn ja-btn--ghost view-toggle"
+          href={isRecruiter ? candidateUrl : recruiterUrl}
+          aria-pressed={isRecruiter}
+        >
+          {isRecruiter ? t('report.view.switchToCandidate') : t('report.view.switchToRecruiter')}
+        </a>
         <ShareButton
           client:load
           url={shareUrl}
@@ -75,6 +109,14 @@ const until = formatDateTime(profile.dataWindow.until, locale);
         />
       </div>
     </section>
+
+    {
+      isRecruiter && (
+        <section class="ja-card recruiter-banner">
+          <p>{t('report.view.recruiterBanner')}</p>
+        </section>
+      )
+    }
 
     <!-- 元信息：生成时间 / 版本 / 时间窗 -->
     <section class="meta-bar">
@@ -99,15 +141,31 @@ const until = formatDateTime(profile.dataWindow.until, locale);
       </div>
       <div class="ja-stack-2 signals">
         {
-          profile.authenticity.signals.map((signal) => (
-            <div class={`signal signal--${signal.severity}`}>
-              <div class="ja-flex-between">
-                <strong>{signal.label}</strong>
-                <span class="ja-muted signal-code">{signal.code}</span>
+          profile.authenticity.signals.map((signal) => {
+            const sigEvidence = isRecruiter ? resolveEvidence(signal.evidenceRefs) : [];
+            return (
+              <div class={`signal signal--${signal.severity}`}>
+                <div class="ja-flex-between">
+                  <strong>{signal.label}</strong>
+                  <span class="ja-muted signal-code">{signal.code}</span>
+                </div>
+                <p>{signal.detail}</p>
+                {
+                  isRecruiter && sigEvidence.length > 0 && (
+                    <ul class="evidence-links">
+                      {sigEvidence.map((ev) => (
+                        <li>
+                          <a href={ev.url} target="_blank" rel="noopener noreferrer">
+                            {ev.claim} ↗
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                }
               </div>
-              <p>{signal.detail}</p>
-            </div>
-          ))
+            );
+          })
         }
       </div>
     </section>
@@ -133,14 +191,33 @@ const until = formatDateTime(profile.dataWindow.until, locale);
                 </div>
               ) : null,
             )}
+            {
+              isRecruiter && (
+                <div class="skill-evidence">
+                  <h3 class="kind-label">{t('report.recruiter.skillEvidence')}</h3>
+                  <ul class="ja-stack-1">
+                    {profile.skillTags.flatMap((tag) =>
+                      resolveEvidence(tag.evidenceRefs).map((ev) => (
+                        <li class="skill-evidence-row">
+                          <span class="skill-evidence-name">{tag.name}</span>
+                          <a href={ev.url} target="_blank" rel="noopener noreferrer">
+                            {ev.claim} ↗
+                          </a>
+                        </li>
+                      )),
+                    )}
+                  </ul>
+                </div>
+              )
+            }
           </div>
         </section>
       )
     }
 
-    <!-- 推荐岗位（第一档匹配接线） -->
+    <!-- 推荐岗位（第一档匹配接线）——仅求职者视角 -->
     {
-      profile.skillTags.length > 0 && (
+      !isRecruiter && profile.skillTags.length > 0 && (
         <JobRecommendations
           client:load
           profileId={profileId!}
@@ -167,9 +244,9 @@ const until = formatDateTime(profile.dataWindow.until, locale);
       )
     }
 
-    <!-- 岗位定向简历（P-R2）：由上方岗位卡片按钮经 DOM 事件触发 -->
+    <!-- 岗位定向简历（P-R2）：由上方岗位卡片按钮经 DOM 事件触发——仅求职者视角 -->
     {
-      profile.skillTags.length > 0 && (
+      !isRecruiter && profile.skillTags.length > 0 && (
         <ResumeBuilder
           client:load
           profileId={profileId!}
@@ -227,40 +304,45 @@ const until = formatDateTime(profile.dataWindow.until, locale);
       )
     }
 
-    <!-- 活跃度 -->
-    <section class="ja-card">
-      <h2>{t('report.activity.title')}</h2>
-      <div class="ja-stack-2">
-        {profile.activity.longevityMonths !== undefined && (
-          <div class="ja-flex-between">
-            <span class="ja-muted">{t('report.activity.longevityMonths')}</span>
-            <strong>{t('report.activity.months', { count: profile.activity.longevityMonths })}</strong>
-          </div>
-        )}
-        {profile.activity.cadenceSummary && (
-          <div class="ja-flex-between">
-            <span class="ja-muted">{t('report.activity.cadence')}</span>
-            <strong>{profile.activity.cadenceSummary}</strong>
-          </div>
-        )}
-        {profile.activity.metrics && Object.keys(profile.activity.metrics).length > 0 && (
-          <div class="metrics-grid">
-            {Object.entries(profile.activity.metrics).map(([key, value]) => (
-              <div class="metric">
-                <span class="metric-value">{formatNumber(value, locale)}</span>
-                <span class="ja-muted metric-key">{key}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-
-    <!-- 协作度 -->
+    <!-- 活跃度——仅求职者视角 -->
     {
-      (profile.collaboration.prSummary ||
-        (profile.collaboration.externalMergedContributions &&
-          profile.collaboration.externalMergedContributions.length > 0)) && (
+      !isRecruiter && (
+        <section class="ja-card">
+          <h2>{t('report.activity.title')}</h2>
+          <div class="ja-stack-2">
+            {profile.activity.longevityMonths !== undefined && (
+              <div class="ja-flex-between">
+                <span class="ja-muted">{t('report.activity.longevityMonths')}</span>
+                <strong>{t('report.activity.months', { count: profile.activity.longevityMonths })}</strong>
+              </div>
+            )}
+            {profile.activity.cadenceSummary && (
+              <div class="ja-flex-between">
+                <span class="ja-muted">{t('report.activity.cadence')}</span>
+                <strong>{profile.activity.cadenceSummary}</strong>
+              </div>
+            )}
+            {profile.activity.metrics && Object.keys(profile.activity.metrics).length > 0 && (
+              <div class="metrics-grid">
+                {Object.entries(profile.activity.metrics).map(([key, value]) => (
+                  <div class="metric">
+                    <span class="metric-value">{formatNumber(value, locale)}</span>
+                    <span class="ja-muted metric-key">{key}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )
+    }
+
+    <!-- 协作度——仅求职者视角 -->
+    {
+      !isRecruiter &&
+        (profile.collaboration.prSummary ||
+          (profile.collaboration.externalMergedContributions &&
+            profile.collaboration.externalMergedContributions.length > 0)) && (
         <section class="ja-card">
           <h2>{t('report.collaboration.title')}</h2>
           <div class="ja-stack-2">
@@ -281,22 +363,83 @@ const until = formatDateTime(profile.dataWindow.until, locale);
       )
     }
 
-    <!-- 面试题 -->
+    <!-- 面试题（招聘方视角附证据外链；求职者视角可下载面试准备包） -->
     {
       profile.interviewQuestions.length > 0 && (
         <section class="ja-card">
-          <h2>{t('report.interview.title')}</h2>
+          <div class="ja-flex-between">
+            <h2>{t('report.interview.title')}</h2>
+            {
+              !isRecruiter && (
+                <a class="ja-btn ja-btn--ghost interview-kit-link" href={interviewKitUrl}>
+                  ⬇ {t('report.interview.downloadKit')}
+                </a>
+              )
+            }
+          </div>
           <div class="ja-stack-3">
-            {profile.interviewQuestions.map((iq) => (
-              <div class="interview-item">
-                <p class="question">{iq.question}</p>
-                <p class="ja-muted intent">
-                  {t('report.interview.intent')}: {iq.intent}
-                </p>
-              </div>
-            ))}
+            {profile.interviewQuestions.map((iq) => {
+              const qEvidence = isRecruiter
+                ? resolveEvidence(iq.basisEvidenceRef ? [iq.basisEvidenceRef] : [])
+                : [];
+              return (
+                <div class="interview-item">
+                  <p class="question">{iq.question}</p>
+                  <p class="ja-muted intent">
+                    {t('report.interview.intent')}: {iq.intent}
+                  </p>
+                  {
+                    isRecruiter && qEvidence.length > 0 && (
+                      <ul class="evidence-links">
+                        {qEvidence.map((ev) => (
+                          <li>
+                            <a href={ev.url} target="_blank" rel="noopener noreferrer">
+                              {ev.claim} ↗
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  }
+                </div>
+              );
+            })}
           </div>
         </section>
+      )
+    }
+
+    <!-- 投递追踪（仅求职者视角） -->
+    {
+      !isRecruiter && (
+        <ApplicationTracker
+          client:load
+          profileId={profileId!}
+          apiBase={apiBase}
+          locale={locale}
+          labels={{
+            title: t('applications.title'),
+            hint: t('applications.hint'),
+            loading: t('applications.loading'),
+            error: t('applications.error'),
+            empty: t('applications.empty'),
+            add: t('applications.add'),
+            company: t('applications.company'),
+            role: t('applications.role'),
+            url: t('applications.url'),
+            status: t('applications.status'),
+            note: t('applications.note'),
+            appliedAt: t('applications.appliedAt'),
+            companyPlaceholder: t('applications.companyPlaceholder'),
+            rolePlaceholder: t('applications.rolePlaceholder'),
+            urlPlaceholder: t('applications.urlPlaceholder'),
+            notePlaceholder: t('applications.notePlaceholder'),
+            save: t('applications.save'),
+            cancel: t('applications.cancel'),
+            required: t('applications.required'),
+            statusLabels: applicationStatusLabels,
+          }}
+        />
       )
     }
 
@@ -459,5 +602,52 @@ const until = formatDateTime(profile.dataWindow.until, locale);
   .caveats li {
     font-size: var(--ja-text-sm);
     color: var(--ja-color-fg-muted);
+  }
+
+  .view-toggle {
+    padding: var(--ja-space-1) var(--ja-space-3);
+    font-size: var(--ja-text-sm);
+  }
+
+  .recruiter-banner {
+    border-left: 3px solid var(--ja-color-accent);
+    background: var(--ja-color-surface-muted);
+  }
+
+  .recruiter-banner p {
+    font-size: var(--ja-text-sm);
+    color: var(--ja-color-fg-muted);
+  }
+
+  .evidence-links {
+    margin-top: var(--ja-space-2);
+    padding-left: var(--ja-space-5);
+    list-style: disc;
+  }
+
+  .evidence-links li {
+    font-size: var(--ja-text-sm);
+  }
+
+  .skill-evidence {
+    margin-top: var(--ja-space-3);
+  }
+
+  .skill-evidence-row {
+    display: flex;
+    gap: var(--ja-space-2);
+    align-items: baseline;
+    font-size: var(--ja-text-sm);
+  }
+
+  .skill-evidence-name {
+    flex: none;
+    font-weight: 600;
+  }
+
+  .interview-kit-link {
+    padding: var(--ja-space-1) var(--ja-space-3);
+    font-size: var(--ja-text-sm);
+    white-space: nowrap;
   }
 </style>

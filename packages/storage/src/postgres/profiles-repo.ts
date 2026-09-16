@@ -2,12 +2,18 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   toStoredProfile,
+  searchCandidates as searchCandidatesPure,
+  type CandidateSearchQuery,
+  type CandidateSummary,
   type NewProfile,
   type ProfileStatus,
   type StoredProfile,
 } from '../entities/index.js';
 import type { IProfilesRepository } from '../repositories/profiles.js';
 import { profiles as profilesTable } from './schema.js';
+
+/** 人才检索扫描上限：只取最近的 complete 画像在内存中精细过滤（MVP 画像量级可接受）。 */
+const CANDIDATE_SCAN_CAP = 1000;
 
 /** profiles 仓储的 Postgres 实现（postgres-js 全异步）。 */
 export class PgProfilesRepository implements IProfilesRepository {
@@ -66,5 +72,18 @@ export class PgProfilesRepository implements IProfilesRepository {
       .update(profilesTable)
       .set({ status, updatedAt: new Date().toISOString() })
       .where(eq(profilesTable.id, id));
+  }
+
+  async searchCandidates(
+    query: CandidateSearchQuery,
+  ): Promise<{ items: CandidateSummary[]; total: number }> {
+    const rows = await this.db
+      .select()
+      .from(profilesTable)
+      .where(eq(profilesTable.status, 'complete'))
+      .orderBy(desc(profilesTable.updatedAt))
+      .limit(CANDIDATE_SCAN_CAP);
+    const stored: StoredProfile[] = rows.map((row) => toStoredProfile(row));
+    return searchCandidatesPure(stored, query);
   }
 }

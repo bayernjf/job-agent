@@ -257,3 +257,37 @@ export const demoRateEvents = sqliteTable(
 
 export type DemoRateEventInsert = typeof demoRateEvents.$inferInsert;
 export type DemoRateEventSelect = typeof demoRateEvents.$inferSelect;
+
+/**
+ * applications 表——求职者画像侧投递记录（痛点解决方案批次 2，迁移 009）。
+ * 当前无账号体系，以 profile_id 关联画像；target_* 冗余存储，岗位下架后记录仍可读。
+ */
+export const applications = sqliteTable(
+  'applications',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    jobId: text('job_id'),
+    source: text('source'),
+    targetTitle: text('target_title').notNull(),
+    targetCompany: text('target_company').notNull(),
+    targetUrl: text('target_url'),
+    status: text('status').notNull().default('applied'),
+    note: text('note'),
+    origin: text('origin').notNull().default('manual'),
+    appliedAt: text('applied_at').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_applications_profile_status').on(table.profileId, table.status),
+    index('idx_applications_profile_applied').on(table.profileId, table.appliedAt),
+  ],
+);
+
+export type ApplicationInsert = typeof applications.$inferInsert;
+export type ApplicationSelect = typeof applications.$inferSelect;

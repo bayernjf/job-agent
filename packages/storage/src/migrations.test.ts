@@ -164,6 +164,30 @@ describe('migrations', () => {
       .all() as Array<{ name: string }>;
     expect(demoRateIndexes.map((i) => i.name)).toContain('idx_demo_rate_events_ip_kind_created');
 
+    const applicationColumns = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'profile_id',
+      'job_id',
+      'source',
+      'target_title',
+      'target_company',
+      'target_url',
+      'status',
+      'note',
+      'origin',
+      'applied_at',
+      'created_at',
+      'updated_at',
+    ]) {
+      expect(applicationColumns.map((c) => c.name)).toContain(expected);
+    }
+    const applicationIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='applications'")
+      .all() as Array<{ name: string }>;
+    expect(applicationIndexes.map((i) => i.name)).toContain('idx_applications_profile_status');
+    expect(applicationIndexes.map((i) => i.name)).toContain('idx_applications_profile_applied');
+
     db.close();
   });
 
@@ -179,6 +203,17 @@ describe('migrations', () => {
   it('rolls back migrations in reverse order with their down scripts', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
+
+    // 第零步 0：回滚 009（applications）
+    const result9 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result9.version).toBe('009');
+    let appTables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(appTables.map((t) => t.name)).not.toContain('applications');
+    // 008 的列仍在
+    const jobColsAfter9 = db.prepare('PRAGMA table_info(analysis_jobs)').all() as Array<{ name: string }>;
+    expect(jobColsAfter9.map((c) => c.name)).toContain('requester_kind');
 
     // 第零步 a：回滚 008（analysis_jobs 移除 requester 两列，表本身仍在）
     const result8 = rollbackLatestMigration(db, MIGRATIONS_DIR);
