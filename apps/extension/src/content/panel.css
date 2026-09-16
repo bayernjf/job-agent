@@ -370,6 +370,26 @@
   color: var(--ja-color-fg);
 }
 
+.ja-match-resume {
+  display: inline-block;
+  margin-top: var(--ja-space-2);
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border: 1px solid var(--ja-color-accent); /* 1px 发丝描边，结构性 */
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-accent-bg);
+  color: var(--ja-color-accent);
+  font-family: var(--ja-font-sans);
+  font-size: var(--ja-text-xs);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ja-match-resume:hover {
+  background: var(--ja-color-accent);
+  color: var(--ja-color-accent-fg);
+}
+
 .ja-match-basis {
   margin-top: var(--ja-space-1);
 }
