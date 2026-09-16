@@ -378,6 +378,264 @@ export const LocalResumeFieldsSchema = z.object({
 });
 export type LocalResumeFields = z.infer<typeof LocalResumeFieldsSchema>;
 
+// ─── 统一本地档案 canonical（2026-09-16，item19 ①，对应 design-targeted-resume §5.4.1）────
+//
+// 报告页简历补填与扩展 ATS 补填原先各持一份形状/键名不同的本地字段，现统一到本 canonical
+// 契约：两端都编辑、存储同一份 LocalProfileFields（各自本机 localStorage，物理隔离、仍不
+// 跨域自动同步），再用下面的纯函数投影到简历请求形状（LocalResumeFields）与 ATS 填充形状
+// （LocalAtsFields）。本段零 I/O、不碰 DOM，localStorage 读写薄壳留在各前端。
+
+/** 统一本地档案存储键（报告页产品域与扩展 ATS 域各存一份，互不可见） */
+export const LOCAL_PROFILE_STORAGE_KEY = 'jobagent.localProfile';
+/** 报告页旧键，首次读取迁移到 canonical 后删除 */
+export const LEGACY_RESUME_FIELDS_STORAGE_KEY = 'jobagent.localResumeFields';
+/** 扩展 ATS 旧键，首次读取迁移到 canonical 后删除 */
+export const LEGACY_ATS_FIELDS_STORAGE_KEY = 'jobagent.localFields';
+
+export const LocalProfileEducationSchema = z.object({
+  school: z.string().min(1),
+  degree: z.string().optional(),
+  start: z.string().optional(), // 宽松字符串（"2018-09" / "2018" / "至今"），不强校验日期
+  end: z.string().optional(),
+});
+export type LocalProfileEducation = z.infer<typeof LocalProfileEducationSchema>;
+
+export const LocalProfileWorkSchema = z.object({
+  company: z.string().min(1),
+  role: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  detail: z.string().optional(),
+});
+export type LocalProfileWork = z.infer<typeof LocalProfileWorkSchema>;
+
+export const LocalProfileFieldsSchema = z.object({
+  fullName: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  location: z.string().optional(),
+  personalSite: z.string().url().optional(),
+  linkedinUrl: z.string().url().optional(),
+  education: z.array(LocalProfileEducationSchema).optional(),
+  workHistory: z.array(LocalProfileWorkSchema).optional(),
+});
+export type LocalProfileFields = z.infer<typeof LocalProfileFieldsSchema>;
+
+/** ATS 一键填充所需的本地字段形状（扩展 toFillValues 消费；canonical 的 ATS 投影目标） */
+export const LocalAtsEducationSchema = z.object({
+  school: z.string().min(1),
+  degree: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+});
+export const LocalAtsExperienceSchema = z.object({
+  company: z.string().min(1),
+  title: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+});
+export const LocalAtsFieldsSchema = z.object({
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  location: z.string().optional(),
+  linkedinUrl: z.string().url().optional(),
+  education: z.array(LocalAtsEducationSchema).optional(),
+  experience: z.array(LocalAtsExperienceSchema).optional(),
+});
+export type LocalAtsFields = z.infer<typeof LocalAtsFieldsSchema>;
+
+const cleanScalar = (v?: string): string | undefined => {
+  const t = v?.trim();
+  return t ? t : undefined;
+};
+
+/** 结构化起止 → 简历用自由文本时间段；只有一个就返回那个，都空返回 undefined */
+export function formatRange(start?: string, end?: string): string | undefined {
+  const s = cleanScalar(start);
+  const e = cleanScalar(end);
+  if (s && e) return `${s} – ${e}`;
+  return s ?? e;
+}
+
+/**
+ * 把旧简历的自由文本 period 拆回结构化 start/end（一次性迁移用，尽力而为、不丢字符）。
+ * - en/em dash、波浪号、"到"、"至"（排除"至今"）视为范围分隔符；
+ * - 连字符 `-` 仅在两侧都含 4 位年份时才切（避免把单日期 "2018-09" 切开）；
+ * - 切不出范围则整段入 start。
+ */
+export function splitRange(text?: string): { start?: string; end?: string } {
+  const raw = cleanScalar(text);
+  if (!raw) return {};
+  const dash = raw.match(/^(.*?)\s*(?:[–—~～到]|至(?!今))\s*(.+)$/);
+  if (dash) {
+    const start = cleanScalar(dash[1]);
+    const end = cleanScalar(dash[2]);
+    if (start && end) return { start, end };
+  }
+  const hyphen = raw.match(/^(.+?)\s*-\s*(.+)$/);
+  if (hyphen) {
+    const a = hyphen[1]?.trim();
+    const b = hyphen[2]?.trim();
+    if (a && b && /\d{4}/.test(a) && /\d{4}/.test(b)) return { start: a, end: b };
+  }
+  return { start: raw };
+}
+
+/** 规整 canonical：trim 标量、丢弃空 school/company 行、去掉空数组（存储/发送前统一调用） */
+export function sanitizeLocalProfile(input: LocalProfileFields): LocalProfileFields {
+  const out: LocalProfileFields = {};
+  (['fullName', 'email', 'phone', 'location', 'personalSite', 'linkedinUrl'] as const).forEach((k) => {
+    const v = cleanScalar(input[k]);
+    if (v) out[k] = v;
+  });
+  const education = (input.education ?? [])
+    .filter((e) => Boolean(cleanScalar(e.school)))
+    .map((e) => ({
+      school: cleanScalar(e.school) as string,
+      degree: cleanScalar(e.degree),
+      start: cleanScalar(e.start),
+      end: cleanScalar(e.end),
+    }));
+  if (education.length) out.education = education;
+  const workHistory = (input.workHistory ?? [])
+    .filter((w) => Boolean(cleanScalar(w.company)))
+    .map((w) => ({
+      company: cleanScalar(w.company) as string,
+      role: cleanScalar(w.role),
+      start: cleanScalar(w.start),
+      end: cleanScalar(w.end),
+      detail: cleanScalar(w.detail),
+    }));
+  if (workHistory.length) out.workHistory = workHistory;
+  return out;
+}
+
+/**
+ * canonical → 简历请求形状（严格投影，绝不臆造）。
+ * - personalSite 缺省时用 linkedinUrl 落到简历唯一 URL 槽；
+ * - period 由 start/end 派生；
+ * - 教育项必须 school+degree、工作项必须 company+role，否则过滤（简历 Zod 要求非空）。
+ */
+export function localProfileToResumeFields(c: LocalProfileFields): LocalResumeFields {
+  const clean = sanitizeLocalProfile(c);
+  const out: LocalResumeFields = {};
+  if (clean.fullName) out.fullName = clean.fullName;
+  if (clean.email) out.email = clean.email;
+  if (clean.phone) out.phone = clean.phone;
+  if (clean.location) out.location = clean.location;
+  const site = clean.personalSite ?? clean.linkedinUrl;
+  if (site) out.personalSite = site;
+  const education = (clean.education ?? [])
+    .filter((e): e is LocalProfileEducation & { school: string; degree: string } => Boolean(e.degree))
+    .map((e) => ({ school: e.school, degree: e.degree, period: formatRange(e.start, e.end) }));
+  if (education.length) out.education = education;
+  const workHistory = (clean.workHistory ?? [])
+    .filter((w): w is LocalProfileWork & { company: string; role: string } => Boolean(w.role))
+    .map((w) => ({ company: w.company, role: w.role, period: formatRange(w.start, w.end), detail: w.detail }));
+  if (workHistory.length) out.workHistory = workHistory;
+  return out;
+}
+
+/** canonical → ATS 填充形状；只保留 ATS 有槽位的字段，role→title，丢弃 fullName/personalSite/detail */
+export function localProfileToAtsFields(c: LocalProfileFields): LocalAtsFields {
+  const clean = sanitizeLocalProfile(c);
+  const out: LocalAtsFields = {};
+  if (clean.email) out.email = clean.email;
+  if (clean.phone) out.phone = clean.phone;
+  if (clean.location) out.location = clean.location;
+  if (clean.linkedinUrl) out.linkedinUrl = clean.linkedinUrl;
+  const education = (clean.education ?? []).map((e) => ({
+    school: e.school,
+    degree: e.degree,
+    start: e.start,
+    end: e.end,
+  }));
+  if (education.length) out.education = education;
+  const experience = (clean.workHistory ?? []).map((w) => ({
+    company: w.company,
+    title: w.role,
+    start: w.start,
+    end: w.end,
+  }));
+  if (experience.length) out.experience = experience;
+  return out;
+}
+
+/** 旧报告页简历补填（period 自由文本）→ canonical */
+export function legacyResumeToLocalProfile(old: LocalResumeFields): LocalProfileFields {
+  return sanitizeLocalProfile({
+    fullName: old.fullName,
+    email: old.email,
+    phone: old.phone,
+    location: old.location,
+    personalSite: old.personalSite,
+    education: (old.education ?? []).map((e) => ({ school: e.school, degree: e.degree, ...splitRange(e.period) })),
+    workHistory: (old.workHistory ?? []).map((w) => ({
+      company: w.company,
+      role: w.role,
+      detail: w.detail,
+      ...splitRange(w.period),
+    })),
+  });
+}
+
+/** 旧扩展 ATS 补填（experience/title、start/end）→ canonical */
+export function legacyAtsToLocalProfile(old: LocalAtsFields): LocalProfileFields {
+  return sanitizeLocalProfile({
+    email: old.email,
+    phone: old.phone,
+    location: old.location,
+    linkedinUrl: old.linkedinUrl,
+    education: (old.education ?? []).map((e) => ({
+      school: e.school,
+      degree: e.degree,
+      start: e.start,
+      end: e.end,
+    })),
+    workHistory: (old.experience ?? []).map((x) => ({
+      company: x.company,
+      role: x.title,
+      start: x.start,
+      end: x.end,
+    })),
+  });
+}
+
+/**
+ * 合并多份 canonical（标量取首个非空，教育/工作数组拼接并按 school+degree / company+role
+ * 去重保序）。当前各端本域只有一份 legacy，主要服务未来通道与迁移测试。
+ */
+export function mergeLocalProfile(...parts: Array<LocalProfileFields | null | undefined>): LocalProfileFields {
+  const merged: LocalProfileFields = {};
+  const eduKeys = new Set<string>();
+  const workKeys = new Set<string>();
+  const education: LocalProfileEducation[] = [];
+  const workHistory: LocalProfileWork[] = [];
+  for (const p of parts) {
+    if (!p) continue;
+    (['fullName', 'email', 'phone', 'location', 'personalSite', 'linkedinUrl'] as const).forEach((k) => {
+      if (merged[k] === undefined && p[k]) merged[k] = p[k];
+    });
+    for (const e of p.education ?? []) {
+      const key = `${(e.school ?? '').trim()}|${(e.degree ?? '').trim()}`;
+      if (!eduKeys.has(key)) {
+        eduKeys.add(key);
+        education.push(e);
+      }
+    }
+    for (const w of p.workHistory ?? []) {
+      const key = `${(w.company ?? '').trim()}|${(w.role ?? '').trim()}`;
+      if (!workKeys.has(key)) {
+        workKeys.add(key);
+        workHistory.push(w);
+      }
+    }
+  }
+  if (education.length) merged.education = education;
+  if (workHistory.length) merged.workHistory = workHistory;
+  return sanitizeLocalProfile(merged);
+}
+
 /** 简历条目来源：profile=画像证据（refs 必须非空）；local=用户本地补填（refs 为空） */
 export const ResumeEntrySourceSchema = z.enum(['profile', 'local']);
 export type ResumeEntrySource = z.infer<typeof ResumeEntrySourceSchema>;

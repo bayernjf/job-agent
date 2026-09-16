@@ -8,22 +8,17 @@
  * MVP 范围：Greenhouse / Lever / Workday 三大 ATS，仅用户主动触发（点击面板"填充"）。
  */
 
-import type { ExportableProfile } from '@jobagent/shared';
+import type { ExportableProfile, LocalAtsFields } from '@jobagent/shared';
 import { greenhouseAdapter } from './greenhouse.js';
 import { leverAdapter } from './lever.js';
 import { workdayAdapter } from './workday.js';
 
-/** 用户在面板里本地补填的信息（画像没有的字段，仅存本机 localStorage） */
-export interface LocalFields {
-  email?: string;
-  phone?: string;
-  location?: string;
-  linkedinUrl?: string;
-  /** 教育经历：学校 / 学位 / 起止 */
-  education?: Array<{ school: string; degree?: string; start?: string; end?: string }>;
-  /** 工作经历：公司 / 职位 / 起止 */
-  experience?: Array<{ company: string; title?: string; start?: string; end?: string }>;
-}
+/**
+ * 用户在面板里本地补填的信息（画像没有的字段，仅存本机 localStorage）。
+ * 自 item19 ① 起统一为 shared canonical 的 ATS 投影形状 LocalAtsFields；
+ * 面板编辑/存储 canonical LocalProfileFields，填充前经 localProfileToAtsFields 投影。
+ */
+export type LocalFields = LocalAtsFields;
 
 /** 语义化表单值（各 ATS 的 fill 再映射到具体 DOM） */
 export interface FillValue {

@@ -76,13 +76,15 @@
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `username` | string | 是 | 登录名，1–39 字符；GitHub 仅允许字母数字+中划线，Gitee 额外允许下划线 |
-| `platform` | `"github" \| "gitee"` | 否 | 证据源平台，默认 `github`；不同平台同 login 不互相去重 |
+| `platform` | `"github" \| "gitee" \| "all"` | 否 | 证据源平台，默认 `github`；`all`=一次作业采 GitHub+Gitee 并镜像去重融合成一张画像。不同平台同 login 不互相去重，`all` 缓存只认真融合画像（见 [design-cross-source-fusion §8](design-cross-source-fusion-20260915.md)） |
 
 请求需携带演示 Cookie `jobagent_demo`（由 `POST /demo/sessions` 下发），除非命中画像缓存。CLI 不走 HTTP，不受此限。
 
 ```json
 { "username": "sindresorhus", "platform": "github" }
 ```
+
+`platform:"all"` 的作业由 Worker 主采 GitHub、辅采 Gitee：两源都有账号则镜像去重后融合，画像在检索维度标记为 `all`（快照内主源仍为 GitHub）；Gitee 无同名账号（404）时正常降级为纯 GitHub 画像并在 `missing` 记 `gitee:account_not_found`，Gitee 临时故障则按普通采集错误重试。`budgetUsed` 为两源之和。
 
 #### 响应 A：新建任务（201）
 
