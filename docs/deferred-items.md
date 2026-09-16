@@ -22,6 +22,9 @@
 | #13 非技术岗多元证据源（作品集 / 案例 / 证书）接入 | `EvidenceItem` 已做成证据源无关结构；先在信号最密的技术岗（GitHub）上验证内核 | 技术岗路径跑通、需要向非技术岗扩展时 | [待拍板决策清单 #13](待拍板决策清单-20260910.md)、[PRD 第 8 章](PRD.md) |
 | B/C 完整后台（招聘方工作台 / 应聘者面板） | 先用落地页轻量入口验证需求，过早建双边后台会摊薄资源、拖慢验证 | 20–50 账号去风险实验通过、进入 P2 系统层 | [PRD 阶段规划](PRD.md)、[讨论记录 01](讨论记录-01-切入口与MVP收敛-20260910.md) |
 | 竞品季度监控（AI 求职赛道：B2B 进展、是否把数据源扩到行为证据） | 自身聚焦信任验证层，不做逐功能对标；但需警惕头部玩家把数据源从自述简历扩到 GitHub 等行为证据而正面竞争 | 每季度一次，或某竞品上线"行为证据/GitHub 分析"类能力时立即评估 | [市场调研-AI求职赛道 第6章](市场调研-AI求职赛道-20260910.md) |
+| 简历服务端持久化与版本管理（§10 #1 已决策不持久化） | 按需生成、隐私最小化，简历不入库；没有存档就没有版本可言 | 出现明确的"历史简历存档 / 多版本对比 / 跨设备取回"需求，且账号体系（见工程线）就位时 | [design-targeted-resume §10](design-targeted-resume-20260915.md) |
+| 服务端出 PDF（puppeteer / headless 渲染） | §10 #3 已决策用浏览器打印 CSS（`@media print`），服务端渲染镜像体积大、维护重 | 出现明确的"无浏览器环境 / 服务端批量出 PDF / 邮件附带 PDF"需求时 | [design-targeted-resume §10](design-targeted-resume-20260915.md) |
+| 本地档案跨端自动同步（扩展 ATS ↔ 报告页简历） | 扩展 content script 在第三方 ATS 域、报告页在产品域，且服务端不持久化，物理上无法共享 localStorage | 账号体系落地，或扩展通过 `chrome.storage` + externally connectable 向报告页开放通道时（schema 统一本身见 handoff item19） | [design-targeted-resume §5.4](design-targeted-resume-20260915.md) |
 
 ### 证据源与分析深度线
 
@@ -36,7 +39,7 @@
 | 事项 | 缓做/低优原因 | 触发条件 | 决策详情 |
 | --- | --- | --- | --- |
 | Redis / 消息队列 | MVP 用单进程 Worker 轮询 `analysis_jobs` 即可，引入中间件徒增运维面 | 单进程轮询的吞吐/延迟成为瓶颈，或需要多 Worker 并发消费 | [技术选型](技术选型-MVP-20260910.md)、[../AGENTS.md](../AGENTS.md) |
-| LLM 层启用（`packages/llm`） | 规则内核先做到可复现、可解释、带版本；LLM 输出不稳定，必须经结构化校验，过早接入会污染可复现性 | P1：规则内核在标注集上稳定后，确需自然语言摘要 / 面试题润色时 | [技术选型](技术选型-MVP-20260910.md)、[../AGENTS.md](../AGENTS.md) |
+| LLM 层启用（`packages/llm`） | 规则内核先做到可复现、可解释、带版本；分析内核的 LLM 输出不稳定，必须经结构化校验，过早接入会污染可复现性。**注：简历 B 档受约束润色已于 2026-09-16 落地（OpenAI 兼容 client + 数字防臆造安全层，默认关闭，见 design-targeted-resume §7/§10），不在本缓做范围** | 分析内核侧：规则内核在标注集上稳定后，确需自然语言摘要 / 面试题润色时；简历侧：用户自配 `LLM_*` env 即启用，无需重启本项 | [技术选型](技术选型-MVP-20260910.md)、[design-targeted-resume §7](design-targeted-resume-20260915.md)、[../AGENTS.md](../AGENTS.md) |
 | 账号体系 / 本人认领头表（accounts、claim、OAuth） | M1 先做"用户名 → 画像"匿名分析 + waitlist；账号与认领形态取决于决策 #1/#6 | 决策 #1 拍板走 C 授权主脊、需要本人 OAuth 认领与权威分享时（P1） | [待拍板决策清单 #1/#6](待拍板决策清单-20260910.md) |
 | ✅ **已重启 2026-09-11（W3-6 进行中，见 handoff）** Postgres 方言适配（`packages/storage` 双轨），设计见 [design-storage-dual-dialect](design-storage-dual-dialect-20260911.md) | MVP 持久化层已用 SQLite 跑通迁移/仓储机制（本地/实验合法场景）；在线服务主轨是 Postgres，需补 pg 方言 schema/client、`COMMENT ON` 迁移与 CI service | ~~W3 服务化前~~ **已触发重启**；CI Postgres service、JSONB/TIMESTAMPTZ、SKIP LOCKED 仍缓做（见设计文档 §9） | [技术选型 6.5](技术选型-MVP-20260910.md)、[../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
 
