@@ -12,6 +12,7 @@
   "home.invalidUsername": "Please enter a valid username",
   "home.platform.github": "GitHub",
   "home.platform.gitee": "Gitee",
+  "home.platform.all": "GitHub + Gitee (fused)",
   "home.howItWorks": "How it works",
   "home.step1.title": "Collect behavioral traces",
   "home.step1.desc": "Only public L0 metadata and L1 behavioral sequences; repositories are never cloned",
