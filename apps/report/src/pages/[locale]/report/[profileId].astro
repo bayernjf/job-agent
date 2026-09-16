@@ -6,6 +6,7 @@
 import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
+import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
 import { loadProfile } from '../../../lib/db';
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
@@ -40,6 +41,8 @@ const skillGroups: Record<SkillTagKind, typeof profile.skillTags> = {
 };
 
 const shareUrl = Astro.url.href;
+// 扩展面板"生成简历"深链：?resumeJob=<jobId>，ResumeBuilder mount 后自动生成
+const resumeJobId = Astro.url.searchParams.get('resumeJob') ?? undefined;
 const generatedAt = formatDateTime(profile.generatedAt, locale);
 const since = formatDateTime(profile.dataWindow.since, locale);
 const until = formatDateTime(profile.dataWindow.until, locale);
@@ -159,6 +162,58 @@ const until = formatDateTime(profile.dataWindow.until, locale);
           depthProficientLabel={t('report.skills.depth.proficient')}
           evidenceCountTemplate={t('report.evidence.count')}
           viewEvidenceLabel={t('report.evidence.viewOriginal')}
+          generateResumeLabel={t('report.resume.generateButton')}
+        />
+      )
+    }
+
+    <!-- 岗位定向简历（P-R2）：由上方岗位卡片按钮经 DOM 事件触发 -->
+    {
+      profile.skillTags.length > 0 && (
+        <ResumeBuilder
+          client:load
+          profileId={profileId!}
+          apiBase={apiBase}
+          locale={locale}
+          initialJobId={resumeJobId}
+          labels={{
+            sectionTitle: t('report.resume.sectionTitle'),
+            sectionHint: t('report.resume.sectionHint'),
+            idle: t('report.resume.idle'),
+            loading: t('report.resume.loading'),
+            error: t('report.resume.error'),
+            retry: t('report.resume.retry'),
+            targetLabel: t('report.resume.targetLabel'),
+            scoreLabel: t('report.resume.scoreLabel'),
+            tierHigh: t('report.resume.tierHigh'),
+            tierMid: t('report.resume.tierMid'),
+            tierLow: t('report.resume.tierLow'),
+            previewLabel: t('report.resume.previewLabel'),
+            print: t('report.resume.print'),
+            downloadMd: t('report.resume.downloadMd'),
+            close: t('report.resume.close'),
+            localToggle: t('report.resume.localToggle'),
+            localPrivacy: t('report.resume.localPrivacy'),
+            fieldName: t('report.resume.fieldName'),
+            fieldEmail: t('report.resume.fieldEmail'),
+            fieldPhone: t('report.resume.fieldPhone'),
+            fieldLocation: t('report.resume.fieldLocation'),
+            fieldSite: t('report.resume.fieldSite'),
+            educationLabel: t('report.resume.educationLabel'),
+            workLabel: t('report.resume.workLabel'),
+            addEducation: t('report.resume.addEducation'),
+            addWork: t('report.resume.addWork'),
+            remove: t('report.resume.remove'),
+            applyLocal: t('report.resume.applyLocal'),
+            suggestionsTitle: t('report.resume.suggestionsTitle'),
+            gapsTitle: t('report.resume.gapsTitle'),
+            schoolPlaceholder: t('report.resume.schoolPlaceholder'),
+            degreePlaceholder: t('report.resume.degreePlaceholder'),
+            periodPlaceholder: t('report.resume.periodPlaceholder'),
+            companyPlaceholder: t('report.resume.companyPlaceholder'),
+            rolePlaceholder: t('report.resume.rolePlaceholder'),
+            detailPlaceholder: t('report.resume.detailPlaceholder'),
+          }}
         />
       )
     }

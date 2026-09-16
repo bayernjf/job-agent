@@ -39,6 +39,7 @@ interface JobMatchItem {
   fieldScores?: FieldScores;
   skillReasons?: SkillReason[];
   posting: {
+    id?: string;
     title: string;
     company: string;
     location?: string | null;
@@ -74,6 +75,7 @@ interface JobRecommendationsProps {
   depthProficientLabel: string;
   evidenceCountTemplate: string;
   viewEvidenceLabel: string;
+  generateResumeLabel: string;
 }
 
 const MAX_DISPLAY = 10;
@@ -141,6 +143,7 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
     depthProficientLabel,
     evidenceCountTemplate,
     viewEvidenceLabel,
+    generateResumeLabel,
   } = props;
 
   const [data, setData] = useState<JobRecommendationsResponse | null>(null);
@@ -178,6 +181,17 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
     ['tags', fieldTagsLabel],
     ['description', fieldDescriptionLabel],
   ];
+
+  // 通知 ResumeBuilder island 生成该岗位的定向简历（跨 island 用 DOM 事件解耦）
+  const requestResume = (m: JobMatchItem): void => {
+    const jobId = m.posting.id;
+    if (!jobId) return;
+    window.dispatchEvent(
+      new CustomEvent('jobagent:build-resume', {
+        detail: { jobId, title: m.posting.title, company: m.posting.company },
+      }),
+    );
+  };
 
   return (
     <section className="ja-card job-recs">
@@ -303,14 +317,25 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
                   </details>
                 )}
 
-                <a
-                  href={m.posting.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rec-view-link"
-                >
-                  {viewJobLabel} →
-                </a>
+                <div className="rec-item-actions">
+                  <a
+                    href={m.posting.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rec-view-link"
+                  >
+                    {viewJobLabel} →
+                  </a>
+                  {m.posting.id && (
+                    <button
+                      type="button"
+                      className="rec-resume-button"
+                      onClick={() => requestResume(m)}
+                    >
+                      {generateResumeLabel}
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}
