@@ -38,6 +38,9 @@ importers:
       '@jobagent/job-source':
         specifier: workspace:*
         version: link:../../packages/job-source
+      '@jobagent/resume-core':
+        specifier: workspace:*
+        version: link:../../packages/resume-core
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -239,9 +242,15 @@ importers:
 
   packages/llm:
     dependencies:
+      '@jobagent/resume-core':
+        specifier: workspace:*
+        version: link:../resume-core
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../shared
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
 
   packages/resume-core:
     dependencies:

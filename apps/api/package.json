@@ -19,9 +19,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@jobagent/shared": "workspace:*",
-    "@jobagent/job-source": "workspace:*",
     "@hono/node-server": "^1.13.0",
+    "@jobagent/job-source": "workspace:*",
+    "@jobagent/resume-core": "workspace:*",
+    "@jobagent/shared": "workspace:*",
     "@jobagent/storage": "workspace:*",
     "better-sqlite3": "^12.0.0",
     "drizzle-orm": "^0.45.2",

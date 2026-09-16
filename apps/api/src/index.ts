@@ -17,6 +17,7 @@
  *   GET  /profiles/:id   — 查询画像快照（完整 AbilityProfile JSON）
  *   GET  /job-postings   — 岗位检索（P2-D 职位聚合消费侧）
  *   POST /job-postings/match — 按画像技能匹配岗位
+ *   POST /resumes/build  — 岗位定向简历按需生成（P-R2，不入库；body: profileId+jobId+可选 local/locale/format）
  *   GET  /health         — 健康检查
  *
  * 环境变量：
@@ -36,16 +37,22 @@ import { z } from 'zod';
 import {
   toExportableProfile,
   JobSourceSchema,
+  JobPostingSchema,
+  LocalResumeFieldsSchema,
+  ResumeLocaleSchema,
   DEMO_ERROR_CODES,
   type AbilityProfile,
   type DemoMe,
   type DemoPreset,
   type JobSource,
+  type LocalResumeFields,
   type Principal,
+  type ResumeLocale,
   type SkillTag,
 } from '@jobagent/shared';
 import {
   createStorage,
+  toEvidenceItems,
   type IAnalysisJobsRepository,
   type IDemoSessionsRepository,
   type IProfilesRepository,
@@ -56,6 +63,7 @@ import {
   type StoredProfile,
 } from '@jobagent/storage';
 import { matchJobs } from '@jobagent/job-source';
+import { buildResume, renderHtml, renderMarkdown, fromJobMatch } from '@jobagent/resume-core';
 import { skillTagMap, buildSkillReasons, collectEvidence } from './match-explain.js';
 import {
   loadDemoConfig,
@@ -139,6 +147,17 @@ const JobMatchRequestSchema = z.object({
 }).refine((d) => (d.skills && d.skills.length > 0) || !!d.profileId, {
   message: 'either non-empty skills or profileId is required',
   path: ['skills'],
+});
+
+// 岗位定向简历生成请求体（P-R2）：画像 + 岗位 + 可选本地补填；服务端不持久化、不记日志。
+const ResumeBuildRequestSchema = z.object({
+  profileId: z.string().min(1, 'profileId is required'),
+  jobId: z.string().min(1, 'jobId is required'),
+  // 画像不提供的教育/工作经历/联系方式；仅用于本次渲染，绝不入库或落日志（设计 §5.4）
+  local: LocalResumeFieldsSchema.optional(),
+  locale: ResumeLocaleSchema.optional(),
+  format: z.enum(['json', 'md', 'html']).optional(), // 默认 json（仅结构化草稿）
+  highlightLimit: z.number().int().positive().max(50).optional(),
 });
 
 // ─── 响应格式化 ──────────────────────────────────────────────────────────
@@ -727,6 +746,61 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     });
   });
 
+  // ── 岗位定向简历（P-R2）：按需生成、不入库、不记日志（local 补填隐私最小化）──────
+  // 纯计算只读端点：不触发新分析、不消耗平台采集配额，故与 GET 画像一样对所有身份公开。
+  app.post('/resumes/build', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    const parsed = ResumeBuildRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
+    }
+    const req = parsed.data;
+
+    const storedProfile = await repos.profiles.getById(req.profileId);
+    if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
+    if (!storedProfile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
+    const profile: AbilityProfile = storedProfile.snapshot;
+
+    const postingRow = await repos.jobPostings.getById(req.jobId);
+    if (!postingRow) return c.json({ error: 'job posting not found' }, 404);
+    const postingParse = JobPostingSchema.safeParse(postingRow);
+    if (!postingParse.success) {
+      return c.json({ error: 'stored job posting is invalid' }, 500);
+    }
+    const posting = postingParse.data;
+
+    const evidenceRows = await repos.evidence.listByProfile(req.profileId);
+    const evidence = toEvidenceItems(evidenceRows);
+
+    // 匹配现算（单个岗位）；零命中 fromJobMatch(null) 走 low_match 降级（与 CLI 同路径）
+    const skills = profile.skillTags.map((tag) => tag.name);
+    const [matched] = matchJobs([posting], { skills, limit: 1 });
+    const match = fromJobMatch(matched ?? null);
+
+    const locale: ResumeLocale = req.locale ?? 'zh-CN';
+    const draft = buildResume({
+      profile,
+      evidence,
+      posting,
+      match,
+      local: req.local as LocalResumeFields | undefined,
+      options: { locale, highlightLimit: req.highlightLimit, now: now() },
+    });
+
+    if (req.format === 'html') {
+      return c.json({ format: 'html' as const, draft, html: renderHtml(draft, locale) });
+    }
+    if (req.format === 'md') {
+      return c.json({ format: 'md' as const, draft, markdown: renderMarkdown(draft, locale) });
+    }
+    return c.json({ draft });
+  });
+
   // 404 兜底
   app.notFound((c) => {
     return c.json({ error: 'not found', path: c.req.path }, 404);
@@ -751,7 +825,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /health`);
   });
 }
 
