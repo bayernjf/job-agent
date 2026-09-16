@@ -1,6 +1,6 @@
 # 设计：岗位定向简历生成（Targeted Resume）
 
-- 状态：现行（**P-R1 规则版闭环已落地 2026-09-15**：shared 契约 + `packages/resume-core` + CLI `resume build`，单测 28 项全绿；P-R2/P-R3 待启动，分期见 §8）
+- 状态：现行（**P-R1 规则版闭环 2026-09-15 落地；P-R2 在线消费 + P-R3 可纯代码闭环子项 2026-09-16 落地**：shared 契约 + `packages/resume-core`（含 polish 安全层）+ `packages/llm` 端口/fake/adapter + CLI `resume build`/`batch` + API `POST /resumes/build` + 报告页 ResumeBuilder island（含 `?resumeJob=` 深链）+ 扩展面板深链 CTA；真实 LLM 厂商、服务端持久化、服务端 PDF、版本管理仍待拍板，分期见 §8）
 - 日期：2026-09-15
 - 需求来源：用户需求——"在求职者的画像范围内，针对不同职位，生成匹配度高的简历"
 - 关联：[PRD.md](PRD.md)、[design-match-wiring-20260914.md](design-match-wiring-20260914.md)（画像↔岗位匹配）、[design-job-ingestion-20260913.md](design-job-ingestion-20260913.md)（岗位库）、[讨论记录-02](讨论记录-02-投递功能与竞品分析-20260911.md)（竞品简历定制）
@@ -221,9 +221,9 @@ header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier �
 
 | 阶段 | 范围 | 量级 | 依赖 |
 | --- | --- | --- | --- |
-| **P-R1（规则版闭环，建议先做）** | shared ResumeDraft/LocalResumeFields 契约；resume-core（rank/tailor/render md+html）；CLI `jobagent resume build --profile <file|id> --job <id> [--local-fields f.json] [--format md|html|json] -o out`；全套单测 | 小（1–1.5 天） | 已有画像/岗位库/匹配，无新外部依赖 |
-| **P-R2（在线消费）** | API `POST /resumes/build`（body: profileId+jobId+可选 local，返回 ResumeDraft；不入库）；报告页岗位卡片加"针对此岗生成简历"（island：预览 md/html、打印 PDF、local 补填表单存 localStorage）；docs/API.md；E2E | 中（2–3 天） | P-R1 |
-| **P-R3（缓做）** | B 档 LLM 润色（§7）；扩展面板生成；多岗位批量简历；简历版本管理；服务端 PDF | — | 触发条件见 §7/§10 |
+| **P-R1（规则版闭环，建议先做）✅ 已落地 2026-09-15** | shared ResumeDraft/LocalResumeFields 契约；resume-core（rank/tailor/render md+html）；CLI `jobagent resume build --profile <file|id> --job <id> [--local-fields f.json] [--format md|html|json] -o out`；全套单测 | 小（1–1.5 天） | 已有画像/岗位库/匹配，无新外部依赖 |
+| **P-R2（在线消费）✅ 已落地 2026-09-16** | API `POST /resumes/build`（body: profileId+jobId+可选 local，返回 ResumeDraft；不入库）；报告页岗位卡片加"针对此岗生成简历"（island：预览 md/html、打印 PDF、local 补填表单存 localStorage）；docs/API.md §3.4；E2E（含 `?resumeJob=` 深链自动触发）。实现增补：CLI/API 共用 `fromJobMatch` 映射；storage 共享 `toEvidenceItem(s)`；修复无 evidenceRefs 弱信号技能误标 source:'profile' 的内核 bug | 中（2–3 天） | P-R1 |
+| **P-R3（缓做）🟡 可闭环子项已落地 2026-09-16，余待拍板** | 已做：B 档 LLM **端口 + Fake + 受约束润色安全层**（§7，`resume-core/polish.ts` 数字防臆造闸门 + `packages/llm` adapter，真实厂商未接）；扩展面板生成（深链 CTA）；多岗位批量简历（CLI `resume batch`）。仍缓做/待拍板：真实 LLM 厂商 adapter（§10 #4）、简历版本管理、服务端 PDF（§10 #3） | — | 触发条件见 §7/§10 |
 
 CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或本地库 profileId；`--job` 读本地 job_postings 的 jobId（storage 只读），保持"内核零 I/O、I/O 在 CLI/API 薄封装"的分层。
 
@@ -248,3 +248,19 @@ CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或�
 - [x] CLI 对真实本地画像 + 真实 job_postings 产出 md/html/json 三格式（bayernjf × 真实在招岗实测）：命中技能置顶、tier/fieldScores 正确、gaps 正确、无画像外内容。注：该 demo 画像未向 evidence 表导入证据行，故证据亮点按 no-fabrication 留空（单测覆盖有证据时的排序/链接）。
 - [x] 全仓 `pnpm -r typecheck/test/build` 通过；docs/API.md 留到 P-R2。
 - [x] handoff / docs README 登记。
+
+### 11.1 P-R2 验收（在线消费，2026-09-16）
+
+- [x] `POST /resumes/build` 公开只读：不触发分析、不耗采集配额；json 默认 / html / md 三 format；画像或岗位缺失返 404、请求体非法返 400（7 集成测试，内存 SQLite）。
+- [x] 内核 bug 修复并守护：画像弱信号技能 `evidenceRefs` 为空时不进简历正文（简历是证据子集），画像页仍展示全集；有内核单测。
+- [x] 报告页 ResumeBuilder island：岗位卡片事件触发、iframe 打印 CSS 预览、打印 / 导出 PDF、下载 Markdown、本地补填仅在 apply 时发送且只存 localStorage、suggestions/gaps 诚实提示、错误重试、请求防过期。
+- [x] docs/API.md §3.4；Playwright E2E 5 用例（主链路、local 边界、错误恢复、中文、`?resumeJob=` 深链自动触发）。
+
+### 11.2 P-R3 已落地子项验收（2026-09-16）
+
+- [x] LLM 受约束润色安全层 `polishResume`：只允许改 summary 与 evidenceHighlights.text；长度/下标校验；**数字防臆造闸门**（新数字必须 ⊆ 规则版草稿数字池）；ResumeDraftSchema 复校；任一违例整条回退原 draft（无 polish 溯源），7 单测。
+- [x] `packages/llm` 端口 + FakeLlmClient + LlmResumePolishProvider（英文强约束 system prompt、Zod strip、promptVersion `resume-polish-0.1`、temperature 0.3），5 测试；真实厂商未接（待 §10 #4）。
+- [x] CLI `resume batch`：显式 `--jobs`（含零命中 low 降级）或全库 top `--limit` 自动匹配，逐岗写 md/html 到 `--out-dir`，5 测试。
+- [x] 扩展面板每个匹配岗位「针对此岗生成简历」深链 CTA：新开报告页 `<locale>/report/<profileId>?resumeJob=<内部 posting.id>`，普通 anchor 不附 demo 会话标识；可选 reportBase 设置（生产同域取 apiBase origin，本地跨端口可覆盖）；match-utils 4 单测 + 扩展 E2E 1 用例。
+- [x] 全仓 13 个测试包单测全绿、report E2E 5 + 扩展 E2E 8 全过、typecheck/build/check-migrations/`git diff --check` 通过。
+- [ ] （待拍板，未做）真实 LLM 厂商 adapter + 服务端 env；服务端简历持久化；服务端 PDF（puppeteer）；简历版本管理；扩展 ATS LocalFields 与简历 LocalResumeFields 统一互通。
