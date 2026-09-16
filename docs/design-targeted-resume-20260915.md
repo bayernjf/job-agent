@@ -194,9 +194,33 @@ header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier �
 画像不提供 email/电话/教育/工作经历（与扩展 ExportableProfile 的边界一致）。三端各自落地：
 - CLI：`--local-fields path.json`（可选），缺则产出带 gaps 占位的简历。
 - API：请求体可选 `local` 字段，**不入库、不记日志**。
-- 报告页（P-R2）：浏览器 localStorage（`jobagent.localResumeFields`）存补填，仅在请求时随 `local` 上送。
-- 扩展面板：ATS 填充用本地字段存于 content script 所在页面域的 localStorage（`jobagent.localFields`）。
-  > **注意（item19）**：报告页 `LocalResumeFields`（period 自由文本、workHistory.detail、personalSite）与扩展 ATS `LocalFields`（start/end 结构化、linkedinUrl、无 fullName）当前**形状不一致、且不共享存储**——扩展 content script 运行在第三方 ATS 域、报告页运行在产品域，在"服务端不持久化"（§10 #1 已决策为否）前提下二者物理上无法自动同步。目标是统一为一份 canonical 本地档案 schema（形状/命名一致、各自本机存储），自动互通需等账号体系或 `chrome.storage` 通道，列为 handoff item19 独立批次。
+- 报告页（P-R2）：浏览器 localStorage 存补填，仅在请求时随 `local` 上送。
+- 扩展面板：ATS 填充用本地字段存于 content script 所在页面域的 localStorage。
+
+#### 5.4.1 统一本地档案 canonical（item19 ①，2026-09-16 落地）
+
+报告页与扩展原先各持一份形状不同、key 不同的本地字段，现统一为 **shared 单一 canonical 契约 `LocalProfileFields`**，两端都存同一份形状（各自本机存储，**仍不跨域自动同步**，理由见末段）。
+
+```ts
+// packages/shared，Zod 单一事实源
+LocalProfileEducation = { school(必填), degree?, start?, end? }
+LocalProfileWork     = { company(必填), role?, start?, end?, detail? }
+LocalProfileFields   = {
+  fullName?, email?, phone?, location?, personalSite?(url), linkedinUrl?(url),
+  education?: LocalProfileEducation[], workHistory?: LocalProfileWork[],
+}
+```
+
+- **时间一律结构化 `start/end`**（宽松字符串，不强校验日期，兼容 "2018-09" / "2022" / "至今"）；两端表单都采集 start/end 两个输入。
+- **两个纯函数投影**（shared，零 I/O、可单测）：
+  - `localProfileToResumeFields(c) → LocalResumeFields`：简历是 canonical 的**严格投影**。`personalSite ?? linkedinUrl` 落到唯一 URL 槽；`period = formatRange(start,end)`；教育项必须同时有 `school+degree`、工作项必须同时有 `company+role` 否则**过滤不臆造**（简历 Zod 要求 degree/role 非空）；`detail` 保留。
+  - `localProfileToAtsFields(c) → LocalAtsFields`：`workHistory.role → experience.title`，只取 ATS 有槽位的字段（email/phone/location/linkedinUrl/education/experience）；`fullName/personalSite/detail` 无 ATS 槽位丢弃（fullName 仍用画像 displayName/login）。ATS 侧 `LocalFields` 类型改为从 shared 导入 `LocalAtsFields`，不再在扩展内自定义。
+- **存储与一次性迁移**：两端统一写 canonical key **`jobagent.localProfile`**。
+  - 报告页首次读取：无 canonical 时读旧 `jobagent.localResumeFields`，经 `legacyResumeToLocalProfile` 转换（自由文本 `period` 用 `splitRange` 按 `– — - ～ ~ 至 到` 切回 start/end，切不出则整段入 start，**不丢字符**），写 canonical 后删旧 key。
+  - 扩展首次读取：无 canonical 时读旧 `jobagent.localFields`，经 `legacyAtsToLocalProfile` 转换（`experience.title → workHistory.role`，start/end 直映），写 canonical 后删旧 key。
+  - 迁移在各端**本域内**发生（报告页产品域读不到 ATS 第三方域的 localStorage，反之亦然）；shared 另提供 `mergeLocalProfile(a,b)` 纯函数支持字段级合并/数组拼接去重，供未来通道与测试使用，当前运行时每端只有一份 legacy。
+  - localStorage 读写薄壳留在组件/panel（shared 不碰 DOM）；localStorage 不可用时 try/catch 降级为本次会话内存态。
+- **边界（仍缓做，不动）**：扩展 content script 在第三方 ATS 域、报告页在产品域，叠加 §10 #1 服务端不持久化，二者**物理上无法共享 localStorage 自动同步**；本次只统一 schema 与各自本机存储，自动互通仍待账号体系或扩展 `chrome.storage` + externally-connectable 通道（见 deferred「本地档案跨端自动同步」）。
 
 ## 6. 测试策略（确定性，对齐 analyzer-core 优先级）
 
