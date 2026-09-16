@@ -26,7 +26,7 @@
 | Gitee 证据源已落地（v5 REST 采集 / AnalyzerInput 映射 / PII 清洗 / CLI--platform + API/Worker/报告页/扩展在线选源） | [design-gitee-source-20260914.md](design-gitee-source-20260914.md) ★ |
 | 行为多样性信号 / 双源 events 聚合（BehaviorEventSummary、narrow_activity_scope 弱信号、规则版本 0.2、缺失降级） | [design-behavior-diversity-20260915.md](design-behavior-diversity-20260915.md) ★ |
 | 改技能标签提取（技术词典 / topics·commit·PR 多信号 / 词边界防误匹配 / 深度与置信度） | [design-skill-extraction-20260915.md](design-skill-extraction-20260915.md) ★ |
-| 融合 GitHub+Gitee 双源（共享 commit oid 识别镜像去重 / fuseInputs 纯函数 / CLI --platform all） | [design-cross-source-fusion-20260915.md](design-cross-source-fusion-20260915.md) ★ |
+| 融合 GitHub+Gitee 双源（共享 commit oid 识别镜像去重 / fuseInputs 纯函数 / CLI `--platform all` / 在线 `platform=all` 作业与报告页第三平台入口见 §8） | [design-cross-source-fusion-20260915.md](design-cross-source-fusion-20260915.md) ★ |
 | 免注册"试用演示"进入真实产品（已落地：三态身份 / 会话+IP+Worker 三道配额闸 / 预置示例 / 006–008 迁移 / API·report·extension·CLI；上线外部项见 handoff item17） | [design-demo-mode-20260915.md](design-demo-mode-20260915.md) ★ |
 | 针对岗位生成定制简历（已落地 P-R1/P-R2 + P-R3 可闭环子项：resume-core 纯函数 + polish 安全层、CLI build/batch、POST /resumes/build、报告页 ResumeBuilder、扩展深链、本地补填 canonical 统一 §5.4.1；真实 LLM/服务端持久化/PDF/版本管理/跨端同步待拍板，见 handoff item18/19） | [design-targeted-resume-20260915.md](design-targeted-resume-20260915.md) ★ |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
