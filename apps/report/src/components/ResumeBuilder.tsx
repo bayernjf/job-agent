@@ -25,6 +25,13 @@ export interface BuildResumeDetail {
   company: string;
 }
 
+/** POST /resumes/build 回传的润色状态（仅请求 polish:true 时出现）。 */
+export interface ResumePolishResult {
+  requested: boolean;
+  applied: boolean;
+  reason?: 'not_configured' | 'provider_error' | 'validation_failed' | 'fabrication_detected' | string;
+}
+
 export interface ResumeLabels {
   sectionTitle: string;
   sectionHint: string;
@@ -62,6 +69,14 @@ export interface ResumeLabels {
   companyPlaceholder: string;
   rolePlaceholder: string;
   detailPlaceholder: string;
+  polishToggle: string;
+  polishHint: string;
+  polishApplied: string;
+  polishFallback: string;
+  polishReasonNotConfigured: string;
+  polishReasonProviderError: string;
+  polishReasonValidationFailed: string;
+  polishReasonFabricationDetected: string;
 }
 
 interface ResumeBuilderProps {
@@ -127,17 +142,21 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
   const [local, setLocal] = useState<LocalResumeFields>(loadLocal);
   const [frameHeight, setFrameHeight] = useState(480);
   const [downloading, setDownloading] = useState(false);
+  const [polishOn, setPolishOn] = useState(false);
+  const [polishResult, setPolishResult] = useState<ResumePolishResult | null>(null);
 
   const sectionRef = useRef<HTMLElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const seqRef = useRef(0);
 
   const build = useCallback(
-    async (job: BuildResumeDetail, fields: LocalResumeFields) => {
+    async (job: BuildResumeDetail, fields: LocalResumeFields, polish?: boolean) => {
       const seq = ++seqRef.current;
+      const wantPolish = polish ?? polishOn;
       setTarget(job);
       setStatus('loading');
       setMarkdown('');
+      setPolishResult(null);
       sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       try {
         const res = await fetch(`${apiBase}/resumes/build`, {
@@ -149,20 +168,22 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
             locale,
             format: 'html',
             local: sanitizeLocal(fields),
+            ...(wantPolish ? { polish: true } : {}),
           }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as { draft: ResumeDraft; html: string };
+        const body = (await res.json()) as { draft: ResumeDraft; html: string; polish?: ResumePolishResult };
         if (seq !== seqRef.current) return; // 已有更新的请求，丢弃过期响应
         setDraft(body.draft);
         setHtml(body.html);
+        setPolishResult(body.polish ?? null);
         setStatus('ready');
       } catch {
         if (seq !== seqRef.current) return;
         setStatus('error');
       }
     },
-    [apiBase, profileId, locale],
+    [apiBase, profileId, locale, polishOn],
   );
 
   // 监听岗位卡片的生成请求；local 始终从 localStorage 读最新已保存值
@@ -184,6 +205,27 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
 
   const tierLabel = (tier: ResumeDraft['targetJob']['tier']): string =>
     tier === 'high' ? labels.tierHigh : tier === 'mid' ? labels.tierMid : labels.tierLow;
+
+  const togglePolish = (on: boolean): void => {
+    setPolishOn(on);
+    // 已有目标岗位时，切换开关立即按新偏好重新生成
+    if (target) void build(target, loadLocal(), on);
+  };
+
+  const polishReasonLabel = (reason?: string): string => {
+    switch (reason) {
+      case 'not_configured':
+        return labels.polishReasonNotConfigured;
+      case 'provider_error':
+        return labels.polishReasonProviderError;
+      case 'validation_failed':
+        return labels.polishReasonValidationFailed;
+      case 'fabrication_detected':
+        return labels.polishReasonFabricationDetected;
+      default:
+        return labels.polishFallback;
+    }
+  };
 
   const resizeFrame = (): void => {
     const doc = iframeRef.current?.contentDocument;
@@ -207,7 +249,13 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
         const res = await fetch(`${apiBase}/resumes/build`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profileId, jobId: target.jobId, locale, format: 'md' }),
+          body: JSON.stringify({
+            profileId,
+            jobId: target.jobId,
+            locale,
+            format: 'md',
+            ...(polishOn ? { polish: true } : {}),
+          }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as { markdown: string };
@@ -238,6 +286,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
     setDraft(null);
     setHtml('');
     setMarkdown('');
+    setPolishResult(null);
   };
 
   // ── 本地补填表单的行编辑 helper ──
@@ -323,6 +372,32 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
               )}
             </div>
           )}
+
+          <div className="resume-polish">
+            <label className="resume-polish-toggle">
+              <input
+                type="checkbox"
+                checked={polishOn}
+                onChange={(e) => togglePolish(e.target.checked)}
+              />
+              <span>{labels.polishToggle}</span>
+            </label>
+            <p className="ja-muted resume-polish-hint">{labels.polishHint}</p>
+            {polishResult?.requested && (
+              <p
+                role="status"
+                className={
+                  polishResult.applied
+                    ? 'resume-polish-status resume-polish-status--ok'
+                    : 'resume-polish-status resume-polish-status--fallback'
+                }
+              >
+                {polishResult.applied
+                  ? labels.polishApplied
+                  : `${labels.polishFallback} — ${polishReasonLabel(polishResult.reason)}`}
+              </p>
+            )}
+          </div>
 
           <div className="resume-actions">
             <button type="button" className="ja-btn" onClick={print}>
