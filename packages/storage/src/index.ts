@@ -68,6 +68,8 @@ export {
   toStoredProfile,
   toStoredJob,
   toStoredEvidence,
+  toEvidenceItem,
+  toEvidenceItems,
   toStoredWaitlist,
   JOB_POSTING_STATUSES,
   makeJobPostingId,
