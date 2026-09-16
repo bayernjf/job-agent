@@ -1,10 +1,23 @@
 # JobAgent full-stack local/staging orchestration
-# Usage:
-#   docker compose up --build           # start all services
-#   docker compose --profile with-pg up # also start a local Postgres
+#
+# Default stack (SQLite, persisted in the appdata volume):
+#   docker compose up --build
+#
+# Postgres stack (starts local Postgres and points the services at it):
+#   DB_DRIVER=postgres \
+#   DATABASE_URL=postgres://jobagent:jobagent@db:5432/jobagent \
+#   docker compose --profile with-pg up --build
+#
+# Required environment:
+#   GITHUB_TOKEN  Fine-grained PAT (public repos read-only). The worker fails
+#                 fast and exits when it is missing, because unauthenticated
+#                 GitHub access is capped at 60 req/h. Export it in your shell
+#                 or put it in a root-level .env file (compose loads .env
+#                 automatically); never commit the token.
+#
 # Services:
 #   api     -> http://localhost:3000
-#   worker  -> background analysis consumer
+#   worker  -> background analysis consumer (requires GITHUB_TOKEN)
 #   report  -> http://localhost:4321
 #   db      -> local Postgres (profile: with-pg)
 
