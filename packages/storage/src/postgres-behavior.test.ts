@@ -6,6 +6,7 @@ import type { AbilityProfile } from '@jobagent/shared';
 import EmbeddedPostgres from 'embedded-postgres';
 import { createStorage } from './storage.js';
 import type { StorageContext } from './types.js';
+import { openPostgres } from './postgres/connection.js';
 
 /**
  * Postgres 仓储行为测试——在真实 Postgres 上验证同一 I*Repository 契约
@@ -42,6 +43,9 @@ function minimalSnapshot(login: string): AbilityProfile {
 describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
   let storage: StorageContext | undefined;
   let embedded: EmbeddedPostgres | null = null;
+  // 已迁移测试库的连接串；adminUrl 指向维护库（postgres），用于创建/删除临时库
+  let basePgUrl: string | undefined;
+  let adminUrl: string | undefined;
   // 非 null 表示 PG 不可用；beforeAll 之后才确定
   let unavailable: string | null = null;
 
@@ -87,6 +91,9 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     }
 
     try {
+      basePgUrl = pgUrl;
+      // 维护库连接串（把末尾业务库名替换为 postgres），用于 CREATE/DROP DATABASE
+      adminUrl = pgUrl.replace(/\/[^/]+$/, '/postgres');
       storage = await createStorage({
         driver: 'postgres',
         databaseUrl: pgUrl,
@@ -223,5 +230,59 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     // ILIKE: lowercase keyword matches capitalized title
     const hits = await s.jobPostings.search({ keyword: 'backend engineer', sources: ['greenhouse'] });
     expect(hits.some((p) => p.sourceUrl === base.sourceUrl)).toBe(true);
+  });
+
+  // 回归：api + worker（或水平扩容的多个副本）同时冷启动、对同一空库并发首迁移时，
+  // 不得因 schema_migrations 主键冲突而崩溃；迁移应恰好应用一次。
+  pgIt('runs concurrent first-time migrations safely across instances', async () => {
+    if (!basePgUrl || !adminUrl) throw new Error('PG urls not initialized');
+    // 仅含十六进制字符，作为标识符插值安全（CREATE/DROP DATABASE 不支持参数绑定）
+    const dbName = `ja_concur_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const targetUrl = basePgUrl.replace(/\/[^/]+$/, `/${dbName}`);
+    const admin = openPostgres(adminUrl);
+    try {
+      await admin.client.unsafe(`CREATE DATABASE ${dbName}`);
+
+      // 两个独立实例（各自连接池）对同一空库并发首迁移，修复前会 duplicate key 崩溃。
+      const storages = await Promise.all([
+        createStorage({ driver: 'postgres', databaseUrl: targetUrl, autoMigrate: true }),
+        createStorage({ driver: 'postgres', databaseUrl: targetUrl, autoMigrate: true }),
+      ]);
+
+      // 第三个连接核对：迁移恰好应用一次、业务表齐全。
+      const verify = openPostgres(targetUrl);
+      try {
+        const versions =
+          await verify.client<Array<{ version: string }>>`SELECT version FROM schema_migrations ORDER BY version`;
+        expect(versions).toHaveLength(8);
+        const rows =
+          await verify.client<Array<{ table_name: string }>>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`;
+        const names = rows.map((r) => r.table_name);
+        for (const table of [
+          'profiles',
+          'analysis_jobs',
+          'evidence',
+          'waitlist',
+          'job_postings',
+          'demo_sessions',
+          'demo_rate_events',
+        ]) {
+          expect(names).toContain(table);
+        }
+      } finally {
+        await verify.client.end({ timeout: 5 });
+      }
+      for (const c of storages) await c.close();
+    } finally {
+      // 踢掉残留连接后删除临时库。
+      try {
+        await admin.client.unsafe(
+          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${dbName}' AND pid <> pg_backend_pid()`,
+        );
+        await admin.client.unsafe(`DROP DATABASE IF EXISTS ${dbName}`);
+      } finally {
+        await admin.client.end({ timeout: 5 });
+      }
+    }
   });
 });
