@@ -24,7 +24,7 @@
 | 竞品季度监控（AI 求职赛道：B2B 进展、是否把数据源扩到行为证据） | 自身聚焦信任验证层，不做逐功能对标；但需警惕头部玩家把数据源从自述简历扩到 GitHub 等行为证据而正面竞争 | 每季度一次，或某竞品上线"行为证据/GitHub 分析"类能力时立即评估 | [市场调研-AI求职赛道 第6章](市场调研-AI求职赛道-20260910.md) |
 | 简历服务端持久化与版本管理（§10 #1 已决策不持久化） | 按需生成、隐私最小化，简历不入库；没有存档就没有版本可言 | 出现明确的"历史简历存档 / 多版本对比 / 跨设备取回"需求，且账号体系（见工程线）就位时 | [design-targeted-resume §10](design-targeted-resume-20260915.md) |
 | 服务端出 PDF（puppeteer / headless 渲染） | §10 #3 已决策用浏览器打印 CSS（`@media print`），服务端渲染镜像体积大、维护重 | 出现明确的"无浏览器环境 / 服务端批量出 PDF / 邮件附带 PDF"需求时 | [design-targeted-resume §10](design-targeted-resume-20260915.md) |
-| 本地档案跨端自动同步（扩展 ATS ↔ 报告页简历） | 扩展 content script 在第三方 ATS 域、报告页在产品域，且服务端不持久化，物理上无法共享 localStorage | 账号体系落地，或扩展通过 `chrome.storage` + externally connectable 向报告页开放通道时（schema 统一本身见 handoff item19） | [design-targeted-resume §5.4](design-targeted-resume-20260915.md) |
+| 本地档案跨端自动同步（扩展 ATS ↔ 报告页简历） | 扩展 content script 在第三方 ATS 域、报告页在产品域，且服务端不持久化，物理上无法共享 localStorage。**schema 统一已落地（item19 ①，2026-09-16）**：两端共用 shared `LocalProfileFields` canonical 与 `jobagent.localProfile` 键、各自本域存储 + 旧键一次性迁移，缺的只是跨域自动互通 | 账号体系落地，或扩展通过 `chrome.storage` + externally connectable 向报告页开放通道时 | [design-targeted-resume §5.4.1](design-targeted-resume-20260915.md) |
 
 ### 证据源与分析深度线
 
