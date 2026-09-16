@@ -10,7 +10,14 @@
  */
 import { useMemo, useState, type FormEvent, type JSX } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { AuthenticityStatus, ExportableProfile } from '@jobagent/shared';
+import type { AuthenticityStatus, ExportableProfile, LocalProfileFields } from '@jobagent/shared';
+import {
+  LEGACY_ATS_FIELDS_STORAGE_KEY,
+  LOCAL_PROFILE_STORAGE_KEY,
+  legacyAtsToLocalProfile,
+  localProfileToAtsFields,
+  sanitizeLocalProfile,
+} from '@jobagent/shared';
 import type { AtsAdapter, LocalFields } from '../ats/index.js';
 import { toFillValues } from '../ats/index.js';
 import {
@@ -32,7 +39,6 @@ import {
 
 const API_BASE_KEY = 'jobagent.apiBase';
 const REPORT_BASE_KEY = 'jobagent.reportBase';
-const LOCAL_FIELDS_KEY = 'jobagent.localFields';
 
 /** 真实性枚举 → 展示文案 key（术语与报告页保持一致） */
 const AUTH_STATUS_KEY: Record<AuthenticityStatus, MessageKey> = {
@@ -72,17 +78,35 @@ export function mountPanel(shadow: ShadowRoot, ats: AtsAdapter): PanelHandle {
   };
 }
 
-function loadLocal(): LocalFields {
+/** 读 canonical 本地档案；无则一次性迁移旧 ATS 补填键（迁移后删旧键）。 */
+function loadLocal(): LocalProfileFields {
   try {
-    const raw = localStorage.getItem(LOCAL_FIELDS_KEY);
-    return raw ? (JSON.parse(raw) as LocalFields) : {};
+    const raw = localStorage.getItem(LOCAL_PROFILE_STORAGE_KEY);
+    if (raw) return sanitizeLocalProfile(JSON.parse(raw) as LocalProfileFields);
+    const legacyRaw = localStorage.getItem(LEGACY_ATS_FIELDS_STORAGE_KEY);
+    if (legacyRaw) {
+      const migrated = legacyAtsToLocalProfile(JSON.parse(legacyRaw) as LocalFields);
+      saveLocal(migrated);
+      try {
+        localStorage.removeItem(LEGACY_ATS_FIELDS_STORAGE_KEY);
+      } catch {
+        // 旧键清理失败不影响本次使用
+      }
+      return migrated;
+    }
   } catch {
-    return {};
+    // 损坏的本地数据按空处理，绝不阻塞填充
   }
+  return {};
 }
 
-function saveLocal(fields: LocalFields): void {
-  localStorage.setItem(LOCAL_FIELDS_KEY, JSON.stringify(fields));
+/** 规整后写入 canonical 键（localStorage 不可用时静默降级为本次会话态）。 */
+function saveLocal(fields: LocalProfileFields): void {
+  try {
+    localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(sanitizeLocalProfile(fields)));
+  } catch {
+    // 隐私模式 / 配额受限时仅本次会话生效
+  }
 }
 
 function loadApiBase(): string {
@@ -100,7 +124,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [platform, setPlatform] = useState<'github' | 'gitee'>('github');
   const [apiBase, setApiBase] = useState(loadApiBase);
   const [reportBaseOverride, setReportBaseOverride] = useState(loadReportBaseOverride);
-  const [local, setLocal] = useState<LocalFields>(loadLocal);
+  const [local, setLocal] = useState<LocalProfileFields>(loadLocal);
   const [profile, setProfile] = useState<ExportableProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -161,7 +185,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   function handleFill(): void {
     if (!profile) return;
     saveLocal(local);
-    const values = toFillValues(profile, local, {
+    const values = toFillValues(profile, localProfileToAtsFields(local), {
       skillsLeadin: t('fill.summarySkillsLeadin', { platform: profile.subject.platform === 'gitee' ? 'Gitee' : 'GitHub' }),
       skillSeparator: t('fill.skillSeparator'),
     });
