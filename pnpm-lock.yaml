@@ -38,6 +38,9 @@ importers:
       '@jobagent/job-source':
         specifier: workspace:*
         version: link:../../packages/job-source
+      '@jobagent/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       '@jobagent/resume-core':
         specifier: workspace:*
         version: link:../../packages/resume-core

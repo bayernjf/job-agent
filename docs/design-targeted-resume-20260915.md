@@ -1,6 +1,6 @@
 # 设计：岗位定向简历生成（Targeted Resume）
 
-- 状态：现行（**P-R1 规则版闭环 2026-09-15 落地；P-R2 在线消费 + P-R3 可纯代码闭环子项 2026-09-16 落地**：shared 契约 + `packages/resume-core`（含 polish 安全层）+ `packages/llm` 端口/fake/adapter + CLI `resume build`/`batch` + API `POST /resumes/build` + 报告页 ResumeBuilder island（含 `?resumeJob=` 深链）+ 扩展面板深链 CTA；真实 LLM 厂商、服务端持久化、服务端 PDF、版本管理仍待拍板，分期见 §8）
+- 状态：现行（**P-R1 规则版闭环 2026-09-15 落地；P-R2 在线消费 + P-R3 可纯代码闭环子项 2026-09-16 落地**：shared 契约 + `packages/resume-core`（含 polish 安全层）+ `packages/llm`（端口/fake/OpenAI 兼容 client/env 工厂，默认关闭）+ CLI `resume build`/`batch` + API `POST /resumes/build`（含可选 `polish`）+ 报告页 ResumeBuilder island（含 `?resumeJob=` 深链）+ 扩展面板深链 CTA。**§10 五项 2026-09-16 已决策**：不持久化、只存本机、浏览器打印 PDF、LLM 默认关闭+OpenAI 兼容自配、语言手选；版本管理入 deferred，本地档案统一列 handoff item19）
 - 日期：2026-09-15
 - 需求来源：用户需求——"在求职者的画像范围内，针对不同职位，生成匹配度高的简历"
 - 关联：[PRD.md](PRD.md)、[design-match-wiring-20260914.md](design-match-wiring-20260914.md)（画像↔岗位匹配）、[design-job-ingestion-20260913.md](design-job-ingestion-20260913.md)（岗位库）、[讨论记录-02](讨论记录-02-投递功能与竞品分析-20260911.md)（竞品简历定制）
@@ -20,7 +20,7 @@
 ### 0.3 明确不做（本期）
 
 - 不做全自动后台投递（PRD 非目标，不变）。
-- 不做 LLM 自由写作式简历生成（B 档仅允许"结构化结果上的受约束润色"，见 §7，且本期缓做）。
+- 不做 LLM 自由写作式简历生成（B 档仅允许"结构化结果上的受约束润色"，见 §7；已实现但**默认关闭**，需请求显式 `polish:true` 且服务端配置 LLM env 才启用）。
 - 不做服务端简历持久化（P-R2 前按需生成、不落库；是否持久化列入待拍板 §10）。
 - 不替用户编造教育/工作经历/联系方式——画像不提供这些，走"本地补填"通道（§5.4），缺则显式占位。
 - 不做向量语义召回；岗位匹配仍用既有 `matchJobs` 词边界匹配。
@@ -36,7 +36,7 @@
 | 分档 | shared `matchScoreTier` | 简历头部匹配度徽标 |
 | 导出渲染 | CLI `report-format.ts` 纯函数 toMarkdown/toHtml（含 XSS 转义） | 简历渲染照此模式 |
 | 本地补填 | 扩展 LocalFields（email/phone 等仅存本机 localStorage） | 画像外字段补填通道 |
-| LLM 端口 | `packages/llm` 空壳（缓做） | B 档润色预留，本期不启用 |
+| LLM 端口 | `packages/llm` 已实现：端口 + Fake + OpenAI 兼容 client + 润色 adapter | B 档润色默认关闭，配 `LLM_*` env 且 `polish:true` 才启用（§7/§10 #4） |
 | **缺口** | 无简历装配内核、无 ResumeDraft 契约、无渲染、无消费入口 | 本设计补齐 |
 
 ## 2. 总体架构
@@ -194,7 +194,9 @@ header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier �
 画像不提供 email/电话/教育/工作经历（与扩展 ExportableProfile 的边界一致）。三端各自落地：
 - CLI：`--local-fields path.json`（可选），缺则产出带 gaps 占位的简历。
 - API：请求体可选 `local` 字段，**不入库、不记日志**。
-- 报告页（P-R2）：浏览器 localStorage 存补填（复用扩展 LocalFields 同一形状）。
+- 报告页（P-R2）：浏览器 localStorage（`jobagent.localResumeFields`）存补填，仅在请求时随 `local` 上送。
+- 扩展面板：ATS 填充用本地字段存于 content script 所在页面域的 localStorage（`jobagent.localFields`）。
+  > **注意（item19）**：报告页 `LocalResumeFields`（period 自由文本、workHistory.detail、personalSite）与扩展 ATS `LocalFields`（start/end 结构化、linkedinUrl、无 fullName）当前**形状不一致、且不共享存储**——扩展 content script 运行在第三方 ATS 域、报告页运行在产品域，在"服务端不持久化"（§10 #1 已决策为否）前提下二者物理上无法自动同步。目标是统一为一份 canonical 本地档案 schema（形状/命名一致、各自本机存储），自动互通需等账号体系或 `chrome.storage` 通道，列为 handoff item19 独立批次。
 
 ## 6. 测试策略（确定性，对齐 analyzer-core 优先级）
 
@@ -208,14 +210,18 @@ header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier �
 6. i18n：中英 key 对齐一致性测试（同 report 既有守护）。
 7. CLI 集成：`resume build` 对夹具 profile+job 产出 md/html 文件、`--format json` 输出 ResumeDraft。
 
-## 7. B 档：LLM 受约束润色（缓做，仅预留端口）
+## 7. B 档：LLM 受约束润色（已实现，默认关闭）
 
-触发条件：A 档上线后用户明确反馈"模板措辞太硬、需要更自然表达"，再启用 `packages/llm`。硬约束：
+**状态（2026-09-16，§10 #4 已决策）**：不再是"仅预留端口"。已落地 provider-agnostic 的 OpenAI 兼容客户端 `packages/llm/src/openai-compatible-client.ts`（一个实现覆盖 OpenAI / DeepSeek / 通义兼容模式 / 智谱、Moonshot 兼容网关 / 本地 vLLM 等），由服务端 env `LLM_API_KEY` + `LLM_MODEL`（可选 `LLM_BASE_URL`/`LLM_PROVIDER`/`LLM_TIMEOUT_MS`）配置；**未配置 key 时默认关闭、走纯规则版，零费用、零数据外发**，不锁定具体付费厂商、不内置单价。API `POST /resumes/build` 仅在请求体 `polish:true` 时调用，未配置/任何失败都回退规则版并在响应 `polish` 字段如实标注（见 docs/API.md §3.4）。报告页"AI 润色"开关 UI 仍缓做（handoff item19）。
 
-- LLM **只在 ResumeDraft 之后**工作，输入锁定为 ResumeDraft + posting，输出为同构 ResumeDraft（Zod 校验，失败回退规则版）。
-- **不得新增/删除条目、不得新增技能与数字、不得改 evidenceRefs**；只允许改写 summary 与 evidenceHighlights.text 的措辞。
-- 润色后重跑 §6-1 no-fabrication 不变量，违规则整条回退规则文本。
-- 记录 model/版本/prompt 版本进 provenance，保证可复现（对齐 AGENTS「LLM 输出必须结构化校验」）。
+设计初衷（触发条件）：A 档上线后用户明确反馈"模板措辞太硬、需要更自然表达"，再开启 env 配置。硬约束（已由 `resume-core/polish.ts` 纯安全层强制，测试守护）：
+
+- LLM **只在 ResumeDraft 之后**工作，输入锁定为 ResumeDraft + posting，输出为受约束编辑（仅 summary 与 evidenceHighlights.text），经 Zod 校验，失败回退规则版。
+- **不得新增/删除条目、不得新增技能与数字、不得改 evidenceRefs**；只允许改写措辞。
+- **数字防臆造闸门**：模型新文本去逗号后的数字集合必须是规则版草稿全文数字集合的子集，否则判 `fabrication_detected` 整条回退。
+- 润色后重跑 §6-1 no-fabrication 不变量与 ResumeDraftSchema 复校，违规则整条回退规则文本。
+- 记录 provider/model/promptVersion/appliedAt 进 `provenance.polish`，保证可复现（对齐 AGENTS「LLM 输出必须结构化校验」）。
+
 
 ## 8. 分期落地
 
@@ -223,7 +229,7 @@ header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier �
 | --- | --- | --- | --- |
 | **P-R1（规则版闭环，建议先做）✅ 已落地 2026-09-15** | shared ResumeDraft/LocalResumeFields 契约；resume-core（rank/tailor/render md+html）；CLI `jobagent resume build --profile <file|id> --job <id> [--local-fields f.json] [--format md|html|json] -o out`；全套单测 | 小（1–1.5 天） | 已有画像/岗位库/匹配，无新外部依赖 |
 | **P-R2（在线消费）✅ 已落地 2026-09-16** | API `POST /resumes/build`（body: profileId+jobId+可选 local，返回 ResumeDraft；不入库）；报告页岗位卡片加"针对此岗生成简历"（island：预览 md/html、打印 PDF、local 补填表单存 localStorage）；docs/API.md §3.4；E2E（含 `?resumeJob=` 深链自动触发）。实现增补：CLI/API 共用 `fromJobMatch` 映射；storage 共享 `toEvidenceItem(s)`；修复无 evidenceRefs 弱信号技能误标 source:'profile' 的内核 bug | 中（2–3 天） | P-R1 |
-| **P-R3（缓做）🟡 可闭环子项已落地 2026-09-16，余待拍板** | 已做：B 档 LLM **端口 + Fake + 受约束润色安全层**（§7，`resume-core/polish.ts` 数字防臆造闸门 + `packages/llm` adapter，真实厂商未接）；扩展面板生成（深链 CTA）；多岗位批量简历（CLI `resume batch`）。仍缓做/待拍板：真实 LLM 厂商 adapter（§10 #4）、简历版本管理、服务端 PDF（§10 #3） | — | 触发条件见 §7/§10 |
+| **P-R3 🟡 可闭环子项已落地 2026-09-16，余外部/缓做项** | 已做：B 档 LLM **端口 + Fake + 受约束润色安全层**（§7，`resume-core/polish.ts` 数字防臆造闸门）+ **OpenAI 兼容客户端与 env 工厂**（`packages/llm/openai-compatible-client.ts`，默认关闭）+ **API `POST /resumes/build` 可选 `polish` 接线（未配置/失败回退规则版）**；扩展面板生成（深链 CTA）；多岗位批量简历（CLI `resume batch`）。仍缓做/外部：报告页"AI 润色"开关 UI（handoff item19）、真实启用需用户自配 LLM env（厂商/费用由用户决定）、简历版本管理（随服务端持久化，见 deferred）、本地档案 canonical 统一（item19） | — | 触发条件见 §7/§10 |
 
 CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或本地库 profileId；`--job` 读本地 job_postings 的 jobId（storage 只读），保持"内核零 I/O、I/O 在 CLI/API 薄封装"的分层。
 
@@ -233,13 +239,18 @@ CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或�
 - **扩展一键填充**：扩展填的是 ATS 表单标准字段（来自 ExportableProfile）；本功能产出的是完整简历文档，二者互补（简历可作为扩展 cover_letter/自定义问题的素材来源，P-R3 再接线）。
 - **可信定位**：简历页脚/头部保留 authenticity 徽标与证据外链，延续"GitHub 验证过的你"的差异化，不做竞品式"AI 包装"。
 
-## 10. 待拍板
+## 10. 决策记录（2026-09-16 拍板，原"待拍板"）
 
-1. **服务端是否持久化简历**：建议不持久化（按需生成、隐私最小化）；若未来做"简历版本管理"再建表（P-R3）。
-2. **补填信息存储**：建议 report 端 localStorage、CLI 端本地 JSON，服务端不落库（§5.4）。
-3. **PDF 方案**：建议 HTML 打印 CSS（零重依赖）；是否需要服务端出 PDF（puppeteer，镜像体积大）待 P-R2 验证用户反馈。
-4. **B 档 LLM**：是否启用、厂商/单价/预算，沿用托管价格待 spike 清单，触发条件见 §7。
-5. **简历语言**：默认跟随岗位源（海外岗英文、国内岗中文）还是用户手选？建议 P-R1 用户手选 + 默认 locale 可配。
+> 用户 2026-09-16「按你的建议来」确认以下默认决策；除 #4 的代码已落地外，其余维持现状即可。
+
+1. **服务端是否持久化简历 → 决策：不持久化**。按需生成、隐私最小化；简历不入库、不记日志内容。"简历版本管理"随之缓做（见 docs/deferred-items.md，触发条件＝未来明确需要服务端存档/版本对比时再建表）。
+2. **补填信息存储 → 决策：只存本机，服务端不落库**。报告页 `jobagent.localResumeFields` localStorage、CLI `--local-fields` 本地 JSON、扩展 ATS 域 `jobagent.localFields`；详见 §5.4 与 item19 的统一说明。
+3. **PDF 方案 → 决策：浏览器打印 CSS（`@media print`），不引入 puppeteer**。零重依赖、零服务端渲染开销；服务端出 PDF 缓做，触发条件＝出现明确的"无浏览器/服务端批量出 PDF"需求。
+4. **B 档 LLM → 决策：默认关闭 + OpenAI 兼容端点自配，不锁定付费厂商**。已落地 `OpenAICompatibleClient` 与 env 工厂（§7）：未设 `LLM_API_KEY` 走纯规则版（零费用、零数据外发）；设置后支持任意 OpenAI 兼容 `/chat/completions`（OpenAI/DeepSeek/通义兼容/本地模型等），`LLM_MODEL` 必填（不替用户默认付费模型），具体型号与单价以厂商当期官方定价为准、代码不内置。请求需显式 `polish:true`，未配置或安全层拒绝一律回退规则版。
+5. **简历语言 → 决策：用户手选 + 默认 locale 可配**（P-R1 已实现：`locale` 默认 `zh-CN`，可选 `en`；技能名等事实保持画像原文不翻译）。
+
+**衍生项（不在原五项内，单列 handoff item19）**：扩展 ATS `LocalFields` 与简历 `LocalResumeFields` 的形状/存储统一——决策方向为"统一 canonical schema、各自本机存储、不自动同步"（跨 ATS 域/产品域 + 不持久化导致物理隔离，见 §5.4），实现作为独立批次。
+
 
 ## 11. 验收（P-R1 完成标准）
 
@@ -259,8 +270,10 @@ CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或�
 ### 11.2 P-R3 已落地子项验收（2026-09-16）
 
 - [x] LLM 受约束润色安全层 `polishResume`：只允许改 summary 与 evidenceHighlights.text；长度/下标校验；**数字防臆造闸门**（新数字必须 ⊆ 规则版草稿数字池）；ResumeDraftSchema 复校；任一违例整条回退原 draft（无 polish 溯源），7 单测。
-- [x] `packages/llm` 端口 + FakeLlmClient + LlmResumePolishProvider（英文强约束 system prompt、Zod strip、promptVersion `resume-polish-0.1`、temperature 0.3），5 测试；真实厂商未接（待 §10 #4）。
+- [x] `packages/llm` 端口 + FakeLlmClient + LlmResumePolishProvider（英文强约束 system prompt、Zod strip、promptVersion `resume-polish-0.1`、temperature 0.3），5 测试。
+- [x] **OpenAI 兼容客户端 + env 工厂**（§10 #4 决策落地）：`OpenAICompatibleClient` 走 `/chat/completions` + `response_format: json_object`，容忍 ```json fence、HTTP/超时/非 JSON 统一抛 `LlmResponseError`、密钥只在 Authorization 头不入错误信息；`createResumePolishProviderFromEnv` 无 `LLM_API_KEY` 返回 null（默认关闭）、有 key 缺 `LLM_MODEL` 启动报错；注入假 fetch 零网络，13 单测。
+- [x] **API `POST /resumes/build` 可选 `polish`**：默认不润色（响应无 `polish` 字段，零回归）；`polish:true` 且已配置→应用并写 `provenance.polish`；未配置返 `not_configured`、模型吐新数字返 `fabrication_detected`、provider 出错返 `provider_error`，均回退规则版且不使请求失败；html/md 用最终草稿；5 集成测试。
 - [x] CLI `resume batch`：显式 `--jobs`（含零命中 low 降级）或全库 top `--limit` 自动匹配，逐岗写 md/html 到 `--out-dir`，5 测试。
 - [x] 扩展面板每个匹配岗位「针对此岗生成简历」深链 CTA：新开报告页 `<locale>/report/<profileId>?resumeJob=<内部 posting.id>`，普通 anchor 不附 demo 会话标识；可选 reportBase 设置（生产同域取 apiBase origin，本地跨端口可覆盖）；match-utils 4 单测 + 扩展 E2E 1 用例。
-- [x] 全仓 13 个测试包单测全绿、report E2E 5 + 扩展 E2E 8 全过、typecheck/build/check-migrations/`git diff --check` 通过。
-- [ ] （待拍板，未做）真实 LLM 厂商 adapter + 服务端 env；服务端简历持久化；服务端 PDF（puppeteer）；简历版本管理；扩展 ATS LocalFields 与简历 LocalResumeFields 统一互通。
+- [x] 全仓单测全绿、report E2E 5 + 扩展 E2E 8 全过、typecheck/build/check-migrations/`git diff --check` 通过。
+- [ ] （缓做/外部，非阻塞）报告页"AI 润色"开关 UI（后端 `polish` 已就绪）；真实启用需用户自配 LLM env（厂商/费用用户决定）；服务端 PDF（puppeteer，触发条件见 §10 #3）；简历版本管理（随服务端持久化，见 deferred）；本地档案 canonical 统一与自动互通（handoff item19，需账号体系或 chrome.storage 通道）。
