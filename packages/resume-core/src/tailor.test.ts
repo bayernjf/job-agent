@@ -182,6 +182,26 @@ describe('buildResume', () => {
     expect(draft.matchedSkills.length).toBe(1);
   });
 
+  it('NO-FABRICATION: drops skill tags without evidenceRefs instead of emitting ref-less profile entries', () => {
+    // 画像含一个无任何可回溯证据的弱信号技能（B-4 提取的 used 0.4 标签可能 refs 为空）
+    const skills = [
+      skill('typescript', { depth: 'proficient', confidence: 0.95, evidenceRefs: ['ev-ts1'], kind: 'language' }),
+      skill('kubernetes', { kind: 'framework', depth: 'used', confidence: 0.4, evidenceRefs: [] }),
+    ];
+    const input = makeInput({
+      profile: makeProfile(skills),
+      evidence: [evidence('ev-ts1', 'pr', 'Strict TypeScript refactor', '2026-05-01T00:00:00.000Z')],
+    });
+    const draft = buildResume(input); // 不抛 Zod 错误即通过出口校验
+    const names = [...draft.matchedSkills, ...draft.otherSkills].map((e) => e.text);
+    expect(names).toContain('typescript');
+    expect(names).not.toContain('kubernetes');
+    // 所有 profile 技能条目仍满足 refs 非空
+    for (const e of [...draft.matchedSkills, ...draft.otherSkills]) {
+      expect(e.evidenceRefs.length).toBeGreaterThan(0);
+    }
+  });
+
   it('returns low tier and a low_match suggestion when no skill matched', () => {
     const input = makeInput({
       match: { score: 0, matchedSkills: [], fieldScores: { title: 0, tags: 0, description: 0 }, skillHits: [] },
