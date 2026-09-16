@@ -9,6 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AbilityProfile, JobPosting, ResumeDraft, SkillTag } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
+import type { ResumePolishProvider } from '@jobagent/resume-core';
+import { FakeLlmClient, LlmResumePolishProvider } from '@jobagent/llm';
 import { createApp } from './index.js';
 
 const NOW = '2026-09-15T00:00:00.000Z';
@@ -20,6 +22,7 @@ interface BuildOkResponse {
   draft: ResumeDraft;
   html?: string;
   markdown?: string;
+  polish?: { requested: boolean; applied: boolean; reason?: string };
 }
 
 function posting(overrides: Partial<JobPosting> & { title: string }): NewJobPosting {
@@ -56,7 +59,11 @@ function profileWith(tags: SkillTag[]): AbilityProfile {
   };
 }
 
-async function harness(): Promise<{ app: Awaited<ReturnType<typeof createApp>>; repos: StorageContext; jobId: string }> {
+async function harness(opts: { resumePolish?: ResumePolishProvider | null } = {}): Promise<{
+  app: Awaited<ReturnType<typeof createApp>>;
+  repos: StorageContext;
+  jobId: string;
+}> {
   const repos = await createStorage({ sqlitePath: ':memory:' });
 
   const tags: SkillTag[] = [
@@ -91,7 +98,7 @@ async function harness(): Promise<{ app: Awaited<ReturnType<typeof createApp>>; 
   );
   const rows = await repos.jobPostings.search({});
   const tsJob = rows.find((r) => r.title === 'Senior TypeScript Engineer')!;
-  const app = await createApp({ repos, now: () => NOW });
+  const app = await createApp({ repos, now: () => NOW, resumePolish: opts.resumePolish });
   return { app, repos, jobId: tsJob.id };
 }
 
@@ -237,5 +244,87 @@ describe('POST /resumes/build', () => {
       body: 'not-json',
     });
     expect(notJson.status).toBe(400);
+  });
+});
+
+describe('POST /resumes/build optional LLM polish', () => {
+  /** 用 FakeLlmClient 包装的润色 provider（确定性、零网络）；responder 决定模型输出。 */
+  function providerWith(output: unknown): ResumePolishProvider {
+    return new LlmResumePolishProvider(new FakeLlmClient(() => output));
+  }
+
+  async function build(
+    app: Awaited<ReturnType<typeof createApp>>,
+    jobId: string,
+    extra: Record<string, unknown> = {},
+  ): Promise<BuildOkResponse> {
+    const res = await app.request('/resumes/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: 'p-resume', jobId, ...extra }),
+    });
+    expect(res.status).toBe(200);
+    return (await res.json()) as BuildOkResponse;
+  }
+
+  it('omits the polish field entirely when polish is not requested', async () => {
+    const { app, jobId } = await harness();
+    const body = await build(app, jobId);
+    expect(body.polish).toBeUndefined();
+    expect(body.draft.provenance.polish).toBeUndefined();
+  });
+
+  it('applies provider wording edits and records provenance (html reflects them)', async () => {
+    // 新概述不含任何数字 → 通过防臆造数字闸门
+    const polishedSummary = 'A concise, evidence-backed professional profile.';
+    const { app, jobId } = await harness({
+      resumePolish: providerWith({ summary: polishedSummary }),
+    });
+
+    const body = await build(app, jobId, { polish: true, format: 'html', locale: 'en' });
+    expect(body.polish).toEqual({ requested: true, applied: true });
+    expect(body.draft.summary).toBe(polishedSummary);
+    expect(body.draft.provenance.polish).toMatchObject({
+      provider: 'fake',
+      model: 'fake-model-1',
+      promptVersion: 'resume-polish-0.1',
+      appliedAt: NOW,
+    });
+    expect(body.html).toContain(polishedSummary);
+  });
+
+  it('reports not_configured and keeps the rule draft when no provider is wired', async () => {
+    const { app, jobId } = await harness({ resumePolish: null });
+    const rule = await build(app, jobId);
+    const body = await build(app, jobId, { polish: true });
+    expect(body.polish).toEqual({ requested: true, applied: false, reason: 'not_configured' });
+    expect(body.draft.summary).toBe(rule.draft.summary);
+    expect(body.draft.provenance.polish).toBeUndefined();
+  });
+
+  it('rejects polish that invents a new number and rolls back to the rule draft', async () => {
+    const { app, jobId } = await harness({
+      resumePolish: providerWith({ summary: 'Improved outcomes by 977 percent across teams' }),
+    });
+    const rule = await build(app, jobId, { locale: 'en' });
+    const body = await build(app, jobId, { polish: true, locale: 'en' });
+    expect(body.polish).toEqual({
+      requested: true,
+      applied: false,
+      reason: 'fabrication_detected',
+    });
+    expect(body.draft.summary).toBe(rule.draft.summary);
+    expect(body.draft.provenance.polish).toBeUndefined();
+  });
+
+  it('falls back when the provider errors (non-JSON output) with provider_error', async () => {
+    const { app, jobId } = await harness({
+      resumePolish: providerWith('not-json-at-all'),
+    });
+    const rule = await build(app, jobId);
+    const body = await build(app, jobId, { polish: true });
+    expect(body.polish).toEqual({ requested: true, applied: false, reason: 'provider_error' });
+    expect(body.draft.summary).toBe(rule.draft.summary);
+    expect(body.draft.provenance.polish).toBeUndefined();
   });
 });
