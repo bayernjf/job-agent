@@ -285,3 +285,406 @@ h4 { font-size: var(--ja-text-lg); }
   border-color: var(--ja-color-success);
   color: var(--ja-color-success);
 }
+
+/* ─── Skill tag chips (SSR profile + JobRecommendations island) ─────
+   Must be global: these classes are rendered inside client:load React islands,
+   whose DOM does not carry Astro scoped attributes, so scoped styles would not apply. */
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-2);
+}
+
+.skill-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  padding: var(--ja-space-1) var(--ja-space-3);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+  font-size: var(--ja-text-sm);
+}
+
+.skill-tag--proficient {
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+  font-weight: 500;
+}
+
+/* ─── JobRecommendations React island (recommended jobs) ─────────────
+   Global for the same reason as above: rendered by a client:load island. */
+
+.rec-status {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+}
+
+.rec-error {
+  color: var(--ja-color-danger);
+  font-size: var(--ja-text-sm);
+}
+
+.rec-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-4);
+}
+
+.rec-item {
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+}
+
+.rec-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ja-space-3);
+}
+
+.rec-title {
+  font-weight: 600;
+  color: var(--ja-color-accent);
+  text-decoration: none;
+  font-size: var(--ja-text-base);
+}
+
+.rec-title:hover {
+  text-decoration: underline;
+}
+
+.rec-score {
+  flex-shrink: 0;
+  min-width: 2.5rem;
+  text-align: center;
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  font-weight: 600;
+  font-size: var(--ja-text-sm);
+  font-family: var(--ja-font-mono);
+}
+
+.rec-score--high {
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+}
+
+.rec-score--mid {
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-warning);
+}
+
+.rec-score--low {
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg-muted);
+}
+
+.rec-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-3);
+  margin-top: var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+}
+
+.rec-badge {
+  padding: 0.1rem var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-info);
+  font-size: var(--ja-text-xs);
+}
+
+.rec-skills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-2);
+  margin-top: var(--ja-space-2);
+}
+
+.rec-skills-label {
+  font-size: var(--ja-text-xs);
+}
+
+.rec-view-link {
+  display: inline-block;
+  margin-top: var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-accent);
+  text-decoration: none;
+}
+
+.rec-view-link:hover {
+  text-decoration: underline;
+}
+
+.rec-basis {
+  margin-top: var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+}
+
+.rec-basis summary {
+  cursor: pointer;
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+}
+
+.rec-basis-count {
+  color: var(--ja-color-fg-muted);
+}
+
+.rec-basis-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-2);
+  margin-top: var(--ja-space-2);
+}
+
+.rec-field-chip {
+  padding: 0.1rem var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface-muted);
+  font-family: var(--ja-font-mono);
+  font-size: var(--ja-text-xs);
+}
+
+.rec-evidence {
+  list-style: none;
+  padding: 0;
+  margin: var(--ja-space-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+}
+
+.rec-evidence li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ja-space-2);
+}
+
+.rec-evidence-type {
+  flex-shrink: 0;
+  padding: 0.1rem var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+  font-size: var(--ja-text-xs);
+  text-transform: uppercase;
+}
+
+.rec-evidence a {
+  color: var(--ja-color-fg-muted);
+  text-decoration: none;
+}
+
+.rec-evidence a:hover {
+  color: var(--ja-color-accent);
+  text-decoration: underline;
+}
+
+/* ── 岗位定向简历（P-R2）────────────────────────────────────────────── */
+
+/* 次级描边按钮（主按钮沿用 .ja-btn） */
+.ja-btn--ghost {
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  border: 1px solid var(--ja-color-border);
+}
+
+.ja-btn--ghost:hover {
+  background: var(--ja-color-surface-muted);
+}
+
+/* 岗位卡片上的操作行：查看岗位 + 生成简历 */
+.rec-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-3);
+  margin-top: var(--ja-space-2);
+}
+
+.rec-resume-button {
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+  padding: var(--ja-space-1) var(--ja-space-3);
+  font-size: var(--ja-text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.rec-resume-button:hover {
+  background: var(--ja-color-surface-muted);
+}
+
+.resume-builder {
+  margin-top: var(--ja-space-6);
+}
+
+.resume-hint {
+  margin: var(--ja-space-2) 0 0;
+  font-size: var(--ja-text-sm);
+}
+
+.resume-idle,
+.resume-status {
+  margin-top: var(--ja-space-3);
+}
+
+.resume-error {
+  margin-top: var(--ja-space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ja-space-2);
+  color: var(--ja-color-danger);
+}
+
+.resume-panel {
+  margin-top: var(--ja-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-4);
+}
+
+.resume-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-3);
+}
+
+.resume-target-label {
+  display: block;
+  font-size: var(--ja-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.resume-notes {
+  display: grid;
+  gap: var(--ja-space-3);
+  background: var(--ja-color-surface-muted);
+  border-radius: var(--ja-radius-md);
+  padding: var(--ja-space-3) var(--ja-space-4);
+  font-size: var(--ja-text-sm);
+}
+
+.resume-notes ul {
+  margin: var(--ja-space-1) 0 0;
+  padding-left: var(--ja-space-5);
+}
+
+.resume-notes-title {
+  font-weight: 600;
+}
+
+.resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-2);
+}
+
+.resume-close {
+  margin-left: auto;
+}
+
+.resume-local {
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  padding: var(--ja-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-4);
+  background: var(--ja-color-surface);
+}
+
+.resume-local-privacy {
+  font-size: var(--ja-text-xs);
+  margin: 0;
+}
+
+.resume-local-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--ja-space-3);
+}
+
+.resume-local label span {
+  display: block;
+  font-size: var(--ja-text-xs);
+  color: var(--ja-color-fg-muted);
+  margin-bottom: var(--ja-space-1);
+}
+
+.resume-local input {
+  width: 100%;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-bg);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+}
+
+.resume-local-group {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.resume-local-group legend {
+  font-weight: 600;
+  font-size: var(--ja-text-sm);
+  padding: 0;
+  margin-bottom: var(--ja-space-1);
+}
+
+.resume-local-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: var(--ja-space-2);
+  align-items: center;
+}
+
+.resume-local-detail {
+  grid-column: 1 / -1;
+}
+
+.resume-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.resume-preview-label {
+  font-size: var(--ja-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.resume-iframe {
+  width: 100%;
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-neutral-0);
+}

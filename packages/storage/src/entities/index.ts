@@ -16,7 +16,7 @@ export type {
 export { JOB_STATUSES, JOB_STAGES, toStoredJob, parseJson } from './analysis-job.js';
 
 export type { StoredEvidence, NewEvidence, RawEvidenceRow } from './evidence.js';
-export { toStoredEvidence } from './evidence.js';
+export { toStoredEvidence, toEvidenceItem, toEvidenceItems } from './evidence.js';
 
 export type {
   WaitlistStatus,

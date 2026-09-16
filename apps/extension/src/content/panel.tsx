@@ -21,7 +21,7 @@ import {
   type JobMatchItem,
   type JobMatchSkillReason,
 } from '../lib/api.js';
-import { matchTier, resolveEvidenceLinks } from './match-utils.js';
+import { matchTier, resolveEvidenceLinks, resolveReportBase, resumeDeepLink } from './match-utils.js';
 import {
   LOCALE_STORAGE_KEY,
   createTranslator,
@@ -31,6 +31,7 @@ import {
 } from '../i18n/index.js';
 
 const API_BASE_KEY = 'jobagent.apiBase';
+const REPORT_BASE_KEY = 'jobagent.reportBase';
 const LOCAL_FIELDS_KEY = 'jobagent.localFields';
 
 /** 真实性枚举 → 展示文案 key（术语与报告页保持一致） */
@@ -88,12 +89,17 @@ function loadApiBase(): string {
   return localStorage.getItem(API_BASE_KEY) ?? DEFAULT_BASE;
 }
 
+function loadReportBaseOverride(): string {
+  return localStorage.getItem(REPORT_BASE_KEY) ?? '';
+}
+
 function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [locale, setLocale] = useState<Locale>(initialLocale);
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [username, setUsername] = useState('');
   const [platform, setPlatform] = useState<'github' | 'gitee'>('github');
   const [apiBase, setApiBase] = useState(loadApiBase);
+  const [reportBaseOverride, setReportBaseOverride] = useState(loadReportBaseOverride);
   const [local, setLocal] = useState<LocalFields>(loadLocal);
   const [profile, setProfile] = useState<ExportableProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -224,6 +230,22 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
             placeholder={t('panel.apiBasePlaceholder')}
           />
         </label>
+        <label className="ja-label">
+          {t('panel.reportBaseLabel')}
+          <input
+            className="ja-input"
+            value={reportBaseOverride}
+            onChange={(e) => {
+              setReportBaseOverride(e.target.value);
+              try {
+                localStorage.setItem(REPORT_BASE_KEY, e.target.value);
+              } catch {
+                // localStorage 不可用时仅本次会话生效
+              }
+            }}
+            placeholder={t('panel.reportBasePlaceholder')}
+          />
+        </label>
         <button className="ja-btn" type="submit" disabled={loading}>
           {loading ? t('panel.analyzing') : t('panel.analyze')}
         </button>
@@ -310,6 +332,21 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
                             </span>
                           ))}
                         </div>
+                        {m.posting.id && profile && (
+                          <a
+                            className="ja-match-resume"
+                            href={resumeDeepLink(
+                              resolveReportBase(apiBase, reportBaseOverride),
+                              locale,
+                              profile.profileId,
+                              m.posting.id,
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {t('match.resume')}
+                          </a>
+                        )}
                         {(m.fieldScores || m.skillReasons || m.skillHits || links.length > 0) && (
                           <details className="ja-match-basis">
                             <summary>{t('match.basis')}</summary>

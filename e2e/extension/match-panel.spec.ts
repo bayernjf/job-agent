@@ -126,6 +126,31 @@ test.describe('extension match panel', () => {
     await expect(extPage.locator('.ja-match-list .ja-match-item')).toHaveCount(3, { timeout: 5000 });
     await expect(extPage.locator('.ja-match-error')).toHaveCount(0);
   });
+
+  test('renders a targeted-resume deep link per matched job (report page + resumeJob, no demo marker)', async ({
+    extPage,
+    openPanel,
+  }) => {
+    await openPanel();
+    await loadProfile(extPage);
+
+    const items = extPage.locator('.ja-match-list .ja-match-item');
+    await expect(items).toHaveCount(3);
+
+    // 每个匹配岗位都有"生成简历"CTA（仅当后端返回内部 posting.id）
+    const firstCta = items.nth(0).locator('.ja-match-resume');
+    await expect(firstCta).toBeVisible();
+    await expect(firstCta).toHaveText('Build a targeted resume');
+    await expect(firstCta).toHaveAttribute('target', '_blank');
+    await expect(firstCta).toHaveAttribute('rel', /noopener/);
+
+    // 深链 = 报告页 + locale + profileId + ?resumeJob=<内部岗位 id>，不含任何 demo/会话标识
+    const href = (await firstCta.getAttribute('href')) ?? '';
+    expect(href).toMatch(/\/en\/report\/[^?]+\?resumeJob=row-job-high$/);
+    expect(href).not.toMatch(/demo|session|cookie/i);
+
+    await expect(items.nth(2).locator('.ja-match-resume')).toHaveAttribute('href', /resumeJob=row-job-low$/);
+  });
 });
 
 test.describe('extension platform switcher', () => {

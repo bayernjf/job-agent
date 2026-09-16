@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { matchTier, resolveEvidenceLinks, type MatchTier } from './match-utils.js';
+import {
+  matchTier,
+  resolveEvidenceLinks,
+  resolveReportBase,
+  resumeDeepLink,
+  type MatchTier,
+} from './match-utils.js';
 import type { EvidenceBrief } from '../lib/api.js';
 
 describe('matchTier', () => {
@@ -67,5 +73,37 @@ describe('resolveEvidenceLinks', () => {
 
   it('returns empty for empty refs', () => {
     expect(resolveEvidenceLinks([], dict)).toEqual([]);
+  });
+});
+
+describe('resolveReportBase', () => {
+  it('prefers a non-empty override and strips trailing slashes', () => {
+    expect(resolveReportBase('http://localhost:3000', 'http://localhost:4321/')).toBe('http://localhost:4321');
+    expect(resolveReportBase('http://localhost:3000', '  ')).toBe('http://localhost:3000');
+  });
+
+  it('falls back to the apiBase origin for same-origin production deploys', () => {
+    expect(resolveReportBase('http://localhost:3000/', null)).toBe('http://localhost:3000');
+    expect(resolveReportBase('https://app.jobagent.example/api', undefined)).toBe('https://app.jobagent.example');
+  });
+
+  it('falls back to stripped apiBase text when it is not a valid URL', () => {
+    expect(resolveReportBase('not-a-url/', null)).toBe('not-a-url');
+  });
+});
+
+describe('resumeDeepLink', () => {
+  it('builds a localized report deep link with resumeJob query and encoded ids', () => {
+    expect(resumeDeepLink('http://localhost:4321', 'zh-CN', 'p 1', 'job/42?')).toBe(
+      'http://localhost:4321/zh-CN/report/p%201?resumeJob=job%2F42%3F',
+    );
+    expect(resumeDeepLink('https://app.example', 'en', 'p1', 'j1')).toBe(
+      'https://app.example/en/report/p1?resumeJob=j1',
+    );
+  });
+
+  it('never carries a demo/session marker', () => {
+    const link = resumeDeepLink('http://localhost:4321', 'zh-CN', 'p1', 'j1');
+    expect(link).not.toMatch(/demo|session|cookie/i);
   });
 });
