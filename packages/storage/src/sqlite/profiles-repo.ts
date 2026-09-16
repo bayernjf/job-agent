@@ -2,12 +2,18 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredProfile,
+  searchCandidates as searchCandidatesPure,
+  type CandidateSearchQuery,
+  type CandidateSummary,
   type NewProfile,
   type ProfileStatus,
   type StoredProfile,
 } from '../entities/index.js';
 import type { IProfilesRepository } from '../repositories/profiles.js';
 import { profiles as profilesTable } from './schema.js';
+
+/** 人才检索扫描上限：只取最近的 complete 画像在内存中精细过滤（MVP 画像量级可接受）。 */
+const CANDIDATE_SCAN_CAP = 1000;
 
 /**
  * profiles 仓储的 SQLite 实现。better-sqlite3 驱动本身同步，
@@ -72,5 +78,19 @@ export class SqliteProfilesRepository implements IProfilesRepository {
       .set({ status, updatedAt: new Date().toISOString() })
       .where(eq(profilesTable.id, id))
       .run();
+  }
+
+  async searchCandidates(
+    query: CandidateSearchQuery,
+  ): Promise<{ items: CandidateSummary[]; total: number }> {
+    const rows = this.db
+      .select()
+      .from(profilesTable)
+      .where(eq(profilesTable.status, 'complete'))
+      .orderBy(desc(profilesTable.updatedAt))
+      .limit(CANDIDATE_SCAN_CAP)
+      .all();
+    const stored: StoredProfile[] = rows.map(toStoredProfile);
+    return searchCandidatesPure(stored, query);
   }
 }
