@@ -114,9 +114,39 @@ export function buildFixtureProfile(overrides: { id?: string; login?: string; di
 
 /** 融合画像 fixture：snapshot 形状与普通画像一致（platform 仍 github），融合身份只在存储行列。 */
 export function buildFusedFixtureProfile(): AbilityProfile {
-  return buildFixtureProfile({
+  const base = buildFixtureProfile({
     id: FIXTURE_FUSED_PROFILE_ID,
     login: FIXTURE_FUSED_LOGIN,
     displayName: 'E2E Fused User',
   });
+  // 与线上 platform=all 一致：快照带融合报告（镜像合并 + 跨源去重统计），供报告页统计行展示
+  return {
+    ...base,
+    fusion: {
+      primaryPlatform: 'github',
+      secondaryPlatform: 'gitee',
+      mergedMirrors: [
+        { primaryRef: 'e2e-fixture-user/core', secondaryRef: 'e2e-fixture-user/core', sharedOidCount: 5 },
+      ],
+      suspectedMirrors: [],
+      dedupedCommitCount: 4,
+      dedupedPullRequestCount: 2,
+      dedupedIssueCount: 1,
+      keptSecondaryRepoRefs: ['e2e-fixture-user/gitee-only'],
+      counts: {
+        primaryRepos: 2,
+        secondaryRepos: 3,
+        fusedRepos: 3,
+        primaryCommits: 20,
+        secondaryCommits: 18,
+        fusedCommits: 34,
+        primaryPullRequests: 4,
+        secondaryPullRequests: 4,
+        fusedPullRequests: 6,
+        primaryIssues: 3,
+        secondaryIssues: 2,
+        fusedIssues: 4,
+      },
+    },
+  };
 }
