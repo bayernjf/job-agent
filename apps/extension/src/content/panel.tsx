@@ -24,6 +24,7 @@ import {
   DEFAULT_BASE,
   JobAgentApi,
   matchJobs,
+  type AnalyzePlatform,
   type EvidenceBrief,
   type JobMatchItem,
   type JobMatchSkillReason,
@@ -121,7 +122,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [locale, setLocale] = useState<Locale>(initialLocale);
   const t = useMemo(() => createTranslator(locale), [locale]);
   const [username, setUsername] = useState('');
-  const [platform, setPlatform] = useState<'github' | 'gitee'>('github');
+  const [platform, setPlatform] = useState<AnalyzePlatform>('github');
   const [apiBase, setApiBase] = useState(loadApiBase);
   const [reportBaseOverride, setReportBaseOverride] = useState(loadReportBaseOverride);
   const [local, setLocal] = useState<LocalProfileFields>(loadLocal);
@@ -233,6 +234,15 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
             disabled={loading}
           >
             {t('panel.platformGitee')}
+          </button>
+          <button
+            type="button"
+            className={`ja-platform-btn ${platform === 'all' ? 'ja-platform-btn--active' : ''}`}
+            onClick={() => setPlatform('all')}
+            disabled={loading}
+            title={t('panel.platformFusedTitle')}
+          >
+            {t('panel.platformFused')}
           </button>
         </div>
         <label className="ja-label">
