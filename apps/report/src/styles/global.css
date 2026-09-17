@@ -113,6 +113,30 @@ h4 { font-size: var(--ja-text-lg); }
   color: var(--ja-color-auth-insufficient);
 }
 
+.ja-badge--fused {
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+  border: 1px solid var(--ja-color-accent);
+}
+
+/* 双源融合去重统计行（报告页头部，仅融合画像且确有合并/去重时出现） */
+.ja-fusion-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-1) var(--ja-space-4);
+  margin: var(--ja-space-3) 0 0;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-accent-subtle);
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-fusion-stat strong {
+  color: var(--ja-color-accent);
+  font-weight: 600;
+}
+
 .ja-btn {
   display: inline-flex;
   align-items: center;

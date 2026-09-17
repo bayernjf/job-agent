@@ -9,6 +9,7 @@ import {
   createStorage,
   toEvidenceItems,
   type StorageContext,
+  type StoredProfile,
   type CandidateSummary,
   type CandidateSearchQuery,
   type CandidateSearchResult,
@@ -29,10 +30,20 @@ function getStorage(): Promise<StorageContext> {
 
 /** 按 profileId 读取画像快照；不存在或解析失败返回 null */
 export async function loadProfile(profileId: string): Promise<AbilityProfile | null> {
+  const record = await loadProfileRecord(profileId);
+  return record?.snapshot ?? null;
+}
+
+/**
+ * 按 profileId 读取画像存储行（含 subjectPlatform 等列级元数据）。
+ * 融合画像（platform=all）的 snapshot.subject.platform 恒为主源 'github'，
+ * 只有存储行的 subjectPlatform 列能标识"双源融合"，供头部展示融合徽标。
+ * 不存在或失败返回 null（降级为不展示页面）。
+ */
+export async function loadProfileRecord(profileId: string): Promise<StoredProfile | null> {
   try {
     const storage = await getStorage();
-    const record = await storage.profiles.getById(profileId);
-    return record?.snapshot ?? null;
+    return (await storage.profiles.getById(profileId)) ?? null;
   } catch {
     return null;
   }

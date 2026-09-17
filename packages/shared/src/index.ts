@@ -70,6 +70,61 @@ export const PlatformSchema = z.enum(['github', 'gitee']);
 export type SupportedPlatform = z.infer<typeof PlatformSchema>;
 export const SUPPORTED_PLATFORMS = PlatformSchema.options;
 
+/** 跨源镜像配对（共享 commit oid 确定），用于双源融合报告 */
+export const MirrorPairSchema = z.object({
+  primaryRef: z.string().min(1),
+  secondaryRef: z.string().min(1),
+  sharedOidCount: z.number().int().nonnegative(),
+});
+export type MirrorPair = z.infer<typeof MirrorPairSchema>;
+
+/** 疑似镜像（仅同名，只报告不合并） */
+export const SuspectedMirrorSchema = z.object({
+  primaryRef: z.string().min(1),
+  secondaryRef: z.string().min(1),
+  reason: z.enum(['same_name']),
+});
+export type SuspectedMirror = z.infer<typeof SuspectedMirrorSchema>;
+
+/** 双源融合各对象在主源 / 辅源 / 融合后的数量 */
+export const FusionCountsSchema = z.object({
+  primaryRepos: z.number().int().nonnegative(),
+  secondaryRepos: z.number().int().nonnegative(),
+  fusedRepos: z.number().int().nonnegative(),
+  primaryCommits: z.number().int().nonnegative(),
+  secondaryCommits: z.number().int().nonnegative(),
+  fusedCommits: z.number().int().nonnegative(),
+  primaryPullRequests: z.number().int().nonnegative(),
+  secondaryPullRequests: z.number().int().nonnegative(),
+  fusedPullRequests: z.number().int().nonnegative(),
+  primaryIssues: z.number().int().nonnegative(),
+  secondaryIssues: z.number().int().nonnegative(),
+  fusedIssues: z.number().int().nonnegative(),
+});
+export type FusionCounts = z.infer<typeof FusionCountsSchema>;
+
+/**
+ * 跨源融合报告（仅 platform=all 双源成功融合时存在；单源画像缺省）。
+ * 记录镜像合并与跨源去重统计，随画像快照持久化，供报告页说明"融合/去重了什么"；
+ * 不参与真实性 / 技能等结论计算（融合只是输入预处理）。可选字段，旧快照无此节仍可解析。
+ */
+export const FusionReportSchema = z.object({
+  primaryPlatform: PlatformSchema,
+  secondaryPlatform: PlatformSchema,
+  mergedMirrors: z.array(MirrorPairSchema),
+  suspectedMirrors: z.array(SuspectedMirrorSchema),
+  /** 因镜像而丢弃的重复 commit 数 */
+  dedupedCommitCount: z.number().int().nonnegative(),
+  /** 镜像仓内跨源同帖而丢弃的重复 PR 数（保留主源版本） */
+  dedupedPullRequestCount: z.number().int().nonnegative(),
+  /** 镜像仓内跨源同帖而丢弃的重复 issue 数（保留主源版本） */
+  dedupedIssueCount: z.number().int().nonnegative(),
+  /** 保留下来的辅源仓库（独有 + 疑似未并） */
+  keptSecondaryRepoRefs: z.array(z.string()),
+  counts: FusionCountsSchema,
+});
+export type FusionReport = z.infer<typeof FusionReportSchema>;
+
 export const AbilityProfileSchema = z.object({
   profileId: z.string().min(1),
   analyzerVersion: z.string().min(1), // 分析引擎版本，保证可复现
@@ -131,6 +186,7 @@ export const AbilityProfileSchema = z.object({
     )
     .optional(), // C 端 P1
   caveats: z.array(z.string()), // 明确"无法判断"的盲区
+  fusion: FusionReportSchema.optional(), // 仅双源融合画像存在（platform=all），单源画像缺省
 });
 export type AbilityProfile = z.infer<typeof AbilityProfileSchema>;
 

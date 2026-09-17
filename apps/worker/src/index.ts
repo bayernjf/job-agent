@@ -84,7 +84,7 @@ export interface ProcessJobResult {
   profile: AbilityProfile;
   budgetUsed: Record<string, number>;
   missing: string[];
-  /** platform=all 且两源都成功时的融合报告（仅日志/测试，不持久化，见 fusion 设计 §8.4） */
+  /** platform=all 且两源都成功时的融合报告（同时挂进 profile.fusion 随快照持久化，见 fusion 设计 §8） */
   fusion?: FusionReport;
   /** platform=all 时辅源 Gitee 是否真的采到（false=Gitee 无同名账号，已降级纯 GitHub） */
   secondaryAvailable?: boolean;
@@ -223,6 +223,8 @@ export async function processJob(
     profileId,
     claimed: false,
     platform: analyzePlatform,
+    // 双源融合时把融合报告挂进画像快照（随 snapshot 持久化）；单源/Gitee 404 降级时缺省
+    ...(fusionReport ? { fusion: fusionReport } : {}),
   });
   logger.info(
     `[worker] job ${job.id} analyzed: authenticity=${profile.authenticity.status} ` +

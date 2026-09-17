@@ -13,6 +13,43 @@ describe('analyze (profile assembly)', () => {
     expect(AbilityProfileSchema.safeParse(profile).success).toBe(true);
   });
 
+  it('attaches the cross-source fusion report to the snapshot when provided', () => {
+    const input = buildInput();
+    const fusion = {
+      primaryPlatform: 'github' as const,
+      secondaryPlatform: 'gitee' as const,
+      mergedMirrors: [{ primaryRef: 'o/r', secondaryRef: 'o/r-mirror', sharedOidCount: 4 }],
+      suspectedMirrors: [],
+      dedupedCommitCount: 3,
+      dedupedPullRequestCount: 1,
+      dedupedIssueCount: 2,
+      keptSecondaryRepoRefs: [],
+      counts: {
+        primaryRepos: 1,
+        secondaryRepos: 1,
+        fusedRepos: 1,
+        primaryCommits: 10,
+        secondaryCommits: 7,
+        fusedCommits: 14,
+        primaryPullRequests: 2,
+        secondaryPullRequests: 2,
+        fusedPullRequests: 3,
+        primaryIssues: 3,
+        secondaryIssues: 3,
+        fusedIssues: 4,
+      },
+    };
+    const profile = analyze(input, { profileId: 'fused-p', fusion });
+    expect(profile.fusion?.dedupedCommitCount).toBe(3);
+    expect(profile.fusion?.mergedMirrors[0]?.sharedOidCount).toBe(4);
+    expect(AbilityProfileSchema.safeParse(profile).success).toBe(true);
+  });
+
+  it('omits fusion from a single-source profile', () => {
+    const profile = analyze(buildInput(), { profileId: 'single-p' });
+    expect(profile.fusion).toBeUndefined();
+  });
+
   it('produces a deterministic, schema-valid profile for a strong account', () => {
     const input = buildInput();
     const profile = analyze(input, { profileId: 'test-profile-1' });

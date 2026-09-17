@@ -6,6 +6,8 @@
   "panel.usernamePlaceholder": "例如 sindresorhus",
   "panel.platformGithub": "GitHub",
   "panel.platformGitee": "Gitee",
+  "panel.platformFused": "融合",
+  "panel.platformFusedTitle": "GitHub + Gitee 双源融合（镜像自动去重）",
   "panel.apiBaseLabel": "API 地址",
   "panel.apiBasePlaceholder": "http://localhost:3000",
   "panel.reportBaseLabel": "报告页地址（可选）",

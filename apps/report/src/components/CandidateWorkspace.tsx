@@ -53,6 +53,9 @@ interface WorkspaceLabels {
   platformAll: string;
   platformGithub: string;
   platformGitee: string;
+  platformFused: string;
+  fusedBadge: string;
+  fusedBadgeTitle: string;
   sortBy: string;
   sortConfidence: string;
   sortSkills: string;
@@ -307,6 +310,7 @@ export default function CandidateWorkspace({
             <option value="">{labels.platformAll}</option>
             <option value="github">{labels.platformGithub}</option>
             <option value="gitee">{labels.platformGitee}</option>
+            <option value="all">{labels.platformFused}</option>
           </select>
         </div>
         <div className="recruit-field">
@@ -394,7 +398,19 @@ export default function CandidateWorkspace({
                       >
                         {c.displayName ?? c.login}
                       </a>
-                      <span className="ja-muted recruit-login">@{c.login} · {c.platform}</span>
+                      <span className="ja-muted recruit-login">
+                        @{c.login} ·{' '}
+                        {c.platform === 'all' ? (
+                          <span
+                            className="ja-badge ja-badge--fused"
+                            title={labels.fusedBadgeTitle}
+                          >
+                            {labels.fusedBadge}
+                          </span>
+                        ) : (
+                          c.platform
+                        )}
+                      </span>
                     </div>
                     <button
                       type="button"
