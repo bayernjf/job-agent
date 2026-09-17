@@ -273,7 +273,7 @@ CLI 形态说明：`--profile` 支持直接读画像 JSON 文件（离线）或�
 4. **B 档 LLM → 决策：默认关闭 + OpenAI 兼容端点自配，不锁定付费厂商**。已落地 `OpenAICompatibleClient` 与 env 工厂（§7）：未设 `LLM_API_KEY` 走纯规则版（零费用、零数据外发）；设置后支持任意 OpenAI 兼容 `/chat/completions`（OpenAI/DeepSeek/通义兼容/本地模型等），`LLM_MODEL` 必填（不替用户默认付费模型），具体型号与单价以厂商当期官方定价为准、代码不内置。请求需显式 `polish:true`，未配置或安全层拒绝一律回退规则版。
 5. **简历语言 → 决策：用户手选 + 默认 locale 可配**（P-R1 已实现：`locale` 默认 `zh-CN`，可选 `en`；技能名等事实保持画像原文不翻译）。
 
-**衍生项（单列 handoff item19）**：扩展 ATS `LocalFields` 与简历 `LocalResumeFields` 的形状/存储统一——决策为"统一 canonical schema、各自本机存储、不自动同步"（跨 ATS 域/产品域 + 不持久化导致物理隔离，见 §5.4）。**✅ 已落地（item19 ①，2026-09-16，见 §5.4.1）**：shared `LocalProfileFields` 契约 + 两投影/旧键迁移纯函数，两端改用 `jobagent.localProfile`；跨端自动互通仍缓做。
+**衍生项（单列 handoff item19）**：扩展 ATS `LocalFields` 与简历 `LocalResumeFields` 的形状/存储统一——原决策为"统一 canonical schema、各自本机存储、~~不自动同步~~"（跨 ATS 域/产品域 + 不持久化导致物理隔离，见 §5.4）。**✅ 已落地（item19 ①，2026-09-16，见 §5.4.1）**：shared `LocalProfileFields` 契约 + 两投影/旧键迁移纯函数，两端改用 `jobagent.localProfile`；**"不自动同步"这一限制亦已解除——跨端自动互通已落地（item24，2026-09-17，chrome.storage + externally_connectable，见 §5.4.1）**。
 
 
 ## 11. 验收（P-R1 完成标准）
