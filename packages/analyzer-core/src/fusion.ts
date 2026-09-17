@@ -13,51 +13,14 @@
  * 及其证据。宁可漏并（辅源独有帖仍保留），不错并（弱判据不跨仓、不跨类型）。
  */
 
-import type { EvidenceItem, SupportedPlatform } from '@jobagent/shared';
+import type {
+  EvidenceItem,
+  FusionReport,
+  MirrorPair,
+  SuspectedMirror,
+  SupportedPlatform,
+} from '@jobagent/shared';
 import { repoRef, type AnalyzerCommit, type AnalyzerInput, type AnalyzerIssue, type AnalyzerPullRequest, type AnalyzerRepo } from './input.js';
-
-export interface MirrorPair {
-  primaryRef: string;
-  secondaryRef: string;
-  sharedOidCount: number;
-}
-
-export interface SuspectedMirror {
-  primaryRef: string;
-  secondaryRef: string;
-  reason: 'same_name';
-}
-
-export interface FusionReport {
-  primaryPlatform: SupportedPlatform;
-  secondaryPlatform: SupportedPlatform;
-  /** 确定镜像（共享 commit oid），已合并 */
-  mergedMirrors: MirrorPair[];
-  /** 疑似镜像（仅同名），只报告未合并 */
-  suspectedMirrors: SuspectedMirror[];
-  /** 因镜像而丢弃的重复 commit 数 */
-  dedupedCommitCount: number;
-  /** 镜像仓内跨源同帖而丢弃的重复 PR 数（保留主源版本） */
-  dedupedPullRequestCount: number;
-  /** 镜像仓内跨源同帖而丢弃的重复 issue 数（保留主源版本） */
-  dedupedIssueCount: number;
-  /** 保留下来的辅源仓库（独有 + 疑似未并） */
-  keptSecondaryRepoRefs: string[];
-  counts: {
-    primaryRepos: number;
-    secondaryRepos: number;
-    fusedRepos: number;
-    primaryCommits: number;
-    secondaryCommits: number;
-    fusedCommits: number;
-    primaryPullRequests: number;
-    secondaryPullRequests: number;
-    fusedPullRequests: number;
-    primaryIssues: number;
-    secondaryIssues: number;
-    fusedIssues: number;
-  };
-}
 
 export interface FusionResult {
   input: AnalyzerInput;
