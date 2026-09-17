@@ -8,7 +8,7 @@ import ShareButton from '../../../components/ShareButton.tsx';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
 import ApplicationTracker from '../../../components/ApplicationTracker.tsx';
-import { loadProfile, loadEvidence } from '../../../lib/db';
+import { loadProfileRecord, loadEvidence } from '../../../lib/db';
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
 import type { EvidenceItem, SkillTagKind } from '@jobagent/shared';
@@ -23,12 +23,16 @@ const t = createTranslator(locale);
 // API 地址：服务端环境变量或同源（MVP 默认同源）
 const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
 
-const profile = profileId ? await loadProfile(profileId) : null;
+const profileRecord = profileId ? await loadProfileRecord(profileId) : null;
+const profile = profileRecord?.snapshot ?? null;
 
 // 画像不存在：渲染 404 状态页
 if (!profile) {
   return Astro.redirect(`/${locale}/?notfound=1`);
 }
+
+// 融合画像标识只存在于存储行 subjectPlatform 列（snapshot.subject.platform 恒为主源 github）
+const isFusedProfile = profileRecord?.subjectPlatform === 'all';
 
 // 视角：默认求职者；?view=recruiter 为招聘方核验视图（只看可核验证据，隐藏求职建议）
 const isRecruiter = Astro.url.searchParams.get('view') === 'recruiter';
@@ -93,6 +97,11 @@ const applicationStatusLabels = {
         </div>
       </div>
       <div class="header-meta">
+        {isFusedProfile && (
+          <span class={`ja-badge ja-badge--fused`} title={t('report.fusion.badgeTitle')}>
+            {t('report.fusion.badge')}
+          </span>
+        )}
         <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
         <a
           class="ja-btn ja-btn--ghost view-toggle"

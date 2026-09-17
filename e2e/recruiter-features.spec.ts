@@ -118,15 +118,28 @@ test.describe('application tracker', () => {
 });
 
 test.describe('candidate search page', () => {
-  test('renders the fixture candidate from SSR data', async ({ page }) => {
+  test('renders fixture candidates from SSR data and a fused badge for the all-platform profile', async ({
+    page,
+  }) => {
     await page.goto('/en/recruit');
-    await expect(page.locator('.recruit-grid .recruit-card')).toHaveCount(1);
-    await expect(page.locator('.recruit-card').first()).toContainText('e2e-fixture-user');
-    // 卡片"查看核验画像"链接带 recruiter 视角
-    await expect(page.locator('.recruit-view').first()).toHaveAttribute(
+    const cards = page.locator('.recruit-grid .recruit-card');
+    await expect(cards).toHaveCount(2);
+
+    // 普通 GitHub 画像卡：裸显平台 github，核验链接指向其 profileId
+    const githubCard = cards.filter({ hasText: 'e2e-fixture-user' });
+    await expect(githubCard).toHaveCount(1);
+    await expect(githubCard.locator('.recruit-login')).toContainText('github');
+    await expect(githubCard.locator('.recruit-view')).toHaveAttribute(
       'href',
       new RegExp(`/en/report/${FIXTURE_PROFILE_ID}\\?view=recruiter`),
     );
+
+    // 融合画像卡：不裸显内部检索键 all，而是双源融合徽标
+    const fusedCard = cards.filter({ hasText: 'e2e-fused-user' });
+    await expect(fusedCard).toHaveCount(1);
+    await expect(fusedCard.locator('.ja-badge--fused')).toBeVisible();
+    await expect(fusedCard.locator('.ja-badge--fused')).toContainText('GitHub + Gitee fused');
+    await expect(fusedCard.locator('.recruit-login')).not.toContainText(' all');
   });
 });
 
