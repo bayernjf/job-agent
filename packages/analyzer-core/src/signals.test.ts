@@ -414,6 +414,60 @@ describe('computeAuthenticity (status & confidence)', () => {
     expect(status).toBe('mixed_signals');
   });
 
+  it('self_pr_ratio alone (single warn) → mixed_signals', () => {
+    const selfPRs: AnalyzerPullRequest[] = Array.from({ length: 25 }, (_, i) => ({
+      number: i + 1,
+      title: `self PR ${i + 1}`,
+      url: `https://github.com/dev-strong/repo-${i % 5}/pull/${i + 1}`,
+      state: 'MERGED' as const,
+      createdAt: `2026-0${(i % 9) + 1}-15T10:00:00Z`,
+      mergedAt: `2026-0${(i % 9) + 1}-16T10:00:00Z`,
+      repoNameWithOwner: `dev-strong/repo-${i % 5}`,
+      repoIsFork: false,
+      repoOwnerIsSelf: true,
+      additions: 10,
+      deletions: 2,
+      changedFiles: 1,
+    }));
+    const { status } = computeAuthenticity(buildInput({ pullRequests: selfPRs, issues: [] }));
+    expect(status).toBe('mixed_signals');
+  });
+
+  it('self_pr_ratio is mitigated by an external merged PR (stays likely_authentic)', () => {
+    const selfPRs: AnalyzerPullRequest[] = Array.from({ length: 25 }, (_, i) => ({
+      number: i + 1,
+      title: `self PR ${i + 1}`,
+      url: `https://github.com/dev-strong/repo-${i % 5}/pull/${i + 1}`,
+      state: 'MERGED' as const,
+      createdAt: `2026-0${(i % 9) + 1}-15T10:00:00Z`,
+      mergedAt: `2026-0${(i % 9) + 1}-16T10:00:00Z`,
+      repoNameWithOwner: `dev-strong/repo-${i % 5}`,
+      repoIsFork: false,
+      repoOwnerIsSelf: true,
+      additions: 10,
+      deletions: 2,
+      changedFiles: 1,
+    }));
+    const extPR: AnalyzerPullRequest = {
+      number: 1,
+      title: 'external contribution',
+      url: 'https://github.com/other-org/project/pull/1',
+      state: 'MERGED' as const,
+      createdAt: '2026-06-15T08:00:00Z',
+      mergedAt: '2026-06-20T12:00:00Z',
+      repoNameWithOwner: 'other-org/project',
+      repoIsFork: false,
+      repoOwnerIsSelf: false,
+      additions: 50,
+      deletions: 10,
+      changedFiles: 3,
+    };
+    const { status } = computeAuthenticity(
+      buildInput({ pullRequests: [...selfPRs, extPR], issues: [] }),
+    );
+    expect(status).toBe('likely_authentic');
+  });
+
 
   it('external contributions mitigate author inconsistency risk', () => {
     const mismatchedCommits: AnalyzerCommit[] = Array.from({ length: 3 }, (_, i) => ({
