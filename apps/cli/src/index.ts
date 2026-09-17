@@ -104,7 +104,12 @@ export async function analyzeLogin(
       primary: 'github',
       secondary: 'gitee',
     });
-    const fusedProfile = analyze(fused.input, { profileId: randomUUID(), claimed: false, platform: 'github' });
+    const fusedProfile = analyze(fused.input, {
+      profileId: randomUUID(),
+      claimed: false,
+      platform: 'github',
+      fusion: fused.report,
+    });
     return { profile: fusedProfile, meta: { ...gh.meta, fusion: fused.report } };
   }
   const source = makeSource(deps, platform);
