@@ -112,6 +112,41 @@ describe('AbilityProfileSchema', () => {
     expect(AbilityProfileSchema.safeParse(p).success).toBe(true);
   });
 
+  it('accepts an optional cross-source fusion report', () => {
+    const p = validProfile();
+    p.fusion = {
+      primaryPlatform: 'github',
+      secondaryPlatform: 'gitee',
+      mergedMirrors: [{ primaryRef: 'o/r', secondaryRef: 'o/r', sharedOidCount: 3 }],
+      suspectedMirrors: [],
+      dedupedCommitCount: 2,
+      dedupedPullRequestCount: 1,
+      dedupedIssueCount: 0,
+      keptSecondaryRepoRefs: ['o/extra'],
+      counts: {
+        primaryRepos: 1,
+        secondaryRepos: 2,
+        fusedRepos: 2,
+        primaryCommits: 10,
+        secondaryCommits: 8,
+        fusedCommits: 16,
+        primaryPullRequests: 2,
+        secondaryPullRequests: 2,
+        fusedPullRequests: 3,
+        primaryIssues: 1,
+        secondaryIssues: 1,
+        fusedIssues: 1,
+      },
+    };
+    const parsed = AbilityProfileSchema.parse(p);
+    expect(parsed.fusion?.dedupedPullRequestCount).toBe(1);
+    expect(parsed.fusion?.mergedMirrors).toHaveLength(1);
+  });
+
+  it('has no fusion section on a single-source profile', () => {
+    expect(AbilityProfileSchema.parse(validProfile()).fusion).toBeUndefined();
+  });
+
   it('exposes the schema version', () => {
     expect(SCHEMA_VERSION).toBe('0.1');
   });
