@@ -8,7 +8,7 @@
  * i18n（design-i18n-20260910.md 第 8 节）：所有用户可见文案走 t()；
  * 语言 = localStorage 显式选择优先，否则 navigator.languages 协商。
  */
-import { useMemo, useState, type FormEvent, type JSX } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type JSX } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { AuthenticityStatus, ExportableProfile, LocalProfileFields } from '@jobagent/shared';
 import {
@@ -16,6 +16,7 @@ import {
   LOCAL_PROFILE_STORAGE_KEY,
   legacyAtsToLocalProfile,
   localProfileToAtsFields,
+  mergeLocalProfile,
   sanitizeLocalProfile,
 } from '@jobagent/shared';
 import type { AtsAdapter, LocalFields } from '../ats/index.js';
@@ -30,6 +31,7 @@ import {
   type JobMatchSkillReason,
 } from '../lib/api.js';
 import { matchTier, resolveEvidenceLinks, resolveReportBase, resumeDeepLink } from './match-utils.js';
+import { readStoredLocalProfile, writeStoredLocalProfile } from '../lib/local-profile-storage.js';
 import {
   LOCALE_STORAGE_KEY,
   createTranslator,
@@ -101,13 +103,16 @@ function loadLocal(): LocalProfileFields {
   return {};
 }
 
-/** 规整后写入 canonical 键（localStorage 不可用时静默降级为本次会话态）。 */
+/** 规整后写入 canonical 键（本域 localStorage + 扩展 chrome.storage 权威镜像）。 */
 function saveLocal(fields: LocalProfileFields): void {
+  const clean = sanitizeLocalProfile(fields);
   try {
-    localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(sanitizeLocalProfile(fields)));
+    localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(clean));
   } catch {
     // 隐私模式 / 配额受限时仅本次会话生效
   }
+  // best-effort 镜像到 chrome.storage（跨域权威，供报告页读取）；失败静默降级为本域 localStorage
+  void writeStoredLocalProfile(clean);
 }
 
 function loadApiBase(): string {
@@ -134,6 +139,19 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [matches, setMatches] = useState<JobMatchItem[]>([]);
   const [matchEvidence, setMatchEvidence] = useState<Record<string, EvidenceBrief> | undefined>(undefined);
   const [matchError, setMatchError] = useState<string | null>(null);
+
+  // 挂载后异步拉取扩展 chrome.storage 的权威档案（报告页可能已写入），合并到本域缓存。
+  // chrome.storage 优先、本域 localStorage 补缺；扩展未装/无 chrome 时静默跳过。
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const stored = await readStoredLocalProfile();
+      if (!cancelled) setLocal((prev) => mergeLocalProfile(stored, prev));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function switchLocale(): void {
     const next: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';

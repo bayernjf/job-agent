@@ -34,3 +34,6 @@ test-results/
 playwright-report/
 e2e/.tmp/
 blob-report/
+
+# Chrome extension signing key (fixes unpacked extension ID; public key is in manifest)
+apps/extension/key.pem
