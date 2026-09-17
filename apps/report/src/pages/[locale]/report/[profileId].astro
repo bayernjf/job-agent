@@ -34,6 +34,17 @@ if (!profile) {
 // 融合画像标识只存在于存储行 subjectPlatform 列（snapshot.subject.platform 恒为主源 github）
 const isFusedProfile = profileRecord?.subjectPlatform === 'all';
 
+// 双源融合去重统计：仅当快照带 fusion 报告且确有镜像合并/去重时展示，全 0 则不渲染
+const fusion = profile.fusion;
+const fusionStats: { n: number; labelKey: MessageKey }[] = fusion
+  ? [
+      { n: fusion.mergedMirrors.length, labelKey: 'report.fusion.statMirrors' },
+      { n: fusion.dedupedCommitCount, labelKey: 'report.fusion.statCommits' },
+      { n: fusion.dedupedPullRequestCount, labelKey: 'report.fusion.statPrs' },
+      { n: fusion.dedupedIssueCount, labelKey: 'report.fusion.statIssues' },
+    ].filter((s) => s.n > 0)
+  : [];
+
 // 视角：默认求职者；?view=recruiter 为招聘方核验视图（只看可核验证据，隐藏求职建议）
 const isRecruiter = Astro.url.searchParams.get('view') === 'recruiter';
 const pathname = Astro.url.pathname;
@@ -117,6 +128,17 @@ const applicationStatusLabels = {
           copiedLabel={t('report.shareCopied')}
         />
       </div>
+      {
+        isFusedProfile && fusionStats.length > 0 && (
+          <p class="ja-fusion-stats" data-testid="fusion-stats">
+            {fusionStats.map((s) => (
+              <span class="ja-fusion-stat">
+                <strong>{s.n}</strong>&nbsp;{t(s.labelKey)}
+              </span>
+            ))}
+          </p>
+        )
+      }
     </section>
 
     {

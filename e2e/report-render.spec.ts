@@ -50,6 +50,7 @@ test.describe('report page SSR render', () => {
   test('does not show the fused badge on a single-source profile', async ({ page }) => {
     await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
     await expect(page.locator('.ja-badge--fused')).toHaveCount(0);
+    await expect(page.getByTestId('fusion-stats')).toHaveCount(0);
   });
 
   test('shows the GitHub+Gitee fused badge on the all-platform profile (English)', async ({ page }) => {
@@ -57,6 +58,14 @@ test.describe('report page SSR render', () => {
     const badge = page.locator('.profile-header .ja-badge--fused');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('GitHub + Gitee fused');
+    // 融合去重统计行：镜像合并 + commit/PR/issue 去重四项（fixture 均非 0）
+    const stats = page.getByTestId('fusion-stats');
+    await expect(stats).toBeVisible();
+    await expect(stats.locator('.ja-fusion-stat')).toHaveCount(4);
+    await expect(stats).toContainText('mirror repos merged');
+    await expect(stats).toContainText('duplicate commits removed');
+    await expect(stats).toContainText('duplicate PRs removed');
+    await expect(stats).toContainText('duplicate issues removed');
   });
 
   test('shows the fused badge in Chinese under the zh-CN route', async ({ page }) => {
@@ -64,5 +73,6 @@ test.describe('report page SSR render', () => {
     const badge = page.locator('.profile-header .ja-badge--fused');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('双源融合');
+    await expect(page.getByTestId('fusion-stats')).toContainText('条重复提交已去重');
   });
 });
