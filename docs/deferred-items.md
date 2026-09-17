@@ -42,6 +42,8 @@
 | LLM 层启用（`packages/llm`） | 规则内核先做到可复现、可解释、带版本；分析内核的 LLM 输出不稳定，必须经结构化校验，过早接入会污染可复现性。**注：简历 B 档受约束润色已于 2026-09-16 落地（OpenAI 兼容 client + 数字防臆造安全层，默认关闭，见 design-targeted-resume §7/§10），不在本缓做范围** | 分析内核侧：规则内核在标注集上稳定后，确需自然语言摘要 / 面试题润色时；简历侧：用户自配 `LLM_*` env 即启用，无需重启本项 | [技术选型](技术选型-MVP-20260910.md)、[design-targeted-resume §7](design-targeted-resume-20260915.md)、[../AGENTS.md](../AGENTS.md) |
 | 账号体系 / 本人认领头表（accounts、claim、OAuth） | M1 先做"用户名 → 画像"匿名分析 + waitlist；账号与认领形态取决于决策 #1/#6 | 决策 #1 拍板走 C 授权主脊、需要本人 OAuth 认领与权威分享时（P1） | [待拍板决策清单 #1/#6](待拍板决策清单-20260910.md) |
 | ✅ **已重启 2026-09-11（W3-6 进行中，见 handoff）** Postgres 方言适配（`packages/storage` 双轨），设计见 [design-storage-dual-dialect](design-storage-dual-dialect-20260911.md) | MVP 持久化层已用 SQLite 跑通迁移/仓储机制（本地/实验合法场景）；在线服务主轨是 Postgres，需补 pg 方言 schema/client、`COMMENT ON` 迁移与 CI service | ~~W3 服务化前~~ **已触发重启**；CI Postgres service、JSONB/TIMESTAMPTZ、SKIP LOCKED 仍缓做（见设计文档 §9） | [技术选型 6.5](技术选型-MVP-20260910.md)、[../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
+| 生产报告页域名与扩展 `externally_connectable` 白名单 | 跨端自动同步（本表「本地档案跨端自动同步（扩展 ATS ↔ 报告页简历）」行已落地）后，扩展 manifest 的 `externally_connectable` 仍只有本地地址 + 生产占位 `https://job-agent.bayjf.com`；真实域名取决于未定的部署形态（同域反代 / 跨子域），现在改等于猜 | 生产部署域名与部署形态拍板时（与 handoff item17 ⏳ 部署形态同批），或首次对外分发扩展前 | [design-targeted-resume §5.4.1](design-targeted-resume-20260915.md)、[apps/extension/INSTALL.md](../apps/extension/INSTALL.md) |
+| gitleaks 自定义 allowlist 的规模化 | 目前仅一条 allowlist（扩展 manifest `key` 的公钥结构），单文件手写足够；引 baseline/外部配置管理会增加漏报面 | 出现第二条以上需要宽松放行的规则，或 allowlist 需要按目录/团队拆分时 | [../.gitleaks.toml](../.gitleaks.toml)、[../AGENTS.md](../AGENTS.md) |
 
 ### 界面与国际化线
 
