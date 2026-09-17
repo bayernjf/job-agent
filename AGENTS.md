@@ -138,6 +138,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 ## 工程化门禁
 
 - **PR 合并前三件套全绿**：typecheck / build / test；CI 建立后以 PR 上 Actions 为准（含 `pnpm audit --audit-level=high` 依赖审计与 gitleaks 密钥扫描）。
+- **gitleaks 配置在仓库根 [.gitleaks.toml](.gitleaks.toml)**：新增 allowlist 必须能说明「被标记的值本身不是凭证」，并按值结构放行（当前仅一条：扩展 manifest `key` 的 RSA 公钥前缀）。两条硬约束——**保留 `[extend] useDefault = true`**（漏写会整体替换默认规则集、等于关闭全部扫描）；**不要用 `paths` 放行整个文件**（CI 用的 gitleaks 8.24.3 不遵守 `condition = "AND"`、会退化成 OR，路径 + 正则等于「该文件内所有 finding 都放行」）。改配置后用 CI 同版本在真实 commit range 上复跑，并植入探针确认真凭证仍会被报出。
 - pre-commit（husky）至少跑 `pnpm -r typecheck`；脚手架期补齐 `.husky/pre-commit` 与 `.github/workflows/ci.yml`。
 
 ## Commit Message 规范
@@ -159,6 +160,8 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 ### GitHub 内容语言
 
 所有写入 GitHub 的内容必须用英文：Issue/PR 标题与描述、comments、reviews、commit/merge/tag message、Release、Actions 的 workflow/job/step/artifact 名称。本地中文文档、代码注释、面向用户中文文案与中文汇报不受限。
+
+**本仓库不使用 GitHub Issues**：仓库里出现的 `#N` 一律指 **PR 号**或 `docs/deferred-items.md` / handoff 内的条目标号，因此 PR 标题与描述**不得写 `Closes #N` / `Fixes #N`**（会误关联到同名 PR 或指向空）；要指向缓做条目时写成 "resolves the deferred item recorded in `docs/deferred-items.md`"。
 
 ## Git 工作流
 
