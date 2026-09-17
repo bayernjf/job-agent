@@ -22,6 +22,13 @@ export interface ApiClientOptions {
 
 const DEFAULT_BASE = typeof EXTENSION_API_BASE === 'string' ? EXTENSION_API_BASE : 'http://localhost:3000';
 
+/**
+ * 扩展可选的分析平台（与在线 API POST /analyze 的 platform 枚举对齐）：
+ * github/gitee 单源，all = GitHub+Gitee 双源融合（后端镜像去重，Gitee 404 正常降级）。
+ * all 不进 shared PlatformSchema（契约层平台仍是 github|gitee），仅作请求参数。
+ */
+export type AnalyzePlatform = 'github' | 'gitee' | 'all';
+
 export interface AnalyzeError extends Error {
   status: number | undefined;
   details: unknown | undefined;
@@ -41,7 +48,7 @@ export class JobAgentApi {
    * 输入用户名（可选平台），返回可信画像（ExportableProfile）。
    * 未生成完的画像会轮询等待；校验失败/分析失败/超时抛错。
    */
-  async fetchProfile(username: string, platform: 'github' | 'gitee' = 'github'): Promise<ExportableProfile> {
+  async fetchProfile(username: string, platform: AnalyzePlatform = 'github'): Promise<ExportableProfile> {
     const { baseUrl, pollMs = 2000, timeoutMs = 60_000 } = this.opts;
     const fetchImpl = this.opts.fetchImpl ?? fetch;
 
@@ -68,7 +75,7 @@ export class JobAgentApi {
     fetchImpl: typeof fetch,
     baseUrl: string,
     username: string,
-    platform: 'github' | 'gitee' = 'github',
+    platform: AnalyzePlatform = 'github',
   ): Promise<{ jobId: string | undefined; profileId: string | undefined }> {
     const res = await fetchImpl(`${baseUrl}/analyze`, {
       method: 'POST',

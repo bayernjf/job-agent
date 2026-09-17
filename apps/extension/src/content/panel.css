@@ -167,7 +167,7 @@
 
 .ja-platform-btn--active {
   border-color: var(--ja-color-accent);
-  background: var(--ja-color-accent-bg);
+  background: var(--ja-color-accent-subtle);
   color: var(--ja-color-accent);
   font-weight: 600;
 }
@@ -376,7 +376,7 @@
   padding: var(--ja-space-1) var(--ja-space-2);
   border: 1px solid var(--ja-color-accent); /* 1px 发丝描边，结构性 */
   border-radius: var(--ja-radius-md);
-  background: var(--ja-color-accent-bg);
+  background: var(--ja-color-accent-subtle);
   color: var(--ja-color-accent);
   font-family: var(--ja-font-sans);
   font-size: var(--ja-text-xs);

@@ -1,13 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { fuseInputs } from './fusion.js';
 import { buildInput } from './test-input.js';
-import { repoRef, type AnalyzerCommit, type AnalyzerInput, type AnalyzerPullRequest, type AnalyzerRepo } from './input.js';
+import {
+  repoRef,
+  type AnalyzerCommit,
+  type AnalyzerInput,
+  type AnalyzerIssue,
+  type AnalyzerPullRequest,
+  type AnalyzerRepo,
+} from './input.js';
 
 const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
 const C = 'c'.repeat(40);
 const D = 'd'.repeat(40);
 const E = 'e'.repeat(40);
+const X = 'x'.repeat(40);
+const Y = 'y'.repeat(40);
 
 function repo(name: string, ownerLogin: string, partial: Partial<AnalyzerRepo> = {}): AnalyzerRepo {
   return {
@@ -31,7 +40,12 @@ function commit(oid: string, repoName: string, committedAt: string, messageHeadl
   return { oid, repoName, committedAt, messageHeadline, authorName: 'Alice', authorEmail: 'a@x.com' };
 }
 
-function pr(number: number, repoNameWithOwner: string, title = 'pr'): AnalyzerPullRequest {
+function pr(
+  number: number,
+  repoNameWithOwner: string,
+  title = 'pr',
+  partial: Partial<AnalyzerPullRequest> = {},
+): AnalyzerPullRequest {
   return {
     number,
     title,
@@ -45,6 +59,24 @@ function pr(number: number, repoNameWithOwner: string, title = 'pr'): AnalyzerPu
     additions: 10,
     deletions: 2,
     changedFiles: 2,
+    ...partial,
+  };
+}
+
+function issue(
+  number: number,
+  repoNameWithOwner: string,
+  title = 'issue',
+  partial: Partial<AnalyzerIssue> = {},
+): AnalyzerIssue {
+  return {
+    number,
+    title,
+    url: `https://example.com/${repoNameWithOwner}/issues/${number}`,
+    state: 'OPEN',
+    createdAt: '2026-05-01T00:00:00Z',
+    repoNameWithOwner,
+    ...partial,
   };
 }
 
@@ -95,6 +127,41 @@ function expectEvidenceResolvable(input: AnalyzerInput): void {
   for (const c of input.commits) expect(ids.has(`commit:${c.repoName}:${c.oid}`)).toBe(true);
   for (const p of input.pullRequests) expect(ids.has(`pr:${p.repoNameWithOwner}:${p.number}`)).toBe(true);
   for (const i of input.issues) expect(ids.has(`issue:${i.repoNameWithOwner}:${i.number}`)).toBe(true);
+}
+
+interface MirrorThreadSeed {
+  primaryPrs?: AnalyzerPullRequest[];
+  secondaryPrs?: AnalyzerPullRequest[];
+  primaryIssues?: AnalyzerIssue[];
+  secondaryIssues?: AnalyzerIssue[];
+  /** 辅源仓短名；默认 'proj'（与主源共享 oid 成镜像），改成其他名且不共享 oid 即非镜像 */
+  secondaryRepo?: string;
+}
+
+/** 构造一对各含单个仓的主/辅输入；默认两仓共享 oid X 构成确定镜像 */
+function buildMirrorPair(seed: MirrorThreadSeed): { primary: AnalyzerInput; secondary: AnalyzerInput } {
+  const secondaryRepo = seed.secondaryRepo ?? 'proj';
+  const isMirror = secondaryRepo === 'proj';
+  const primary = buildInput({
+    login: 'alice',
+    repos: [repo('proj', 'alice')],
+    commits: [commit(X, 'alice/proj', '2026-05-01T00:00:00Z')],
+    pullRequests: seed.primaryPrs ?? [],
+    issues: seed.primaryIssues ?? [],
+  });
+  const secondary = buildInput({
+    login: 'aliceg',
+    repos: [repo(secondaryRepo, 'aliceg')],
+    commits: [
+      commit(isMirror ? X : Y, `aliceg/${secondaryRepo}`, '2026-05-01T00:00:00Z'),
+    ],
+    pullRequests: seed.secondaryPrs ?? [],
+    issues: seed.secondaryIssues ?? [],
+  });
+  secondary.evidence.forEach((e) => {
+    e.sourcePlatform = 'gitee';
+  });
+  return { primary, secondary };
 }
 
 describe('fuseInputs', () => {
@@ -184,5 +251,96 @@ describe('fuseInputs', () => {
     const r1 = fuseInputs(primary, secondary);
     const r2 = fuseInputs(primary, secondary);
     expect(JSON.stringify(r2)).toEqual(JSON.stringify(r1));
+  });
+});
+
+describe('fuseInputs cross-source PR/issue thread dedup', () => {
+  it('dedupes a mirrored PR with the same normalized title inside the window', () => {
+    const { primary, secondary } = buildMirrorPair({
+      primaryPrs: [pr(3, 'alice/proj', 'Fix login bug', { createdAt: '2026-05-10T00:00:00Z' })],
+      secondaryPrs: [pr(9, 'aliceg/proj', '  fix login  bug ', { createdAt: '2026-05-12T00:00:00Z' })],
+    });
+    const { input, report } = fuseInputs(primary, secondary);
+
+    expect(input.pullRequests.map((p) => `${p.repoNameWithOwner}#${p.number}`)).toEqual(['alice/proj#3']);
+    expect(report.dedupedPullRequestCount).toBe(1);
+    expect(report.counts.fusedPullRequests).toBe(1);
+
+    const ids = new Set(input.evidence.map((e) => e.evidenceId));
+    expect(ids.has('pr:aliceg/proj:9')).toBe(false);
+    expect(ids.has('pr:alice/proj:3')).toBe(true);
+    expectEvidenceResolvable(input);
+  });
+
+  it('dedupes a mirrored issue with the same normalized title inside the window', () => {
+    const { primary, secondary } = buildMirrorPair({
+      primaryIssues: [issue(5, 'alice/proj', 'Roadmap discussion', { createdAt: '2026-05-10T00:00:00Z' })],
+      secondaryIssues: [issue(2, 'aliceg/proj', 'roadmap  discussion', { createdAt: '2026-05-11T00:00:00Z' })],
+    });
+    const { input, report } = fuseInputs(primary, secondary);
+
+    expect(input.issues.map((i) => `${i.repoNameWithOwner}#${i.number}`)).toEqual(['alice/proj#5']);
+    expect(report.dedupedIssueCount).toBe(1);
+    expect(report.counts.fusedIssues).toBe(1);
+
+    const ids = new Set(input.evidence.map((e) => e.evidenceId));
+    expect(ids.has('issue:aliceg/proj:2')).toBe(false);
+    expectEvidenceResolvable(input);
+  });
+
+  it('keeps same-title mirrored PRs whose creation time is outside the 7-day window', () => {
+    const { primary, secondary } = buildMirrorPair({
+      primaryPrs: [pr(3, 'alice/proj', 'Fix login bug', { createdAt: '2026-05-10T00:00:00Z' })],
+      secondaryPrs: [pr(9, 'aliceg/proj', 'fix login bug', { createdAt: '2026-05-20T00:00:00Z' })],
+    });
+    const { input, report } = fuseInputs(primary, secondary);
+
+    expect(report.dedupedPullRequestCount).toBe(0);
+    expect(report.counts.fusedPullRequests).toBe(2);
+    const remapped = input.pullRequests.find((p) => p.number === 9);
+    expect(remapped?.repoNameWithOwner).toBe('alice/proj');
+    expectEvidenceResolvable(input);
+  });
+
+  it('keeps same-title PRs in repos that are not confirmed mirrors', () => {
+    const { primary, secondary } = buildMirrorPair({
+      secondaryRepo: 'other',
+      primaryPrs: [pr(3, 'alice/proj', 'Fix login bug', { createdAt: '2026-05-10T00:00:00Z' })],
+      secondaryPrs: [pr(9, 'aliceg/other', 'fix login bug', { createdAt: '2026-05-10T00:00:00Z' })],
+    });
+    const { input, report } = fuseInputs(primary, secondary);
+
+    expect(report.dedupedPullRequestCount).toBe(0);
+    expect(input.pullRequests.map((p) => p.repoNameWithOwner).sort()).toEqual(['alice/proj', 'aliceg/other']);
+    expectEvidenceResolvable(input);
+  });
+
+  it('never matches a PR against an issue across types', () => {
+    const { primary, secondary } = buildMirrorPair({
+      primaryPrs: [pr(3, 'alice/proj', 'same title', { createdAt: '2026-05-10T00:00:00Z' })],
+      secondaryIssues: [issue(9, 'aliceg/proj', 'same title', { createdAt: '2026-05-10T00:00:00Z' })],
+    });
+    const { input, report } = fuseInputs(primary, secondary);
+
+    expect(input.pullRequests).toHaveLength(1);
+    expect(input.issues).toHaveLength(1);
+    expect(report.dedupedPullRequestCount).toBe(0);
+    expect(report.dedupedIssueCount).toBe(0);
+    expectEvidenceResolvable(input);
+  });
+
+  it('dedupes at most one secondary PR per primary PR (conservative one-to-one)', () => {
+    const { primary, secondary } = buildMirrorPair({
+      primaryPrs: [pr(3, 'alice/proj', 'Fix login bug', { createdAt: '2026-05-10T00:00:00Z' })],
+      secondaryPrs: [
+        pr(9, 'aliceg/proj', 'fix login bug', { createdAt: '2026-05-10T00:00:00Z' }),
+        pr(10, 'aliceg/proj', 'fix login bug', { createdAt: '2026-05-11T00:00:00Z' }),
+      ],
+    });
+    const { input, report } = fuseInputs(primary, secondary);
+
+    expect(report.dedupedPullRequestCount).toBe(1);
+    expect(input.pullRequests.map((p) => p.number).sort((a, b) => a - b)).toEqual([3, 10]);
+    expectEvidenceResolvable(input);
   });
 });

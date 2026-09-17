@@ -3,7 +3,7 @@
  * 纯函数、无 I/O；analyzerVersion = `${SCHEMA_VERSION}-${RULE_VERSION}` 保证可复现。
  */
 
-import { SCHEMA_VERSION, type AbilityProfile, type SupportedPlatform } from '@jobagent/shared';
+import { SCHEMA_VERSION, type AbilityProfile, type FusionReport, type SupportedPlatform } from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
 import { computeActivity } from './activity.js';
 import { generateInterviewQuestions } from './questions.js';
@@ -19,6 +19,11 @@ export interface AnalyzeOptions {
   claimed?: boolean;
   /** 证据源平台；默认 'github'（第二个源 gitee 由 gitee-source 传入） */
   platform?: SupportedPlatform;
+  /**
+   * 跨源融合报告（仅 platform=all 双源成功融合时由调用方透传）。
+   * 内核不解读融合，只把它原样挂到画像快照随快照持久化；单源分析缺省。
+   */
+  fusion?: FusionReport;
 }
 
 export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): AbilityProfile {
@@ -89,5 +94,7 @@ export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): 
     authenticity: { status, confidence, signals },
     interviewQuestions,
     caveats,
+    // 跨源融合报告仅由调用方在双源融合时透传，原样落快照；单源画像无此节
+    ...(options.fusion ? { fusion: options.fusion } : {}),
   };
 }

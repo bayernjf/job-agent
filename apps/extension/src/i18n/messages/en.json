@@ -6,6 +6,8 @@
   "panel.usernamePlaceholder": "e.g. sindresorhus",
   "panel.platformGithub": "GitHub",
   "panel.platformGitee": "Gitee",
+  "panel.platformFused": "Fused",
+  "panel.platformFusedTitle": "GitHub + Gitee fused (mirror-deduped)",
   "panel.apiBaseLabel": "API endpoint",
   "panel.apiBasePlaceholder": "http://localhost:3000",
   "panel.reportBaseLabel": "Report page URL (optional)",

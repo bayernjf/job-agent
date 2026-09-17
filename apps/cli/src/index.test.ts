@@ -265,6 +265,10 @@ describe('cli run', () => {
     expect(parsed.meta.fusion?.counts.fusedCommits).toBe(2);
     // 融合画像以主源 GitHub 标识
     expect(parsed.profile.subject.platform).toBe('github');
+    // 融合报告同时进入画像本体（随快照持久化 / 导出），不只挂在 meta
+    expect(parsed.profile.fusion).toBeDefined();
+    expect(parsed.profile.fusion?.dedupedCommitCount).toBe(1);
+    expect(parsed.profile.fusion?.mergedMirrors).toHaveLength(1);
   });
 
   it('rejects --platform all for batch', async () => {

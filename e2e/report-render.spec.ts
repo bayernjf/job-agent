@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE_PROFILE_ID, FIXTURE_LOGIN } from './fixtures/sample-profile.js';
+import { FIXTURE_PROFILE_ID, FIXTURE_FUSED_PROFILE_ID, FIXTURE_LOGIN } from './fixtures/sample-profile.js';
 
 /**
  * 报告页 SSR E2E（#1）：fixture 画像由 globalSetup 写入临时 SQLite，
@@ -45,5 +45,34 @@ test.describe('report page SSR render', () => {
     await page.goto('/en/report/prof-does-not-exist-xyz');
     await page.waitForURL(/\/en\/\?notfound=1/, { timeout: 10000 });
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  });
+
+  test('does not show the fused badge on a single-source profile', async ({ page }) => {
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+    await expect(page.locator('.ja-badge--fused')).toHaveCount(0);
+    await expect(page.getByTestId('fusion-stats')).toHaveCount(0);
+  });
+
+  test('shows the GitHub+Gitee fused badge on the all-platform profile (English)', async ({ page }) => {
+    await page.goto(`/en/report/${FIXTURE_FUSED_PROFILE_ID}`);
+    const badge = page.locator('.profile-header .ja-badge--fused');
+    await expect(badge).toBeVisible();
+    await expect(badge).toContainText('GitHub + Gitee fused');
+    // 融合去重统计行：镜像合并 + commit/PR/issue 去重四项（fixture 均非 0）
+    const stats = page.getByTestId('fusion-stats');
+    await expect(stats).toBeVisible();
+    await expect(stats.locator('.ja-fusion-stat')).toHaveCount(4);
+    await expect(stats).toContainText('mirror repos merged');
+    await expect(stats).toContainText('duplicate commits removed');
+    await expect(stats).toContainText('duplicate PRs removed');
+    await expect(stats).toContainText('duplicate issues removed');
+  });
+
+  test('shows the fused badge in Chinese under the zh-CN route', async ({ page }) => {
+    await page.goto(`/zh-CN/report/${FIXTURE_FUSED_PROFILE_ID}`);
+    const badge = page.locator('.profile-header .ja-badge--fused');
+    await expect(badge).toBeVisible();
+    await expect(badge).toContainText('双源融合');
+    await expect(page.getByTestId('fusion-stats')).toContainText('条重复提交已去重');
   });
 });

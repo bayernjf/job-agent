@@ -51,6 +51,22 @@ describe('JobAgentApi.fetchProfile', () => {
     expect(p.subject.login).toBe('demo-dev');
   });
 
+  it('forwards platform=all in the analyze request', async () => {
+    let receivedBody: unknown;
+    const api = new JobAgentApi({
+      baseUrl: 'http://api.test',
+      fetchImpl: seqFetch([
+        (_url, init) => {
+          receivedBody = init?.body;
+          return jsonResponse(200, { profileId: 'prof-1', status: 'succeeded', cached: true });
+        },
+        () => jsonResponse(200, VALID_PROFILE),
+      ]),
+    });
+    await api.fetchProfile('demo-dev', 'all');
+    expect(JSON.parse(String(receivedBody))).toMatchObject({ username: 'demo-dev', platform: 'all' });
+  });
+
   it('polls the job until succeeded then fetches the profile', async () => {
     const api = new JobAgentApi({
       baseUrl: 'http://api.test',
