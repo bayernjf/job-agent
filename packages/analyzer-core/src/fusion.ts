@@ -6,10 +6,15 @@
  *
  * 镜像判据：两仓存在相同 git commit oid（SHA 跨平台全局一致）= 确定镜像，自动合并；
  * 仅仓库短名相同 = 疑似，只报告不合并（保守，避免同名巧合错并）。纯函数、零 I/O、确定性。
+ *
+ * 镜像仓内的 PR/Issue 跨源同帖去重（2026-09-17）：PR/Issue 没有 commit oid 那样的跨平台
+ * 全局 ID，编号在镜像同步时也可能重排，故仅在「确定镜像配对仓内 + 同类型 + 标题规范化完全
+ * 相同 + 创建时间差 ≤ CROSS_SOURCE_THREAD_WINDOW_MS」时判为同帖，保留主源版本、丢弃辅源重复
+ * 及其证据。宁可漏并（辅源独有帖仍保留），不错并（弱判据不跨仓、不跨类型）。
  */
 
 import type { EvidenceItem, SupportedPlatform } from '@jobagent/shared';
-import { repoRef, type AnalyzerCommit, type AnalyzerInput, type AnalyzerRepo } from './input.js';
+import { repoRef, type AnalyzerCommit, type AnalyzerInput, type AnalyzerIssue, type AnalyzerPullRequest, type AnalyzerRepo } from './input.js';
 
 export interface MirrorPair {
   primaryRef: string;
@@ -32,6 +37,10 @@ export interface FusionReport {
   suspectedMirrors: SuspectedMirror[];
   /** 因镜像而丢弃的重复 commit 数 */
   dedupedCommitCount: number;
+  /** 镜像仓内跨源同帖而丢弃的重复 PR 数（保留主源版本） */
+  dedupedPullRequestCount: number;
+  /** 镜像仓内跨源同帖而丢弃的重复 issue 数（保留主源版本） */
+  dedupedIssueCount: number;
   /** 保留下来的辅源仓库（独有 + 疑似未并） */
   keptSecondaryRepoRefs: string[];
   counts: {
@@ -41,6 +50,12 @@ export interface FusionReport {
     primaryCommits: number;
     secondaryCommits: number;
     fusedCommits: number;
+    primaryPullRequests: number;
+    secondaryPullRequests: number;
+    fusedPullRequests: number;
+    primaryIssues: number;
+    secondaryIssues: number;
+    fusedIssues: number;
   };
 }
 
@@ -59,6 +74,30 @@ function maxIso(a: string | null | undefined, b: string | null | undefined): str
   if (!a) return b ?? null;
   if (!b) return a;
   return a > b ? a : b;
+}
+
+/**
+ * 跨源同帖判定的最大创建时间差（7 天）。镜像同步通常近实时，但手动镜像/批量导入可能延迟，
+ * 且两平台时间戳存在时区/精度差异；超出该窗口即使标题相同也视为不同帖（保守，不错并）。
+ */
+const CROSS_SOURCE_THREAD_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** 规范化帖标题：去首尾空白、折叠连续空白、小写（跨平台可能有大小写/空白差异） */
+function normalizeThreadTitle(title: string): string {
+  return title.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** 两帖创建时间是否落在跨源同帖窗口内；任一时间戳不可解析则保守返回 false */
+function withinCrossSourceThreadWindow(aIso: string, bIso: string): boolean {
+  const a = Date.parse(aIso);
+  const b = Date.parse(bIso);
+  if (Number.isNaN(a) || Number.isNaN(b)) return false;
+  return Math.abs(a - b) <= CROSS_SOURCE_THREAD_WINDOW_MS;
+}
+
+/** 同帖匹配键：归一到同一镜像仓后的 repoRef + 规范化标题（PR/issue 各自独立的键空间） */
+function threadMatchKey(repoNameWithOwner: string, title: string): string {
+  return `${repoNameWithOwner}\u0000${normalizeThreadTitle(title)}`;
 }
 
 interface Detection {
@@ -226,21 +265,60 @@ export function fuseInputs(
   }
   fusedCommits.sort((a, b) => (a.committedAt < b.committedAt ? -1 : a.committedAt > b.committedAt ? 1 : 0));
 
-  // --- PR / Issue：不跨源去重；镜像仓的重映射 repoRef 后保留 ---
-  const fusedPRs = [
-    ...primary.pullRequests,
-    ...secondary.pullRequests.map((p) => {
-      const mapped = mirrorBySecondary.get(p.repoNameWithOwner);
-      return mapped ? { ...p, repoNameWithOwner: mapped } : { ...p };
-    }),
-  ];
-  const fusedIssues = [
-    ...primary.issues,
-    ...secondary.issues.map((i) => {
-      const mapped = mirrorBySecondary.get(i.repoNameWithOwner);
-      return mapped ? { ...i, repoNameWithOwner: mapped } : { ...i };
-    }),
-  ];
+  // --- PR / Issue：镜像仓重映射 repoRef；镜像仓内的跨源同帖去重（保守判据见文件头） ---
+  // 被去重的辅源帖，其原始证据 id（重映射前的辅源 repoRef）收集后在 evidence 段一并丢弃，
+  // 避免留下指向已删除帖的悬空证据。
+  const droppedSecondaryEvidenceIds = new Set<string>();
+
+  const fusedPRs: AnalyzerPullRequest[] = [...primary.pullRequests];
+  const consumedPrimaryPrKeys = new Set<string>();
+  let dedupedPullRequestCount = 0;
+  for (const p of secondary.pullRequests) {
+    const mapped = mirrorBySecondary.get(p.repoNameWithOwner);
+    const remapped = mapped ? { ...p, repoNameWithOwner: mapped } : { ...p };
+    if (mapped) {
+      const key = threadMatchKey(mapped, p.title);
+      const twin = primary.pullRequests.find(
+        (q) =>
+          q.repoNameWithOwner === mapped &&
+          !consumedPrimaryPrKeys.has(threadMatchKey(q.repoNameWithOwner, q.title)) &&
+          threadMatchKey(q.repoNameWithOwner, q.title) === key &&
+          withinCrossSourceThreadWindow(q.createdAt, p.createdAt),
+      );
+      if (twin) {
+        consumedPrimaryPrKeys.add(key);
+        dedupedPullRequestCount += 1;
+        droppedSecondaryEvidenceIds.add(`pr:${p.repoNameWithOwner}:${p.number}`);
+        continue;
+      }
+    }
+    fusedPRs.push(remapped);
+  }
+
+  const fusedIssues: AnalyzerIssue[] = [...primary.issues];
+  const consumedPrimaryIssueKeys = new Set<string>();
+  let dedupedIssueCount = 0;
+  for (const i of secondary.issues) {
+    const mapped = mirrorBySecondary.get(i.repoNameWithOwner);
+    const remapped = mapped ? { ...i, repoNameWithOwner: mapped } : { ...i };
+    if (mapped) {
+      const key = threadMatchKey(mapped, i.title);
+      const twin = primary.issues.find(
+        (q) =>
+          q.repoNameWithOwner === mapped &&
+          !consumedPrimaryIssueKeys.has(threadMatchKey(q.repoNameWithOwner, q.title)) &&
+          threadMatchKey(q.repoNameWithOwner, q.title) === key &&
+          withinCrossSourceThreadWindow(q.createdAt, i.createdAt),
+      );
+      if (twin) {
+        consumedPrimaryIssueKeys.add(key);
+        dedupedIssueCount += 1;
+        droppedSecondaryEvidenceIds.add(`issue:${i.repoNameWithOwner}:${i.number}`);
+        continue;
+      }
+    }
+    fusedIssues.push(remapped);
+  }
 
   // --- evidence：镜像 repo 证据丢弃，commit/pr/issue 证据重映射，按 id 去重 ---
   const seenEvidence = new Set<string>();
@@ -253,6 +331,7 @@ export function fuseInputs(
   };
   primary.evidence.forEach(pushEvidence);
   for (const e of secondary.evidence) {
+    if (droppedSecondaryEvidenceIds.has(e.evidenceId)) continue; // 跨源同帖去重：辅源重复帖及其证据一并丢弃
     if (e.sourceType === 'repo') {
       const ref = e.evidenceId.slice('repo:'.length);
       if (mirrorBySecondary.has(ref)) continue; // 并入主源 repo 证据
@@ -323,6 +402,8 @@ export function fuseInputs(
     mergedMirrors: pairs,
     suspectedMirrors: suspected,
     dedupedCommitCount,
+    dedupedPullRequestCount,
+    dedupedIssueCount,
     keptSecondaryRepoRefs,
     counts: {
       primaryRepos: primary.repos.length,
@@ -331,6 +412,12 @@ export function fuseInputs(
       primaryCommits: primary.commits.length,
       secondaryCommits: secondary.commits.length,
       fusedCommits: fusedCommits.length,
+      primaryPullRequests: primary.pullRequests.length,
+      secondaryPullRequests: secondary.pullRequests.length,
+      fusedPullRequests: fusedPRs.length,
+      primaryIssues: primary.issues.length,
+      secondaryIssues: secondary.issues.length,
+      fusedIssues: fusedIssues.length,
     },
   };
 
