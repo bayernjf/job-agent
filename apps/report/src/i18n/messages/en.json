@@ -38,6 +38,8 @@
   "report.share": "Share report",
   "report.shareCopied": "Link copied",
   "report.copyLink": "Copy link",
+  "report.fusion.badge": "GitHub + Gitee fused",
+  "report.fusion.badgeTitle": "Built from both GitHub and Gitee, with mirror repos and cross-posted threads automatically deduped",
   "report.viewOnGithub": "View on GitHub",
   "report.dataSource": "Data sources & limitations",
   "report.dispute": "Raise a dispute",

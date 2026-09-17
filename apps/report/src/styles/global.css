@@ -113,6 +113,12 @@ h4 { font-size: var(--ja-text-lg); }
   color: var(--ja-color-auth-insufficient);
 }
 
+.ja-badge--fused {
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+  border: 1px solid var(--ja-color-accent);
+}
+
 .ja-btn {
   display: inline-flex;
   align-items: center;

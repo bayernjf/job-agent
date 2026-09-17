@@ -6,7 +6,12 @@ import { rmSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { createStorage } from '@jobagent/storage';
-import { buildFixtureProfile, FIXTURE_PROFILE_ID } from './fixtures/sample-profile.js';
+import {
+  buildFixtureProfile,
+  buildFusedFixtureProfile,
+  FIXTURE_PROFILE_ID,
+  FIXTURE_FUSED_PROFILE_ID,
+} from './fixtures/sample-profile.js';
 
 const TMP_DIR = resolve(process.cwd(), 'e2e', '.tmp');
 const DB_FILE = resolve(TMP_DIR, 'e2e.db');
@@ -30,6 +35,20 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     dataWindowUntil: profile.dataWindow.until,
     status: 'complete',
     snapshot: profile,
+  });
+
+  // 融合画像：snapshot 与普通画像同形（subject.platform 仍 github），仅存储行 subject_platform=all
+  const fusedProfile = buildFusedFixtureProfile();
+  await storage.profiles.insert({
+    id: FIXTURE_FUSED_PROFILE_ID,
+    analyzerVersion: fusedProfile.analyzerVersion,
+    subjectPlatform: 'all',
+    subjectLogin: fusedProfile.subject.login,
+    subjectClaimed: fusedProfile.subject.claimed,
+    dataWindowSince: fusedProfile.dataWindow.since,
+    dataWindowUntil: fusedProfile.dataWindow.until,
+    status: 'complete',
+    snapshot: fusedProfile,
   });
   await storage.close();
 
