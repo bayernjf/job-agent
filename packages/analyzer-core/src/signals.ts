@@ -403,6 +403,9 @@ export function computeAuthenticity(input: AnalyzerInput): {
   const risks = signals.filter((s) => s.severity === 'risk');
   const warns = signals.filter((s) => s.severity === 'warn');
   const positives = signals.filter((s) => s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS);
+  // 刷 PR（self_pr_ratio）是强负面信号：即便它是唯一 warn，也应判 mixed（需人工判断），
+  // 除非有 external_contributions 正向信号抵消（2026-09-17 26 账号回归发现 holilayet 漏报）。
+  const hasSelfPrRatio = signals.some((s) => s.code === SIGNAL_CODES.SELF_PR_RATIO);
   const behaviorTotal = input.commits.length + input.pullRequests.length + input.issues.length;
   const externalMerged = input.pullRequests.filter(
     (p) => !p.repoOwnerIsSelf && p.state === 'MERGED',
@@ -431,6 +434,8 @@ export function computeAuthenticity(input: AnalyzerInput): {
   } else if (thinEvidence) {
     status = 'mixed_signals';
   } else if (warns.length >= 2 && positives.length === 0) {
+    status = 'mixed_signals';
+  } else if (hasSelfPrRatio && positives.length === 0) {
     status = 'mixed_signals';
   } else {
     status = 'likely_authentic';
