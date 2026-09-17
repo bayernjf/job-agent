@@ -241,7 +241,7 @@ describe('processJob', () => {
     expect(result.fusion).toBeDefined();
     // 融合报告同时挂进画像快照并持久化（报告页可读取），而非只停留在日志/返回值
     expect(result.profile.fusion).toBeDefined();
-    expect(stored!.snapshot.fusion).toEqual(result.fusion);
+    expect(stored!.snapshot!.fusion).toEqual(result.fusion);
 
     const done = (await repos.jobs.getById(jobId))!;
     expect(done.status).toBe('succeeded');
@@ -272,7 +272,7 @@ describe('processJob', () => {
     expect(result.secondaryAvailable).toBe(false);
     expect(result.fusion).toBeUndefined();
     // Gitee 无账号降级为纯 GitHub 画像，快照里也不得残留融合报告
-    expect(stored!.snapshot.fusion).toBeUndefined();
+    expect(stored!.snapshot!.fusion).toBeUndefined();
 
     const done = (await repos.jobs.getById(jobId))!;
     expect(done.status).toBe('succeeded');
