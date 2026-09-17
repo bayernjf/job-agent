@@ -58,3 +58,11 @@ pnpm --filter @jobagent/extension build
 - **API 连接失败**：确认后端服务在 `localhost:3000` 运行，且面板中 API 地址正确
 - **Analyze 一直 pending**：确认 Worker 终端在运行（会打印 `[worker]` 日志）
 - **404 错误**：GitHub 用户名不存在，换一个确认存在的
+
+## 本地档案跨端同步（扩展 ↔ 报告页）
+
+扩展面板（ATS 页）与报告页简历补填（`/report/:id`）共享同一份本地档案（email/电话/所在地/LinkedIn + 教育/工作经历），数据经扩展 `chrome.storage` 自动互通、仅存本机，不上传服务端。
+
+- **固定扩展 ID**：本扩展 manifest 内置 `key`，加载后 ID 固定为 `dgbnkdljapgglpdcmncbleioocbjfmmc`。若此前加载过旧版扩展（无 `key`），需先移除旧版再重新「Load unpacked」本目录，否则 ID 不同、报告页无法连通。
+- **报告页需在 `externally_connectable` 白名单域**：当前白名单为 `http://localhost:4321`、`http://127.0.0.1:4321` 与生产占位 `https://job-agent.bayjf.com`。本地跑报告页请用 `localhost:4321`（`pnpm --filter @jobagent/report dev`）。
+- **同步方向**：扩展面板填的 email/电话/所在地/LinkedIn 会自动带到报告页简历补填；报告页填的完整档案会自动带到扩展 ATS 填充。任一端未装扩展 / 非 Chrome 浏览器时自动降级为仅本端 localStorage，互不影响。
