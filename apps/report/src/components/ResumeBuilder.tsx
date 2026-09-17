@@ -20,8 +20,10 @@ import {
   LOCAL_PROFILE_STORAGE_KEY,
   legacyResumeToLocalProfile,
   localProfileToResumeFields,
+  mergeLocalProfile,
   sanitizeLocalProfile,
 } from '@jobagent/shared';
+import { fetchExtensionLocalProfile, pushExtensionLocalProfile } from '../lib/extension-bridge';
 
 export const BUILD_RESUME_EVENT = 'jobagent:build-resume';
 
@@ -119,13 +121,16 @@ function loadLocal(): LocalProfileFields {
   return {};
 }
 
-/** 规整后写入 canonical 键（localStorage 不可用时静默降级为本次会话态）。 */
+/** 规整后写入 canonical 键（本域 localStorage + 推送扩展 chrome.storage 权威镜像）。 */
 function persistLocal(fields: LocalProfileFields): void {
+  const clean = sanitizeLocalProfile(fields);
   try {
-    localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(sanitizeLocalProfile(fields)));
+    localStorage.setItem(LOCAL_PROFILE_STORAGE_KEY, JSON.stringify(clean));
   } catch {
     // 隐私模式 / 配额受限时仅本次会话生效
   }
+  // best-effort 推送扩展（跨域权威，供扩展面板读取）；扩展未装时静默降级为本域 localStorage
+  void pushExtensionLocalProfile(clean);
 }
 
 /** canonical → 简历请求字段；全空时返回 undefined（请求不带 local）。 */
@@ -154,6 +159,19 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
   const sectionRef = useRef<HTMLElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const seqRef = useRef(0);
+
+  // 挂载后异步拉取扩展 chrome.storage 的权威档案（扩展面板可能已填写），合并到本域缓存。
+  // chrome.storage 优先、本域 localStorage 补缺；扩展未装/非 Chrome 时静默跳过。
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const ext = await fetchExtensionLocalProfile();
+      if (!cancelled && ext) setLocal((prev) => mergeLocalProfile(ext, prev));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const build = useCallback(
     async (job: BuildResumeDetail, fields: LocalProfileFields, polish?: boolean) => {

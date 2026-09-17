@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_appName__",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA16sywyTQBnfOaw3IgdG5D2V3ATK1NkLwwHiLkn2HfuUi/o+aLj28kkq1EZ0zVmn5TI1I7y4cZOGwSUb6MM5BA28Y6w+UHxOXI+R5kRd3qSX29J8atGbfO16mVQXRzN/DAJSBGZHGA9uTDwDlg2hCA1tMTc5HORT49EnBYT7qLRd4/1z6YBf4r1hM0N4afgoQyotNHfyK/HW4p8Zc4FhzZjkCaG3byhKnPqaxz+IVa5H9wkQWJd4UH91WMjkACJTvBmshipq1IAQ+dFaGUhmwbh2hDauDMzLP/Avc0WhFn4PfubXGwenFXVN/qL4EIv0jRuAT4B4+csf52vAlkQS7CQIDAQAB",
   "default_locale": "en",
   "description": "__MSG_appDescription__",
   "icons": {
@@ -29,6 +30,13 @@
       "run_at": "document_idle"
     }
   ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:4321/*",
+      "http://127.0.0.1:4321/*",
+      "https://job-agent.bayjf.com/*"
+    ]
+  },
   "permissions": ["storage"],
   "host_permissions": [
     "https://*.greenhouse.io/*",
