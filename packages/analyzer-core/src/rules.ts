@@ -4,10 +4,10 @@
  */
 
 /** 分析引擎规则版本（analyzerVersion = `${SCHEMA_VERSION}-${ruleVersion}`） */
-export const RULE_VERSION = '0.2';
+export const RULE_VERSION = '0.3';
 
 /**
- * 真实性信号码。规则 0.1 遗留信号在 0.2 中逻辑未变，保留 r0.1 前缀以避免快照漂移；
+ * 真实性信号码。规则 0.1 遗留信号在 0.2/0.3 中逻辑未变，保留 r0.1 前缀以避免快照漂移；
  * 规则 0.2 新增信号使用 r0.2 前缀。severity 见 shared 契约。
  */
 export const SIGNAL_CODES = {

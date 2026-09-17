@@ -692,6 +692,34 @@ export function mergeLocalProfile(...parts: Array<LocalProfileFields | null | un
   return sanitizeLocalProfile(merged);
 }
 
+/**
+ * 跨端本地档案同步消息协议（扩展 background ↔ 报告页 bridge）。
+ * 报告页经 `chrome.runtime.sendMessage(EXTENSION_ID, msg)` 与扩展通信，扩展把 canonical
+ * 档案镜像到 `chrome.storage.local[LOCAL_PROFILE_STORAGE_KEY]`（跨域权威）；两端本域
+ * localStorage 仅作降级缓存。消息形状是纯数据、无 chrome 依赖，故落 shared 单一事实源。
+ * 详见 design-targeted-resume §5.4.1 与 deferred-items「本地档案跨端自动同步」。
+ */
+
+/** 报告页 → 扩展：请求读取扩展侧 canonical 档案。 */
+export const EXT_MSG_GET_LOCAL_PROFILE = 'jobagent:get-local-profile';
+/** 报告页 → 扩展：请求写入扩展侧 canonical 档案（扩展与现有值合并后落 chrome.storage）。 */
+export const EXT_MSG_SET_LOCAL_PROFILE = 'jobagent:set-local-profile';
+
+export interface ExtGetLocalProfileMessage {
+  type: typeof EXT_MSG_GET_LOCAL_PROFILE;
+}
+export interface ExtSetLocalProfileMessage {
+  type: typeof EXT_MSG_SET_LOCAL_PROFILE;
+  value: LocalProfileFields;
+}
+export type ExtLocalProfileRequest = ExtGetLocalProfileMessage | ExtSetLocalProfileMessage;
+
+/** background 的统一响应：ok=false 表示扩展未装/出错；value 为合并后的 canonical 档案。 */
+export interface ExtLocalProfileResponse {
+  ok: boolean;
+  value?: LocalProfileFields;
+}
+
 /** 简历条目来源：profile=画像证据（refs 必须非空）；local=用户本地补填（refs 为空） */
 export const ResumeEntrySourceSchema = z.enum(['profile', 'local']);
 export type ResumeEntrySource = z.infer<typeof ResumeEntrySourceSchema>;
