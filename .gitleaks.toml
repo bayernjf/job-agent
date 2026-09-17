@@ -1,0 +1,32 @@
+# Gitleaks config: extend the built-in ruleset with narrowly scoped allowlists.
+#
+# `[extend] useDefault = true` is required — supplying a config file replaces the
+# default ruleset unless the defaults are explicitly extended, which would
+# silently disable every built-in rule.
+#
+# Every entry must justify why the flagged value is not a credential. Keep
+# entries narrow (a specific value shape), never a bare `paths` entry covering a
+# whole directory or file — that would hide any real secret in it.
+
+[extend]
+useDefault = true
+
+# A Chrome extension manifest carries a base64 SPKI *public* key in `key` (it
+# pins the unpacked extension ID). It is published, not secret, but its entropy
+# trips the `generic-api-key` rule.
+#
+# Allowlisting on the decoded public-key header keeps this non-secret by
+# construction: a private key is a different ASN.1 structure and does not start
+# with that header (2048-bit PKCS#8 private keys start with
+# `MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ`), so a private key
+# committed anywhere — including in the same manifest — is still reported.
+#
+# Regex-only on purpose (no `paths`): `condition = "AND"` is not honoured by
+# every gitleaks release (8.24.3, used by gitleaks-action@v3, silently falls
+# back to OR), which would widen a path-scoped entry into "any finding in this
+# file". Verified against gitleaks 8.24.3 and 8.30.1: the manifest `key` is
+# ignored while a planted `private-key` and `github-pat` are still reported.
+
+[allowlist]
+description = "Base64 RSA public key (Chrome extension manifest `key`), not a credential"
+regexes = ['^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A[A-Za-z0-9+/]+={0,2}$']
