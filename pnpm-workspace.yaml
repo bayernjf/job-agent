@@ -4,5 +4,15 @@ packages:
 
 onlyBuiltDependencies:
   - better-sqlite3
-  - '@embedded-postgres/darwin-arm64'
   - esbuild
+  # embedded-postgres ships per-platform binary packages whose install script
+  # unpacks the Postgres binaries; allowlist every platform in the lockfile so
+  # fresh installs (CI on linux, teammates on macOS/Windows) are not blocked.
+  - '@embedded-postgres/darwin-arm64'
+  - '@embedded-postgres/darwin-x64'
+  - '@embedded-postgres/linux-arm'
+  - '@embedded-postgres/linux-arm64'
+  - '@embedded-postgres/linux-ia32'
+  - '@embedded-postgres/linux-ppc64'
+  - '@embedded-postgres/linux-x64'
+  - '@embedded-postgres/windows-x64'

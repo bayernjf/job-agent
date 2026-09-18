@@ -107,7 +107,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 ### 迁移规范
 
 - 结构变更只通过 **`db/migrations/{sqlite,postgres}/NNN_verb_snake_case.sql`** 编号文件（两侧各一份、编号文件名对齐），规则（文件头、幂等、`COMMENT ON`、只追加不重写、回滚）见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。
-- W1 已落地：迁移器（按序应用）、`scripts/migrate-down`（回滚一步，无安全 down 则拒绝）、`migrations.test.ts`（干净库顺序加载/编号连续/关键表存在），实现见 `packages/storage`。**W3-6 已扩展为双方言**：`db/migrations/{sqlite,postgres}` 对称目录、双方言 schema/迁移文本一致性测试防漂移、`postgres-behavior.test.ts` 仅在 `DATABASE_TEST_URL` 存在时实跑（否则 skip）；新增/改表必须两侧各一份编号文件名对齐的迁移，`bash tools/check-migrations.sh` 会校验对齐。
+- W1 已落地：迁移器（按序应用）、`scripts/migrate-down`（回滚一步，无安全 down 则拒绝）、`migrations.test.ts`（干净库顺序加载/编号连续/关键表存在），实现见 `packages/storage`。**W3-6 已扩展为双方言**：`db/migrations/{sqlite,postgres}` 对称目录、双方言 schema/迁移文本一致性测试防漂移、`postgres-behavior.test.ts` 仅在 `DATABASE_TEST_URL` 存在时实跑（否则 skip）；CI 提供 `postgres:16-alpine` service 并注入该变量，双方言测试在流水线真实 PG 上实跑；新增/改表必须两侧各一份编号文件名对齐的迁移，`bash tools/check-migrations.sh` 会校验对齐。
 - M1 核心表：`profiles`（画像快照 JSONB + analyzerVersion + 时间窗）、`evidence`、`analysis_jobs`、`waitlist`；账号/认领头表 P1 再加（见 deferred）。
 - 画像存**快照**而非实时重算，避免源数据变化导致已分享结论漂移；优先存**证据指针与精简原始快照（带 ETag）**，不做无标注全量拷贝。
 

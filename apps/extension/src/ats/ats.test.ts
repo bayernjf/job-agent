@@ -228,6 +228,69 @@ describe('greenhouse summary → question_* mapping', () => {
     expect(written).toBe(0);
     expect(salary.value).toBe('');
   });
+
+  // 2026-09-18: SUMMARY_HINTS covers common real-world self-statement / supplement wording
+  function docWithQuestions(
+    questions: Array<{ id: string; label: string; kind?: 'textarea' | 'input' }>,
+  ): { doc: Document; fields: Record<string, { value: string }> } {
+    const fields: Record<string, { value: string }> = {};
+    const labelMap: Record<string, string> = {};
+    const textareas: unknown[] = [];
+    const inputs: unknown[] = [];
+    for (const q of questions) {
+      const field = {
+        id: q.id,
+        name: `job_application[answers][${q.id}]`,
+        value: '',
+        placeholder: '',
+        getAttribute: (attr: string) => (attr === 'id' ? q.id : null),
+        closest: () => null,
+        dispatchEvent: () => true,
+      };
+      fields[q.id] = field as unknown as { value: string };
+      labelMap[q.id] = q.label;
+      (q.kind === 'input' ? inputs : textareas).push(field);
+    }
+    const doc = {
+      querySelectorAll: (sel: string) => {
+        const out: unknown[] = [];
+        if (sel.includes('textarea')) out.push(...textareas);
+        if (sel.includes('input')) out.push(...inputs);
+        return out;
+      },
+      querySelector: (sel: string) => {
+        const m = sel.match(/^label\[for="([^"]+)"\]$/);
+        return m?.[1] && labelMap[m[1]] ? { textContent: labelMap[m[1]] } : null;
+      },
+    } as unknown as Document;
+    return { doc, fields };
+  }
+
+  it('writes summary into other self-statement / supplement style questions', () => {
+    const { doc, fields } = docWithQuestions([
+      { id: 'question_a', label: 'Anything else you would like us to know? *' },
+      { id: 'question_b', label: 'What makes you a great candidate for this role?' },
+      { id: 'question_c', label: 'Describe your background in your own words.' },
+    ]);
+    const written = greenhouseAdapter.fill(doc, fillValues);
+    // First document-order hint hit (anything else) receives the summary; others stay empty
+    expect(written).toBe(1);
+    expect(fields.question_a!.value).toBe('TypeScript 后端工程师，开源维护者。');
+    expect(fields.question_b!.value).toBe('');
+    expect(fields.question_c!.value).toBe('');
+  });
+
+  it('does not write summary into referral, link, authorization or years-of-experience questions', () => {
+    const { doc, fields } = docWithQuestions([
+      { id: 'question_a', label: 'How did you hear about this position?', kind: 'input' },
+      { id: 'question_b', label: 'Please share a link to your portfolio or website.', kind: 'input' },
+      { id: 'question_c', label: 'Are you legally authorized to work in the EU?', kind: 'input' },
+      { id: 'question_d', label: 'How many years of experience do you have?', kind: 'input' },
+    ]);
+    const written = greenhouseAdapter.fill(doc, fillValues);
+    expect(written).toBe(0);
+    for (const f of Object.values(fields)) expect(f.value).toBe('');
+  });
 });
 
 describe('lever summary → questions[*] mapping', () => {
