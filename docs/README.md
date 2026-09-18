@@ -7,7 +7,8 @@
 | 我想… | 看 |
 | --- | --- |
 | 知道现在做到哪、接下来做什么 | [../handoff.md](../handoff.md) ★ 交接必读 |
-| 回看已完成待办明细 / 旧变更流水 / 历史 Git 同步态（handoff 归档，只读） | [handoff-archive-2026-09-18.md](handoff-archive-2026-09-18.md) |
+| 回看已完成待办明细 / 旧变更流水 / 历史 Git 同步态（handoff 归档，只读） | [handoff-archive-2026-09-19.md](handoff-archive-2026-09-19.md)（item28 账号主脊 + item29 登录认领前端/认证清理）、[handoff-archive-2026-09-18.md](handoff-archive-2026-09-18.md)（item 1–27） |
+| 接 GitHub 登录 / 本人认领 / 会话与认领规则，或清理过期会话、闲置账号 | [API.md](API.md) §1.2（/auth/*、claim 端点与错误码）+ handoff item28/item29；CLI `jobagent auth cleanup` 见 [../AGENTS.md](../AGENTS.md) 常用命令 |
 | 理解产品初衷、要解决的根本问题 | [产品构想-以GitHub为桥梁的招聘系统.md](产品构想-以GitHub为桥梁的招聘系统.md) |
 | 看产品范围、功能 F1–F9、画像契约、指标与风险 | [PRD.md](PRD.md) ★ |
 | 回看"为什么从分析 GitHub 切入、MVP 如何收敛"的讨论过程 | [讨论记录-01-切入口与MVP收敛-20260910.md](讨论记录-01-切入口与MVP收敛-20260910.md) |

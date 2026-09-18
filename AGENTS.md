@@ -73,6 +73,8 @@ pnpm e2e:extension               # 扩展 E2E：--headless=new 加载 unpacked M
 pnpm --filter @jobagent/cli build && node apps/cli/dist/index.js resume build --profile <id|file> --job <jobId> --format md -o resume.md
 # 多岗位批量（P-R3）：--jobs id1,id2（逐岗含零命中降级）或全库 top --limit N；逐岗写 --out-dir（默认 resumes/，md|html）
 node apps/cli/dist/index.js resume batch --profile <id|file> --limit 5 --format md --out-dir resumes
+# 认证运维：物理清理过期/已撤销 auth_sessions（默认保留 24h）与无有效会话的未认领闲置 accounts（默认保留 30d），不触碰 profiles/evidence；生产 cron 调度随部署
+node apps/cli/dist/index.js auth cleanup [--retain-hours 24] [--account-retain-hours 720]
 # 在线生成等价端点：POST /resumes/build {profileId, jobId, local?, locale?, format?}（不入库，见 docs/API.md §3.4）；报告页深链 <locale>/report/<profileId>?resumeJob=<jobId>
 docker compose up -d             # Docker 运行时 smoke（SQLite；--profile with-pg 加 PG；需 GITHUB_TOKEN 给 worker）
 ```
@@ -108,7 +110,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 
 - 结构变更只通过 **`db/migrations/{sqlite,postgres}/NNN_verb_snake_case.sql`** 编号文件（两侧各一份、编号文件名对齐），规则（文件头、幂等、`COMMENT ON`、只追加不重写、回滚）见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。
 - W1 已落地：迁移器（按序应用）、`scripts/migrate-down`（回滚一步，无安全 down 则拒绝）、`migrations.test.ts`（干净库顺序加载/编号连续/关键表存在），实现见 `packages/storage`。**W3-6 已扩展为双方言**：`db/migrations/{sqlite,postgres}` 对称目录、双方言 schema/迁移文本一致性测试防漂移、`postgres-behavior.test.ts` 仅在 `DATABASE_TEST_URL` 存在时实跑（否则 skip）；CI 提供 `postgres:16-alpine` service 并注入该变量，双方言测试在流水线真实 PG 上实跑；新增/改表必须两侧各一份编号文件名对齐的迁移，`bash tools/check-migrations.sh` 会校验对齐。
-- M1 核心表：`profiles`（画像快照 JSONB + analyzerVersion + 时间窗）、`evidence`、`analysis_jobs`、`waitlist`；账号/认领头表 P1 再加（见 deferred）。
+- M1 核心表：`profiles`（画像快照 JSONB + analyzerVersion + 时间窗）、`evidence`、`analysis_jobs`、`waitlist`；演示模式 006–008（demo_sessions/demo_ip_windows 等）；账号主脊 010 `accounts`、011 `auth_sessions`（GitHub OAuth 登录 + 本人认领，2026-09-18 落地）。Gitee OAuth 账号仍缓做（见 deferred）。
 - 画像存**快照**而非实时重算，避免源数据变化导致已分享结论漂移；优先存**证据指针与精简原始快照（带 ETag）**，不做无标注全量拷贝。
 
 ## GitHub 采集与外部约束
