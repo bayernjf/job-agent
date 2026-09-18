@@ -2,10 +2,14 @@
  * Principal 解析与演示模式边缘工具（design-demo-mode-20260915 §7.1、§12）。
  * 薄 I/O + 纯解析：坏/过期 Cookie 静默降级 anonymous，便于单测。
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
-import type { Principal } from '@jobagent/shared';
-import type { IDemoSessionsRepository } from '@jobagent/storage';
+import { AUTH_SESSION_COOKIE, type Principal } from '@jobagent/shared';
+import type {
+  IAccountsRepository,
+  IAuthSessionsRepository,
+  IDemoSessionsRepository,
+} from '@jobagent/storage';
 
 export const DEMO_COOKIE = 'jobagent_demo';
 
@@ -84,4 +88,40 @@ export function hashIp(ip: string, salt: string): string {
 /** 不可猜的演示会话 id（同时是 Cookie 值）。 */
 export function generateSessionId(): string {
   return `demo-${randomBytes(32).toString('base64url')}`;
+}
+
+/** 账号内部稳定 id。 */
+export function generateAccountId(): string {
+  return `acc-${randomUUID()}`;
+}
+
+/** 不可猜的登录会话 token（同时是 jobagent_session Cookie 值）。 */
+export function generateAuthSessionToken(): string {
+  return `ses-${randomBytes(32).toString('base64url')}`;
+}
+
+/**
+ * 从 jobagent_session Cookie 解析登录用户 Principal。
+ * 无 Cookie / 会话过期或撤销 / 账号缺失均返回 null（调用方据此回退到 demo/匿名解析）。
+ */
+export async function resolveAuthPrincipal(
+  cookieHeader: string | undefined,
+  authSessions: IAuthSessionsRepository,
+  accounts: IAccountsRepository,
+  now: () => string,
+): Promise<Principal | null> {
+  const token = readCookie(cookieHeader, AUTH_SESSION_COOKIE);
+  if (!token) return null;
+  const session = await authSessions.getActive(token, now());
+  if (!session) return null;
+  const account = await accounts.getById(session.accountId);
+  if (!account) return null;
+  return {
+    kind: 'user',
+    accountId: account.id,
+    sessionId: session.id,
+    platform: account.platform,
+    login: account.login,
+    expiresAt: session.expiresAt,
+  };
 }
