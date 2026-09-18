@@ -13,6 +13,11 @@
  *   GET  /demo/me        — 当前演示身份与配额状态
  *   GET  /demo/presets   — 预置示例账号就绪情况（公开只读）
  *   POST /demo/exit      — 退出演示、清 Cookie
+ *   GET  /auth/github/login    — 跳转 GitHub 授权页（未配置 OAuth 时 501）
+ *   GET  /auth/github/callback — GitHub OAuth 回调，upsert 账号、建会话、写 HttpOnly Cookie
+ *   POST /auth/logout    — 撤销当前登录会话、清 Cookie
+ *   GET  /auth/me        — 当前登录身份（刻意不含 email/providerAccountId）
+ *   POST /profiles/:id/claim — 登录用户认领本人画像（平台登录名一致才放行）
  *   GET  /jobs/:id       — 查询任务状态（queued/running/succeeded/failed + stage + profileId）
  *   GET  /profiles/:id   — 查询画像快照（完整 AbilityProfile JSON）
  *   GET  /job-postings   — 岗位检索（P2-D 职位聚合消费侧）
@@ -46,8 +51,13 @@ import {
   ResumeLocaleSchema,
   AUTHENTICITY_STATUSES,
   DEMO_ERROR_CODES,
+  AUTH_ERROR_CODES,
+  AUTH_SESSION_COOKIE,
+  AUTH_STATE_COOKIE,
   type AbilityProfile,
+  type AuthMe,
   type AuthenticityStatus,
+  type ClaimResult,
   type DemoMe,
   type DemoPreset,
   type JobSource,
@@ -61,8 +71,10 @@ import {
   toEvidenceItems,
   APPLICATION_STATUSES,
   APPLICATION_ORIGINS,
+  type IAccountsRepository,
   type IAnalysisJobsRepository,
   type IApplicationsRepository,
+  type IAuthSessionsRepository,
   type IDemoSessionsRepository,
   type IProfilesRepository,
   type IJobPostingsRepository,
@@ -89,11 +101,19 @@ import {
   oneHourAgo,
   type DemoConfig,
 } from './demo-config.js';
+import { loadAuthConfig, type AuthConfig } from './auth-config.js';
+import type { AuthProvider, OAuthProfile } from './auth-provider.js';
+import { OAuthExchangeError } from './auth-provider.js';
+import { GithubAuthProvider, generateOAuthState, verifyOAuthState } from './github-auth.js';
 import {
   DEMO_COOKIE,
   clientIp,
+  generateAccountId,
+  generateAuthSessionToken,
   generateSessionId,
   hashIp,
+  readCookie,
+  resolveAuthPrincipal,
   resolvePrincipal,
 } from './principal.js';
 
@@ -106,6 +126,8 @@ export interface ApiRepos {
   evidence: IEvidenceRepository;
   demoSessions: IDemoSessionsRepository;
   applications: IApplicationsRepository;
+  accounts: IAccountsRepository;
+  authSessions: IAuthSessionsRepository;
 }
 
 export interface ApiDeps {
@@ -115,6 +137,14 @@ export interface ApiDeps {
   now?: () => string;
   /** 注入演示配置（测试用；默认从环境变量加载） */
   demoConfig?: DemoConfig;
+  /** 注入账号/OAuth 配置（测试用；默认从环境变量加载） */
+  authConfig?: AuthConfig;
+  /**
+   * GitHub OAuth provider。
+   * 不传（undefined）= 按 GITHUB_OAUTH_* env 自动构造（未配置则为 null，登录路由 501）；
+   * 显式传 null = 强制禁用；测试注入 FakeAuthProvider 走完整登录链路、不打网络。
+   */
+  githubAuthProvider?: AuthProvider | null;
   /**
    * 简历 LLM 润色 provider（设计 §7/§10 #4）。
    * 不传（undefined）= 按服务端 LLM_* 环境变量自动构造（无 LLM_API_KEY 则为 null，默认关闭走规则版）；
@@ -285,6 +315,36 @@ function demoCookieOptions(cfg: DemoConfig, nowIso: string) {
   };
 }
 
+/** 登录会话 Cookie（jobagent_session）统一属性；生产 HTTPS 才加 Secure。 */
+function authSessionCookieOptions(cfg: AuthConfig, nowIso: string) {
+  return {
+    httpOnly: true,
+    sameSite: 'Lax' as const,
+    path: '/',
+    secure: cfg.isProduction,
+    maxAge: Math.floor(cfg.sessionTtlMs / 1000),
+    expires: new Date(Date.parse(nowIso) + cfg.sessionTtlMs),
+  };
+}
+
+/** 临时 OAuth state Cookie：仅回调路径可读、10 分钟有效。 */
+function authStateCookieOptions(cfg: AuthConfig) {
+  return {
+    httpOnly: true,
+    sameSite: 'Lax' as const,
+    path: '/auth/github',
+    secure: cfg.isProduction,
+    maxAge: 600,
+  };
+}
+
+/** OAuth 回调基址：优先 AUTH_CALLBACK_BASE_URL，否则按当前请求 Origin/Host 推导。 */
+function oauthBaseOrigin(c: Context, cfg: AuthConfig): string {
+  if (cfg.callbackBaseUrl) return cfg.callbackBaseUrl;
+  const url = new URL(c.req.url);
+  return `${url.protocol}//${url.host}`;
+}
+
 function formatProfile(profile: StoredProfile) {
   return {
     id: profile.id,
@@ -323,6 +383,16 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     deps.resumePolish === undefined ? createResumePolishProviderFromEnv() : deps.resumePolish;
   // DEMO_IP_SALT 缺省时进程内随机盐（重启后历史 IP 窗口失效，仅本地/实验可接受）
   const effectiveSalt = cfg.ipSalt || randomBytes(16).toString('hex');
+  // 账号/OAuth（决策 #1-A/#6-A）：未配置 client id/secret 时 githubProvider=null，登录路由返回 501
+  const authCfg = deps.authConfig ?? loadAuthConfig();
+  const githubProvider: AuthProvider | null =
+    deps.githubAuthProvider === undefined
+      ? authCfg.github.configured
+        ? new GithubAuthProvider(authCfg.github.clientId, authCfg.github.clientSecret)
+        : null
+      : deps.githubAuthProvider;
+  // AUTH_STATE_SECRET 缺省时进程内随机（重启会使进行中的登录失效，仅本地/实验可接受，生产必须固定）
+  const effectiveStateSecret = authCfg.stateSecret || randomBytes(32).toString('hex');
 
   const app = new Hono<{ Variables: { principal: Principal } }>();
 
@@ -341,12 +411,21 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     }),
   );
 
-  // Principal 全局解析：每个请求解析一次演示身份，下游 handler 只读 c.get('principal')
+  // Principal 全局解析：优先登录用户（jobagent_session），否则演示会话，再否则匿名；
+  // 每个请求解析一次，下游 handler 只读 c.get('principal')。坏/过期 Cookie 静默降级。
   app.use('*', async (c, next) => {
-    c.set(
-      'principal',
-      await resolvePrincipal(c.req.header('Cookie'), repos.demoSessions, now),
+    const cookieHeader = c.req.header('Cookie');
+    const user = await resolveAuthPrincipal(
+      cookieHeader,
+      repos.authSessions,
+      repos.accounts,
+      now,
     );
+    if (user) {
+      c.set('principal', user);
+    } else {
+      c.set('principal', await resolvePrincipal(cookieHeader, repos.demoSessions, now));
+    }
     await next();
   });
 
@@ -445,6 +524,112 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     return c.json({ kind: 'anonymous' });
   });
 
+  // ── 账号登录（GitHub OAuth web flow，决策 #1-A/#6-A）─────────────────────
+
+  // GET /auth/github/login：写签名 state Cookie 并 302 到 GitHub 授权页（未配置 501）
+  app.get('/auth/github/login', (c) => {
+    if (!githubProvider) {
+      return c.json(
+        { error: 'GitHub OAuth is not configured', code: AUTH_ERROR_CODES.notConfigured },
+        501,
+      );
+    }
+    const redirectUri = `${oauthBaseOrigin(c, authCfg)}/auth/github/callback`;
+    const state = generateOAuthState(effectiveStateSecret);
+    setCookie(c, AUTH_STATE_COOKIE, state, authStateCookieOptions(authCfg));
+    return c.redirect(githubProvider.authorizeUrl(state, redirectUri), 302);
+  });
+
+  // GET /auth/github/callback：校验 state → 授权码换资料 → upsert 账号 → 建登录会话
+  app.get('/auth/github/callback', async (c) => {
+    if (!githubProvider) {
+      return c.json(
+        { error: 'GitHub OAuth is not configured', code: AUTH_ERROR_CODES.notConfigured },
+        501,
+      );
+    }
+    const query = c.req.query();
+    const cookieState = readCookie(c.req.header('Cookie'), AUTH_STATE_COOKIE);
+    if (
+      !query.state ||
+      !cookieState ||
+      query.state !== cookieState ||
+      !verifyOAuthState(query.state, effectiveStateSecret)
+    ) {
+      return c.json(
+        { error: 'invalid or missing OAuth state', code: AUTH_ERROR_CODES.invalidState },
+        400,
+      );
+    }
+    if (!query.code) {
+      return c.json(
+        { error: 'missing authorization code', code: AUTH_ERROR_CODES.invalidState },
+        400,
+      );
+    }
+    const redirectUri = `${oauthBaseOrigin(c, authCfg)}/auth/github/callback`;
+    let identity: OAuthProfile;
+    try {
+      identity = await githubProvider.exchangeCodeForProfile(query.code, redirectUri);
+    } catch (err) {
+      if (err instanceof OAuthExchangeError) {
+        // 任何授权码交换/取资料失败都按上游故障处理（502 Bad Gateway）
+        return c.json({ error: err.message, code: AUTH_ERROR_CODES.exchangeFailed }, 502);
+      }
+      throw err;
+    }
+
+    const account = await repos.accounts.upsertFromProvider({
+      id: generateAccountId(),
+      identity: {
+        platform: identity.platform,
+        providerAccountId: identity.providerAccountId,
+        login: identity.login,
+        name: identity.name ?? null,
+        email: identity.email ?? null,
+        avatarUrl: identity.avatarUrl ?? null,
+      },
+    });
+    const nowIso = now();
+    const expiresAt = new Date(Date.parse(nowIso) + authCfg.sessionTtlMs).toISOString();
+    const token = generateAuthSessionToken();
+    await repos.authSessions.create({ id: token, accountId: account.id, expiresAt });
+    setCookie(c, AUTH_SESSION_COOKIE, token, authSessionCookieOptions(authCfg, nowIso));
+    deleteCookie(c, AUTH_STATE_COOKIE, { path: '/auth/github' });
+    return c.redirect(authCfg.afterLoginRedirectUrl, 302);
+  });
+
+  // POST /auth/logout：撤销当前登录会话并清 Cookie（匿名调用为 no-op）
+  app.post('/auth/logout', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind === 'user') {
+      await repos.authSessions.revoke(principal.sessionId);
+    }
+    deleteCookie(c, AUTH_SESSION_COOKIE, { path: '/' });
+    return c.json({ ok: true });
+  });
+
+  // GET /auth/me：当前登录身份（刻意不含 email/providerAccountId）
+  app.get('/auth/me', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json({
+        kind: principal.kind === 'demo' ? 'demo' : 'anonymous',
+      } satisfies AuthMe);
+    }
+    const account = await repos.accounts.getById(principal.accountId);
+    return c.json({
+      kind: 'user',
+      accountId: principal.accountId,
+      platform: principal.platform,
+      login: principal.login,
+      name: account?.name ?? null,
+      avatarUrl: account?.avatarUrl ?? null,
+      claimedProfileId: account?.claimedProfileId ?? null,
+      expiresAt: principal.expiresAt,
+    } satisfies AuthMe);
+  });
+
   // POST /analyze：创建分析任务
   app.post('/analyze', async (c) => {
     let body: unknown;
@@ -491,8 +676,33 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       );
     }
     if (principal.kind === 'user') {
-      // 'user' 为账号里程碑预留，本期不会产生
-      return c.json({ error: 'accounts are not available yet' }, 501);
+      // 登录用户（决策 #1-A 主脊）：不占演示会话配额，active 去重后直接建分析任务。
+      const existingUserJob = await repos.jobs.latestActiveBySubject(platform, username);
+      if (existingUserJob) {
+        return c.json({
+          jobId: existingUserJob.id,
+          status: existingUserJob.status,
+          dedup: true,
+          message: 'An active analysis job already exists for this user.',
+        });
+      }
+      const userJobId = `job-${randomUUID()}`;
+      await repos.jobs.create({
+        id: userJobId,
+        subjectPlatform: platform,
+        subjectLogin: username,
+        requesterKind: 'user',
+        demoSessionId: null,
+      });
+      return c.json(
+        {
+          jobId: userJobId,
+          status: 'queued',
+          dedup: false,
+          message: 'Analysis job created. Poll GET /jobs/:id for status.',
+        },
+        201,
+      );
     }
 
     const sessionId = principal.sessionId;
@@ -639,6 +849,44 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     }
 
     return c.json(toExportableProfile(profile.snapshot));
+  });
+
+  // POST /profiles/:id/claim：登录用户认领"平台登录名与自己一致"的画像（决策 #1-A/#6-A）
+  app.post('/profiles/:id/claim', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json(
+        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
+        401,
+      );
+    }
+    const parsed = ProfileIdParamSchema.safeParse(c.req.param());
+    if (!parsed.success) return c.json({ error: 'invalid profile id' }, 400);
+
+    const profile = await repos.profiles.getById(parsed.data.id);
+    if (!profile) {
+      return c.json({ error: 'profile not found', code: AUTH_ERROR_CODES.profileNotFound }, 404);
+    }
+    if (profile.subjectPlatform !== principal.platform || profile.subjectLogin !== principal.login) {
+      return c.json(
+        {
+          error: 'profile does not belong to the authenticated account',
+          code: AUTH_ERROR_CODES.notProfileOwner,
+          subject: { platform: profile.subjectPlatform, login: profile.subjectLogin },
+        },
+        403,
+      );
+    }
+
+    await repos.profiles.markClaimed(profile.id);
+    const account = await repos.accounts.setClaimedProfile(principal.accountId, profile.id);
+    const result: ClaimResult = {
+      profileId: profile.id,
+      claimed: true,
+      subject: { platform: profile.subjectPlatform, login: profile.subjectLogin },
+      claimedProfileId: account?.claimedProfileId ?? profile.id,
+    };
+    return c.json(result);
   });
 
   // GET /profiles/:id/job-recommendations：画像技能 → 岗位匹配推荐（第一档①，报告页消费）
@@ -1036,7 +1284,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, GET /health`);
   });
 }
 

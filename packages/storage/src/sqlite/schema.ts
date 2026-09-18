@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * Drizzle 表定义——必须与 `db/migrations/sqlite/001_create_profiles.sql` 保持一致
@@ -291,3 +291,62 @@ export const applications = sqliteTable(
 
 export type ApplicationInsert = typeof applications.$inferInsert;
 export type ApplicationSelect = typeof applications.$inferSelect;
+
+/**
+ * accounts 表——OAuth 登录账号（迁移 010，决策 #1-A/#6-A）。
+ * 一个平台身份 (platform, provider_account_id) 唯一；claimed_profile_id 记录本人认领画像。
+ */
+export const accounts = sqliteTable(
+  'accounts',
+  {
+    id: text('id').primaryKey(),
+    platform: text('platform').notNull().default('github'),
+    providerAccountId: text('provider_account_id').notNull(),
+    login: text('login').notNull(),
+    name: text('name'),
+    email: text('email'),
+    avatarUrl: text('avatar_url'),
+    claimedProfileId: text('claimed_profile_id'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    uniqueIndex('idx_accounts_provider').on(table.platform, table.providerAccountId),
+    index('idx_accounts_platform_login').on(table.platform, table.login),
+    index('idx_accounts_claimed_profile').on(table.claimedProfileId),
+  ],
+);
+
+export type AccountInsert = typeof accounts.$inferInsert;
+export type AccountSelect = typeof accounts.$inferSelect;
+
+/**
+ * auth_sessions 表——登录用户的不透明服务端会话（迁移 011）。
+ * id 即 HttpOnly Cookie 值（ses-<32 随机字节>）；归属 accounts，支持登出/撤销/过期。
+ */
+export const authSessions = sqliteTable(
+  'auth_sessions',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    status: text('status').notNull().default('active'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    lastSeenAt: text('last_seen_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_auth_sessions_account').on(table.accountId),
+    index('idx_auth_sessions_expires').on(table.expiresAt),
+  ],
+);
+
+export type AuthSessionInsert = typeof authSessions.$inferInsert;
+export type AuthSessionSelect = typeof authSessions.$inferSelect;

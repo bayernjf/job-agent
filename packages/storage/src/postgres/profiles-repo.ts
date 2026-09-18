@@ -74,6 +74,13 @@ export class PgProfilesRepository implements IProfilesRepository {
       .where(eq(profilesTable.id, id));
   }
 
+  async markClaimed(id: string): Promise<void> {
+    await this.db
+      .update(profilesTable)
+      .set({ subjectClaimed: true, updatedAt: new Date().toISOString() })
+      .where(eq(profilesTable.id, id));
+  }
+
   async searchCandidates(
     query: CandidateSearchQuery,
   ): Promise<{ items: CandidateSummary[]; total: number }> {

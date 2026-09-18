@@ -25,6 +25,8 @@ export type {
 } from './repositories/job-posting.js';
 export type { IDemoSessionsRepository } from './repositories/demo-sessions.js';
 export type { IApplicationsRepository } from './repositories/applications.js';
+export type { IAccountsRepository } from './repositories/accounts.js';
+export type { IAuthSessionsRepository } from './repositories/auth-sessions.js';
 
 // 实体领域类型
 export type {
@@ -66,6 +68,16 @@ export type {
   NewApplication,
   ApplicationPatch,
 } from './entities/application.js';
+export type {
+  StoredAccount,
+  ProviderIdentity,
+  NewAccount,
+} from './entities/account.js';
+export type {
+  AuthSessionStatus,
+  StoredAuthSession,
+  NewAuthSession,
+} from './entities/auth-session.js';
 export type {
   CandidateSkill,
   CandidateSummary,
