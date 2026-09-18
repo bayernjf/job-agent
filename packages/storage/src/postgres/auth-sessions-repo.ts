@@ -1,4 +1,4 @@
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, lt, or } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   toStoredAuthSession,
@@ -35,5 +35,20 @@ export class PgAuthSessionsRepository implements IAuthSessionsRepository {
 
   async revoke(id: string): Promise<void> {
     await this.db.update(t).set({ status: 'revoked' }).where(eq(t.id, id));
+  }
+
+  async purgeExpired(nowIso: string, retainMs: number): Promise<number> {
+    const retainCutoff = new Date(Date.parse(nowIso) - retainMs).toISOString();
+    // 删除：已撤销且最后使用早于保留期，或过期时间早于保留期截止（与 demo 清理同构）
+    const rows = await this.db
+      .delete(t)
+      .where(
+        or(
+          and(eq(t.status, 'revoked'), lt(t.lastSeenAt, retainCutoff)),
+          lt(t.expiresAt, retainCutoff),
+        ),
+      )
+      .returning({ id: t.id });
+    return rows.length;
   }
 }
