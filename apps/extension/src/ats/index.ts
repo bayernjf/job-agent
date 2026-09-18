@@ -153,6 +153,16 @@ export const SUMMARY_HINTS = [
   'introduce',
   'relevant experience',
   'additional',
+  // 真实 Greenhouse/Lever 自定义问题常见措辞（2026-09-18 扩充，均为自我陈述/动机/补充类
+  // 自由文本；刻意不含薪资、授权、引流（how did you hear）、链接（portfolio/LinkedIn URL）、
+  // 年限数字类问题，避免把 summary 写进短答案/URL 字段）
+  'anything else',
+  'what makes you',
+  'describe yourself',
+  'about you',
+  'your background',
+  'describe your experience',
+  'in your own words',
 ];
 
 /** 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder 关键字匹配（含 iframe 与 shadow DOM） */

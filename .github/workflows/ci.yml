@@ -7,6 +7,24 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # Real Postgres for packages/storage postgres-behavior.test.ts; when
+    # DATABASE_TEST_URL is set the tests use it instead of booting embedded PG.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: jobagent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d jobagent_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_TEST_URL: postgres://postgres:postgres@localhost:5432/jobagent_test
     steps:
       # Major versions pinned to node24-based actions to clear the Node 20
       # deprecation warnings (verified action.yml inputs stay compatible).
