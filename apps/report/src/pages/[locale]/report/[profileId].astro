@@ -5,6 +5,7 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
+import ClaimProfile from '../../../components/ClaimProfile.tsx';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
 import ApplicationTracker from '../../../components/ApplicationTracker.tsx';
@@ -113,6 +114,31 @@ const applicationStatusLabels = {
             {t('report.fusion.badge')}
           </span>
         )}
+        {
+          /* 已认领：SSR 直接渲染本人已验证徽章，无需 JS */
+          profile.subject.claimed && (
+            <span class="ja-badge ja-badge--owner" data-testid="claimed-badge">
+              {t('report.claimedBadge')}
+            </span>
+          )
+        }
+        {
+          /* 未认领且非融合画像：挂载认领 island，仅登录且主体一致的本人会看到 CTA */
+          !profile.subject.claimed && !isFusedProfile && (
+            <ClaimProfile
+              client:load
+              apiBase={apiBase}
+              profileId={profileId!}
+              subjectPlatform={profile.subject.platform}
+              subjectLogin={profile.subject.login}
+              ctaLabel={t('report.claim.cta')}
+              claimingLabel={t('report.claim.claiming')}
+              claimedBadge={t('report.claimedBadge')}
+              errorLabel={t('report.claim.error')}
+              hintLabel={t('report.claim.hint')}
+            />
+          )
+        }
         <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
         <a
           class="ja-btn ja-btn--ghost view-toggle"
