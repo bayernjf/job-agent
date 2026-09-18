@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fuseInputs } from './fusion.js';
+import { fuseInputs, CROSS_SOURCE_THREAD_WINDOW_MS } from './fusion.js';
 import { buildInput } from './test-input.js';
 import {
   repoRef,
@@ -300,6 +300,28 @@ describe('fuseInputs cross-source PR/issue thread dedup', () => {
     const remapped = input.pullRequests.find((p) => p.number === 9);
     expect(remapped?.repoNameWithOwner).toBe('alice/proj');
     expectEvidenceResolvable(input);
+  });
+
+  it('pins the locked 7-day window: exactly at the boundary merges, 1s beyond keeps both', () => {
+    const at = '2026-05-10T00:00:00Z';
+    const atBoundary = new Date(Date.parse(at) + CROSS_SOURCE_THREAD_WINDOW_MS).toISOString();
+    const beyond = new Date(Date.parse(at) + CROSS_SOURCE_THREAD_WINDOW_MS + 1000).toISOString();
+
+    // 恰好等于窗口（判据 <=）：判为同帖、去重
+    const edge = buildMirrorPair({
+      primaryPrs: [pr(3, 'alice/proj', 'Fix login bug', { createdAt: at })],
+      secondaryPrs: [pr(9, 'aliceg/proj', 'fix login bug', { createdAt: atBoundary })],
+    });
+    expect(fuseInputs(edge.primary, edge.secondary).report.dedupedPullRequestCount).toBe(1);
+
+    // 超出窗口仅 1 秒：保守保留两帖
+    const beyondPair = buildMirrorPair({
+      primaryPrs: [pr(3, 'alice/proj', 'Fix login bug', { createdAt: at })],
+      secondaryPrs: [pr(9, 'aliceg/proj', 'fix login bug', { createdAt: beyond })],
+    });
+    const beyondRes = fuseInputs(beyondPair.primary, beyondPair.secondary);
+    expect(beyondRes.report.dedupedPullRequestCount).toBe(0);
+    expect(beyondRes.report.counts.fusedPullRequests).toBe(2);
   });
 
   it('keeps same-title PRs in repos that are not confirmed mirrors', () => {
