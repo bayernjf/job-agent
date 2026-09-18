@@ -7,6 +7,7 @@ import '../styles/tokens.css';
 import '../styles/global.css';
 import { createTranslator, type Locale, type MessageKey } from '../i18n/index.js';
 import DemoBanner from '../components/DemoBanner.tsx';
+import AccountMenu from '../components/AccountMenu.tsx';
 
 interface Props {
   locale: Locale;
@@ -57,6 +58,13 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
         <nav class="nav">
           <a href={`/${locale}/`}>{t('nav.home')}</a>
           <a href={`/${locale}/recruit`}>{t('nav.recruit')}</a>
+          <AccountMenu
+            client:load
+            apiBase={apiBase}
+            signInLabel={t('account.signInGithub')}
+            signOutLabel={t('account.signOut')}
+            menuLabel={t('account.menuLabel')}
+          />
           <a href={langSwitchPath} class="lang-switch">{t('nav.language')}</a>
         </nav>
       </div>

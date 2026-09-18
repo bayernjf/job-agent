@@ -119,6 +119,84 @@ h4 { font-size: var(--ja-text-lg); }
   border: 1px solid var(--ja-color-accent);
 }
 
+/* 本人已验证（登录账号与画像主体一致并完成认领） */
+.ja-badge--owner {
+  background: var(--ja-color-success-bg);
+  color: var(--ja-color-success-fg);
+  border: 1px solid var(--ja-color-success);
+}
+
+/* ─── AccountMenu / ClaimProfile 认证 islands ─────────────────────── */
+
+.account-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+}
+
+.account-menu__identity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.account-menu__avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--ja-color-border);
+  object-fit: cover;
+}
+
+.account-menu__login {
+  color: var(--ja-color-fg);
+  font-weight: 500;
+}
+
+.account-menu__signin {
+  padding: var(--ja-space-2) var(--ja-space-4);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+  white-space: nowrap;
+}
+
+.account-menu__signin:hover {
+  border-color: var(--ja-color-accent);
+  color: var(--ja-color-accent);
+  text-decoration: none;
+}
+
+.account-menu__logout {
+  padding: var(--ja-space-1) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+}
+
+.account-menu__logout:hover {
+  border-color: var(--ja-color-danger);
+  color: var(--ja-color-danger);
+}
+
+.claim-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  flex-wrap: wrap;
+}
+
+.claim-profile__error {
+  color: var(--ja-color-danger);
+  font-size: var(--ja-text-sm);
+}
+
 /* 双源融合去重统计行（报告页头部，仅融合画像且确有合并/去重时出现） */
 .ja-fusion-stats {
   display: flex;
