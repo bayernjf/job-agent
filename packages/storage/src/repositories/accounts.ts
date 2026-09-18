@@ -17,4 +17,10 @@ export interface IAccountsRepository {
   ): Promise<StoredAccount | undefined>;
   /** 记录本人认领的画像快照 id（accounts.claimed_profile_id）；账号不存在返回 undefined */
   setClaimedProfile(accountId: string, profileId: string): Promise<StoredAccount | undefined>;
+  /**
+   * 运维清理（cron 用）：删除从未认领画像（claimed_profile_id 为空）、updated_at 早于
+   * 保留期截止，且当前没有任何未过期会话的账号，返回删除行数。再次登录会按
+   * (platform, provider_account_id) 重新 upsert，故删除无认领记录的闲置账号不丢数据。
+   */
+  deleteUnclaimed(nowIso: string, retainMs: number): Promise<number>;
 }

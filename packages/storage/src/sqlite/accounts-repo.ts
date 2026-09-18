@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredAccount,
@@ -88,5 +88,22 @@ export class SqliteAccountsRepository implements IAccountsRepository {
       .where(eq(t.id, accountId))
       .run();
     return this.getById(accountId);
+  }
+
+  async deleteUnclaimed(nowIso: string, retainMs: number): Promise<number> {
+    const retainCutoff = new Date(Date.parse(nowIso) - retainMs).toISOString();
+    // 仅删：从未认领、超过保留期未更新、且当前没有未过期会话的账号。
+    // 物理表/列名 sqlite 与 postgres 一致（snake_case），故此 NOT EXISTS 子句双方言通用。
+    const result = this.db
+      .delete(t)
+      .where(
+        and(
+          isNull(t.claimedProfileId),
+          lt(t.updatedAt, retainCutoff),
+          sql`not exists (select 1 from auth_sessions where auth_sessions.account_id = ${t.id} and auth_sessions.expires_at >= ${nowIso})`,
+        ),
+      )
+      .run();
+    return result.changes ?? 0;
   }
 }
