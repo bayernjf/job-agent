@@ -23,6 +23,8 @@ export interface IProfilesRepository {
     subjectLogin: string,
   ): Promise<StoredProfile | undefined>;
   updateStatus(id: string, status: ProfileStatus): Promise<void>;
+  /** 把画像标记为本人已认领（subject_claimed=true，幂等）；不存在时静默无操作 */
+  markClaimed(id: string): Promise<void>;
   /**
    * 企业侧人才检索（筛选工作台 P-A/P-B）：仓储只按 status='complete' 粗筛并给出
    * 扫描上限，技能/真实性/置信度/关键词的精细过滤与排序由 entities 的纯函数完成
