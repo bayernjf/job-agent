@@ -9,6 +9,7 @@
 - **缓做事项放 [docs/deferred-items.md](docs/deferred-items.md)**：每条必须带**触发条件**；触发后移回 handoff 待办并标「已重启日期」。
 - **[docs/README.md](docs/README.md)** 是"我想做 X 该看哪个"的场景导航，不重复维护清单（清单以 handoff 为准）。
 - **新增任何文档后**：在 handoff「Project documents」登记一行（含一句话定位），并在 docs/README 补场景入口。
+- **handoff 归档惯例（2026-09-18 起执行，对齐 agent-world）**：主文件只保留「项目当前状态 + 活跃任务 + 最近 5 条变更 + 文档索引」；编号待办标 ✅ 后，详细过程（实现步骤 / commit 链 / 踩坑 / 验证数据）整块滚入 `docs/handoff-archive-YYYY-MM-DD.md`，主文件只留**一行结论 + commit hash**；真正在推进 / 还在跑的活跃项保留详情；归档文件冻结只读、不再追加。首个归档 [docs/handoff-archive-2026-09-18.md](docs/handoff-archive-2026-09-18.md)。
 - 文档状态：现行 / 历史 / 归档；实施进度统一记 handoff。
 
 ## 项目概览

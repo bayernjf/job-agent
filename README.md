@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成 + 工程化补全完成，P1·Chrome 扩展进入稳定期，P2 职位聚合与画像↔岗位匹配端到端接线完成，Gitee 第二证据源 G-A+G-B 全链路打通，Docker 容器运行时（SQLite + Postgres 双轨）与 GitHub/Gitee/岗位推荐/报告页四条真实端到端均已验证，Worker 弹性增强（not_found 不重试 + 僵尸任务回收）**：pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2 均已落地**；真实性规则 0.3 经真实双源 26 账号回归复核零误伤（holilayet 修复确认），**活跃待办 item 1–27 全部关闭**，剩余推进项均卡外部条件/拍板（部署形态与生产域名、demo 配额数值、账号体系方向、LLM 厂商、#14 合规，见 handoff）。pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -11,9 +11,12 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 ## 当前阶段
 
 - **M1 完成**：W1 持久化层（SQLite/Postgres 双方言）→ W2 采集+分析内核+CLI → W3 服务化 → W4 报告+分享 → 端到端联调 + 真实性三轮校准（26 账号 0 误报/0 漏报）。MVP 最小闭环：输入 GitHub 或 Gitee 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
-- **P1 进行中**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过，summary→自定义问题映射完成，面板/悬浮球已补齐中英 i18n 与共享设计 token、岗位匹配面板已接线，[试用安装指南](apps/extension/INSTALL.md) 已就绪，待真实用户装扩展试用。
-- **P2 完成**：五源岗位库（RemoteOK/Remotive/Greenhouse/Lever/HN）入库与增量同步、纯函数 `matchJobs` 技能匹配、API 岗位搜索/匹配端点、画像↔岗位推荐端到端接线（报告页推荐岛 + 扩展匹配面板）均落地。
-- **Gitee 第二证据源完成**：`packages/gitee-source`（v5 REST-only）+ CLI/API/Worker/报告页/扩展全链路平台切换，海内外同步。
+- **P1 稳定期**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过（Greenhouse + Lever 真实写入），summary→自定义问题映射、中英 i18n + 共享设计 token、岗位匹配面板、浏览器级 E2E、本地档案跨端自动同步（chrome.storage + externally_connectable）均已落地；[试用安装指南](apps/extension/INSTALL.md) 已就绪，待真实用户装扩展试用与 Workday 直渲染租户端到端。
+- **P2 完成**：五源岗位库（RemoteOK/Remotive/Greenhouse/Lever/HN）入库与增量同步、纯函数 `matchJobs` 技能匹配、API 岗位搜索/匹配端点、画像↔岗位推荐端到端接线（报告页推荐岛 + 扩展匹配面板，可解释 fieldScores/skillReasons）均落地。
+- **Gitee 第二证据源完成**：`packages/gitee-source`（v5 REST-only）+ CLI/API/Worker/报告页/扩展全链路平台切换，海内外同步；双源在线融合画像（`platform=all`，镜像去重 + 跨源同帖去重 7 天窗 + 融合作业 demo 配额扣 2）与 FusionReport 去重统计已落地。
+- **演示模式完成**：免注册「试用演示」以 HttpOnly Cookie 临时身份进入真实产品，三态身份 + 会话/IP/Worker 三道配额闸 + 三态预置示例，代码全落地；剩余配额数值与部署形态待拍板。
+- **岗位定向简历完成（P-R1/P-R2/P-R3 可闭环子项）**：在画像范围内按岗位生成匹配度高的简历（no-fabrication，每条断言挂证据、只重排不造事实），CLI build/batch + API + 报告页 ResumeBuilder + 扩展深链 + OpenAI 兼容可选润色（默认关闭）；真实 LLM 需自配 `LLM_*`。
+- **招聘痛点解决方案批次 1+2 完成**：企业核验视图（`?view=recruiter`）、面试准备包导出、画像库人才检索（`/candidates`）、企业筛选工作台（`/recruit`）、投递记录追踪（applications）均已落地；批次 3 依赖外部条件。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
 
 ## 文档导航
@@ -28,6 +31,9 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/产品构想-以GitHub为桥梁的招聘系统.md](docs/产品构想-以GitHub为桥梁的招聘系统.md) | 最初的产品构想与市场背景 |
 | [docs/deferred-items.md](docs/deferred-items.md) | 缓做/低优事项 + 重启触发条件 |
 | [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) | AI 求职赛道市场格局、代表性产品画像与跟进建议 |
+| [docs/市场调研-招聘市场痛点-20260916.md](docs/市场调研-招聘市场痛点-20260916.md) | 中国招聘市场企业/求职者双方痛点调研（量化 + 对产品启示） |
+| [docs/设计-痛点解决方案-20260916.md](docs/设计-痛点解决方案-20260916.md) | 12 项痛点→解决方案对位 + 实施批次（批 1+2 已落地） |
+| [docs/技术栈总览-分层架构-20260916.md](docs/技术栈总览-分层架构-20260916.md) | 当前技术栈分层一页总览（五层 + 各包职责 + 数据流） |
 | [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) | 用户可见文案双语与 i18n 落地约定 |
 | [docs/design-tokens-20260910.md](docs/design-tokens-20260910.md) | 设计 token 体系与禁 hex 约定 |
 | [docs/design-storage-dual-dialect-20260911.md](docs/design-storage-dual-dialect-20260911.md) | 持久化层 SQLite/Postgres 双方言适配设计 |
@@ -36,6 +42,11 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/design-match-wiring-20260914.md](docs/design-match-wiring-20260914.md) | 画像↔岗位匹配端到端接线设计 |
 | [docs/design-gitee-source-spike-20260914.md](docs/design-gitee-source-spike-20260914.md) | Gitee 证据源 Spike：v5 可行性与差异结论 |
 | [docs/design-gitee-source-20260914.md](docs/design-gitee-source-20260914.md) | Gitee 第二证据源实现设计（REST 采集/映射/CLI--platform） |
+| [docs/design-behavior-diversity-20260915.md](docs/design-behavior-diversity-20260915.md) | 行为多样性信号（双源 events 聚合 + narrow_activity_scope，规则 0.2） |
+| [docs/design-skill-extraction-20260915.md](docs/design-skill-extraction-20260915.md) | 技能标签精确提取（技术词典/多信号/词边界/深度置信度） |
+| [docs/design-cross-source-fusion-20260915.md](docs/design-cross-source-fusion-20260915.md) | 跨源镜像去重与双源融合（fuseInputs/在线 platform=all/7 天窗） |
+| [docs/design-demo-mode-20260915.md](docs/design-demo-mode-20260915.md) | 演示模式设计（三态身份/配额闸/预置示例/迁移 006–008） |
+| [docs/design-targeted-resume-20260915.md](docs/design-targeted-resume-20260915.md) | 岗位定向简历设计（no-fabrication/polish 安全层/本地档案 canonical） |
 | [docs/design-extension-match-ui-20260914.md](docs/design-extension-match-ui-20260914.md) | 扩展面板岗位匹配 UI 设计 |
 | [docs/design-extension-e2e-20260914.md](docs/design-extension-e2e-20260914.md) | 扩展浏览器级 E2E 设计 |
 | [docs/API.md](docs/API.md) | HTTP API 接口文档（analyze/jobs/profiles/health） |
