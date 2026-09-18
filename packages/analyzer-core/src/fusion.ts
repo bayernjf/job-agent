@@ -42,8 +42,10 @@ function maxIso(a: string | null | undefined, b: string | null | undefined): str
 /**
  * 跨源同帖判定的最大创建时间差（7 天）。镜像同步通常近实时，但手动镜像/批量导入可能延迟，
  * 且两平台时间戳存在时区/精度差异；超出该窗口即使标题相同也视为不同帖（保守，不错并）。
+ *
+ * 阈值已于 2026-09-18 拍板锁定为 7 天（导出供测试钉住边界，改动需同步设计文档与回归）。
  */
-const CROSS_SOURCE_THREAD_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const CROSS_SOURCE_THREAD_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** 规范化帖标题：去首尾空白、折叠连续空白、小写（跨平台可能有大小写/空白差异） */
 function normalizeThreadTitle(title: string): string {
