@@ -17,6 +17,7 @@ function makeConfig(overrides: Partial<DemoConfig> = {}): DemoConfig {
   return {
     sessionTtlMs: 7 * 24 * 60 * 60 * 1000,
     analyzeQuota: 3,
+    fusionAnalyzeCost: 2,
     sessionRatePerHour: 5,
     analyzeRatePerHour: 10,
     matchRatePerHour: 60,
@@ -99,6 +100,7 @@ async function analyze(
   username: string,
   cookie?: string,
   ip = '1.2.3.4',
+  platform?: 'github' | 'gitee' | 'all',
 ) {
   return app.request('/analyze', {
     method: 'POST',
@@ -106,7 +108,7 @@ async function analyze(
       'x-forwarded-for': ip,
       ...(cookie ? { Cookie: cookie } : {}),
     }),
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ username, ...(platform ? { platform } : {}) }),
   });
 }
 
@@ -399,5 +401,37 @@ describe('POST /analyze demo gating', () => {
     // create 抛错后名额已补偿回 0，可再次使用
     const session = await base.demoSessions.getActive(sid, NOW);
     expect(session!.analyzeCount).toBe(0);
+  });
+
+  it('(9) charges fusionAnalyzeCost (2) for a platform=all job and denies a second all within quota', async () => {
+    const repos = await freshRepos();
+    const app = await makeApp(repos, { analyzeRatePerHour: 1000 });
+    const cookie = await startSession(app);
+    const sid = sessionIdOf(cookie);
+
+    // 第一次 all：扣 2，remaining 1，job 主体平台为 all
+    const r1 = await analyze(app, 'fz-a', cookie, '1.2.3.4', 'all');
+    expect(r1.status).toBe(201);
+    expect(((await r1.json()) as any).demo.remaining).toBe(1);
+    expect((await repos.demoSessions.getActive(sid, NOW))!.analyzeCount).toBe(2);
+
+    // 第二次 all（不同用户名以避开 active 去重）：剩 1 不足 cost 2 → 429，不建 job、不部分扣
+    const r2 = await analyze(app, 'fz-b', cookie, '1.2.3.4', 'all');
+    expect(r2.status).toBe(429);
+    const body = (await r2.json()) as any;
+    expect(body.code).toBe(DEMO_ERROR_CODES.quotaExceeded);
+    expect(body.analyzeUsed).toBe(2);
+    expect((await repos.demoSessions.getActive(sid, NOW))!.analyzeCount).toBe(2);
+
+    // 单源 github cost 1 仍可放行：扣到 3、remaining 0
+    const r3 = await analyze(app, 'fz-c', cookie, '1.2.3.4', 'github');
+    expect(r3.status).toBe(201);
+    expect(((await r3.json()) as any).demo.remaining).toBe(0);
+    expect((await repos.demoSessions.getActive(sid, NOW))!.analyzeCount).toBe(3);
+
+    // 仅两次成功请求建了 job（第一次 all + 单源），被拒的第二次 all 未建
+    const queued = await repos.jobs.listQueued();
+    expect(queued.map((j) => j.subjectLogin).sort()).toEqual(['fz-a', 'fz-c']);
+    expect(queued.find((j) => j.subjectLogin === 'fz-a')!.subjectPlatform).toBe('all');
   });
 });

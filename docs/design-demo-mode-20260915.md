@@ -1,6 +1,6 @@
 # 演示模式（Demo Mode）设计：免注册临时身份、真实产品体验与配额闸
 
-> 状态：现行（2026-09-15，设计已落文档；**实现尚未启动，需先拍板 §16 的开放项**）
+> 状态：现行（2026-09-15 设计；**步骤 1–9 已全部落地，见 handoff item17**）。§16 开放项中仅「`platform=all` 融合作业配额权重」已于 2026-09-18 拍板落地（默认扣 2，见 §3.1/§13/§16）；其余配额数值、TTL、部署形态、预置账号仍为可配建议默认，待上线前拍板。
 > 关联：[deferred-items.md](deferred-items.md) 平台与工程线「账号体系 / 本人认领头表」、[design-storage-dual-dialect-20260911.md](design-storage-dual-dialect-20260911.md)、[API.md](API.md)、[design-i18n-20260910.md](design-i18n-20260910.md)、[design-tokens-20260910.md](design-tokens-20260910.md)
 
 ## 0. 背景、目标与非目标
@@ -104,20 +104,21 @@ export type Principal =
 ### 3.1 第一道：会话级原子扣减（硬配额）
 
 - 每个 `demo_sessions` 行有 `analyze_count`，建议上限 **3 次/会话**（数值待拍板，§16-#1）。
-- 扣减必须是**单条条件 UPDATE**，看影响行数判定是否拿到名额，**严禁 select-then-update**（两个并发请求会同时读到旧值而双超）：
+- **扣减权重（2026-09-18 拍板落地）**：单源 github/gitee 一次作业 `cost=1`；`platform=all` 一次作业双源采集、约 2x 外部配额成本，`cost=fusionAnalyzeCost`（默认 **2**，env `DEMO_FUSION_QUOTA_COST`，positiveInt 最小 1）。API `/analyze` 据 `platform==='all'` 算出 `analyzeCost` 传入扣减与补偿。IP 速率滑窗仍按请求数计 1（防刷的是请求频次，与成本无关）；Worker 并发闸不按 cost（`all` 只是一个 job 占一个并发槽）。
+- 扣减必须是**单条条件 UPDATE**，看影响行数判定是否拿到名额，**严禁 select-then-update**（两个并发请求会同时读到旧值而双超）。WHERE 用 `analyze_count + :cost <= :quota`，**剩余额度不足 cost 时整单不匹配（影响 0 行），杜绝部分扣减导致的超用**：
 
   ```sql
-  -- 语义（双方言实现见 §5.4）：
+  -- 语义（双方言实现见 §5.4；:cost 单源=1、融合=fusionAnalyzeCost 默认 2）：
   UPDATE demo_sessions
-     SET analyze_count = analyze_count + 1, last_seen_at = :now
+     SET analyze_count = analyze_count + :cost, last_seen_at = :now
    WHERE id = :id
      AND status = 'active'
      AND expires_at > :now
-     AND analyze_count < :quota;
-  -- 影响 1 行 → 拿到名额；影响 0 行 → 会话不存在/过期/已退出/配额用尽
+     AND analyze_count + :cost <= :quota;
+  -- 影响 1 行 → 拿到名额；影响 0 行 → 会话不存在/过期/已退出/剩余额度不足 cost（整单拒绝，不部分扣）
   ```
 
-- 画像缓存命中（无新分析）**不扣减**；active job 去重命中（`latestActiveBySubject` 返回已有 queued/running 任务）也**不扣减**（没有产生第二个采集任务）。扣减成功后若后续 `jobs.create` 抛错，需在 catch 中回滚名额（仓储补 `releaseAnalyzeSlot`，仅用于这种"扣了但没建成任务"的补偿路径；正常分析失败重试不回名额，因为外部配额可能已被 Worker 消耗）。
+- 画像缓存命中（无新分析）**不扣减**；active job 去重命中（`latestActiveBySubject` 返回已有 queued/running 任务）也**不扣减**（没有产生第二个采集任务）。扣减成功后若后续 `jobs.create` 抛错，需在 catch 中按**原 cost** 回滚名额（`releaseAnalyzeSlot(id, cost)`，SQLite `MAX(...-cost,0)` / PG `GREATEST(...-cost,0)` 兜底不为负；仅用于这种"扣了但没建成任务"的补偿路径；正常分析失败重试不回名额，因为外部配额可能已被 Worker 消耗）。
 
 ### 3.2 第二道：IP 滑动窗口（防清 Cookie 重置）
 
@@ -334,10 +335,14 @@ export interface IDemoSessionsRepository {
   create(session: NewDemoSession): Promise<void>;
   /** Active 且未过期才返回；status=exited/过期返回 undefined */
   getActive(id: string, now: string): Promise<StoredDemoSession | undefined>;
-  /** 原子名额扣减（§3.1）：单条条件 UPDATE，禁止 select-then-update */
-  acquireAnalyzeSlot(id: string, quota: number, now: string): Promise<DemoSlotResult>;
-  /** 仅用于"扣名额成功但 jobs.create 失败"的补偿；正常分析失败不回补 */
-  releaseAnalyzeSlot(id: string): Promise<void>;
+  /**
+   * 原子名额扣减（§3.1）：单条条件 UPDATE，禁止 select-then-update。
+   * cost 为本次作业扣减权重（默认 1；platform=all 双源融合约 2x 成本传 fusionAnalyzeCost=2）。
+   * 剩余额度不足 cost 时整单拒绝（影响 0 行、不部分扣减），返回 quota_exceeded。
+   */
+  acquireAnalyzeSlot(id: string, quota: number, now: string, cost?: number): Promise<DemoSlotResult>;
+  /** 仅用于"扣名额成功但 jobs.create 失败"的补偿，按原 cost 回退（不为负）；正常分析失败不回补 */
+  releaseAnalyzeSlot(id: string, cost?: number): Promise<void>;
   /** match 计数 +1（观测用，无上限判定） */
   incrementMatch(id: string, now: string): Promise<void>;
   /** 刷新 last_seen_at 并追加 analyzed_logins（去重，上限保留最近 20 条） */
@@ -361,15 +366,17 @@ export interface IDemoSessionsRepository {
 - SQLite（`sqlite/demo-sessions-repo.ts`，better-sqlite3 同步 Drizzle，风格照现有 `claimNext`）：
 
   ```ts
+  // cost 默认 1；platform=all 传 fusionAnalyzeCost（默认 2）
   const result = this.db
     .update(demoSessions)
-    .set({ analyzeCount: sql`${demoSessions.analyzeCount} + 1`, lastSeenAt: now })
+    .set({ analyzeCount: sql`${demoSessions.analyzeCount} + ${cost}`, lastSeenAt: now })
     .where(
       and(
         eq(demoSessions.id, id),
         eq(demoSessions.status, 'active'),
         gt(demoSessions.expiresAt, now),
-        sql`${demoSessions.analyzeCount} < ${quota}`,
+        // 剩余额度不足 cost 时整单不匹配（影响 0 行），杜绝部分扣减
+        sql`${demoSessions.analyzeCount} + ${cost} <= ${quota}`,
       ),
     )
     .run();
@@ -378,15 +385,16 @@ export interface IDemoSessionsRepository {
     // → { granted: true, used: row.analyzeCount, remaining: quota - row.analyzeCount }
   }
   // changes=0 时再查一次行，区分 not_found / expired / exited / quota_exceeded（错误码精度需要）
+  // 补偿回退：SET analyze_count = MAX(analyze_count - :cost, 0)
   ```
 
-- Postgres（`postgres/demo-sessions-repo.ts`，async Drizzle）：用 `.returning()` 一条语句拿到扣后值，无需两次往返：
+- Postgres（`postgres/demo-sessions-repo.ts`，async Drizzle）：用 `.returning()` 一条语句拿到扣后值，无需两次往返；WHERE 同上去 `analyze_count + :cost <= :quota`，补偿回退用 `GREATEST(analyze_count - :cost, 0)`：
 
   ```ts
   const rows = await this.db
     .update(demoSessions)
-    .set({ analyzeCount: sql`${demoSessions.analyzeCount} + 1`, lastSeenAt: now })
-    .where(/* 同上四个条件 */)
+    .set({ analyzeCount: sql`${demoSessions.analyzeCount} + ${cost}`, lastSeenAt: now })
+    .where(/* 同上四个条件，含 analyze_count + :cost <= :quota */)
     .returning({ analyzeCount: demoSessions.analyzeCount, status: demoSessions.status, expiresAt: demoSessions.expiresAt });
   // rows.length === 1 → granted；0 → 补查区分拒绝原因
   ```
@@ -546,15 +554,16 @@ app.use('*', async (c, next) => {
       → 200 { jobId, dedup:true }（不扣任何配额，直接复用）
    b. IP analyze 窗口：countRateEvents(ip,'analyze',1h) ≥ 阈值
       → 429 DEMO_RATE_LIMITED
-   c. acquireAnalyzeSlot(sessionId, quota, now)
-      granted=false(quota_exceeded) → 429 DEMO_QUOTA_EXCEEDED
+   c. analyzeCost = (platform === 'all' ? cfg.fusionAnalyzeCost : 1)  // 融合默认 2、单源 1（2026-09-18 拍板）
+      acquireAnalyzeSlot(sessionId, quota, now, analyzeCost)
+      granted=false(quota_exceeded，含剩余不足 cost 的整单拒绝) → 429 DEMO_QUOTA_EXCEEDED
         body: { code, analyzeQuota, analyzeUsed, analyzeRemaining:0, resetAt: session.expiresAt }
-   d. insertRateEvent(ip,'analyze')
+   d. insertRateEvent(ip,'analyze')   // IP 窗按请求计 1，不按 cost
    e. try jobs.create({
         id: 'job-'+randomUUID(), subjectPlatform: platform, subjectLogin: username,
         requesterKind: 'demo', demoSessionId: sessionId,
       })
-      catch → releaseAnalyzeSlot(sessionId) 补偿后 500
+      catch → releaseAnalyzeSlot(sessionId, analyzeCost) 按原权重补偿后 500
    f. demoSessions.touch(sessionId, now, {platform, login: username})
    g. 201 { jobId, status:'queued', dedup:false, demo:{ remaining } }
 ```
@@ -741,6 +750,7 @@ demo.establishing        正在进入演示… / Starting demo…
 | --- | --- | --- |
 | `DEMO_SESSION_TTL_MS` | `604800000`（7 天，建议值待拍板） | 演示会话有效期，同时是 Cookie Max-Age |
 | `DEMO_ANALYZE_QUOTA` | `3`（建议值待拍板） | 单会话可触发的新分析次数 |
+| `DEMO_FUSION_QUOTA_COST` | `2`（**2026-09-18 已拍板**） | 一次 `platform=all` 双源融合作业扣减的配额权重（约 2x 采集成本）；单源 github/gitee 扣 1；positiveInt、最小 1，剩余不足整单拒绝 |
 | `DEMO_SESSION_RATE_PER_HOUR` | `5` | 单 IP 每小时建会话上限 |
 | `DEMO_ANALYZE_RATE_PER_HOUR` | `10` | 单 IP 每小时触发分析上限 |
 | `DEMO_MATCH_RATE_PER_HOUR` | `60` | match 只读计算的 IP 兜底窗口 |
@@ -761,7 +771,7 @@ demo.establishing        正在进入演示… / Starting demo…
 
 **storage（+约 14，双方言）**：
 - create → getActive 命中；exited/过期/不存在 → undefined；
-- acquireAnalyzeSlot：第 1..N 次 granted 且 used/remaining 正确；第 N+1 次 quota_exceeded；过期/exited 拒绝；release 补偿后可再拿；
+- acquireAnalyzeSlot：第 1..N 次 granted 且 used/remaining 正确；第 N+1 次 quota_exceeded；过期/exited 拒绝；release 补偿后可再拿；**融合作业 cost=2：扣 2 后剩余 1 时第二次 all 整单拒绝（used 不变、不部分扣）、单源 cost=1 仍放行，release(id,cost) 按原权重回退且不为负**；
 - **并发语义**：同一 session 同步连续调用 N+2 次（SQLite 事务串行）只放行 N 次（这是防超用的核心回归）；PG 行为套件用 Promise 并发验证；
 - rate events 窗口计数随 cutoff 变化；purge 两方法行数正确；
 - countRunningByRequesterKind；analysis_jobs 新列默认 'public'/null；claimNext 正式优先排序（构造 public+demo 混合队列断言认领顺序）；
@@ -772,7 +782,7 @@ demo.establishing        正在进入演示… / Starting demo…
 - GET /demo/me：无 Cookie anonymous、坏 Cookie 降级、有效 Cookie 回配额；
 - POST /demo/exit：置 exited + 清 Cookie；匿名 no-op；
 - GET /demo/presets：ready/缺失混合；
-- POST /analyze：①匿名缓存命中放行不建会话；②匿名缓存未命中 403 DEMO_REQUIRED；③demo 缓存命中不扣次数（acquire 零调用）；④active 去重不扣次数；⑤demo 配额内 201 且 job 带 requesterKind/demoSessionId、touch 被调；⑥第 N+1 次 429 带 resetAt；⑦IP analyze 窗 429；⑧create 抛错时名额补偿释放；
+- POST /analyze：①匿名缓存命中放行不建会话；②匿名缓存未命中 403 DEMO_REQUIRED；③demo 缓存命中不扣次数（acquire 零调用）；④active 去重不扣次数；⑤demo 配额内 201 且 job 带 requesterKind/demoSessionId、touch 被调；⑥第 N+1 次 429 带 resetAt；⑦IP analyze 窗 429；⑧create 抛错时名额补偿释放；⑨**`platform=all` 按 fusionAnalyzeCost=2 扣减（首次 all 后 remaining=1，第二次 all 429 且不部分扣、不建 job，单源 github cost=1 仍放行）**；
 - 既有全部端点测试保持绿（新列默认值保证不破坏）。
 
 **worker（+约 4）**：cap 内正常跑；cap 满 resetToQueued + 退避；public 插队优先于 demo；processJob 对 demo/public 行为一致（回归）。
@@ -812,6 +822,7 @@ demo.establishing        正在进入演示… / Starting demo…
 | 3 | 会话 TTL | 7 天（足够回访、短于滥用窗口）；cleanup 保留期 24h | Cookie Max-Age、demo_sessions.expires_at |
 | 4 | 部署形态：同域反代（A）还是跨子域（B） | **A 同域反代**（Cookie 最简、不碰 CORS 凭证问题）；现状 API `origin:'*'` 与凭证 Cookie 不兼容，必须在上线前拍板 | §7.6 Cookie Domain、CORS_ALLOW_ORIGINS、前端 credentials、TRUST_PROXY |
 | 5 | 3 个预置示例账号具体选谁 | 从第三轮校准 26 账号中选结论稳定的 likely/mixed/suspicious 各一；suspicious 候选可能被封/改名，seed 时复跑验证、只展示 ready 项；**不在设计阶段写死** | `DEMO_PRESET_LOGINS`/代码常量、seed 清单 |
+| 6 | `platform=all` 融合作业的配额权重 | ✅ **已拍板 2026-09-18：一次扣 2**（单源 github/gitee 扣 1；约 2x 采集成本）。env `DEMO_FUSION_QUOTA_COST`（默认 2、最小 1），剩余不足整单拒绝、不部分扣，`jobs.create` 失败按原权重补偿；IP 窗按请求计 1、Worker 并发闸不按 cost | demo-config `fusionAnalyzeCost`、§3.1/§5.4、storage 双方言仓储、API `/analyze`、[design-cross-source-fusion §8.5/§8.7](design-cross-source-fusion-20260915.md) |
 
 拍板方式：在本表把选定值标注为"已拍板（日期）"，再按 §15 启动实现；未拍板字段在代码中一律走 demo-config 的可配置默认，不出现隐藏假设。
 

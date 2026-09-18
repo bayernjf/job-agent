@@ -76,6 +76,37 @@ describe('SqliteDemoSessionsRepository', () => {
     expect(stored!.analyzeCount).toBe(3);
   });
 
+  it('charges a weighted cost for fused jobs and never partially deducts', async () => {
+    const repo = freshRepo();
+    await repo.create(makeSession('s1', T0));
+    const quota = 3;
+
+    // 一次 platform=all 融合作业按 cost 2 扣减：used 2、remaining 1
+    const first = await repo.acquireAnalyzeSlot('s1', quota, T0, 2);
+    expect(first).toEqual({ granted: true, used: 2, remaining: 1 });
+
+    // 剩余 1 不足 cost 2：整单拒绝（quota_exceeded），不部分扣减，used 仍为 2
+    const denied = await repo.acquireAnalyzeSlot('s1', quota, T0, 2);
+    expect(denied.granted).toBe(false);
+    if (!denied.granted) {
+      expect(denied.reason).toBe('quota_exceeded');
+      expect(denied.used).toBe(2);
+    }
+    expect((await repo.getActive('s1', T0))!.analyzeCount).toBe(2);
+
+    // 单源作业 cost 1 仍可放行：used 3、remaining 0
+    const single = await repo.acquireAnalyzeSlot('s1', quota, T0, 1);
+    expect(single).toEqual({ granted: true, used: 3, remaining: 0 });
+
+    // 补偿按原 cost 回退（先退融合的 2、再退单源的 1），超额补偿不会变成负数
+    await repo.releaseAnalyzeSlot('s1', 2);
+    expect((await repo.getActive('s1', T0))!.analyzeCount).toBe(1);
+    await repo.releaseAnalyzeSlot('s1', 1);
+    expect((await repo.getActive('s1', T0))!.analyzeCount).toBe(0);
+    await repo.releaseAnalyzeSlot('s1', 2);
+    expect((await repo.getActive('s1', T0))!.analyzeCount).toBe(0);
+  });
+
   it('reports precise deny reasons for unknown, exited and expired', async () => {
     const repo = freshRepo();
     const missing = await repo.acquireAnalyzeSlot('nope', 3, T0);
