@@ -338,7 +338,7 @@ export function matchScoreTier(score: number, matchedSkillCount: number): MatchS
  * 演示模式契约（2026-09-15，对应 docs/design-demo-mode-20260915.md）。
  *
  * 三态请求身份：anonymous 匿名访客 / demo 免注册临时演示会话 / user 正式用户。
- * 'user' 仅为未来账号体系（OAuth/认领，当前缓做）预留，本期没有任何代码路径产生它。
+ * 'user' 自账号里程碑（2026-09-18，决策 #1-A/#6-A）起由平台 OAuth 登录会话产生。
  */
 export const REQUESTER_KINDS = ['anonymous', 'demo', 'user'] as const;
 export const RequesterKindSchema = z.enum(REQUESTER_KINDS);
@@ -351,7 +351,8 @@ export type DemoRateKind = z.infer<typeof DemoRateKindSchema>;
 
 /**
  * 三态 Principal（API 边缘中间件解析一次，下游 handler 只读，不各自解析 Cookie）。
- * 坏/过期 Cookie 静默降级为 anonymous；sessionId 即 Cookie 值、也是 demo_sessions 主键。
+ * 坏/过期 Cookie 静默降级为 anonymous；demo 的 sessionId 即 Cookie 值、也是 demo_sessions 主键；
+ * user 的 sessionId 是 auth_sessions 主键（不透明会话 Cookie jobagent_session 的值）。
  */
 export type Principal =
   | { kind: 'anonymous' }
@@ -362,7 +363,14 @@ export type Principal =
       matchCount: number; // match 观测计数（默认无硬配额）
       expiresAt: string; // ISO8601
     }
-  | { kind: 'user'; userId: string }; // reserved for accounts milestone, never produced today
+  | {
+      kind: 'user'; // 正式登录用户（2026-09-18 起由 OAuth 会话产生）
+      accountId: string; // accounts.id
+      sessionId: string; // auth_sessions.id（不透明会话 token）
+      platform: SupportedPlatform; // 登录平台（首期 github）
+      login: string; // 平台登录名
+      expiresAt: string; // ISO8601
+    };
 
 /** GET /demo/me 响应体：anonymous 只回 kind；demo 另带配额状态 */
 export const DemoMeSchema = z.object({
@@ -392,6 +400,55 @@ export const DEMO_ERROR_CODES = {
   rateLimited: 'DEMO_RATE_LIMITED', // 429：IP 滑动窗口超限
 } as const;
 export type DemoErrorCode = (typeof DEMO_ERROR_CODES)[keyof typeof DEMO_ERROR_CODES];
+
+// ─── 账号体系 / 本人 OAuth 认领（2026-09-18，决策 #1-A / #6-A）────────────
+//
+// 正式用户经平台 OAuth（首期 GitHub web application flow）登录，服务端存不透明会话
+// （auth_sessions，HttpOnly Cookie jobagent_session）。登录后可把"主体 platform/login
+// 与本人一致"的画像快照标记为已认领（profiles.subject_claimed=true）。未授权访问他人
+// 画像仅给公开轻预览的"授权分级闸"为后续一刀，本期先落地登录 + 本人认领。
+// 最小化 PII：对外身份响应不回 email / 平台数字 id，仅回登录名、展示名、头像与认领画像。
+
+/** 认证会话 Cookie 名（HttpOnly、不透明 token = auth_sessions 主键） */
+export const AUTH_SESSION_COOKIE = 'jobagent_session';
+/** OAuth state 临时 Cookie 名（防 CSRF，回调校验后立即清除） */
+export const AUTH_STATE_COOKIE = 'jobagent_oauth_state';
+
+/** GET /auth/me 响应体：anonymous 只回 kind；user 回账号非敏感字段 */
+export const AuthMeSchema = z.object({
+  kind: RequesterKindSchema,
+  accountId: z.string().optional(), // 仅 kind='user'
+  platform: PlatformSchema.optional(),
+  login: z.string().optional(),
+  name: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
+  claimedProfileId: z.string().nullable().optional(),
+  expiresAt: z.string().optional(),
+});
+export type AuthMe = z.infer<typeof AuthMeSchema>;
+
+/** POST /profiles/:id/claim 响应体：认领成功后回画像主体与认领标记 */
+export const ClaimResultSchema = z.object({
+  profileId: z.string().min(1),
+  claimed: z.literal(true),
+  subject: z.object({
+    platform: PlatformSchema,
+    login: z.string().min(1),
+  }),
+  claimedProfileId: z.string().nullable(),
+});
+export type ClaimResult = z.infer<typeof ClaimResultSchema>;
+
+/** 账号体系结构化错误码（前后端共用单一事实源） */
+export const AUTH_ERROR_CODES = {
+  authRequired: 'AUTH_REQUIRED', // 401：未登录却调用需登录端点
+  notConfigured: 'AUTH_NOT_CONFIGURED', // 501：服务端未配置该平台 OAuth 凭证
+  invalidState: 'AUTH_INVALID_STATE', // 400：OAuth state 缺失/不匹配（可能 CSRF）
+  exchangeFailed: 'AUTH_EXCHANGE_FAILED', // 502：用授权码换 token / 取用户资料失败
+  profileNotFound: 'AUTH_PROFILE_NOT_FOUND', // 404：认领的画像不存在
+  notProfileOwner: 'AUTH_NOT_PROFILE_OWNER', // 403：画像主体 platform/login 与登录账号不一致
+} as const;
+export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CODES];
 
 // ─── 岗位定向简历（2026-09-15，对应 docs/design-targeted-resume-20260915.md）────────
 //
