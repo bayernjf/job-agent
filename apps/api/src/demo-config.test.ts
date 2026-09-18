@@ -7,6 +7,7 @@ describe('loadDemoConfig', () => {
     const cfg = loadDemoConfig({});
     expect(cfg.sessionTtlMs).toBe(DEMO_DEFAULTS.sessionTtlMs);
     expect(cfg.analyzeQuota).toBe(3);
+    expect(cfg.fusionAnalyzeCost).toBe(2);
     expect(cfg.sessionRatePerHour).toBe(5);
     expect(cfg.analyzeRatePerHour).toBe(10);
     expect(cfg.matchRatePerHour).toBe(60);
@@ -22,6 +23,7 @@ describe('loadDemoConfig', () => {
   it('parses valid overrides', () => {
     const cfg = loadDemoConfig({
       DEMO_ANALYZE_QUOTA: '7',
+      DEMO_FUSION_QUOTA_COST: '3',
       TRUST_PROXY: 'true',
       NODE_ENV: 'production',
       DEMO_IP_SALT: 'salt-x',
@@ -29,6 +31,7 @@ describe('loadDemoConfig', () => {
       CORS_ALLOW_ORIGINS: 'https://a.example.com, https://b.example.com ',
     });
     expect(cfg.analyzeQuota).toBe(7);
+    expect(cfg.fusionAnalyzeCost).toBe(3);
     expect(cfg.trustProxy).toBe(true);
     expect(cfg.isProduction).toBe(true);
     expect(cfg.ipSalt).toBe('salt-x');
@@ -42,9 +45,14 @@ describe('loadDemoConfig', () => {
 
   it('falls back to default and warns on invalid integers', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const cfg = loadDemoConfig({ DEMO_ANALYZE_QUOTA: 'not-a-number', DEMO_MAX_CONCURRENT: '-3' });
+    const cfg = loadDemoConfig({
+      DEMO_ANALYZE_QUOTA: 'not-a-number',
+      DEMO_MAX_CONCURRENT: '-3',
+      DEMO_FUSION_QUOTA_COST: '0', // 权重最小为 1，0 非法
+    });
     expect(cfg.analyzeQuota).toBe(DEMO_DEFAULTS.analyzeQuota);
     expect(cfg.maxConcurrent).toBe(DEMO_DEFAULTS.maxConcurrent);
+    expect(cfg.fusionAnalyzeCost).toBe(DEMO_DEFAULTS.fusionAnalyzeCost);
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });

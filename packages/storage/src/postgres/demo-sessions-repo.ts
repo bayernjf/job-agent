@@ -43,11 +43,11 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
     return rows[0] ? toStoredDemoSession(rows[0]) : undefined;
   }
 
-  async acquireAnalyzeSlot(id: string, quota: number, now: string): Promise<DemoSlotResult> {
+  async acquireAnalyzeSlot(id: string, quota: number, now: string, cost = 1): Promise<DemoSlotResult> {
     const rows = await this.db
       .update(demoSessions)
       .set({
-        analyzeCount: sql`${demoSessions.analyzeCount} + 1`,
+        analyzeCount: sql`${demoSessions.analyzeCount} + ${cost}`,
         lastSeenAt: now,
       })
       .where(
@@ -55,7 +55,8 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
           eq(demoSessions.id, id),
           eq(demoSessions.status, 'active'),
           gt(demoSessions.expiresAt, now),
-          sql`${demoSessions.analyzeCount} < ${quota}`,
+          // 剩余额度不足 cost 时整单不匹配（影响 0 行），杜绝部分扣减导致的超用
+          sql`${demoSessions.analyzeCount} + ${cost} <= ${quota}`,
         ),
       )
       .returning({
@@ -86,10 +87,10 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
     return { granted: false, reason: 'quota_exceeded', used: stored.analyzeCount };
   }
 
-  async releaseAnalyzeSlot(id: string): Promise<void> {
+  async releaseAnalyzeSlot(id: string, cost = 1): Promise<void> {
     await this.db
       .update(demoSessions)
-      .set({ analyzeCount: sql`GREATEST(${demoSessions.analyzeCount} - 1, 0)` })
+      .set({ analyzeCount: sql`GREATEST(${demoSessions.analyzeCount} - ${cost}, 0)` })
       .where(eq(demoSessions.id, id));
   }
 
