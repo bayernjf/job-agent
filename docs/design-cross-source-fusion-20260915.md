@@ -2,7 +2,7 @@
 
 > 日期：2026-09-15（B-5 内核 + CLI）／2026-09-16（在线融合，见 §8）　状态：现行
 > 范围：① B-5：新增 `packages/analyzer-core` 纯函数 + CLI 最小入口（不改 shared 契约、不改规则版本）；② **§8（2026-09-16 落地）**：把同一融合能力接入在线 API/Worker，`POST /analyze platform=all` 一次作业采双源、融合成一张画像。
-> 关联：deferred #12「跨源 GitHub/Gitee 镜像项目去重、多源融合画像」。去重内核 + CLI 最小融合 + **在线多源融合**均已落地；跨源 PR/issue 同帖去重、Gitee OAuth、认证态精确限频仍缓做。
+> 关联：deferred #12「跨源 GitHub/Gitee 镜像项目去重、多源融合画像」。去重内核 + CLI 最小融合 + **在线多源融合**（§8）+ **跨源 PR/issue 同帖去重**（§8.7，7 天窗 2026-09-18 拍板锁定）+ FusionReport 随快照持久化（item23）均已落地；`platform=all` 融合作业按 2x 扣演示配额（§8.5，2026-09-18 落地）。仍缓做：Gitee OAuth 认领、认证态精确限频、跨源 L2 内容比对。
 
 ## 1. 背景与问题
 
@@ -26,7 +26,7 @@ B-5 提供一个**纯函数**把两份 `AnalyzerInput` 融合为一份去重后�
 
 - ~~**不做在线 API/Worker 多源融合**~~ **已于 2026-09-16 重启落地，见 §8**（一个 job 采双源、融合一张画像；成本翻倍与降级语义见 §8.3/§8.6）。
 - 不新增 shared `PlatformSchema` 枚举值（融合画像 `options.platform` 取主源 `github`）；不改 `AbilityProfile`/`AnalyzerInput` 字段结构；融合报告只随 CLI `meta` 输出，不进持久化画像。
-- 不做跨源 PR/Issue 的"同帖去重"（两平台编号空间不同、无法可靠判定 Gitee issue 是否从 GitHub 同步，保守保留为真实跨平台活动）。
+- ~~不做跨源 PR/Issue 的"同帖去重"~~ **已于 2026-09-17 重启落地（item22，见 §8.7）**：仅在已确认强镜像配对仓内、同类型（PR/issue 分键空间、绝不跨类型）、标题规范化相同、创建时间差 ≤7 天窗时保守一对一去重；非镜像仓/窗外/标题不同仍保留为真实跨平台活动。
 - 不做 LLM 语义判重、不做仓库内容比对（那需要 L2 clone）。
 - `batch` 暂不支持 `--platform all`（双源请求翻倍，融合主要服务单账号深度画像）。
 
@@ -149,17 +149,28 @@ CLI：`index.test.ts` 加 `--platform all` 双 fake source 融合出画像、`ba
 
 - `budgetUsed`：两源 Record 同 key 累加（`graphqlPoints` 仅 GitHub 有；`restCalls` 两源相加），反映真实翻倍消耗。
 - `missing`：主源原样 + 辅源每项加 `gitee:` 前缀后并集去重；404 降级追加 `gitee:account_not_found`。
-- `FusionReport`（镜像数/去重 commit 数）本批**只写 Worker 日志，不持久化**（沿用 §2 非目标，避免为元数据加迁移列）。在报告页展示"融合了哪些源/去重了多少镜像"的明细与双源徽标，登记 deferred，触发条件＝需要在 UI 展示融合来源（届时加持久化 fusion 元数据列）。
+- ~~`FusionReport`（镜像数/去重 commit 数）只写 Worker 日志、不持久化~~ **已于 2026-09-17 落地持久化（item23，零迁移）**：`FusionReport` 从 analyzer 内部类型提升为 shared Zod 契约（`MirrorPair/SuspectedMirror/FusionCounts/FusionReport`），`AbilityProfile` 新增**可选** `fusion` 节随不可变画像快照落库（单源画像缺省、旧快照仍可解析），精简投影 `ExportableProfile` 刻意不带；Worker `all` 双源成功时传入、Gitee 404 降级不带，CLI 导出 JSON 同样带；报告页融合画像头部在双源徽标下展示去重统计行（镜像合并仓 / 去重 commit·PR·issue，全 0 或单源不渲染）。
 
 ### 8.5 前端与配额
 
 - 报告首页 `AnalyzeForm` 平台切换由 2 项变 3 项，新增 i18n `home.platform.all`（中「GitHub + Gitee（融合）」、英「GitHub + Gitee (fused)」）；`all` 的用户名正则用 Gitee 宽松超集（允许下划线/中划线）；提交 body `platform:'all'`，轮询/跳转逻辑不变。
 - demo `touch` 的 `analyzedLogins.platform` 仅接受 github/gitee，`all` 作业记主源 `'github'`。
 - 范围限定：融合的用户入口仅**报告首页** `AnalyzeForm`；Chrome 扩展面板自带的平台切换本批保持 github/gitee 两键（扩展主流程是消费画像/一键填充，不在 ATS 域发起双源分析）。API 已接受 `all`，扩展未来需要时无需改后端即可加入口。
-- demo 会话分析配额仍按"触发一次分析"计 1（不按平台请求数）；`all` 平台请求成本约 2x，未来成本敏感再做权重（deferred）。
+- demo 会话分析配额按**作业成本权重**扣减（2026-09-18 拍板落地）：单源 github/gitee 一次作业扣 1；`platform=all` 双源采集约 2x 成本，一次作业扣 **`fusionAnalyzeCost`（默认 2，env `DEMO_FUSION_QUOTA_COST`，positiveInt 最小 1）**。扣减仍走会话级单条条件 UPDATE，WHERE 改为 `analyze_count + cost <= quota`——**剩余额度不足 cost 时整单拒绝（影响 0 行、不部分扣减）**；`jobs.create` 失败的补偿 `releaseAnalyzeSlot(id, cost)` 按原权重回退（MAX/GREATEST 兜底不为负）。IP 速率滑窗仍按请求数计 1（防刷的是请求频次，与成本无关）；Worker demo 并发闸不按 cost（`all` 只是一个 job 占一个并发槽）。零迁移、零 shared 契约改动。
 
 ### 8.6 测试点
 
 - Worker：①`all` 双源成功——共享 oid 镜像被去重、画像 `subject_platform='all'`、snapshot 主源 github、budget 两源累加、missing 并集；②Gitee 404 降级——画像 `subject_platform='github'`、`missing` 含 `gitee:account_not_found`、作业 succeeded、不抛错；③Gitee `api_error`——上抛、作业保持 running 可重试。
 - API：demo 会话 `POST /analyze {platform:'all'}` 建出 `subject_platform='all'` 的 job；`all` 请求命中 `'all'` 融合画像缓存直接返回。
 - 前端：i18n 中英 key 对齐（既有一致性测试守护）+ 真实浏览器点第三按钮确认提交 `all`。单源 github/gitee 路径零回归。
+
+### 8.7 跨源 PR/issue 同帖去重与 7 天窗（2026-09-17 落地 item22；窗口 2026-09-18 拍板锁定）
+
+手动镜像的同一 PR/issue 会在两源各一份，若不处理会被双计。判定刻意保守，沿用镜像"弱判据只报告不合并"的口径：
+
+- **前提**：仅在 `detectMirrors` 已确认的**强镜像配对仓内**才考虑同帖去重；非镜像仓即使标题完全相同也不去重。
+- **键空间**：PR 与 issue 分两个独立键空间，**绝不跨类型**（同号/同题的 PR 与 issue 是两回事）。
+- **同帖判据（三者全满足）**：同类型 + 标题规范化（trim + 折叠连续空白 + 小写）完全相同 + 创建时间差 ≤ `CROSS_SOURCE_THREAD_WINDOW_MS`。
+- **时间窗 2026-09-18 拍板锁定为 7 天**：`CROSS_SOURCE_THREAD_WINDOW_MS = 7*24*60*60*1000`，判据为 `<=`（恰好 7 天仍合并）。镜像同步通常近实时，7 天用于容忍手动镜像/批量导入延迟与两平台时间戳的时区/精度差异；窗外即使标题相同也保守视为两个不同帖（不错并）。常量已 `export`，边界用例「恰好=7 天合并、超 1 秒保留两帖」把阈值钉成契约；**改窗口必须同步本节与回归**。
+- **处理**：保留主源版本、丢弃辅源重复帖；辅源原始 evidenceId 收入 `droppedSecondaryEvidenceIds` 并在 evidence 融合段跳过（无悬空证据）；consumed keys 保证一条主源帖最多消一条辅源帖（第二条命中保守保留）。
+- `FusionReport` 新增 `dedupedPullRequestCount`/`dedupedIssueCount` 计数（随 item23 的持久化进画像快照 `fusion` 节）。

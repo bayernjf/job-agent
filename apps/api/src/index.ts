@@ -530,11 +530,14 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       }
     }
 
-    // 第一道闸：会话级原子扣减（单条条件 UPDATE，严禁 select-then-update）
+    // 第一道闸：会话级原子扣减（单条条件 UPDATE，严禁 select-then-update）。
+    // platform=all 一次作业双源采集、约 2x 成本，按 fusionAnalyzeCost 扣减（默认 2）；单源扣 1。
+    const analyzeCost = platform === 'all' ? cfg.fusionAnalyzeCost : 1;
     const slot = await repos.demoSessions.acquireAnalyzeSlot(
       sessionId,
       cfg.analyzeQuota,
       nowIso,
+      analyzeCost,
     );
     if (!slot.granted) {
       if (slot.reason === 'quota_exceeded') {
@@ -569,7 +572,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
         demoSessionId: sessionId,
       });
     } catch (err) {
-      await repos.demoSessions.releaseAnalyzeSlot(sessionId);
+      await repos.demoSessions.releaseAnalyzeSlot(sessionId, analyzeCost);
       throw err;
     }
     // all 融合作业主体在主源 GitHub，demo 观测的 analyzedLogins 平台仅接受 github/gitee，故归到 github。

@@ -20,7 +20,7 @@ JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项�
 - 后端：Hono + Zod；分析任务由独立 Worker 消费
 - 数据库：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（**Drizzle 与方言差异只允许出现在 `packages/storage` 内部**，业务只依赖统一 async 仓储接口与 `createStorage()` 工厂、按 `DB_DRIVER` 切换，见下；MVP 不引入 Redis）
 - GitHub 采集：官方 Octokit，GraphQL 批量优先、REST 补；生产用 GitHub App
-- Gitee 采集（第二证据源，2026-09-14 G-A+G-B 落地）：官方 v5 **REST-only（无 GraphQL）**，匿名可读公开数据、`GITEE_TOKEN` 可选仅提额；产出与 GitHub 一致的证据源无关 `AnalyzerInput`，CLI `--platform gitee` 与在线链路（API `platform` 枚举、Worker 多源路由、报告页/扩展平台切换 UI）均已打通；events 行为流（方案 A 补近期 PushEvent 提交）与行为多样性弱信号（方案 B：双源聚合源无关 `BehaviorEventSummary`、analyzer 新增 `narrow_activity_scope`、规则版本 0.1→0.2）均已于 2026-09-15 落地；跨源镜像去重、多源融合画像、Gitee OAuth、认证精确限频仍缓做（见 deferred #12、docs/design-gitee-source-20260914.md、docs/design-behavior-diversity-20260915.md）
+- Gitee 采集（第二证据源，2026-09-14 G-A+G-B 落地）：官方 v5 **REST-only（无 GraphQL）**，匿名可读公开数据、`GITEE_TOKEN` 可选仅提额；产出与 GitHub 一致的证据源无关 `AnalyzerInput`，CLI `--platform gitee` 与在线链路（API `platform` 枚举、Worker 多源路由、报告页/扩展平台切换 UI）均已打通；events 行为流（方案 A 补近期 PushEvent 提交）与行为多样性弱信号（方案 B：双源聚合源无关 `BehaviorEventSummary`、analyzer 新增 `narrow_activity_scope`、规则版本 0.1→0.2）均已于 2026-09-15 落地；跨源镜像去重、在线多源融合画像（`platform=all` 一次作业双采）、跨源 PR/issue 同帖去重（7 天窗 `CROSS_SOURCE_THREAD_WINDOW_MS`，2026-09-18 锁定）与融合作业配额权重（demo 扣 2）均已落地；Gitee OAuth、认证精确限频仍缓做（见 deferred #12、docs/design-gitee-source-20260914.md、docs/design-behavior-diversity-20260915.md、docs/design-cross-source-fusion-20260915.md）
 - 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`；浏览器扩展 `apps/extension`（P1：三大 ATS 一键填充）
 - 测试：Vitest（就近单元）+ Playwright（E2E）
 - 分析深度：MVP 仅 **L0 元数据 + L1 行为时序**，**不 clone 仓库**（L2/L3/L4 见 docs/deferred-items）
@@ -88,7 +88,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 4. `analyzer-core`（**纯函数、带版本、无 I/O**）计算真实性信号、能力标签、规则化面试题，产出完整 `AbilityProfile`。
 5. 画像以**不可变快照**写入 `profiles`，证据写入 `evidence`；分享链接永远指向生成时版本。
 6. 任一层失败必须显式标注缺失，**禁止输出"看似完整"的报告**。
-7. **演示模式三态身份（anonymous/demo/user，设计见 docs/design-demo-mode-20260915.md）**：只读公开端点全放行；唯一受限是"触发新分析"，画像缓存命中先于权限检查、任何身份放行且不扣配额；demo（HttpOnly Cookie `jobagent_demo`）经受三道闸——会话单条条件 UPDATE 原子扣减、IP 加盐哈希滑窗、Worker demo 并发闸（formal 永不被闸）。改 `/analyze`、Worker 认领或配额逻辑时必须保持这些顺序与错误码（DEMO_REQUIRED/QUOTA_EXCEEDED/RATE_LIMITED），且**不得把 analyzer-core 拖入身份/配额逻辑**。
+7. **演示模式三态身份（anonymous/demo/user，设计见 docs/design-demo-mode-20260915.md）**：只读公开端点全放行；唯一受限是"触发新分析"，画像缓存命中先于权限检查、任何身份放行且不扣配额；demo（HttpOnly Cookie `jobagent_demo`）经受三道闸——会话单条条件 UPDATE 原子扣减、IP 加盐哈希滑窗、Worker demo 并发闸（formal 永不被闸）。**扣减按作业成本权重（2026-09-18 拍板）**：单源 github/gitee 扣 1，`platform=all` 双源融合作业扣 `fusionAnalyzeCost`（默认 2，env `DEMO_FUSION_QUOTA_COST`，最小 1）；条件 UPDATE 用 `analyze_count + cost <= quota`，**剩余不足 cost 整单影响 0 行、绝不部分扣减**，`jobs.create` 失败在 catch 按原 cost 补偿（SQLite `MAX`/PG `GREATEST` 兜底不为负）；IP 滑窗按请求数计 1、Worker 并发闸不按 cost（all 只占一个 job 槽）。改 `/analyze`、Worker 认领或配额逻辑时必须保持这些顺序与错误码（DEMO_REQUIRED/QUOTA_EXCEEDED/RATE_LIMITED），且**不得把 analyzer-core 拖入身份/配额逻辑**。
 
 ### 内核与 I/O 分离（硬约束）
 
