@@ -3,7 +3,8 @@
  *
  * 单一事实源：所有 DEMO_* / CORS / TRUST_PROXY 环境变量只在这里读取一次，
  * 非法值回退默认并 warn，不在各端点散落 process.env。纯函数便于单测。
- * 配额为待拍板建议值（§16-#1/#3），代码走可配默认、不写死业务决策。
+ * 融合作业权重 fusionAnalyzeCost 已于 2026-09-18 拍板（all 扣 2，可经 DEMO_FUSION_QUOTA_COST 调）；
+ * 其余配额仍为待拍板建议值（§16-#1/#3），代码走可配默认、不写死业务决策。
  */
 
 export interface DemoPresetLogin {
@@ -16,6 +17,8 @@ export interface DemoConfig {
   sessionTtlMs: number;
   /** 单会话可触发的新分析次数（硬配额） */
   analyzeQuota: number;
+  /** platform=all 双源融合一次作业扣减的配额权重（约 2x 采集成本，默认 2；单源 github/gitee 扣 1） */
+  fusionAnalyzeCost: number;
   /** 单 IP 每小时建会话上限 */
   sessionRatePerHour: number;
   /** 单 IP 每小时触发分析上限 */
@@ -41,6 +44,7 @@ export interface DemoConfig {
 export const DEMO_DEFAULTS = {
   sessionTtlMs: 7 * 24 * 60 * 60 * 1000, // 604800000，7 天
   analyzeQuota: 3,
+  fusionAnalyzeCost: 2, // platform=all 双源融合约 2x 成本，一次扣 2（2026-09-18 拍板）
   sessionRatePerHour: 5,
   analyzeRatePerHour: 10,
   matchRatePerHour: 60,
@@ -101,6 +105,12 @@ export function loadDemoConfig(env: NodeJS.ProcessEnv = process.env): DemoConfig
   return {
     sessionTtlMs: positiveInt(env.DEMO_SESSION_TTL_MS, DEMO_DEFAULTS.sessionTtlMs, 'DEMO_SESSION_TTL_MS', 1000),
     analyzeQuota: positiveInt(env.DEMO_ANALYZE_QUOTA, DEMO_DEFAULTS.analyzeQuota, 'DEMO_ANALYZE_QUOTA', 0),
+    fusionAnalyzeCost: positiveInt(
+      env.DEMO_FUSION_QUOTA_COST,
+      DEMO_DEFAULTS.fusionAnalyzeCost,
+      'DEMO_FUSION_QUOTA_COST',
+      1,
+    ),
     sessionRatePerHour: positiveInt(
       env.DEMO_SESSION_RATE_PER_HOUR,
       DEMO_DEFAULTS.sessionRatePerHour,
