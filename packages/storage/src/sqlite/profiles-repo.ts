@@ -80,6 +80,14 @@ export class SqliteProfilesRepository implements IProfilesRepository {
       .run();
   }
 
+  async markClaimed(id: string): Promise<void> {
+    this.db
+      .update(profilesTable)
+      .set({ subjectClaimed: true, updatedAt: new Date().toISOString() })
+      .where(eq(profilesTable.id, id))
+      .run();
+  }
+
   async searchCandidates(
     query: CandidateSearchQuery,
   ): Promise<{ items: CandidateSummary[]; total: number }> {

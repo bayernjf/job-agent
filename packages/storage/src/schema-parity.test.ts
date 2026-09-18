@@ -40,6 +40,8 @@ const TABLES = [
   'demoSessions',
   'demoRateEvents',
   'applications',
+  'accounts',
+  'authSessions',
 ] as const;
 
 describe('sqlite/postgres schema parity', () => {

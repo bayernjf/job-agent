@@ -74,3 +74,19 @@ export type {
   CandidateSearchResult,
 } from './candidate.js';
 export { toCandidateSummary, searchCandidates } from './candidate.js';
+
+export type {
+  StoredAccount,
+  ProviderIdentity,
+  NewAccount,
+  RawAccountRow,
+} from './account.js';
+export { toStoredAccount } from './account.js';
+
+export type {
+  AuthSessionStatus,
+  StoredAuthSession,
+  NewAuthSession,
+  RawAuthSessionRow,
+} from './auth-session.js';
+export { AUTH_SESSION_STATUSES, toStoredAuthSession } from './auth-session.js';
