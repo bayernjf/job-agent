@@ -188,6 +188,47 @@ describe('migrations', () => {
     expect(applicationIndexes.map((i) => i.name)).toContain('idx_applications_profile_status');
     expect(applicationIndexes.map((i) => i.name)).toContain('idx_applications_profile_applied');
 
+    const accountColumns = db.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'platform',
+      'provider_account_id',
+      'login',
+      'name',
+      'email',
+      'avatar_url',
+      'claimed_profile_id',
+      'created_at',
+      'updated_at',
+    ]) {
+      expect(accountColumns.map((c) => c.name)).toContain(expected);
+    }
+    const accountIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='accounts'")
+      .all() as Array<{ name: string }>;
+    expect(accountIndexes.map((i) => i.name)).toContain('idx_accounts_provider');
+    expect(accountIndexes.map((i) => i.name)).toContain('idx_accounts_platform_login');
+    expect(accountIndexes.map((i) => i.name)).toContain('idx_accounts_claimed_profile');
+
+    const authSessionColumns = db
+      .prepare('PRAGMA table_info(auth_sessions)')
+      .all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'account_id',
+      'expires_at',
+      'status',
+      'created_at',
+      'last_seen_at',
+    ]) {
+      expect(authSessionColumns.map((c) => c.name)).toContain(expected);
+    }
+    const authSessionIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='auth_sessions'")
+      .all() as Array<{ name: string }>;
+    expect(authSessionIndexes.map((i) => i.name)).toContain('idx_auth_sessions_account');
+    expect(authSessionIndexes.map((i) => i.name)).toContain('idx_auth_sessions_expires');
+
     db.close();
   });
 
@@ -203,6 +244,24 @@ describe('migrations', () => {
   it('rolls back migrations in reverse order with their down scripts', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
+
+    // 回滚 011（auth_sessions）
+    const result11 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result11.version).toBe('011');
+    let authTables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(authTables.map((t) => t.name)).not.toContain('auth_sessions');
+    expect(authTables.map((t) => t.name)).toContain('accounts'); // 010 还在
+
+    // 回滚 010（accounts）
+    const result10 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result10.version).toBe('010');
+    authTables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(authTables.map((t) => t.name)).not.toContain('accounts');
+    expect(authTables.map((t) => t.name)).toContain('applications'); // 009 还在
 
     // 第零步 0：回滚 009（applications）
     const result9 = rollbackLatestMigration(db, MIGRATIONS_DIR);

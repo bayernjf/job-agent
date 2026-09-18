@@ -1,10 +1,10 @@
 # JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历 + 企业人才检索/投递追踪）
 
-- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2）
+- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
-- 内容类型：请求/响应均为 `application/json`（健康检查除外）
+- 内容类型：请求/响应均为 `application/json`（健康检查与 OAuth 302 跳转除外）
 - CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）
-- 最后更新：2026-09-16
+- 最后更新：2026-09-18
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`，演示模式完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
 
@@ -22,6 +22,7 @@
 
 - `details` 仅在 400 校验失败时出现（Zod `flatten()` 结果）。
 - `code` 为稳定错误码；演示模式相关为 `DEMO_REQUIRED` / `DEMO_QUOTA_EXCEEDED` / `DEMO_RATE_LIMITED`（前端据此分支处理，常量单一事实源在 `@jobagent/shared` 的 `DEMO_ERROR_CODES`）。
+- 账号登录相关为 `AUTH_REQUIRED`(401) / `AUTH_NOT_PROFILE_OWNER`(403) / `AUTH_PROFILE_NOT_FOUND`(404) / `AUTH_INVALID_STATE`(400) / `AUTH_NOT_CONFIGURED`(501) / `AUTH_EXCHANGE_FAILED`(502)，常量单一事实源在 `@jobagent/shared` 的 `AUTH_ERROR_CODES`。
 
 ### 状态码约定
 
@@ -29,11 +30,14 @@
 | --- | --- |
 | 200 | 成功（含去重命中、缓存命中、幂等返回） |
 | 201 | 新建分析任务 / 新建演示会话成功 |
-| 400 | 请求体/参数非法 |
-| 403 | 匿名触发新分析但缺少演示会话（`DEMO_REQUIRED`），前端应自动建会话后重试一次 |
-| 404 | 任务或画像不存在 |
+| 400 | 请求体/参数非法；OAuth 回调 state 缺失或不符（`AUTH_INVALID_STATE`） |
+| 401 | 未登录访问需本人的端点（`AUTH_REQUIRED`），前端应引导 GitHub 登录 |
+| 403 | 匿名触发新分析但缺少演示会话（`DEMO_REQUIRED`）；或登录用户认领非本人画像（`AUTH_NOT_PROFILE_OWNER`） |
+| 404 | 任务或画像不存在；认领的画像不存在（`AUTH_PROFILE_NOT_FOUND`） |
 | 429 | 演示会话配额用尽或 IP 滑动窗口超限（`DEMO_QUOTA_EXCEEDED` / `DEMO_RATE_LIMITED`） |
 | 500 | 服务内部错误 |
+| 501 | GitHub OAuth 未配置（`AUTH_NOT_CONFIGURED`，缺 `GITHUB_OAUTH_CLIENT_ID/SECRET`） |
+| 502 | GitHub 授权码交换或取资料失败（`AUTH_EXCHANGE_FAILED`） |
 
 ### 环境变量
 
@@ -53,6 +57,11 @@
 | `DEMO_PRESET_LOGINS` | 空 | 预置示例清单，形如 `github:alice,gitee:bob` |
 | `CORS_ALLOW_ORIGINS` | 空 | 跨域 Origin 白名单（逗号分隔） |
 | `TRUST_PROXY` | `false` | 反代后置 true，才采信 X-Forwarded-For |
+| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | 空 | GitHub OAuth App 凭证；两者齐备登录路由才可用，否则 `/auth/github/*` 返回 501 |
+| `AUTH_SESSION_TTL_MS` | `2592000000`（30d） | 登录会话有效期 / `jobagent_session` Cookie Max-Age |
+| `AUTH_STATE_SECRET` | 空（进程内随机） | OAuth state 的 HMAC 密钥，生产多实例必须固定 |
+| `AUTH_CALLBACK_BASE_URL` | 空（按请求推导） | OAuth 回调基址，不带尾斜杠；生产反代/跨子域时显式填域名 |
+| `AUTH_AFTER_LOGIN_URL` | `/` | 登录成功后跳转地址 |
 
 > Worker 侧另有 `DEMO_MAX_CONCURRENT`（默认 1）、`DEMO_BACKOFF_MS`（默认 15000），全部演示变量的权威表见设计文档 §13。
 
@@ -66,8 +75,8 @@
 
 1. 校验请求体（400）；
 2. **画像缓存命中先于一切身份检查**——任何身份（含匿名）命中未过期完整画像都直接返回、不扣配额；
-3. 缓存未命中需要"触发新分析"时：匿名 → `403 DEMO_REQUIRED`；演示会话再依次过 active 去重（不扣配额）→ IP 窗口 → 会话原子配额；
-4. 全部通过才入队，任务携带 `requesterKind=demo` 与 `demoSessionId`。
+3. 缓存未命中需要"触发新分析"时：**登录用户**（`jobagent_session`）经 active 去重后直接入队、不占演示配额；匿名 → `403 DEMO_REQUIRED`；演示会话再依次过 active 去重（不扣配额）→ IP 窗口 → 会话原子配额；
+4. 全部通过才入队：登录任务携带 `requesterKind=user`、`demoSessionId=null`；演示任务携带 `requesterKind=demo` 与 `demoSessionId`。
 
 响应分三种成功情况：**缓存命中**、**任务去重命中**、**新建任务**。
 
@@ -78,7 +87,7 @@
 | `username` | string | 是 | 登录名，1–39 字符；GitHub 仅允许字母数字+中划线，Gitee 额外允许下划线 |
 | `platform` | `"github" \| "gitee" \| "all"` | 否 | 证据源平台，默认 `github`；`all`=一次作业采 GitHub+Gitee 并镜像去重融合成一张画像。不同平台同 login 不互相去重，`all` 缓存只认真融合画像（见 [design-cross-source-fusion §8](design-cross-source-fusion-20260915.md)） |
 
-请求需携带演示 Cookie `jobagent_demo`（由 `POST /demo/sessions` 下发），除非命中画像缓存。CLI 不走 HTTP，不受此限。
+请求需携带演示 Cookie `jobagent_demo`（由 `POST /demo/sessions` 下发）或登录 Cookie `jobagent_session`（由 GitHub OAuth 登录下发，见 [§1.2](#12-账号登录与本人认领github-oauth)），除非命中画像缓存。CLI 不走 HTTP，不受此限。
 
 ```json
 { "username": "sindresorhus", "platform": "github" }
@@ -204,6 +213,75 @@ Cookie 属性：`HttpOnly; SameSite=Lax; Path=/; Max-Age=<TTL>`，仅生产 HTTP
 ### `POST /demo/exit`
 
 演示会话置为 `exited` 并清除 Cookie，返回 `{ "kind": "anonymous" }`；匿名调用为 no-op。
+
+---
+
+## 1.2 账号登录与本人认领（GitHub OAuth）
+
+本人授权是产品主脊（决策 #1-A/#6-A）：开发者用 GitHub 登录后，可触发分析并**认领属于自己平台登录名的画像**，被认领的画像才是"本人授权"的权威报告。登录采用标准 GitHub OAuth web application flow，服务端持有会话、下发 HttpOnly Cookie `jobagent_session`；未配置 `GITHUB_OAUTH_CLIENT_ID/SECRET` 时登录路由返回 `501 AUTH_NOT_CONFIGURED`，其余功能（演示、浏览公开画像）不受影响。测试与本地无凭证环境用可替换的 `AuthProvider`（`FakeAuthProvider`），不打真实 GitHub。
+
+登录态与演示态互斥解析：请求带有效 `jobagent_session` 时 Principal 为 `user`（优先），否则回退演示会话 `jobagent_demo`，再否则匿名。
+
+### `GET /auth/github/login`
+
+无请求体。服务端生成 HMAC 签名的 `state`，写入临时 Cookie `jobagent_oauth_state`（`HttpOnly; SameSite=Lax; Path=/auth/github; Max-Age=600`，仅生产 HTTPS 加 `Secure`），并 `302` 跳转到 GitHub 授权页（`scope=user:email`，仅为尽力取邮箱，邮箱可空）。
+
+- `302`：`Location` 为 GitHub 授权 URL，`Set-Cookie: jobagent_oauth_state=...`。
+- `501 AUTH_NOT_CONFIGURED`：服务端未配置 OAuth 凭证。
+
+### `GET /auth/github/callback`
+
+GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `state` 与 state Cookie 一致且 HMAC 签名有效（防 CSRF），再用 `code` 换 access token、取 GitHub 用户资料，按 `(platform, providerAccountId)` upsert 账号，创建登录会话并下发 `jobagent_session`，最后清除 state Cookie 并 `302` 到 `AUTH_AFTER_LOGIN_URL`（默认 `/`）。
+
+- `302`：`Set-Cookie: jobagent_session=ses-...; HttpOnly; SameSite=Lax; Path=/; Max-Age=<AUTH_SESSION_TTL_MS>`。
+- `400 AUTH_INVALID_STATE`：缺 `state`/`code`、state Cookie 缺失、query 与 Cookie 不符或签名无效。
+- `502 AUTH_EXCHANGE_FAILED`：授权码换 token 或取用户资料失败（上游非 2xx、响应畸形）。
+
+### `POST /auth/logout`
+
+撤销当前登录会话（置 `revoked`）并清除 `jobagent_session`，返回 `{ "ok": true }`；匿名调用为 no-op。
+
+### `GET /auth/me`
+
+返回当前登录身份。匿名/演示返回 `{ "kind": "anonymous" }` 或 `{ "kind": "demo" }`；登录用户：
+
+```json
+{
+  "kind": "user",
+  "accountId": "acc-...",
+  "platform": "github",
+  "login": "alice",
+  "name": "Alice",
+  "avatarUrl": "https://avatars.githubusercontent.com/u/101",
+  "claimedProfileId": "prof-...",
+  "expiresAt": "2026-10-18T00:00:00.000Z"
+}
+```
+
+> 刻意**不返回** `email` 与平台数字 `providerAccountId`（最小对外暴露）；邮箱仅服务端留存。坏/过期/已撤销会话 Cookie 静默降级为匿名。
+
+### `POST /profiles/:id/claim`
+
+登录用户认领本人画像。仅当画像的 `subject.platform` + `subject.login` 与登录账号完全一致才放行；成功后画像 `subject.claimed=true`、账号记录 `claimedProfileId`。
+
+```json
+{
+  "profileId": "prof-alice",
+  "claimed": true,
+  "subject": { "platform": "github", "login": "alice" },
+  "claimedProfileId": "prof-alice"
+}
+```
+
+| 码 | 情形 |
+| --- | --- |
+| 200 | 认领成功（幂等，重复认领同一画像仍成功） |
+| 400 | `id` 格式非法 |
+| 401 `AUTH_REQUIRED` | 未登录（匿名/演示会话） |
+| 403 `AUTH_NOT_PROFILE_OWNER` | 画像平台登录名与登录账号不一致（响应带画像 `subject`） |
+| 404 `AUTH_PROFILE_NOT_FOUND` | 画像不存在 |
+
+> 授权分级闸（未授权浏览他人画像时折叠哪些重模块）是下一刀，本批只做登录与认领，不改变公开画像的只读可见性。
 
 ---
 

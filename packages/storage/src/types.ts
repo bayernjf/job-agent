@@ -1,6 +1,8 @@
 import type {
+  IAccountsRepository,
   IAnalysisJobsRepository,
   IApplicationsRepository,
+  IAuthSessionsRepository,
   IDemoSessionsRepository,
   IEvidenceRepository,
   IJobPostingsRepository,
@@ -35,6 +37,10 @@ export interface StorageContext {
   jobPostings: IJobPostingsRepository;
   demoSessions: IDemoSessionsRepository;
   applications: IApplicationsRepository;
+  /** OAuth 登录账号（决策 #1-A/#6-A，迁移 010） */
+  accounts: IAccountsRepository;
+  /** 登录用户不透明会话（迁移 011） */
+  authSessions: IAuthSessionsRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /** 关闭底层连接/连接池 */
