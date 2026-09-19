@@ -48,7 +48,8 @@ export default function ClaimProfile({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/auth/me`, { credentials: 'same-origin' })
+    // include：本地前后端跨端口与跨子域部署都需携带会话 Cookie；同源时与 same-origin 等价。
+    fetch(`${apiBase}/auth/me`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`auth/me ${res.status}`))))
       .then((me: AuthMe) => {
         if (cancelled) return;
@@ -75,7 +76,7 @@ export default function ClaimProfile({
     try {
       const res = await fetch(`${apiBase}/profiles/${encodeURIComponent(profileId)}/claim`, {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
       });
       if (res.ok) {
         setStatus('claimed');
