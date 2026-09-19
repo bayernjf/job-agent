@@ -285,3 +285,76 @@ describe('POST /analyze for logged-in users', () => {
     expect(job?.demoSessionId).toBeNull();
   });
 });
+
+describe('OAuth return_to deep link', () => {
+  async function makeApp(repos: StorageContext) {
+    return createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+    });
+  }
+
+  type App = Awaited<ReturnType<typeof makeApp>>;
+
+  async function startLogin(app: App, returnTo?: string) {
+    const url =
+      '/auth/github/login' + (returnTo ? `?return_to=${encodeURIComponent(returnTo)}` : '');
+    const res = await app.request(url);
+    expect(res.status).toBe(302);
+    return extractCookies(res);
+  }
+
+  async function finishCallback(
+    app: App,
+    cookies: Record<string, string>,
+  ): Promise<Response> {
+    return app.request(
+      `/auth/github/callback?state=${encodeURIComponent(cookies.jobagent_oauth_state!)}&code=fake-code`,
+      {
+        headers: {
+          Cookie: cookieHeader(cookies, 'jobagent_oauth_state', 'jobagent_oauth_return'),
+        },
+      },
+    );
+  }
+
+  function setCookies(res: Response): string[] {
+    return typeof res.headers.getSetCookie === 'function'
+      ? res.headers.getSetCookie()
+      : [res.headers.get('set-cookie') ?? ''];
+  }
+
+  it('stores a same-origin return_to and redirects back to it, clearing the cookie', async () => {
+    const app = await makeApp(await freshRepos());
+    const cookies = await startLogin(app, '/zh-CN/report/prof_1?view=recruiter');
+    expect(cookies.jobagent_oauth_return).toBe('/zh-CN/report/prof_1?view=recruiter');
+
+    const cb = await finishCallback(app, cookies);
+    expect(cb.status).toBe(302);
+    expect(cb.headers.get('location')).toBe('/zh-CN/report/prof_1?view=recruiter');
+
+    // 回跳 Cookie 必须被即时删除（Max-Age=0 / 过期 Expires）
+    const cleared = setCookies(cb).find((sc) => sc.startsWith('jobagent_oauth_return='));
+    expect(cleared).toBeTruthy();
+    expect(cleared).toMatch(/Max-Age=0|Expires=Thu, 01 Jan 1970/i);
+  });
+
+  it('drops an unsafe protocol-relative return_to and falls back to the default URL', async () => {
+    const app = await makeApp(await freshRepos());
+    const cookies = await startLogin(app, '//evil.com/phish');
+    expect(cookies.jobagent_oauth_return).toBeUndefined();
+
+    const cb = await finishCallback(app, cookies);
+    expect(cb.status).toBe(302);
+    expect(cb.headers.get('location')).toBe('/');
+  });
+
+  it('falls back to the default landing URL when no return_to is provided', async () => {
+    const app = await makeApp(await freshRepos());
+    const cookies = await startLogin(app);
+    const cb = await finishCallback(app, cookies);
+    expect(cb.status).toBe(302);
+    expect(cb.headers.get('location')).toBe('/');
+  });
+});

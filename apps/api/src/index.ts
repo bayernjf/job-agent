@@ -54,6 +54,7 @@ import {
   AUTH_ERROR_CODES,
   AUTH_SESSION_COOKIE,
   AUTH_STATE_COOKIE,
+  AUTH_RETURN_COOKIE,
   type AbilityProfile,
   type AuthMe,
   type AuthenticityStatus,
@@ -105,6 +106,7 @@ import { loadAuthConfig, type AuthConfig } from './auth-config.js';
 import type { AuthProvider, OAuthProfile } from './auth-provider.js';
 import { OAuthExchangeError } from './auth-provider.js';
 import { GithubAuthProvider, generateOAuthState, verifyOAuthState } from './github-auth.js';
+import { sanitizeReturnTo } from './auth-return-to.js';
 import {
   DEMO_COOKIE,
   clientIp,
@@ -339,6 +341,17 @@ function authStateCookieOptions(cfg: AuthConfig) {
   };
 }
 
+/** 临时 return_to 回跳 Cookie：仅回调路径可读、10 分钟有效（与 state 同生命周期）。 */
+function authReturnCookieOptions(cfg: AuthConfig) {
+  return {
+    httpOnly: true,
+    sameSite: 'Lax' as const,
+    path: '/auth/github',
+    secure: cfg.isProduction,
+    maxAge: 600,
+  };
+}
+
 /** OAuth 回调基址：优先 AUTH_CALLBACK_BASE_URL，否则按当前请求 Origin/Host 推导。 */
 function oauthBaseOrigin(c: Context, cfg: AuthConfig): string {
   if (cfg.callbackBaseUrl) return cfg.callbackBaseUrl;
@@ -538,6 +551,12 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     const redirectUri = `${oauthBaseOrigin(c, authCfg)}/auth/github/callback`;
     const state = generateOAuthState(effectiveStateSecret);
     setCookie(c, AUTH_STATE_COOKIE, state, authStateCookieOptions(authCfg));
+    // 登录后回跳深链：仅接受同源相对路径（防开放重定向），经本站临时 Cookie 流转，
+    // 不进 GitHub state、不落日志；非法/缺失则回调后回退 AUTH_AFTER_LOGIN_URL。
+    const returnTo = sanitizeReturnTo(c.req.query('return_to'));
+    if (returnTo) {
+      setCookie(c, AUTH_RETURN_COOKIE, returnTo, authReturnCookieOptions(authCfg));
+    }
     return c.redirect(githubProvider.authorizeUrl(state, redirectUri), 302);
   });
 
@@ -597,7 +616,13 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     await repos.authSessions.create({ id: token, accountId: account.id, expiresAt });
     setCookie(c, AUTH_SESSION_COOKIE, token, authSessionCookieOptions(authCfg, nowIso));
     deleteCookie(c, AUTH_STATE_COOKIE, { path: '/auth/github' });
-    return c.redirect(authCfg.afterLoginRedirectUrl, 302);
+    // 消费回跳深链：再次校验（Cookie 值不可被客户端信任为已校验），用完即删；
+    // 非法/缺失回退默认落地页。
+    const returnTo = sanitizeReturnTo(
+      readCookie(c.req.header('Cookie'), AUTH_RETURN_COOKIE),
+    );
+    deleteCookie(c, AUTH_RETURN_COOKIE, { path: '/auth/github' });
+    return c.redirect(returnTo ?? authCfg.afterLoginRedirectUrl, 302);
   });
 
   // POST /auth/logout：撤销当前登录会话并清 Cookie（匿名调用为 no-op）
