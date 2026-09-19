@@ -1,43 +1,57 @@
 import { useEffect, useState } from 'react';
 
-/**
- * AccountMenu：报告站点全局头部的登录态入口（账号主脊 item28-⑤）。
- * - 匿名/演示：显示「用 GitHub 登录」，整页跳转到后端 OAuth 发起端点（HttpOnly Cookie 流）。
- * - 已登录：显示头像 + 登录名/展示名 + 退出；退出调 POST /auth/logout 后整页刷新。
- * 拉取 /auth/me 失败（如 API 不可达）时静默不渲染，避免在无后端环境留下坏入口。
- * 所有用户可见文案由 Astro 经 t() 传入，组件不硬编码。
- */
-
 type AuthMe =
-  | { kind: 'anonymous' }
-  | { kind: 'demo' }
+  | {
+      kind: 'anonymous';
+    }
+  | {
+      kind: 'demo';
+      role: 'candidate' | 'recruiter';
+      expiresAt: string;
+    }
   | {
       kind: 'user';
       platform: 'github' | 'gitee';
       login: string;
-      name?: string | null;
-      avatarUrl?: string | null;
+      name: string | null;
+      avatarUrl: string | null;
+      profileUrl: string | null;
+      claimedProfileId: string | null;
+      expiresAt: string;
     };
+
+interface ProvidersResponse {
+  github: { configured: boolean };
+  gitee: { configured: boolean };
+}
 
 interface AccountMenuProps {
   apiBase: string;
   signInLabel: string;
+  signInGiteeLabel: string;
   signOutLabel: string;
   menuLabel: string;
 }
 
+/** providers 拉取失败时的保守默认：保留 GitHub 入口、隐藏 Gitee（避免跳到未配置的 501）。 */
+const FALLBACK_PROVIDERS: ProvidersResponse = {
+  github: { configured: true },
+  gitee: { configured: false },
+};
+
 export default function AccountMenu({
   apiBase,
   signInLabel,
+  signInGiteeLabel,
   signOutLabel,
   menuLabel,
 }: AccountMenuProps) {
   const [me, setMe] = useState<AuthMe | null>(null);
+  const [providers, setProviders] = useState<ProvidersResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    // include：本地前后端跨端口（4321→3000）与跨子域部署都需携带 HttpOnly 会话 Cookie；
-    // 同源时 include 与 same-origin 等价。后端仅在 CORS_ALLOW_ORIGINS 命中时回 credentials。
+
     fetch(`${apiBase}/auth/me`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`auth/me ${res.status}`))))
       .then((data: AuthMe) => {
@@ -46,50 +60,93 @@ export default function AccountMenu({
       .catch(() => {
         if (!cancelled) setMe(null);
       });
+
+    fetch(`${apiBase}/auth/providers`, { credentials: 'include' })
+      .then((res) =>
+        res.ok ? res.json() : Promise.reject(new Error(`auth/providers ${res.status}`)),
+      )
+      .then((data: ProvidersResponse) => {
+        if (!cancelled) setProviders(data);
+      })
+      .catch(() => {
+        if (!cancelled) setProviders(FALLBACK_PROVIDERS);
+      });
+
     return () => {
       cancelled = true;
     };
   }, [apiBase]);
 
-  const handleLogout = async () => {
-    try {
-      await fetch(`${apiBase}/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } finally {
-      // 无论后端响应如何都刷新回匿名视图（后端对匿名是 no-op）
-      window.location.reload();
-    }
+  const handleLogout = () => {
+    fetch(`${apiBase}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+      .then((res) => {
+        if (res.ok) window.location.reload();
+      })
+      .catch(() => undefined);
   };
 
-  // 首次拉取未完成或拉取失败：不渲染，避免闪烁/坏入口
+  // 首次加载前不渲染，避免闪现登录按钮
   if (!me) return null;
 
   if (me.kind !== 'user') {
-    // 登录后回跳当前页（同源相对路径，后端 sanitizeReturnTo 做白名单校验）
+    // 匿名 / 演示身份：仅展示已配置平台的登录入口，登录后回跳当前页
     const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+    const loginHref = (platform: 'github' | 'gitee') =>
+      `${apiBase}/auth/${platform}/login?return_to=${returnTo}`;
+    const enabled = providers ?? FALLBACK_PROVIDERS;
     return (
       <div className="account-menu" role="navigation" aria-label={menuLabel}>
-        <a
-          className="account-menu__signin"
-          href={`${apiBase}/auth/github/login?return_to=${returnTo}`}
-        >
-          {signInLabel}
-        </a>
+        {enabled.github.configured && (
+          <a
+            className="account-menu__signin"
+            href={loginHref('github')}
+            data-testid="signin-github"
+          >
+            {signInLabel}
+          </a>
+        )}
+        {enabled.gitee.configured && (
+          <a
+            className="account-menu__signin"
+            href={loginHref('gitee')}
+            data-testid="signin-gitee"
+          >
+            {signInGiteeLabel}
+          </a>
+        )}
       </div>
     );
   }
 
+  const displayName = me.name || me.login;
+  const avatar = me.avatarUrl;
+
   return (
     <div className="account-menu" role="navigation" aria-label={menuLabel}>
-      <span className="account-menu__identity">
-        {me.avatarUrl ? (
-          <img className="account-menu__avatar" src={me.avatarUrl} alt="" width={22} height={22} />
-        ) : null}
-        <span className="account-menu__login">{me.name ?? me.login}</span>
-      </span>
-      <button type="button" className="account-menu__logout" onClick={handleLogout}>
+      {me.profileUrl ? (
+        <a
+          className="account-menu__identity"
+          href={me.profileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {avatar ? (
+            <img className="account-menu__avatar" src={avatar} alt="" width="24" height="24" />
+          ) : null}
+          <span>{displayName}</span>
+        </a>
+      ) : (
+        <span className="account-menu__identity">
+          {avatar ? (
+            <img className="account-menu__avatar" src={avatar} alt="" width="24" height="24" />
+          ) : null}
+          <span>{displayName}</span>
+        </span>
+      )}
+      <button type="button" className="account-menu__signout" onClick={handleLogout}>
         {signOutLabel}
       </button>
     </div>

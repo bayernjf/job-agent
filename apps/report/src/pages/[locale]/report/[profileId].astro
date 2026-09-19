@@ -58,10 +58,20 @@ const candidateUrl = pathname;
 // 完整证据外链与面试题/面试准备包折叠为登录墙；任何已登录 user（含招聘方）解锁。
 const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
 const canViewGated = canViewGatedContent(viewer);
-// 登录后回跳当前页（含 ?view=recruiter）；return_to 为同源相对路径，后端再做一次白名单校验
-const loginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(
+// 登录后回跳当前页（含 ?view=recruiter）；return_to 为同源相对路径，后端再做一次白名单校验。
+// 登录墙按画像主体平台选登录方式：Gitee 画像引导 Gitee 登录，其余（含双源融合，主源 GitHub）走 GitHub。
+const loginPlatform: 'github' | 'gitee' = profile.subject.platform === 'gitee' ? 'gitee' : 'github';
+const loginHref = `${apiBase}/auth/${loginPlatform}/login?return_to=${encodeURIComponent(
   `${pathname}${Astro.url.search}`,
 )}`;
+const gateLoginLabel =
+  loginPlatform === 'gitee' ? t('report.gate.loginButtonGitee') : t('report.gate.loginButton');
+const gateEvidenceBody =
+  loginPlatform === 'gitee' ? t('report.gate.evidenceBodyGitee') : t('report.gate.evidenceBody');
+const gateInterviewBody =
+  loginPlatform === 'gitee'
+    ? t('report.gate.interviewBodyGitee', { count: profile.interviewQuestions.length })
+    : t('report.gate.interviewBody', { count: profile.interviewQuestions.length });
 
 // 证据明细（含完整外链 URL）：画像快照里只有 evidenceId，核验视图/面试准备包需要可点击链接
 const evidenceList = profileId ? await loadEvidence(profileId) : [];
@@ -187,9 +197,9 @@ const applicationStatusLabels = {
         ) : (
           <GateCard
             title={t('report.gate.evidenceTitle')}
-            body={t('report.gate.evidenceBody')}
+            body={gateEvidenceBody}
             loginHref={loginHref}
-            loginLabel={t('report.gate.loginButton')}
+            loginLabel={gateLoginLabel}
             testId="evidence-gate"
           />
         ))
@@ -487,9 +497,9 @@ const applicationStatusLabels = {
         ) : (
           <GateCard
             title={t('report.gate.interviewTitle')}
-            body={t('report.gate.interviewBody', { count: profile.interviewQuestions.length })}
+            body={gateInterviewBody}
             loginHref={loginHref}
-            loginLabel={t('report.gate.loginButton')}
+            loginLabel={gateLoginLabel}
             testId="interview-gate"
           />
         ))
