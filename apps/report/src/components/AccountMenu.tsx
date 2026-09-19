@@ -36,7 +36,9 @@ export default function AccountMenu({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/auth/me`, { credentials: 'same-origin' })
+    // include：本地前后端跨端口（4321→3000）与跨子域部署都需携带 HttpOnly 会话 Cookie；
+    // 同源时 include 与 same-origin 等价。后端仅在 CORS_ALLOW_ORIGINS 命中时回 credentials。
+    fetch(`${apiBase}/auth/me`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`auth/me ${res.status}`))))
       .then((data: AuthMe) => {
         if (!cancelled) setMe(data);
@@ -53,7 +55,7 @@ export default function AccountMenu({
     try {
       await fetch(`${apiBase}/auth/logout`, {
         method: 'POST',
-        credentials: 'same-origin',
+        credentials: 'include',
       });
     } finally {
       // 无论后端响应如何都刷新回匿名视图（后端对匿名是 no-op）
