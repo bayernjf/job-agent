@@ -159,6 +159,87 @@ describe('SqliteAuthSessionsRepository', () => {
   });
 });
 
+describe('SqliteAuthSessionsRepository.purgeExpired', () => {
+  function insertSession(
+    client: Database.Database,
+    id: string,
+    accountId: string,
+    expiresAt: string,
+    status: 'active' | 'revoked',
+    lastSeenAt: string,
+  ): void {
+    client
+      .prepare(
+        `INSERT INTO auth_sessions (id, account_id, expires_at, status, created_at, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, accountId, expiresAt, status, PAST, lastSeenAt);
+  }
+
+  it('deletes expired and stale-revoked sessions but keeps active and recently revoked ones', async () => {
+    const ctx = fresh();
+    insertSession(ctx.client, 'ses-expired', 'acc-1', PAST, 'active', PAST);
+    insertSession(ctx.client, 'ses-revoked-old', 'acc-1', FUTURE, 'revoked', PAST);
+    insertSession(ctx.client, 'ses-live', 'acc-1', FUTURE, 'active', NOW);
+    // 已撤销但最后使用在保留窗内（晚于截止），保留
+    insertSession(ctx.client, 'ses-revoked-recent', 'acc-1', FUTURE, 'revoked', FUTURE);
+
+    const removed = await ctx.authSessions.purgeExpired(NOW, 0);
+    expect(removed).toBe(2);
+    expect(await ctx.authSessions.getActive('ses-live', NOW)).toBeDefined();
+    // 最近撤销的行虽不 active，但仍应物理保留
+    const recentRow = ctx.client
+      .prepare('SELECT id FROM auth_sessions WHERE id = ?')
+      .get('ses-revoked-recent') as { id: string } | undefined;
+    expect(recentRow?.id).toBe('ses-revoked-recent');
+    expect(
+      (ctx.client.prepare('SELECT id FROM auth_sessions WHERE id = ?').get('ses-expired') as
+        | { id: string }
+        | undefined),
+    ).toBeUndefined();
+    ctx.close();
+  });
+});
+
+describe('SqliteAccountsRepository.deleteUnclaimed', () => {
+  function insertAccount(
+    client: Database.Database,
+    id: string,
+    claimedProfileId: string | null,
+    updatedAt: string,
+  ): void {
+    client
+      .prepare(
+        `INSERT INTO accounts (id, platform, provider_account_id, login, name, email, avatar_url, claimed_profile_id, created_at, updated_at)
+         VALUES (?, 'github', ?, ?, null, null, null, ?, ?, ?)`,
+      )
+      .run(id, `${id}-pid`, id, claimedProfileId, PAST, updatedAt);
+  }
+
+  it('deletes only stale unclaimed accounts without a live session', async () => {
+    const ctx = fresh();
+    insertAccount(ctx.client, 'acc-old-unclaimed', null, PAST);
+    insertAccount(ctx.client, 'acc-claimed', 'prof-1', PAST);
+    insertAccount(ctx.client, 'acc-live-session', null, PAST);
+    insertAccount(ctx.client, 'acc-recent', null, FUTURE);
+    // acc-live-session 持有一条未过期会话，不应被删
+    ctx.client
+      .prepare(
+        `INSERT INTO auth_sessions (id, account_id, expires_at, status, created_at, last_seen_at)
+         VALUES ('ses-live', 'acc-live-session', ?, 'active', ?, ?)`,
+      )
+      .run(FUTURE, PAST, NOW);
+
+    const removed = await ctx.accounts.deleteUnclaimed(NOW, 0);
+    expect(removed).toBe(1);
+    expect(await ctx.accounts.getById('acc-old-unclaimed')).toBeUndefined();
+    expect(await ctx.accounts.getById('acc-claimed')).toBeDefined();
+    expect(await ctx.accounts.getById('acc-live-session')).toBeDefined();
+    expect(await ctx.accounts.getById('acc-recent')).toBeDefined();
+    ctx.close();
+  });
+});
+
 describe('SqliteProfilesRepository.markClaimed', () => {
   it('flips subject_claimed to true (idempotent) and leaves unknown ids as a no-op', async () => {
     const ctx = fresh();

@@ -12,4 +12,10 @@ export interface IAuthSessionsRepository {
   touch(id: string, nowIso: string): Promise<void>;
   /** 登出：把会话置为 revoked */
   revoke(id: string): Promise<void>;
+  /**
+   * 运维清理（cron 用，参照 demo_sessions.purgeExpired）：删除已过期超过保留期，
+   * 或已撤销（revoked）且最后使用早于保留期的会话，返回删除行数。
+   * retainMs 为额外宽限保留窗口，避免刚过期/刚登出的行被立即物理删除。
+   */
+  purgeExpired(nowIso: string, retainMs: number): Promise<number>;
 }
