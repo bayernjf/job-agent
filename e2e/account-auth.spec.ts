@@ -34,7 +34,11 @@ test.describe('AccountMenu', () => {
 
     const signIn = page.getByRole('link', { name: 'Sign in with GitHub' });
     await expect(signIn).toBeVisible();
-    await expect(signIn).toHaveAttribute('href', /\/auth\/github\/login$/);
+    // 登录链接携带当前页 return_to 深链（/en/ 编码为 %2Fen%2F）
+    await expect(signIn).toHaveAttribute(
+      'href',
+      /\/auth\/github\/login\?return_to=%2Fen%2F$/,
+    );
   });
 
   test('shows the signed-in identity and signs out back to anonymous', async ({ page }) => {

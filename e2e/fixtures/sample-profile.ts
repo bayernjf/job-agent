@@ -21,6 +21,14 @@ export const FIXTURE_LOGIN = 'e2e-fixture-user';
 export const FIXTURE_FUSED_PROFILE_ID = 'profe2efixture00000000000001';
 export const FIXTURE_FUSED_LOGIN = 'e2e-fused-user';
 
+/**
+ * 授权分级闸 E2E：一个本人账号（login 与 FIXTURE_LOGIN 一致）+ 固定未过期会话 token。
+ * spec 用 context.addCookies 种 jobagent_session 模拟"已登录 user"。
+ */
+export const FIXTURE_ACCOUNT_PROVIDER_ID = '9001';
+export const FIXTURE_SESSION_TOKEN = 'ses-e2e-fixed-active-token';
+
+
 const EVIDENCE = {
   extPr: 'evt-ext-pr-1',
   ts: 'evt-skill-ts',

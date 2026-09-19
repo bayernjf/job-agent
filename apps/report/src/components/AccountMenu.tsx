@@ -67,9 +67,14 @@ export default function AccountMenu({
   if (!me) return null;
 
   if (me.kind !== 'user') {
+    // 登录后回跳当前页（同源相对路径，后端 sanitizeReturnTo 做白名单校验）
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
     return (
       <div className="account-menu" role="navigation" aria-label={menuLabel}>
-        <a className="account-menu__signin" href={`${apiBase}/auth/github/login`}>
+        <a
+          className="account-menu__signin"
+          href={`${apiBase}/auth/github/login?return_to=${returnTo}`}
+        >
           {signInLabel}
         </a>
       </div>
