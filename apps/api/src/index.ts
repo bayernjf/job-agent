@@ -116,6 +116,7 @@ import {
   resolveAuthPrincipal,
   resolvePrincipal,
 } from './principal.js';
+import { configureOutboundProxy } from './proxy-bootstrap.js';
 
 // ─── 类型 ───────────────────────────────────────────────────────────────
 
@@ -1277,6 +1278,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 // ─── 入口 ────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  // 服务端出站请求（GitHub OAuth token 交换/拉用户）在配置代理时走代理；未配置则无操作。
+  const outboundProxy = configureOutboundProxy();
+  if (outboundProxy) console.log(`[api] outbound proxy enabled: ${outboundProxy}`);
   const port = Number(process.env.PORT ?? 3000);
   const app = await createApp();
 
