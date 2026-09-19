@@ -1,10 +1,10 @@
 # JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历 + 企业人才检索/投递追踪）
 
-- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领）
+- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领 + GitHub/Gitee 双平台 OAuth）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
 - 内容类型：请求/响应均为 `application/json`（健康检查与 OAuth 302 跳转除外）
 - CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）
-- 最后更新：2026-09-18
+- 最后更新：2026-09-19
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`，演示模式完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
 
@@ -36,8 +36,8 @@
 | 404 | 任务或画像不存在；认领的画像不存在（`AUTH_PROFILE_NOT_FOUND`） |
 | 429 | 演示会话配额用尽或 IP 滑动窗口超限（`DEMO_QUOTA_EXCEEDED` / `DEMO_RATE_LIMITED`） |
 | 500 | 服务内部错误 |
-| 501 | GitHub OAuth 未配置（`AUTH_NOT_CONFIGURED`，缺 `GITHUB_OAUTH_CLIENT_ID/SECRET`） |
-| 502 | GitHub 授权码交换或取资料失败（`AUTH_EXCHANGE_FAILED`） |
+| 501 | 某平台 OAuth 未配置（`AUTH_NOT_CONFIGURED`，缺该平台 `*_OAUTH_CLIENT_ID/SECRET`） |
+| 502 | 平台授权码交换或取资料失败（`AUTH_EXCHANGE_FAILED`） |
 
 ### 环境变量
 
@@ -58,6 +58,7 @@
 | `CORS_ALLOW_ORIGINS` | 空 | 跨域 Origin 白名单（逗号分隔） |
 | `TRUST_PROXY` | `false` | 反代后置 true，才采信 X-Forwarded-For |
 | `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | 空 | GitHub OAuth App 凭证；两者齐备登录路由才可用，否则 `/auth/github/*` 返回 501 |
+| `GITEE_OAUTH_CLIENT_ID` / `GITEE_OAUTH_CLIENT_SECRET` | 空 | Gitee 第三方应用凭证；两者齐备 Gitee 登录路由才可用，否则 `/auth/gitee/*` 返回 501；与 GitHub 共用下方 `AUTH_*` 配置 |
 | `AUTH_SESSION_TTL_MS` | `2592000000`（30d） | 登录会话有效期 / `jobagent_session` Cookie Max-Age |
 | `AUTH_STATE_SECRET` | 空（进程内随机） | OAuth state 的 HMAC 密钥，生产多实例必须固定 |
 | `AUTH_CALLBACK_BASE_URL` | 空（按请求推导） | OAuth 回调基址，不带尾斜杠；生产反代/跨子域时显式填域名 |
@@ -216,17 +217,26 @@ Cookie 属性：`HttpOnly; SameSite=Lax; Path=/; Max-Age=<TTL>`，仅生产 HTTP
 
 ---
 
-## 1.2 账号登录与本人认领（GitHub OAuth）
+## 1.2 账号登录与本人认领（GitHub / Gitee OAuth）
 
-本人授权是产品主脊（决策 #1-A/#6-A）：开发者用 GitHub 登录后，可触发分析并**认领属于自己平台登录名的画像**，被认领的画像才是"本人授权"的权威报告。登录采用标准 GitHub OAuth web application flow，服务端持有会话、下发 HttpOnly Cookie `jobagent_session`；未配置 `GITHUB_OAUTH_CLIENT_ID/SECRET` 时登录路由返回 `501 AUTH_NOT_CONFIGURED`，其余功能（演示、浏览公开画像）不受影响。测试与本地无凭证环境用可替换的 `AuthProvider`（`FakeAuthProvider`），不打真实 GitHub。
+本人授权是产品主脊（决策 #1-A/#6-A、#4 海内外同步）：开发者用 GitHub 或 Gitee 登录后，可触发分析并**认领属于自己「平台 + 登录名」的画像**，被认领的画像才是"本人授权"的权威报告。两条登录流同构（标准 OAuth web application flow），服务端持有会话、下发 HttpOnly Cookie `jobagent_session`；某平台未配置凭证时其登录路由返回 `501 AUTH_NOT_CONFIGURED`，另一平台与其余功能（演示、浏览公开画像）不受影响。测试与本地无凭证环境用可替换的 `AuthProvider`（`FakeAuthProvider` 可注入平台），不打真实平台。
 
-登录态与演示态互斥解析：请求带有效 `jobagent_session` 时 Principal 为 `user`（优先），否则回退演示会话 `jobagent_demo`，再否则匿名。
+**两平台协议差异**（GitHub 见下，Gitee 完整事实表见 [design-gitee-oauth-20260919.md](design-gitee-oauth-20260919.md) §2）：
+
+| 环节 | GitHub | Gitee |
+| --- | --- | --- |
+| 授权页 | `https://github.com/login/oauth/authorize`，`scope=user:email` | `https://gitee.com/oauth/authorize`，必带 `response_type=code`，`scope=user_info` |
+| 换 token | `POST https://github.com/login/oauth/access_token` | `POST https://gitee.com/oauth/token`，表单必带 `grant_type=authorization_code` |
+| 取用户 | `GET https://api.github.com/user`，`Authorization: Bearer` | `GET https://gitee.com/api/v5/user?access_token=<token>`（token 走 query） |
+| 账号键 | `(platform='github', providerAccountId=数字 id)` | `(platform='gitee', providerAccountId=数字 id)` |
+
+登录态与演示态互斥解析：请求带有效 `jobagent_session` 时 Principal 为 `user`（优先），否则回退演示会话 `jobagent_demo`，再否则匿名。临时 `state`/`return_to` Cookie 的 `Path=/auth`（两平台回调 `/auth/<platform>/callback` 都能读到）。
 
 ### `GET /auth/github/login`
 
-无请求体。服务端生成 HMAC 签名的 `state`，写入临时 Cookie `jobagent_oauth_state`（`HttpOnly; SameSite=Lax; Path=/auth/github; Max-Age=600`，仅生产 HTTPS 加 `Secure`），并 `302` 跳转到 GitHub 授权页（`scope=user:email`，仅为尽力取邮箱，邮箱可空）。
+无请求体。服务端生成 HMAC 签名的 `state`，写入临时 Cookie `jobagent_oauth_state`（`HttpOnly; SameSite=Lax; Path=/auth; Max-Age=600`，仅生产 HTTPS 加 `Secure`），并 `302` 跳转到 GitHub 授权页（`scope=user:email`，仅为尽力取邮箱，邮箱可空）。
 
-**Query 参数 `return_to`（可选）**：登录成功后的回跳深链。仅接受**同源相对路径**——必须以单个 `/` 开头、第二字符不得是 `/` 或 `\`（拦 `//host`、`/\host` 协议相对跳转），拒绝对 URL/任意 scheme、控制字符（CR/LF/Tab）、超长（>2048）以及回 `/auth/`（防登录环）。合法值写入临时 Cookie `jobagent_oauth_return`（`HttpOnly; SameSite=Lax; Path=/auth/github; Max-Age=600`）；非法/缺失则登录后回退 `AUTH_AFTER_LOGIN_URL`。该值**不进 GitHub `state`、不落日志**，回调时二次校验、用完即删（防开放重定向）。
+**Query 参数 `return_to`（可选）**：登录成功后的回跳深链。仅接受**同源相对路径**——必须以单个 `/` 开头、第二字符不得是 `/` 或 `\`（拦 `//host`、`/\host` 协议相对跳转），拒绝对 URL/任意 scheme、控制字符（CR/LF/Tab）、超长（>2048）以及回 `/auth/`（防登录环）。合法值写入临时 Cookie `jobagent_oauth_return`（`HttpOnly; SameSite=Lax; Path=/auth; Max-Age=600`）；非法/缺失则登录后回退 `AUTH_AFTER_LOGIN_URL`。该值**不进 GitHub `state`、不落日志**，回调时二次校验、用完即删（防开放重定向）。
 
 - `302`：`Location` 为 GitHub 授权 URL，`Set-Cookie: jobagent_oauth_state=...`（合法 `return_to` 时另含 `jobagent_oauth_return=...`）。
 - `501 AUTH_NOT_CONFIGURED`：服务端未配置 OAuth 凭证。
@@ -238,6 +248,18 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 - `302`：`Set-Cookie: jobagent_session=ses-...; HttpOnly; SameSite=Lax; Path=/; Max-Age=<AUTH_SESSION_TTL_MS>`。
 - `400 AUTH_INVALID_STATE`：缺 `state`/`code`、state Cookie 缺失、query 与 Cookie 不符或签名无效。
 - `502 AUTH_EXCHANGE_FAILED`：授权码换 token 或取用户资料失败（上游非 2xx、响应畸形）。
+
+### `GET /auth/gitee/login` / `GET /auth/gitee/callback`
+
+与 GitHub 完全对称的 Gitee OAuth web flow（决策 #4 海内外同步）。login 写同样的 `jobagent_oauth_state`（及可选 `jobagent_oauth_return`）Cookie 后 302 到 Gitee 授权页（必带 `response_type=code`、`scope=user_info`）；callback 校验 state，用授权码以表单 `grant_type=authorization_code` 换 token，再以 `?access_token=<token>` query 调 `gitee.com/api/v5/user`，按 `(platform='gitee', providerAccountId=<数字 id>)` upsert 账号、建会话、清临时 Cookie，并按 `return_to` / `AUTH_AFTER_LOGIN_URL` 回跳。状态码与 GitHub 两条完全一致（`302` / `400 AUTH_INVALID_STATE` / `501 AUTH_NOT_CONFIGURED` / `502 AUTH_EXCHANGE_FAILED`）。Gitee 用户 `email` 常为 `null`（隐私邮箱是常态），不影响登录与认领。完整协议事实表见 [design-gitee-oauth-20260919.md](design-gitee-oauth-20260919.md)。
+
+### `GET /auth/providers`
+
+公开只读、无需登录，返回各平台 OAuth 是否已配置（**仅布尔态，不含任何凭证**），供前端（报告页 `AccountMenu`）决定渲染哪些登录入口；拉取失败时前端保守回退为仅显示 GitHub：
+
+```json
+{ "github": { "configured": true }, "gitee": { "configured": false } }
+```
 
 ### `POST /auth/logout`
 
@@ -264,7 +286,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 ### `POST /profiles/:id/claim`
 
-登录用户认领本人画像。仅当画像的 `subject.platform` + `subject.login` 与登录账号完全一致才放行；成功后画像 `subject.claimed=true`、账号记录 `claimedProfileId`。
+登录用户认领本人画像。仅当画像的 `subject.platform` + `subject.login` 与登录账号完全一致才放行（Gitee 登录不能认领 GitHub 画像，反之亦然，跨平台/异名返回 403）；成功后画像 `subject.claimed=true`、账号记录 `claimedProfileId`。
 
 ```json
 {
