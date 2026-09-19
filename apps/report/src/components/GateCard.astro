@@ -1,0 +1,48 @@
+---
+/**
+ * GateCard：授权分级闸的登录解锁卡片（纯 SSR，无 JS 依赖）。
+ * 未登录访客访问被墙模块（完整证据外链 / 面试题 / 面试准备包）时，
+ * 在原模块位置渲染本卡片：说明被墙内容 + GitHub 登录按钮（带 return_to 深链）。
+ * 所有用户可见文案由调用方经 t() 传入，组件不硬编码。
+ */
+interface Props {
+  title: string;
+  body?: string;
+  loginHref: string;
+  loginLabel: string;
+  testId?: string;
+}
+const { title, body, loginHref, loginLabel, testId = 'gate-card' } = Astro.props;
+---
+
+<section class="ja-card gate-card" data-testid={testId}>
+  <h2 class="gate-title">{title}</h2>
+  {body && <p class="ja-muted gate-body">{body}</p>}
+  <a class="ja-btn gate-login" href={loginHref} data-testid="gate-login">
+    {loginLabel}
+  </a>
+</section>
+
+<style>
+  .gate-card {
+    border-left: 3px solid var(--ja-color-accent);
+    background: var(--ja-color-surface-muted);
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-2);
+    align-items: flex-start;
+  }
+
+  .gate-title {
+    font-size: var(--ja-text-lg);
+  }
+
+  .gate-body {
+    font-size: var(--ja-text-sm);
+    max-width: 60ch;
+  }
+
+  .gate-login {
+    margin-top: var(--ja-space-1);
+  }
+</style>

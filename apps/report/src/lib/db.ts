@@ -19,7 +19,8 @@ const DB_PATH = process.env.DB_PATH ?? 'data/job-agent.db';
 
 let storageSingleton: Promise<StorageContext> | null = null;
 
-function getStorage(): Promise<StorageContext> {
+/** 报告页只读 storage 单例（SSR 页面/端点与认证解析共用，避免多连接）。 */
+export function getStorage(): Promise<StorageContext> {
   if (!storageSingleton) {
     // readonly：报告页只读不写；createStorage 在 readonly 下不跑迁移、不设 journal_mode，
     // 避免 "attempt to write a readonly database"
