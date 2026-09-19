@@ -358,3 +358,195 @@ describe('OAuth return_to deep link', () => {
     expect(cb.headers.get('location')).toBe('/');
   });
 });
+
+// ── Gitee OAuth：与 GitHub 对称的第二条登录流（决策 #4 海内外同步，2026-09-19）────────
+
+const BOB: OAuthProfile = {
+  platform: 'gitee',
+  providerAccountId: '202',
+  login: 'bob',
+  name: 'Bob',
+  email: 'bob@example.com',
+  avatarUrl: 'https://example.com/b.png',
+};
+
+function giteeAbilityProfile(profileId: string, login: string): AbilityProfile {
+  return {
+    ...abilityProfile(profileId, login),
+    subject: { platform: 'gitee', login, profileUrl: `https://gitee.com/${login}`, claimed: false },
+  };
+}
+
+async function insertGiteeProfile(
+  repos: StorageContext,
+  id: string,
+  login: string,
+): Promise<void> {
+  await repos.profiles.insert({
+    id,
+    analyzerVersion: 'schema-0.1-engine-0.1.0',
+    subjectPlatform: 'gitee',
+    subjectLogin: login,
+    dataWindowSince: '2025-09-01T00:00:00.000Z',
+    dataWindowUntil: '2026-09-01T00:00:00.000Z',
+    status: 'complete',
+    snapshot: giteeAbilityProfile(id, login),
+  });
+}
+
+async function makeGiteeApp(repos: StorageContext, failure?: string) {
+  return createApp({
+    repos,
+    authConfig: loadAuthConfig({}),
+    giteeAuthProvider: new FakeAuthProvider(failure ? null : BOB, failure, 'gitee'),
+  });
+}
+
+/** 走完整 Gitee 登录，返回带会话 Cookie 的 jar 与 repos。 */
+async function loginAsGitee(): Promise<{ repos: StorageContext; cookies: Record<string, string> }> {
+  const repos = await freshRepos();
+  const app = await makeGiteeApp(repos);
+
+  const loginRes = await app.request('/auth/gitee/login');
+  expect(loginRes.status).toBe(302);
+  const stateCookies = extractCookies(loginRes);
+  const state = stateCookies.jobagent_oauth_state;
+  expect(state).toBeTruthy();
+  // FakeAuthProvider 的授权 URL 回落到 callback 并携带 state（真实 Gitee 授权页 URL
+  // 由 gitee-auth.test.ts 断言指向 gitee.com/oauth/authorize）
+  expect(loginRes.headers.get('location')).toContain('state=');
+
+  const callbackRes = await app.request(
+    `/auth/gitee/callback?state=${encodeURIComponent(state!)}&code=fake-code`,
+    { headers: { Cookie: cookieHeader(stateCookies, 'jobagent_oauth_state') } },
+  );
+  expect(callbackRes.status).toBe(302);
+  const sessionCookies = extractCookies(callbackRes);
+  expect(sessionCookies.jobagent_session).toBeTruthy();
+
+  return { repos, cookies: { jobagent_session: sessionCookies.jobagent_session! } };
+}
+
+describe('Gitee OAuth login', () => {
+  it('returns 501 when no gitee provider is configured', async () => {
+    const app = await createApp({ repos: await freshRepos(), giteeAuthProvider: null });
+    const res = await app.request('/auth/gitee/login');
+    expect(res.status).toBe(501);
+    expect((await res.json() as { code: string }).code).toBe('AUTH_NOT_CONFIGURED');
+  });
+
+  it('completes the happy path and exposes a gitee identity without email', async () => {
+    const { repos, cookies } = await loginAsGitee();
+    const app = await makeGiteeApp(repos);
+
+    const meRes = await app.request('/auth/me', {
+      headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
+    });
+    expect(meRes.status).toBe(200);
+    const me = (await meRes.json()) as Record<string, unknown>;
+    expect(me.kind).toBe('user');
+    expect(me.platform).toBe('gitee');
+    expect(me.login).toBe('bob');
+    expect(me).not.toHaveProperty('email');
+    expect(me).not.toHaveProperty('providerAccountId');
+
+    const account = await repos.accounts.getByProvider('gitee', '202');
+    expect(account?.login).toBe('bob');
+    expect(account?.email).toBe('bob@example.com');
+  });
+
+  it('rejects a gitee callback whose state cookie is missing or mismatched', async () => {
+    const repos = await freshRepos();
+    const app = await makeGiteeApp(repos);
+    const loginRes = await app.request('/auth/gitee/login');
+    const state = extractCookies(loginRes).jobagent_oauth_state!;
+
+    const mismatch = await app.request(
+      `/auth/gitee/callback?state=${encodeURIComponent('tampered.value')}&code=fake-code`,
+      { headers: { Cookie: `jobagent_oauth_state=${state}` } },
+    );
+    expect(mismatch.status).toBe(400);
+    expect((await mismatch.json() as { code: string }).code).toBe('AUTH_INVALID_STATE');
+
+    const noCookie = await app.request(
+      `/auth/gitee/callback?state=${encodeURIComponent(state)}&code=fake-code`,
+    );
+    expect(noCookie.status).toBe(400);
+  });
+
+  it('returns 502 when the gitee upstream exchange fails', async () => {
+    const repos = await freshRepos();
+    const app = await makeGiteeApp(repos, 'upstream down');
+    const loginRes = await app.request('/auth/gitee/login');
+    const state = extractCookies(loginRes).jobagent_oauth_state!;
+    const cb = await app.request(
+      `/auth/gitee/callback?state=${encodeURIComponent(state)}&code=fake-code`,
+      { headers: { Cookie: `jobagent_oauth_state=${state}` } },
+    );
+    expect(cb.status).toBe(502);
+    expect((await cb.json() as { code: string }).code).toBe('AUTH_EXCHANGE_FAILED');
+  });
+});
+
+describe('Gitee login claim ownership', () => {
+  it('lets a gitee user claim their gitee profile but not a github profile', async () => {
+    const { repos, cookies } = await loginAsGitee();
+    await insertGiteeProfile(repos, 'prof-bob', 'bob');
+    await insertProfile(repos, 'prof-alice', 'alice'); // github 画像
+    const app = await makeGiteeApp(repos);
+    const auth = { Cookie: cookieHeader(cookies, 'jobagent_session') };
+
+    // 他人/他平台画像 → 403
+    const forbidden = await app.request('/profiles/prof-alice/claim', {
+      method: 'POST',
+      headers: auth,
+    });
+    expect(forbidden.status).toBe(403);
+    expect((await forbidden.json() as { code: string }).code).toBe('AUTH_NOT_PROFILE_OWNER');
+
+    // 本人 gitee 画像 → 200，双侧记录认领
+    const ok = await app.request('/profiles/prof-bob/claim', { method: 'POST', headers: auth });
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as Record<string, unknown>;
+    expect(body.claimed).toBe(true);
+    expect((body.subject as Record<string, unknown>).platform).toBe('gitee');
+
+    const profile = await repos.profiles.getById('prof-bob');
+    expect(profile?.subjectClaimed).toBe(true);
+    const account = await repos.accounts.getByProvider('gitee', '202');
+    expect(account?.claimedProfileId).toBe('prof-bob');
+  });
+});
+
+describe('GET /auth/providers', () => {
+  it('reports both platforms as unconfigured when providers are forced off', async () => {
+    const app = await createApp({
+      repos: await freshRepos(),
+      githubAuthProvider: null,
+      giteeAuthProvider: null,
+    });
+    const res = await app.request('/auth/providers');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      github: { configured: false },
+      gitee: { configured: false },
+    });
+  });
+
+  it('reports configured flags per injected provider without leaking secrets', async () => {
+    const app = await createApp({
+      repos: await freshRepos(),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+      giteeAuthProvider: new FakeAuthProvider(BOB, undefined, 'gitee'),
+    });
+    const res = await app.request('/auth/providers');
+    const body = (await res.json()) as {
+      github: { configured: boolean };
+      gitee: { configured: boolean };
+    };
+    expect(body.github.configured).toBe(true);
+    expect(body.gitee.configured).toBe(true);
+    // 仅回布尔态，不含任何凭证字段
+    expect(JSON.stringify(body)).not.toMatch(/secret|clientId|client_id/i);
+  });
+});

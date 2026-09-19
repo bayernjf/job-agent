@@ -1,13 +1,15 @@
 /**
- * 账号/OAuth 认证配置（账号里程碑，2026-09-18，决策 #1-A/#6-A）。
+ * 账号/OAuth 认证配置（账号里程碑，2026-09-18，决策 #1-A/#6-A；Gitee 平台 2026-09-19 对称新增）。
  *
- * 单一事实源：GITHUB_OAUTH_* / AUTH_* 环境变量只在这里读取一次，非法值回退默认并
- * warn，不在各端点散落 process.env。纯函数便于单测。未配置 client id/secret 时
- * github.configured=false，登录路由返回 501 AUTH_NOT_CONFIGURED（测试用 FakeAuthProvider
- * 不依赖它），其余接口（demo / 浏览公开画像）照常工作。
+ * 单一事实源：GITHUB_OAUTH_* / GITEE_OAUTH_* / AUTH_* 环境变量只在这里读取一次，非法值
+ * 回退默认并 warn，不在各端点散落 process.env。纯函数便于单测。未配置某平台 client
+ * id/secret 时该平台 configured=false，对应登录路由返回 501 AUTH_NOT_CONFIGURED（测试用
+ * FakeAuthProvider 不依赖它），其余接口（demo / 浏览公开画像）照常工作。会话 TTL、state
+ * 密钥、回调基址等两平台共用，仅 client id/secret 按平台分别配置。
  */
 
-export interface GithubOAuthConfig {
+/** 单个 OAuth 平台的客户端凭证与配置态（GitHub / Gitee 同构）。 */
+export interface OAuthProviderConfig {
   clientId: string;
   clientSecret: string;
   /** 两者齐备才算配置完成，登录路由才可用 */
@@ -15,7 +17,8 @@ export interface GithubOAuthConfig {
 }
 
 export interface AuthConfig {
-  github: GithubOAuthConfig;
+  github: OAuthProviderConfig;
+  gitee: OAuthProviderConfig;
   /** 登录会话有效期（ms），同时是会话 Cookie Max-Age（默认 30 天） */
   sessionTtlMs: number;
   /**
@@ -57,16 +60,24 @@ function trimOrEmpty(raw: string | undefined): string {
   return raw?.trim() ?? '';
 }
 
+/** 组装单个平台凭证配置；id 与 secret 都非空才 configured。 */
+function providerConfig(clientId: string, clientSecret: string): OAuthProviderConfig {
+  return { clientId, clientSecret, configured: Boolean(clientId && clientSecret) };
+}
+
 /** 从环境变量对象加载认证配置（默认 process.env），纯函数、可测试。 */
 export function loadAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig {
-  const clientId = trimOrEmpty(env.GITHUB_OAUTH_CLIENT_ID);
-  const clientSecret = trimOrEmpty(env.GITHUB_OAUTH_CLIENT_SECRET);
+  const github = providerConfig(
+    trimOrEmpty(env.GITHUB_OAUTH_CLIENT_ID),
+    trimOrEmpty(env.GITHUB_OAUTH_CLIENT_SECRET),
+  );
+  const gitee = providerConfig(
+    trimOrEmpty(env.GITEE_OAUTH_CLIENT_ID),
+    trimOrEmpty(env.GITEE_OAUTH_CLIENT_SECRET),
+  );
   return {
-    github: {
-      clientId,
-      clientSecret,
-      configured: Boolean(clientId && clientSecret),
-    },
+    github,
+    gitee,
     sessionTtlMs: positiveInt(
       env.AUTH_SESSION_TTL_MS,
       AUTH_DEFAULTS.sessionTtlMs,
