@@ -15,6 +15,20 @@ async function mockAuthMe(page: Page, body: unknown): Promise<void> {
   );
 }
 
+/** mock GET /auth/providers（AccountMenu 据此决定渲染哪些登录入口），默认仅 GitHub 配置。 */
+async function mockAuthProviders(
+  page: Page,
+  opts: { github?: boolean; gitee?: boolean } = {},
+): Promise<void> {
+  const body = {
+    github: { configured: opts.github ?? true },
+    gitee: { configured: opts.gitee ?? false },
+  };
+  await page.route('**/auth/providers', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) }),
+  );
+}
+
 async function waitForHydrated(page: Page): Promise<void> {
   await page.waitForFunction(
     () => {
@@ -29,6 +43,7 @@ async function waitForHydrated(page: Page): Promise<void> {
 test.describe('AccountMenu', () => {
   test('shows the GitHub sign-in entry for an anonymous visitor', async ({ page }) => {
     await mockAuthMe(page, { kind: 'anonymous' });
+    await mockAuthProviders(page, { github: true, gitee: false });
     await page.goto('/en/');
     await waitForHydrated(page);
 
@@ -39,6 +54,36 @@ test.describe('AccountMenu', () => {
       'href',
       /\/auth\/github\/login\?return_to=%2Fen%2F$/,
     );
+    // Gitee 未配置：不渲染 Gitee 入口
+    await expect(page.getByTestId('signin-gitee')).toHaveCount(0);
+  });
+
+  test('shows both GitHub and Gitee sign-in entries when both providers are configured', async ({
+    page,
+  }) => {
+    await mockAuthMe(page, { kind: 'anonymous' });
+    await mockAuthProviders(page, { github: true, gitee: true });
+    await page.goto('/en/');
+    await waitForHydrated(page);
+
+    const github = page.getByRole('link', { name: 'Sign in with GitHub' });
+    const gitee = page.getByRole('link', { name: 'Sign in with Gitee' });
+    await expect(github).toBeVisible();
+    await expect(gitee).toBeVisible();
+    await expect(gitee).toHaveAttribute(
+      'href',
+      /\/auth\/gitee\/login\?return_to=%2Fen%2F$/,
+    );
+  });
+
+  test('shows only the Gitee entry when GitHub is not configured', async ({ page }) => {
+    await mockAuthMe(page, { kind: 'anonymous' });
+    await mockAuthProviders(page, { github: false, gitee: true });
+    await page.goto('/en/');
+    await waitForHydrated(page);
+
+    await expect(page.getByTestId('signin-gitee')).toBeVisible();
+    await expect(page.getByTestId('signin-github')).toHaveCount(0);
   });
 
   test('shows the signed-in identity and signs out back to anonymous', async ({ page }) => {
@@ -53,6 +98,7 @@ test.describe('AccountMenu', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     let logoutCalls = 0;
+    await mockAuthProviders(page, { github: true, gitee: true });
     await page.route('**/auth/logout', (route) => {
       logoutCalls += 1;
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
@@ -60,11 +106,12 @@ test.describe('AccountMenu', () => {
 
     await page.goto('/en/');
     await waitForHydrated(page);
-    await expect(page.locator('.account-menu__login')).toContainText('Fixture User');
+    await expect(page.locator('.account-menu__identity')).toContainText('Fixture User');
 
     await page.getByRole('button', { name: 'Sign out' }).click();
     expect(logoutCalls).toBe(1);
     await expect(page.getByRole('link', { name: 'Sign in with GitHub' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Sign in with Gitee' })).toBeVisible();
   });
 });
 
