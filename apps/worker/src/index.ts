@@ -291,6 +291,100 @@ export async function handleJobFailure(
   }
 }
 
+// ─── 单任务认领处理（常驻循环与 serverless cron 共用）────────────────────
+
+const envPositiveInt = (v: string | undefined): number | undefined => {
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+};
+
+/** claimAndProcessOne 的结果判别联合（供 serverless cron 端点序列化返回）。 */
+export type ClaimOneResult =
+  | { kind: 'idle' }
+  | { kind: 'deferred'; jobId: string }
+  | { kind: 'processed'; jobId: string; profileId: string }
+  | { kind: 'failed'; jobId: string; permanent: boolean; message: string };
+
+export interface ClaimOneDeps {
+  /** 注入证据源 map（测试用 fake；生产默认 makeSources 创建） */
+  sources?: SourceMap;
+  /** 注入仓储（测试用内存库；生产默认 createStorage） */
+  repos?: WorkerRepos;
+  /** 注入 GITHUB_TOKEN（生产从环境变量读） */
+  token?: string;
+  /** 注入 GITEE_TOKEN（生产从环境变量读；Gitee 匿名可读，可为空） */
+  giteeToken?: string;
+  /** Worker 标识（默认随机；serverless cron 用固定名如 vercel-cron） */
+  workerId?: string;
+  /** 最大重试次数（默认 3） */
+  maxRetries?: number;
+  /** 同时处理的演示任务上限（默认 1） */
+  demoMaxConcurrent?: number;
+  /**
+   * 认领前先回收 running 超过该毫秒数的僵尸任务（serverless cron 每次调用都没有
+   * "启动回收"环节，故传 5*60*1000；常驻 Worker 在 runWorker 启动时只回收一次，传 null）。
+   * 默认 null（不回收）。
+   */
+  reclaimStaleMs?: number | null;
+  /** 日志注入（默认 console） */
+  logger?: Pick<Console, 'info' | 'warn' | 'error'>;
+}
+
+/**
+ * 认领并处理至多一个任务（无轮询、无循环）：
+ * claimNext → demo 并发闸（超闸退回 queued）→ processJob → 失败走 handleJobFailure。
+ *
+ * 常驻 Worker 的主循环每次迭代调用它；serverless 部署（Vercel Cron）由定时端点
+ * 每次冷/温实例调用一次。函数超时被平台切断时，任务留在 running，由
+ * reclaimStaleRunning（>5 分钟）在下一轮回收，不会丢任务。
+ */
+export async function claimAndProcessOne(deps: ClaimOneDeps = {}): Promise<ClaimOneResult> {
+  const logger = deps.logger ?? console;
+  const workerId = deps.workerId ?? `worker-${randomUUID().slice(0, 8)}`;
+  const maxRetries = deps.maxRetries ?? 3;
+  const demoMaxConcurrent =
+    deps.demoMaxConcurrent ?? envPositiveInt(process.env.DEMO_MAX_CONCURRENT) ?? 1;
+
+  const repos = deps.repos ?? (await createStorage());
+  const sources = deps.sources ?? makeSources(deps);
+
+  // serverless cron 没有"启动回收"环节：每次触发先回收 >阈值仍 running 的僵尸任务
+  // （函数超时/实例被回收会留下 running；常驻 Worker 在 runWorker 启动时只回收一次）。
+  if (deps.reclaimStaleMs != null) {
+    const reclaimed = await repos.jobs.reclaimStaleRunning(deps.reclaimStaleMs);
+    if (reclaimed > 0) {
+      logger.warn(`[worker] reclaimed ${reclaimed} stale running job(s) before cron claim`);
+    }
+  }
+
+  const job = await repos.jobs.claimNext(workerId);
+  if (!job) return { kind: 'idle' };
+
+  // 演示并发闸：只约束 demo 任务（正式任务不限，claimNext 已让正式任务优先）。
+  if (job.requesterKind === 'demo') {
+    const demoRunning = await repos.jobs.countRunningByRequesterKind('demo');
+    if (demoRunning > demoMaxConcurrent) {
+      await repos.jobs.deferToQueued(job.id, 'Deferred: demo concurrency cap');
+      logger.info(
+        `[worker] demo job ${job.id} deferred (demoRunning=${demoRunning} > cap=${demoMaxConcurrent})`,
+      );
+      return { kind: 'deferred', jobId: job.id };
+    }
+  }
+
+  try {
+    const result = await processJob(job, repos, sources, logger);
+    return { kind: 'processed', jobId: job.id, profileId: result.profileId };
+  } catch (err) {
+    const error = err as Error;
+    const code = (error as { code?: string }).code;
+    const permanent = code === 'not_found' || job.attempts >= maxRetries;
+    await handleJobFailure(job, repos, error, maxRetries, logger);
+    return { kind: 'failed', jobId: job.id, permanent, message: error.message };
+  }
+}
+
 // ─── 主循环 ─────────────────────────────────────────────────────────────
 
 const defaultSleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -304,11 +398,6 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
   const workerId = deps.workerId ?? `worker-${randomUUID().slice(0, 8)}`;
   const pollIntervalMs = deps.pollIntervalMs ?? 5000;
   const maxRetries = deps.maxRetries ?? 3;
-  const envPositiveInt = (v: string | undefined): number | undefined => {
-    if (v === undefined) return undefined;
-    const n = Number(v);
-    return Number.isInteger(n) && n >= 0 ? n : undefined;
-  };
   const demoMaxConcurrent =
     deps.demoMaxConcurrent ?? envPositiveInt(process.env.DEMO_MAX_CONCURRENT) ?? 1;
   const demoBackoffMs =
@@ -332,32 +421,24 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
   }
 
   while (shouldContinue()) {
-    const job = await repos.jobs.claimNext(workerId);
-    if (!job) {
+    // 单任务认领/处理逻辑与 serverless cron 端点共用 claimAndProcessOne。
+    const outcome = await claimAndProcessOne({
+      repos,
+      sources,
+      token: deps.token,
+      giteeToken: deps.giteeToken,
+      workerId,
+      maxRetries,
+      demoMaxConcurrent,
+      logger,
+    });
+
+    if (outcome.kind === 'idle') {
       await sleep(pollIntervalMs);
-      continue;
+    } else if (outcome.kind === 'deferred') {
+      await sleep(demoBackoffMs);
     }
-
-    // 演示并发闸：只约束 demo 任务（正式任务不限，且 claimNext 已让正式任务优先）。
-    // 此刻该 job 已被认领为 running，故计数包含它自己：cap=1 时首个 demo 计数为 1，放行。
-    if (job.requesterKind === 'demo') {
-      const demoRunning = await repos.jobs.countRunningByRequesterKind('demo');
-      if (demoRunning > demoMaxConcurrent) {
-        await repos.jobs.deferToQueued(job.id, 'Deferred: demo concurrency cap');
-        logger.info(
-          `[worker] demo job ${job.id} deferred (demoRunning=${demoRunning} > cap=${demoMaxConcurrent}); ` +
-            `back off ${demoBackoffMs}ms`,
-        );
-        await sleep(demoBackoffMs);
-        continue;
-      }
-    }
-
-    try {
-      await processJob(job, repos, sources, logger);
-    } catch (err) {
-      await handleJobFailure(job, repos, err as Error, maxRetries, logger);
-    }
+    // processed / failed：立即进入下一轮认领（正式任务优先、不额外等待）。
   }
 
   logger.info(`[worker] ${workerId} stopped`);
