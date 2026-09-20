@@ -14,6 +14,7 @@ import { loadProfileRecord, loadEvidence } from '../../../lib/db';
 import { resolveViewer, canViewGatedContent } from '../../../lib/auth';
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
+import { browserApiBase } from '../../../lib/api-base.js';
 import type { EvidenceItem, SkillTagKind } from '@jobagent/shared';
 
 const { locale: rawLocale, profileId } = Astro.params;
@@ -23,8 +24,8 @@ if (!isLocale(rawLocale)) {
 const locale: Locale = rawLocale;
 const t = createTranslator(locale);
 
-// API 地址：服务端环境变量或同源（MVP 默认同源）
-const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
+// API 地址：显式 PUBLIC_API_BASE 优先；Vercel 同域为 /api；本地默认同源
+const apiBase = browserApiBase();
 
 const profileRecord = profileId ? await loadProfileRecord(profileId) : null;
 const profile = profileRecord?.snapshot ?? null;
