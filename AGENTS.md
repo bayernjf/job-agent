@@ -21,7 +21,7 @@ JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项�
 - 后端：Hono + Zod；分析任务由独立 Worker 消费
 - 数据库：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（**Drizzle 与方言差异只允许出现在 `packages/storage` 内部**，业务只依赖统一 async 仓储接口与 `createStorage()` 工厂、按 `DB_DRIVER` 切换，见下；MVP 不引入 Redis）
 - GitHub 采集：官方 Octokit，GraphQL 批量优先、REST 补；生产用 GitHub App
-- Gitee 采集（第二证据源，2026-09-14 G-A+G-B 落地）：官方 v5 **REST-only（无 GraphQL）**，匿名可读公开数据、`GITEE_TOKEN` 可选仅提额；产出与 GitHub 一致的证据源无关 `AnalyzerInput`，CLI `--platform gitee` 与在线链路（API `platform` 枚举、Worker 多源路由、报告页/扩展平台切换 UI）均已打通；events 行为流（方案 A 补近期 PushEvent 提交）与行为多样性弱信号（方案 B：双源聚合源无关 `BehaviorEventSummary`、analyzer 新增 `narrow_activity_scope`、规则版本 0.1→0.2）均已于 2026-09-15 落地；跨源镜像去重、在线多源融合画像（`platform=all` 一次作业双采）、跨源 PR/issue 同帖去重（7 天窗 `CROSS_SOURCE_THREAD_WINDOW_MS`，2026-09-18 锁定）与融合作业配额权重（demo 扣 2）均已落地；Gitee OAuth、认证精确限频仍缓做（见 deferred #12、docs/design-gitee-source-20260914.md、docs/design-behavior-diversity-20260915.md、docs/design-cross-source-fusion-20260915.md）
+- Gitee 采集（第二证据源，2026-09-14 G-A+G-B 落地）：官方 v5 **REST-only（无 GraphQL）**，匿名可读公开数据、`GITEE_TOKEN` 可选仅提额；产出与 GitHub 一致的证据源无关 `AnalyzerInput`，CLI `--platform gitee` 与在线链路（API `platform` 枚举、Worker 多源路由、报告页/扩展平台切换 UI）均已打通；events 行为流（方案 A 补近期 PushEvent 提交）与行为多样性弱信号（方案 B：双源聚合源无关 `BehaviorEventSummary`、analyzer 新增 `narrow_activity_scope`、规则版本 0.1→0.2）均已于 2026-09-15 落地；跨源镜像去重、在线多源融合画像（`platform=all` 一次作业双采）、跨源 PR/issue 同帖去重（7 天窗 `CROSS_SOURCE_THREAD_WINDOW_MS`，2026-09-18 锁定）与融合作业配额权重（demo 扣 2）均已落地；Gitee OAuth 登录/认领已随 item33（2026-09-19）落地（见 docs/design-gitee-oauth-20260919.md），仅剩真实 Gitee App 凭证首次冒烟与认证态精确限频缓做（见 deferred #12、docs/design-gitee-source-20260914.md、docs/design-behavior-diversity-20260915.md、docs/design-cross-source-fusion-20260915.md）
 - 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`；浏览器扩展 `apps/extension`（P1：三大 ATS 一键填充）
 - 测试：Vitest（就近单元）+ Playwright（E2E）
 - 分析深度：MVP 仅 **L0 元数据 + L1 行为时序**，**不 clone 仓库**（L2/L3/L4 见 docs/deferred-items）
@@ -111,13 +111,13 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 
 - 结构变更只通过 **`db/migrations/{sqlite,postgres}/NNN_verb_snake_case.sql`** 编号文件（两侧各一份、编号文件名对齐），规则（文件头、幂等、`COMMENT ON`、只追加不重写、回滚）见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。
 - W1 已落地：迁移器（按序应用）、`scripts/migrate-down`（回滚一步，无安全 down 则拒绝）、`migrations.test.ts`（干净库顺序加载/编号连续/关键表存在），实现见 `packages/storage`。**W3-6 已扩展为双方言**：`db/migrations/{sqlite,postgres}` 对称目录、双方言 schema/迁移文本一致性测试防漂移、`postgres-behavior.test.ts` 仅在 `DATABASE_TEST_URL` 存在时实跑（否则 skip）；CI 提供 `postgres:16-alpine` service 并注入该变量，双方言测试在流水线真实 PG 上实跑；新增/改表必须两侧各一份编号文件名对齐的迁移，`bash tools/check-migrations.sh` 会校验对齐。
-- M1 核心表：`profiles`（画像快照 JSONB + analyzerVersion + 时间窗）、`evidence`、`analysis_jobs`、`waitlist`；演示模式 006–008（demo_sessions/demo_ip_windows 等）；账号主脊 010 `accounts`、011 `auth_sessions`（GitHub OAuth 登录 + 本人认领，2026-09-18 落地）。Gitee OAuth 账号仍缓做（见 deferred）。
+- M1 核心表：`profiles`（画像快照 JSONB + analyzerVersion + 时间窗）、`evidence`、`analysis_jobs`、`waitlist`；演示模式 006–008（demo_sessions/demo_ip_windows 等）；账号主脊 010 `accounts`、011 `auth_sessions`（GitHub/Gitee 双 OAuth 登录 + 本人认领，2026-09-18/19 落地）。Gitee OAuth 仅差真实 App 凭证首次冒烟（见 deferred）。
 - 画像存**快照**而非实时重算，避免源数据变化导致已分享结论漂移；优先存**证据指针与精简原始快照（带 ETag）**，不做无标注全量拷贝。
 
 ## GitHub 采集与外部约束
 
 - 只用官方 **Octokit**，启用 throttling / retry 插件处理次级限频；**凭证只在服务端，绝不下发前端、不入 Git**。
-- 限额以 GitHub 官方文档当期值为准（技术选型文档记录了 2026-09-10 核实值）：REST 认证约 5,000 次/小时、GraphQL 按"点"计约 5,000 点/小时，GitHub App 额度更高；开工前需复核非企业 GitHub App 精确值。
+- 限额以 GitHub 官方文档当期值为准（2026-09-18 已复核精确值，写回技术选型 6.7）：非企业 installation token 起步 REST 约 5,000 次/小时、GraphQL 约 5,000 点/小时，>20 仓库/组织成员逐档加成、上限均 12,500/小时；GitHub App 额度更高。
 - 必须实现：单画像调用预算、ETag 条件请求、缓存优先、限频退避、剩余额度监控。
 - GraphQL 查询越大点成本越高，**不要假设它必然比 REST 省**，关键取法先做 spike 实测。
 
