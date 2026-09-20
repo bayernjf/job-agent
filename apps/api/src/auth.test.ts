@@ -42,6 +42,20 @@ describe('loadAuthConfig', () => {
     expect(cfg.afterLoginRedirectUrl).toBe('https://app.example.com/report');
     expect(cfg.isProduction).toBe(true);
   });
+
+  it('reports gitee as configured only when both GITEE_OAUTH id and secret are present', () => {
+    expect(loadAuthConfig({}).gitee.configured).toBe(false);
+    expect(
+      loadAuthConfig({ GITEE_OAUTH_CLIENT_ID: 'id', GITEE_OAUTH_CLIENT_SECRET: '' }).gitee
+        .configured,
+    ).toBe(false);
+    const cfg = loadAuthConfig({
+      GITEE_OAUTH_CLIENT_ID: 'gid',
+      GITEE_OAUTH_CLIENT_SECRET: 'gsecret',
+    });
+    expect(cfg.gitee.configured).toBe(true);
+    expect(cfg.gitee.clientId).toBe('gid');
+  });
 });
 
 describe('OAuth state signing', () => {

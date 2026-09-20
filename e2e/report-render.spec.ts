@@ -27,8 +27,9 @@ test.describe('report page SSR render', () => {
     // 外部协作
     await expect(page.getByText('octo/awesome-lib#12')).toBeVisible();
 
-    // 面试题
-    await expect(page.getByText('Walk through your most complex external PR.')).toBeVisible();
+    // 面试题：授权分级闸后，未登录折叠为登录墙（题目正文登录后可见，见 gated-content.spec）
+    await expect(page.getByTestId('interview-gate')).toBeVisible();
+    expect(await page.getByText('Walk through your most complex external PR.').count()).toBe(0);
 
     // 盲区
     await expect(page.getByText(/Private contribution graph/)).toBeVisible();

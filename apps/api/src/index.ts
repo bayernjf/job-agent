@@ -15,6 +15,9 @@
  *   POST /demo/exit      — 退出演示、清 Cookie
  *   GET  /auth/github/login    — 跳转 GitHub 授权页（未配置 OAuth 时 501）
  *   GET  /auth/github/callback — GitHub OAuth 回调，upsert 账号、建会话、写 HttpOnly Cookie
+ *   GET  /auth/gitee/login     — 跳转 Gitee 授权页（未配置 OAuth 时 501）
+ *   GET  /auth/gitee/callback  — Gitee OAuth 回调，逻辑与 GitHub 对称
+ *   GET  /auth/providers       — 各平台 OAuth 是否已配置（公开只读，供前端渲染登录入口）
  *   POST /auth/logout    — 撤销当前登录会话、清 Cookie
  *   GET  /auth/me        — 当前登录身份（刻意不含 email/providerAccountId）
  *   POST /profiles/:id/claim — 登录用户认领本人画像（平台登录名一致才放行）
@@ -54,6 +57,7 @@ import {
   AUTH_ERROR_CODES,
   AUTH_SESSION_COOKIE,
   AUTH_STATE_COOKIE,
+  AUTH_RETURN_COOKIE,
   type AbilityProfile,
   type AuthMe,
   type AuthenticityStatus,
@@ -104,7 +108,10 @@ import {
 import { loadAuthConfig, type AuthConfig } from './auth-config.js';
 import type { AuthProvider, OAuthProfile } from './auth-provider.js';
 import { OAuthExchangeError } from './auth-provider.js';
-import { GithubAuthProvider, generateOAuthState, verifyOAuthState } from './github-auth.js';
+import { GithubAuthProvider } from './github-auth.js';
+import { GiteeAuthProvider } from './gitee-auth.js';
+import { generateOAuthState, verifyOAuthState } from './oauth-state.js';
+import { sanitizeReturnTo } from './auth-return-to.js';
 import {
   DEMO_COOKIE,
   clientIp,
@@ -146,6 +153,12 @@ export interface ApiDeps {
    * 显式传 null = 强制禁用；测试注入 FakeAuthProvider 走完整登录链路、不打网络。
    */
   githubAuthProvider?: AuthProvider | null;
+  /**
+   * Gitee OAuth provider。
+   * 不传（undefined）= 按 GITEE_OAUTH_* env 自动构造（未配置则为 null，登录路由 501）；
+   * 显式传 null = 强制禁用；测试注入 FakeAuthProvider(platform='gitee') 走完整登录链路、不打网络。
+   */
+  giteeAuthProvider?: AuthProvider | null;
   /**
    * 简历 LLM 润色 provider（设计 §7/§10 #4）。
    * 不传（undefined）= 按服务端 LLM_* 环境变量自动构造（无 LLM_API_KEY 则为 null，默认关闭走规则版）；
@@ -333,7 +346,18 @@ function authStateCookieOptions(cfg: AuthConfig) {
   return {
     httpOnly: true,
     sameSite: 'Lax' as const,
-    path: '/auth/github',
+    path: '/auth',
+    secure: cfg.isProduction,
+    maxAge: 600,
+  };
+}
+
+/** 临时 return_to 回跳 Cookie：仅回调路径可读、10 分钟有效（与 state 同生命周期）。 */
+function authReturnCookieOptions(cfg: AuthConfig) {
+  return {
+    httpOnly: true,
+    sameSite: 'Lax' as const,
+    path: '/auth',
     secure: cfg.isProduction,
     maxAge: 600,
   };
@@ -384,7 +408,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     deps.resumePolish === undefined ? createResumePolishProviderFromEnv() : deps.resumePolish;
   // DEMO_IP_SALT 缺省时进程内随机盐（重启后历史 IP 窗口失效，仅本地/实验可接受）
   const effectiveSalt = cfg.ipSalt || randomBytes(16).toString('hex');
-  // 账号/OAuth（决策 #1-A/#6-A）：未配置 client id/secret 时 githubProvider=null，登录路由返回 501
+  // 账号/OAuth（决策 #1-A/#6-A）：未配置 client id/secret 时该平台 provider=null，登录路由返回 501
   const authCfg = deps.authConfig ?? loadAuthConfig();
   const githubProvider: AuthProvider | null =
     deps.githubAuthProvider === undefined
@@ -392,6 +416,13 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
         ? new GithubAuthProvider(authCfg.github.clientId, authCfg.github.clientSecret)
         : null
       : deps.githubAuthProvider;
+  // Gitee OAuth（决策 #4 海内外同步）：与 GitHub 同构，env GITEE_OAUTH_* 缺省则 null（501）
+  const giteeProvider: AuthProvider | null =
+    deps.giteeAuthProvider === undefined
+      ? authCfg.gitee.configured
+        ? new GiteeAuthProvider(authCfg.gitee.clientId, authCfg.gitee.clientSecret)
+        : null
+      : deps.giteeAuthProvider;
   // AUTH_STATE_SECRET 缺省时进程内随机（重启会使进行中的登录失效，仅本地/实验可接受，生产必须固定）
   const effectiveStateSecret = authCfg.stateSecret || randomBytes(32).toString('hex');
 
@@ -525,80 +556,104 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     return c.json({ kind: 'anonymous' });
   });
 
-  // ── 账号登录（GitHub OAuth web flow，决策 #1-A/#6-A）─────────────────────
+  // ── 账号登录（GitHub / Gitee OAuth web flow，决策 #1-A/#6-A、#4 海内外同步）──────
 
-  // GET /auth/github/login：写签名 state Cookie 并 302 到 GitHub 授权页（未配置 501）
-  app.get('/auth/github/login', (c) => {
-    if (!githubProvider) {
-      return c.json(
-        { error: 'GitHub OAuth is not configured', code: AUTH_ERROR_CODES.notConfigured },
-        501,
-      );
-    }
-    const redirectUri = `${oauthBaseOrigin(c, authCfg)}/auth/github/callback`;
-    const state = generateOAuthState(effectiveStateSecret);
-    setCookie(c, AUTH_STATE_COOKIE, state, authStateCookieOptions(authCfg));
-    return c.redirect(githubProvider.authorizeUrl(state, redirectUri), 302);
-  });
+  /**
+   * 注册某平台的 login + callback 两条 OAuth 路由（平台无关，GitHub/Gitee 各调一次）。
+   * provider 为 null（未配置凭证）时路由仍注册，但 login/callback 都返回 501，
+   * 与 GitHub 历史行为一致，便于前端探测与排障。临时 state/return Cookie 的 Path=/auth，
+   * 两个平台的回调（/auth/<platform>/callback）都能读到。
+   */
+  const registerOAuthFlow = (
+    platform: AuthProvider['platform'],
+    provider: AuthProvider | null,
+    label: string,
+  ) => {
+    const loginPath = `/auth/${platform}/login`;
+    const callbackPath = `/auth/${platform}/callback`;
+    const notConfiguredBody = {
+      error: `${label} OAuth is not configured`,
+      code: AUTH_ERROR_CODES.notConfigured,
+    };
 
-  // GET /auth/github/callback：校验 state → 授权码换资料 → upsert 账号 → 建登录会话
-  app.get('/auth/github/callback', async (c) => {
-    if (!githubProvider) {
-      return c.json(
-        { error: 'GitHub OAuth is not configured', code: AUTH_ERROR_CODES.notConfigured },
-        501,
-      );
-    }
-    const query = c.req.query();
-    const cookieState = readCookie(c.req.header('Cookie'), AUTH_STATE_COOKIE);
-    if (
-      !query.state ||
-      !cookieState ||
-      query.state !== cookieState ||
-      !verifyOAuthState(query.state, effectiveStateSecret)
-    ) {
-      return c.json(
-        { error: 'invalid or missing OAuth state', code: AUTH_ERROR_CODES.invalidState },
-        400,
-      );
-    }
-    if (!query.code) {
-      return c.json(
-        { error: 'missing authorization code', code: AUTH_ERROR_CODES.invalidState },
-        400,
-      );
-    }
-    const redirectUri = `${oauthBaseOrigin(c, authCfg)}/auth/github/callback`;
-    let identity: OAuthProfile;
-    try {
-      identity = await githubProvider.exchangeCodeForProfile(query.code, redirectUri);
-    } catch (err) {
-      if (err instanceof OAuthExchangeError) {
-        // 任何授权码交换/取资料失败都按上游故障处理（502 Bad Gateway）
-        return c.json({ error: err.message, code: AUTH_ERROR_CODES.exchangeFailed }, 502);
+    // login：写签名 state Cookie（+可选 return_to 深链 Cookie）并 302 到平台授权页
+    app.get(loginPath, (c) => {
+      if (!provider) return c.json(notConfiguredBody, 501);
+      const redirectUri = `${oauthBaseOrigin(c, authCfg)}${callbackPath}`;
+      const state = generateOAuthState(effectiveStateSecret);
+      setCookie(c, AUTH_STATE_COOKIE, state, authStateCookieOptions(authCfg));
+      // 登录后回跳深链：仅接受同源相对路径（防开放重定向），经本站临时 Cookie 流转，
+      // 不进平台 state、不落日志；非法/缺失则回调后回退 AUTH_AFTER_LOGIN_URL。
+      const returnTo = sanitizeReturnTo(c.req.query('return_to'));
+      if (returnTo) {
+        setCookie(c, AUTH_RETURN_COOKIE, returnTo, authReturnCookieOptions(authCfg));
       }
-      throw err;
-    }
-
-    const account = await repos.accounts.upsertFromProvider({
-      id: generateAccountId(),
-      identity: {
-        platform: identity.platform,
-        providerAccountId: identity.providerAccountId,
-        login: identity.login,
-        name: identity.name ?? null,
-        email: identity.email ?? null,
-        avatarUrl: identity.avatarUrl ?? null,
-      },
+      return c.redirect(provider.authorizeUrl(state, redirectUri), 302);
     });
-    const nowIso = now();
-    const expiresAt = new Date(Date.parse(nowIso) + authCfg.sessionTtlMs).toISOString();
-    const token = generateAuthSessionToken();
-    await repos.authSessions.create({ id: token, accountId: account.id, expiresAt });
-    setCookie(c, AUTH_SESSION_COOKIE, token, authSessionCookieOptions(authCfg, nowIso));
-    deleteCookie(c, AUTH_STATE_COOKIE, { path: '/auth/github' });
-    return c.redirect(authCfg.afterLoginRedirectUrl, 302);
-  });
+
+    // callback：校验 state → 授权码换资料 → upsert 账号 → 建登录会话 → 回跳深链
+    app.get(callbackPath, async (c) => {
+      if (!provider) return c.json(notConfiguredBody, 501);
+      const query = c.req.query();
+      const cookieState = readCookie(c.req.header('Cookie'), AUTH_STATE_COOKIE);
+      if (
+        !query.state ||
+        !cookieState ||
+        query.state !== cookieState ||
+        !verifyOAuthState(query.state, effectiveStateSecret)
+      ) {
+        return c.json(
+          { error: 'invalid or missing OAuth state', code: AUTH_ERROR_CODES.invalidState },
+          400,
+        );
+      }
+      if (!query.code) {
+        return c.json(
+          { error: 'missing authorization code', code: AUTH_ERROR_CODES.invalidState },
+          400,
+        );
+      }
+      const redirectUri = `${oauthBaseOrigin(c, authCfg)}${callbackPath}`;
+      let identity: OAuthProfile;
+      try {
+        identity = await provider.exchangeCodeForProfile(query.code, redirectUri);
+      } catch (err) {
+        if (err instanceof OAuthExchangeError) {
+          // 任何授权码交换/取资料失败都按上游故障处理（502 Bad Gateway）
+          return c.json({ error: err.message, code: AUTH_ERROR_CODES.exchangeFailed }, 502);
+        }
+        throw err;
+      }
+
+      const account = await repos.accounts.upsertFromProvider({
+        id: generateAccountId(),
+        identity: {
+          platform: identity.platform,
+          providerAccountId: identity.providerAccountId,
+          login: identity.login,
+          name: identity.name ?? null,
+          email: identity.email ?? null,
+          avatarUrl: identity.avatarUrl ?? null,
+        },
+      });
+      const nowIso = now();
+      const expiresAt = new Date(Date.parse(nowIso) + authCfg.sessionTtlMs).toISOString();
+      const token = generateAuthSessionToken();
+      await repos.authSessions.create({ id: token, accountId: account.id, expiresAt });
+      setCookie(c, AUTH_SESSION_COOKIE, token, authSessionCookieOptions(authCfg, nowIso));
+      deleteCookie(c, AUTH_STATE_COOKIE, { path: '/auth' });
+      // 消费回跳深链：再次校验（Cookie 值不可被客户端信任为已校验），用完即删；
+      // 非法/缺失回退默认落地页。
+      const returnTo = sanitizeReturnTo(
+        readCookie(c.req.header('Cookie'), AUTH_RETURN_COOKIE),
+      );
+      deleteCookie(c, AUTH_RETURN_COOKIE, { path: '/auth' });
+      return c.redirect(returnTo ?? authCfg.afterLoginRedirectUrl, 302);
+    });
+  };
+
+  registerOAuthFlow('github', githubProvider, 'GitHub');
+  registerOAuthFlow('gitee', giteeProvider, 'Gitee');
 
   // POST /auth/logout：撤销当前登录会话并清 Cookie（匿名调用为 no-op）
   app.post('/auth/logout', async (c) => {
@@ -629,6 +684,14 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       claimedProfileId: account?.claimedProfileId ?? null,
       expiresAt: principal.expiresAt,
     } satisfies AuthMe);
+  });
+
+  // GET /auth/providers：各平台 OAuth 是否已配置（公开只读，只回布尔态，供前端渲染登录入口）
+  app.get('/auth/providers', (c) => {
+    return c.json({
+      github: { configured: githubProvider !== null },
+      gitee: { configured: giteeProvider !== null },
+    });
   });
 
   // POST /analyze：创建分析任务
@@ -1288,7 +1351,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, GET /auth/gitee/login, GET /auth/gitee/callback, GET /auth/providers, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, GET /health`);
   });
 }
 

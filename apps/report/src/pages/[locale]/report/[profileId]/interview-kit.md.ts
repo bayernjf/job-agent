@@ -5,10 +5,11 @@
  */
 import type { APIRoute } from 'astro';
 import { loadProfile, loadEvidence } from '../../../../lib/db';
+import { resolveViewer } from '../../../../lib/auth';
 import { isLocale, type Locale } from '../../../../i18n/index.js';
 import { renderInterviewKit } from '../../../../lib/interview-kit';
 
-export const GET: APIRoute = async ({ params }) => {
+export const GET: APIRoute = async ({ params, request }) => {
   const rawLocale = params.locale;
   if (!isLocale(rawLocale)) {
     return new Response('Not found', { status: 404 });
@@ -16,6 +17,12 @@ export const GET: APIRoute = async ({ params }) => {
   const locale: Locale = rawLocale;
   const profileId = params.profileId;
   if (!profileId) return new Response('Not found', { status: 404 });
+
+  // 授权分级闸：面试准备包含完整证据外链，仅登录 user 可下载（与报告页面试题墙一致）。
+  const viewer = await resolveViewer(request.headers.get('cookie'));
+  if (viewer.kind !== 'user') {
+    return new Response('Sign in required to download the interview kit.', { status: 401 });
+  }
 
   const profile = await loadProfile(profileId);
   if (!profile) return new Response('Not found', { status: 404 });

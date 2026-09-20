@@ -6,10 +6,12 @@
 import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
 import ClaimProfile from '../../../components/ClaimProfile.tsx';
+import GateCard from '../../../components/GateCard.astro';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
 import ApplicationTracker from '../../../components/ApplicationTracker.tsx';
 import { loadProfileRecord, loadEvidence } from '../../../lib/db';
+import { resolveViewer, canViewGatedContent } from '../../../lib/auth';
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
 import type { EvidenceItem, SkillTagKind } from '@jobagent/shared';
@@ -51,6 +53,25 @@ const isRecruiter = Astro.url.searchParams.get('view') === 'recruiter';
 const pathname = Astro.url.pathname;
 const recruiterUrl = `${pathname}?view=recruiter`;
 const candidateUrl = pathname;
+
+// 授权分级闸（2026-09-19）：SSR 解析登录态。未登录（anonymous/demo）看公开门面，
+// 完整证据外链与面试题/面试准备包折叠为登录墙；任何已登录 user（含招聘方）解锁。
+const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
+const canViewGated = canViewGatedContent(viewer);
+// 登录后回跳当前页（含 ?view=recruiter）；return_to 为同源相对路径，后端再做一次白名单校验。
+// 登录墙按画像主体平台选登录方式：Gitee 画像引导 Gitee 登录，其余（含双源融合，主源 GitHub）走 GitHub。
+const loginPlatform: 'github' | 'gitee' = profile.subject.platform === 'gitee' ? 'gitee' : 'github';
+const loginHref = `${apiBase}/auth/${loginPlatform}/login?return_to=${encodeURIComponent(
+  `${pathname}${Astro.url.search}`,
+)}`;
+const gateLoginLabel =
+  loginPlatform === 'gitee' ? t('report.gate.loginButtonGitee') : t('report.gate.loginButton');
+const gateEvidenceBody =
+  loginPlatform === 'gitee' ? t('report.gate.evidenceBodyGitee') : t('report.gate.evidenceBody');
+const gateInterviewBody =
+  loginPlatform === 'gitee'
+    ? t('report.gate.interviewBodyGitee', { count: profile.interviewQuestions.length })
+    : t('report.gate.interviewBody', { count: profile.interviewQuestions.length });
 
 // 证据明细（含完整外链 URL）：画像快照里只有 evidenceId，核验视图/面试准备包需要可点击链接
 const evidenceList = profileId ? await loadEvidence(profileId) : [];
@@ -168,11 +189,20 @@ const applicationStatusLabels = {
     </section>
 
     {
-      isRecruiter && (
-        <section class="ja-card recruiter-banner">
-          <p>{t('report.view.recruiterBanner')}</p>
-        </section>
-      )
+      isRecruiter &&
+        (canViewGated ? (
+          <section class="ja-card recruiter-banner">
+            <p>{t('report.view.recruiterBanner')}</p>
+          </section>
+        ) : (
+          <GateCard
+            title={t('report.gate.evidenceTitle')}
+            body={gateEvidenceBody}
+            loginHref={loginHref}
+            loginLabel={gateLoginLabel}
+            testId="evidence-gate"
+          />
+        ))
     }
 
     <!-- 元信息：生成时间 / 版本 / 时间窗 -->
@@ -199,7 +229,7 @@ const applicationStatusLabels = {
       <div class="ja-stack-2 signals">
         {
           profile.authenticity.signals.map((signal) => {
-            const sigEvidence = isRecruiter ? resolveEvidence(signal.evidenceRefs) : [];
+            const sigEvidence = isRecruiter && canViewGated ? resolveEvidence(signal.evidenceRefs) : [];
             return (
               <div class={`signal signal--${signal.severity}`}>
                 <div class="ja-flex-between">
@@ -208,7 +238,7 @@ const applicationStatusLabels = {
                 </div>
                 <p>{signal.detail}</p>
                 {
-                  isRecruiter && sigEvidence.length > 0 && (
+                  isRecruiter && canViewGated && sigEvidence.length > 0 && (
                     <ul class="evidence-links">
                       {sigEvidence.map((ev) => (
                         <li>
@@ -249,7 +279,7 @@ const applicationStatusLabels = {
               ) : null,
             )}
             {
-              isRecruiter && (
+              isRecruiter && canViewGated && (
                 <div class="skill-evidence">
                   <h3 class="kind-label">{t('report.recruiter.skillEvidence')}</h3>
                   <ul class="ja-stack-1">
@@ -420,9 +450,10 @@ const applicationStatusLabels = {
       )
     }
 
-    <!-- 面试题（招聘方视角附证据外链；求职者视角可下载面试准备包） -->
+    <!-- 面试题（授权分级闸）：未登录只见题数与登录入口；登录 user 可见题目/依据/面试包下载 -->
     {
-      profile.interviewQuestions.length > 0 && (
+      profile.interviewQuestions.length > 0 &&
+        (canViewGated ? (
         <section class="ja-card">
           <div class="ja-flex-between">
             <h2>{t('report.interview.title')}</h2>
@@ -463,7 +494,15 @@ const applicationStatusLabels = {
             })}
           </div>
         </section>
-      )
+        ) : (
+          <GateCard
+            title={t('report.gate.interviewTitle')}
+            body={gateInterviewBody}
+            loginHref={loginHref}
+            loginLabel={gateLoginLabel}
+            testId="interview-gate"
+          />
+        ))
     }
 
     <!-- 投递追踪（仅求职者视角） -->
