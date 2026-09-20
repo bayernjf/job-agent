@@ -26,6 +26,9 @@ data/
 .astro/
 .preview/
 
+# Vercel CLI / local Build Output API artifacts (apps/report/.vercel/output)
+.vercel/
+
 # macOS
 .DS_Store
 
