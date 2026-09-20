@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "astro",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @jobagent/report... build",
+  "regions": ["hnd1"],
+  "crons": [
+    {
+      "path": "/api/internal/cron/process-job?token=REPLACE_WITH_CRON_SECRET",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/cron/cleanup?task=all&token=REPLACE_WITH_CRON_SECRET",
+      "schedule": "17 3 * * *"
+    }
+  ]
+}

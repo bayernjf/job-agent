@@ -16,7 +16,13 @@ import type { AbilityProfile, EvidenceItem } from '@jobagent/shared';
 import type { GitHubCollectedData } from '@jobagent/github-source';
 import type { GiteeCollectedData } from '@jobagent/gitee-source';
 import { createStorage, type StorageContext } from '@jobagent/storage';
-import { handleJobFailure, processJob, runWorker, type WorkerRepos } from './index.js';
+import {
+  claimAndProcessOne,
+  handleJobFailure,
+  processJob,
+  runWorker,
+  type WorkerRepos,
+} from './index.js';
 
 async function freshRepos(): Promise<StorageContext> {
   return createStorage({ sqlitePath: ':memory:' });
@@ -585,5 +591,115 @@ describe('demo concurrency gate', () => {
     expect(source.collect.mock.calls[0]![0]).toBe('formal-later');
     expect((await repos.jobs.getById('formal-later'))!.status).toBe('succeeded');
     expect((await repos.jobs.getById('demo-first'))!.status).toBe('succeeded');
+  });
+});
+
+describe('claimAndProcessOne (serverless cron entry)', () => {
+  it('returns idle when the queue is empty (and creates no source)', async () => {
+    const repos = await freshRepos();
+    const source = makeFakeSource();
+
+    const outcome = await claimAndProcessOne({
+      repos,
+      sources: asSources(source),
+      workerId: 'cron',
+    });
+
+    expect(outcome).toEqual({ kind: 'idle' });
+    expect(source.collect).not.toHaveBeenCalled();
+  });
+
+  it('processes exactly one queued job and reports its profileId', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos, 'one-shot');
+    await createQueuedJob(repos, 'still-queued'); // 第二个任务本轮不应被处理
+    const source = makeFakeSource();
+
+    const outcome = await claimAndProcessOne({
+      repos,
+      sources: asSources(source),
+      workerId: 'cron',
+    });
+
+    expect(outcome.kind).toBe('processed');
+    if (outcome.kind === 'processed') {
+      expect(outcome.jobId).toBe(jobId);
+      expect((await repos.jobs.getById(jobId))!.status).toBe('succeeded');
+      expect(await repos.profiles.getById(outcome.profileId)).toBeTruthy();
+    }
+    expect(source.collect).toHaveBeenCalledTimes(1);
+    // 第二个任务仍在队列，等待下一次 cron 触发
+    const remaining = await repos.jobs.claimNext('cron-2');
+    expect(remaining?.subjectLogin).toBe('still-queued');
+  });
+
+  it('defers an over-cap demo job without processing', async () => {
+    const repos = await freshRepos();
+    await repos.jobs.create({
+      id: 'demo-running',
+      subjectLogin: 'demo-run',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+    await repos.jobs.claimNext('w'); // 占满 cap=1
+    await repos.jobs.create({
+      id: 'demo-waiting',
+      subjectLogin: 'demo-wait',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+    const source = makeFakeSource();
+
+    const outcome = await claimAndProcessOne({
+      repos,
+      sources: asSources(source),
+      workerId: 'cron',
+      demoMaxConcurrent: 1,
+    });
+
+    expect(outcome).toEqual({ kind: 'deferred', jobId: 'demo-waiting' });
+    expect((await repos.jobs.getById('demo-waiting'))!.status).toBe('queued');
+    expect(source.collect).not.toHaveBeenCalled();
+  });
+
+  it('reports a non-permanent failure for a transient error (job requeued)', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos, 'flaky');
+    const source = makeFakeSource(undefined, true); // always throws transient error
+
+    const outcome = await claimAndProcessOne({
+      repos,
+      sources: asSources(source),
+      workerId: 'cron',
+      maxRetries: 3,
+    });
+
+    expect(outcome.kind).toBe('failed');
+    if (outcome.kind === 'failed') {
+      expect(outcome.jobId).toBe(jobId);
+      expect(outcome.permanent).toBe(false);
+    }
+    expect((await repos.jobs.getById(jobId))!.status).toBe('queued');
+  });
+
+  it('reports a permanent failure for a not_found error', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos, 'ghost');
+    const notFoundSource = {
+      collect: vi.fn(async () => {
+        throw Object.assign(new Error('GitHub user not found'), { code: 'not_found' });
+      }),
+    };
+
+    const outcome = await claimAndProcessOne({
+      repos,
+      sources: asSources(notFoundSource),
+      workerId: 'cron',
+      maxRetries: 3,
+    });
+
+    expect(outcome.kind).toBe('failed');
+    if (outcome.kind === 'failed') expect(outcome.permanent).toBe(true);
+    expect((await repos.jobs.getById(jobId))!.status).toBe('failed');
   });
 });

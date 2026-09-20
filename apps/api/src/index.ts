@@ -30,6 +30,8 @@
  *   GET  /profiles/:id/applications — 列出某画像的投递记录
  *   POST /profiles/:id/applications — 新增投递记录
  *   PATCH /applications/:id         — 更新投递状态/备注
+ *   GET  /internal/cron/process-job — serverless 定时消费一个分析任务（CRON_SECRET/x-vercel-cron 鉴权）
+ *   GET  /internal/cron/cleanup     — serverless 定时清理 demo/auth 数据（?task=demo|auth|all）
  *   GET  /health         — 健康检查
  *
  * 环境变量：
@@ -37,11 +39,13 @@
  *   DB_PATH     — SQLite 数据库路径（默认 data/job-agent.db）
  *   DATABASE_URL— Postgres 连接串（DB_DRIVER=postgres 时）
  *   PORT        — 监听端口（默认 3000）
+ *   API_MOUNT_PREFIX — 同域挂载前缀（形态 C 设为 /api；影响对外 OAuth redirect_uri 与临时 Cookie Path）
+ *   CRON_SECRET — serverless cron 端点共享密钥（未配则仅信任 x-vercel-cron 头）
  */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { deleteCookie, setCookie } from 'hono/cookie';
@@ -100,6 +104,12 @@ import {
 } from '@jobagent/resume-core';
 import { createResumePolishProviderFromEnv } from '@jobagent/llm';
 import { skillTagMap, buildSkillReasons, collectEvidence } from './match-explain.js';
+import {
+  runMaintenance,
+  runProcessJobOnce,
+  type MaintenanceTask,
+} from './cron-jobs.js';
+import type { ClaimOneResult } from '@jobagent/worker';
 import {
   loadDemoConfig,
   oneHourAgo,
@@ -165,6 +175,16 @@ export interface ApiDeps {
    * 显式传 null = 强制关闭；测试注入 FakeLlmClient 包装的 provider。
    */
   resumePolish?: ResumePolishProvider | null;
+  /**
+   * 单任务处理（serverless cron）。不传 = 调 @jobagent/worker 的 claimAndProcessOne
+   * （读 GITHUB_TOKEN/GITEE_TOKEN）；测试注入 fake，避免打真实采集。
+   */
+  processJobOnce?: () => Promise<ClaimOneResult>;
+  /**
+   * 数据清理（serverless cron）。不传 = cron-jobs.runMaintenance（默认保留窗口）；
+   * 测试注入 fake。
+   */
+  runMaintenance?: (task: MaintenanceTask, nowIso: string) => Promise<unknown>;
 }
 
 // ─── 输入校验 Schema ────────────────────────────────────────────────────
@@ -346,7 +366,8 @@ function authStateCookieOptions(cfg: AuthConfig) {
   return {
     httpOnly: true,
     sameSite: 'Lax' as const,
-    path: '/auth',
+    // 形态 C 对外路径带挂载前缀（/api/auth/*）；根挂载时 mountPrefix 为空串
+    path: `${cfg.mountPrefix}/auth`,
     secure: cfg.isProduction,
     maxAge: 600,
   };
@@ -357,7 +378,7 @@ function authReturnCookieOptions(cfg: AuthConfig) {
   return {
     httpOnly: true,
     sameSite: 'Lax' as const,
-    path: '/auth',
+    path: `${cfg.mountPrefix}/auth`,
     secure: cfg.isProduction,
     maxAge: 600,
   };
@@ -472,6 +493,48 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     return c.json({ status: 'ok', service: 'jobagent-api', time: new Date().toISOString() });
   });
 
+  // ── 内部定时任务（serverless 部署由 Vercel Cron 调用；常驻部署不用这两条）────────
+  //
+  // 鉴权（二选一）：
+  //   1. 配置了 CRON_SECRET：cron 路径必须带 ?token=<CRON_SECRET>（常量时间比较）；
+  //   2. 未配置 CRON_SECRET：仅接受平台注入的 x-vercel-cron: 1 头（生产建议配 secret）。
+  const cronAuthorized = (c: Context): boolean => {
+    const secret = process.env.CRON_SECRET;
+    if (secret) {
+      const token = c.req.query('token') ?? '';
+      const a = Buffer.from(token);
+      const b = Buffer.from(secret);
+      return a.length === b.length && timingSafeEqual(a, b);
+    }
+    return c.req.header('x-vercel-cron') === '1';
+  };
+
+  // GET /internal/cron/process-job：认领并处理至多一个分析任务（含僵尸回收/demo 并发闸）
+  app.get('/internal/cron/process-job', async (c) => {
+    if (!cronAuthorized(c)) return c.json({ error: 'unauthorized' }, 401);
+    try {
+      const processOnce = deps.processJobOnce ?? (() => runProcessJobOnce());
+      const outcome = await processOnce();
+      return c.json({ ok: true, outcome });
+    } catch (err) {
+      // 如 GITHUB_TOKEN 缺失等配置错误：显式 500，不伪装成功（Vercel 日志可见）
+      return c.json({ ok: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  // GET /internal/cron/cleanup?task=demo|auth|all（默认 all）：物理清理过期会话
+  app.get('/internal/cron/cleanup', async (c) => {
+    if (!cronAuthorized(c)) return c.json({ error: 'unauthorized' }, 401);
+    const task = (c.req.query('task') ?? 'all') as MaintenanceTask;
+    if (!['demo', 'auth', 'all'].includes(task)) {
+      return c.json({ error: "task must be one of demo|auth|all" }, 400);
+    }
+    const maintenance =
+      deps.runMaintenance ?? ((t: MaintenanceTask, n: string) => runMaintenance(t, repos, n));
+    const result = await maintenance(task, now());
+    return c.json({ ok: true, result });
+  });
+
   // ── 演示模式端点（必须注册在 /analyze 之前）────────────────────────────
 
   // POST /demo/sessions：免注册创建（或幂等返回）演示会话
@@ -561,8 +624,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
   /**
    * 注册某平台的 login + callback 两条 OAuth 路由（平台无关，GitHub/Gitee 各调一次）。
    * provider 为 null（未配置凭证）时路由仍注册，但 login/callback 都返回 501，
-   * 与 GitHub 历史行为一致，便于前端探测与排障。临时 state/return Cookie 的 Path=/auth，
-   * 两个平台的回调（/auth/<platform>/callback）都能读到。
+   * 与 GitHub 历史行为一致，便于前端探测与排障。临时 state/return Cookie 的 Path 为
+   * `<mountPrefix>/auth`，两个平台的回调都能读到；形态 C（API 挂在 /api）下 mountPrefix='/api'，
+   * redirect_uri 也必须用带前缀的对外路径（平台登记的回调与 token 交换都按它严格比对）。
    */
   const registerOAuthFlow = (
     platform: AuthProvider['platform'],
@@ -571,6 +635,8 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
   ) => {
     const loginPath = `/auth/${platform}/login`;
     const callbackPath = `/auth/${platform}/callback`;
+    // 对外可见的回调路径（Hono 内部路由仍是 callbackPath，由同域挂载层剥掉 /api 前缀转发）
+    const publicCallbackPath = `${authCfg.mountPrefix}${callbackPath}`;
     const notConfiguredBody = {
       error: `${label} OAuth is not configured`,
       code: AUTH_ERROR_CODES.notConfigured,
@@ -579,7 +645,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     // login：写签名 state Cookie（+可选 return_to 深链 Cookie）并 302 到平台授权页
     app.get(loginPath, (c) => {
       if (!provider) return c.json(notConfiguredBody, 501);
-      const redirectUri = `${oauthBaseOrigin(c, authCfg)}${callbackPath}`;
+      const redirectUri = `${oauthBaseOrigin(c, authCfg)}${publicCallbackPath}`;
       const state = generateOAuthState(effectiveStateSecret);
       setCookie(c, AUTH_STATE_COOKIE, state, authStateCookieOptions(authCfg));
       // 登录后回跳深链：仅接受同源相对路径（防开放重定向），经本站临时 Cookie 流转，
@@ -613,7 +679,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
           400,
         );
       }
-      const redirectUri = `${oauthBaseOrigin(c, authCfg)}${callbackPath}`;
+      const redirectUri = `${oauthBaseOrigin(c, authCfg)}${publicCallbackPath}`;
       let identity: OAuthProfile;
       try {
         identity = await provider.exchangeCodeForProfile(query.code, redirectUri);
@@ -641,13 +707,13 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       const token = generateAuthSessionToken();
       await repos.authSessions.create({ id: token, accountId: account.id, expiresAt });
       setCookie(c, AUTH_SESSION_COOKIE, token, authSessionCookieOptions(authCfg, nowIso));
-      deleteCookie(c, AUTH_STATE_COOKIE, { path: '/auth' });
+      deleteCookie(c, AUTH_STATE_COOKIE, { path: `${authCfg.mountPrefix}/auth` });
       // 消费回跳深链：再次校验（Cookie 值不可被客户端信任为已校验），用完即删；
       // 非法/缺失回退默认落地页。
       const returnTo = sanitizeReturnTo(
         readCookie(c.req.header('Cookie'), AUTH_RETURN_COOKIE),
       );
-      deleteCookie(c, AUTH_RETURN_COOKIE, { path: '/auth' });
+      deleteCookie(c, AUTH_RETURN_COOKIE, { path: `${authCfg.mountPrefix}/auth` });
       return c.redirect(returnTo ?? authCfg.afterLoginRedirectUrl, 302);
     });
   };

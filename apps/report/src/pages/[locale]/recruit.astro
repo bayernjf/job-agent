@@ -8,6 +8,7 @@ import Layout from '../../layouts/Layout.astro';
 import CandidateWorkspace from '../../components/CandidateWorkspace.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
 import { loadInitialCandidates } from '../../lib/db.js';
+import { browserApiBase } from '../../lib/api-base.js';
 
 const { locale: rawLocale } = Astro.params;
 if (!isLocale(rawLocale)) {
@@ -16,7 +17,7 @@ if (!isLocale(rawLocale)) {
 const locale: Locale = rawLocale;
 const t = createTranslator(locale);
 
-const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
+const apiBase = browserApiBase();
 const reportBasePath = `/${locale}/report`;
 // SSR 首屏候选人（只读 storage）；岛屿后续过滤/分页走同源 GET /candidates
 const initial = await loadInitialCandidates({ limit: 12 });
