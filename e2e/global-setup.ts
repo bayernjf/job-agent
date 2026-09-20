@@ -9,8 +9,10 @@ import { createStorage } from '@jobagent/storage';
 import {
   buildFixtureProfile,
   buildFusedFixtureProfile,
+  buildGiteeFixtureProfile,
   FIXTURE_PROFILE_ID,
   FIXTURE_FUSED_PROFILE_ID,
+  FIXTURE_GITEE_PROFILE_ID,
   FIXTURE_LOGIN,
   FIXTURE_ACCOUNT_PROVIDER_ID,
   FIXTURE_SESSION_TOKEN,
@@ -52,6 +54,21 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     dataWindowUntil: fusedProfile.dataWindow.until,
     status: 'complete',
     snapshot: fusedProfile,
+  });
+
+  // Gitee 主体画像（2026-09-20）：subject.platform='gitee'，供授权分级闸 SSR 登录墙
+  // 按画像主体平台引导到 Gitee OAuth 的 E2E（gated-content spec）。
+  const giteeProfile = buildGiteeFixtureProfile();
+  await storage.profiles.insert({
+    id: FIXTURE_GITEE_PROFILE_ID,
+    analyzerVersion: giteeProfile.analyzerVersion,
+    subjectPlatform: 'gitee',
+    subjectLogin: giteeProfile.subject.login,
+    subjectClaimed: giteeProfile.subject.claimed,
+    dataWindowSince: giteeProfile.dataWindow.since,
+    dataWindowUntil: giteeProfile.dataWindow.until,
+    status: 'complete',
+    snapshot: giteeProfile,
   });
 
   // 授权分级闸（2026-09-19）：本人账号 + 固定未过期会话 + 一条可点击外部 PR 证据，
