@@ -1,24 +1,26 @@
 /**
- * GitHub OAuth web application flow（账号里程碑，2026-09-18，决策 #1-A）。
- * 文档：https://docs.github.com/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
+ * Gitee OAuth2 授权码流程（Gitee 平台登录，2026-09-19，决策 #4 海内外同步）。
+ * 官方文档：https://gitee.com/api/v5/oauth_doc （用户接口 /api/v5/user）。
  *
- * 仅用 Node24 全局 fetch，不引第三方 OAuth 依赖。凭证（client secret）只在服务端使用。
- * state 用 HMAC-SHA256 签名（nonce.mac），配合回调时比对 state Cookie 防 CSRF。
+ * 与 GitHub web flow 同构、实现同一 AuthProvider 端口，三处协议差异：
+ *  1. 授权页必须显式带 response_type=code；
+ *  2. 换 token 的表单必须显式带 grant_type=authorization_code；
+ *  3. 取用户按 Gitee v5 惯例把 access_token 放在 query 参数（?access_token=）。
+ *
+ * 仅用 Node24 全局 fetch，不引第三方 OAuth 依赖。client secret 只在服务端使用；
+ * scope 仅申请最小的 user_info。state 的生成/校验在路由层（oauth-state.ts），本类不涉及。
  */
 import type { SupportedPlatform } from '@jobagent/shared';
 import { OAuthExchangeError, type AuthProvider, type OAuthProfile } from './auth-provider.js';
 
-// state 签名是平台无关逻辑，已抽到 oauth-state；此处 re-export 保持既有 import 路径可用。
-export { generateOAuthState, verifyOAuthState } from './oauth-state.js';
+const AUTHORIZE_URL = 'https://gitee.com/oauth/authorize';
+const TOKEN_URL = 'https://gitee.com/oauth/token';
+const USER_URL = 'https://gitee.com/api/v5/user';
+/** 最小权限：读取当前登录用户的基本资料（登录名/展示名/头像/公开邮箱）。 */
+const SCOPE = 'user_info';
 
-const AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
-const TOKEN_URL = 'https://github.com/login/oauth/access_token';
-const USER_URL = 'https://api.github.com/user';
-/** 公开资料无需 scope；user:email 仅为尽力取邮箱（邮箱可空，不阻塞登录）。 */
-const SCOPE = 'user:email';
-
-export class GithubAuthProvider implements AuthProvider {
-  readonly platform: SupportedPlatform = 'github';
+export class GiteeAuthProvider implements AuthProvider {
+  readonly platform: SupportedPlatform = 'gitee';
 
   constructor(
     private readonly clientId: string,
@@ -29,9 +31,9 @@ export class GithubAuthProvider implements AuthProvider {
     const query = new URLSearchParams({
       client_id: this.clientId,
       redirect_uri: redirectUri,
+      response_type: 'code',
       state,
       scope: SCOPE,
-      allow_signup: 'true',
     });
     return `${AUTHORIZE_URL}?${query.toString()}`;
   }
@@ -52,9 +54,10 @@ export class GithubAuthProvider implements AuthProvider {
           'user-agent': 'jobagent',
         },
         body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
           client_id: this.clientId,
           client_secret: this.clientSecret,
-          code,
           redirect_uri: redirectUri,
         }),
       });
@@ -70,14 +73,11 @@ export class GithubAuthProvider implements AuthProvider {
   }
 
   private async fetchProfile(token: string): Promise<OAuthProfile> {
+    const url = `${USER_URL}?${new URLSearchParams({ access_token: token }).toString()}`;
     let res: Response;
     try {
-      res = await fetch(USER_URL, {
-        headers: {
-          accept: 'application/vnd.github+json',
-          authorization: `Bearer ${token}`,
-          'user-agent': 'jobagent',
-        },
+      res = await fetch(url, {
+        headers: { accept: 'application/json', 'user-agent': 'jobagent' },
       });
     } catch (err) {
       throw new OAuthExchangeError(`user request failed: ${(err as Error).message}`);
@@ -91,10 +91,10 @@ export class GithubAuthProvider implements AuthProvider {
       avatar_url?: string | null;
     };
     if (typeof user.id !== 'number' || !user.login) {
-      throw new OAuthExchangeError('malformed user payload from GitHub');
+      throw new OAuthExchangeError('malformed user payload from Gitee');
     }
     return {
-      platform: 'github',
+      platform: 'gitee',
       providerAccountId: String(user.id),
       login: user.login,
       name: user.name ?? null,

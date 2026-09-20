@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE_PROFILE_ID } from './fixtures/sample-profile.js';
+import { FIXTURE_PROFILE_ID, FIXTURE_SESSION_TOKEN } from './fixtures/sample-profile.js';
 
 /**
  * 痛点解决方案批次 2 的报告页 E2E：
@@ -29,6 +29,13 @@ interface MockApplication {
 }
 
 test.describe('recruiter verification view', () => {
+  // 授权分级闸后，招聘方证据 banner 与面试包下载仅登录 user 可见：本 describe 统一登录态。
+  test.beforeEach(async ({ context }) => {
+    await context.addCookies([
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+    ]);
+  });
+
   test('shows recruiter banner and hides candidate-only modules', async ({ page }) => {
     await page.goto(`/en/report/${FIXTURE_PROFILE_ID}?view=recruiter`);
 

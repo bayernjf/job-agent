@@ -413,6 +413,8 @@ export type DemoErrorCode = (typeof DEMO_ERROR_CODES)[keyof typeof DEMO_ERROR_CO
 export const AUTH_SESSION_COOKIE = 'jobagent_session';
 /** OAuth state 临时 Cookie 名（防 CSRF，回调校验后立即清除） */
 export const AUTH_STATE_COOKIE = 'jobagent_oauth_state';
+/** OAuth 登录后回跳深链临时 Cookie 名（同源相对路径，回调消费后立即清除，10 分钟有效） */
+export const AUTH_RETURN_COOKIE = 'jobagent_oauth_return';
 
 /** GET /auth/me 响应体：anonymous 只回 kind；user 回账号非敏感字段 */
 export const AuthMeSchema = z.object({

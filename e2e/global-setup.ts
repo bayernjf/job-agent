@@ -11,6 +11,9 @@ import {
   buildFusedFixtureProfile,
   FIXTURE_PROFILE_ID,
   FIXTURE_FUSED_PROFILE_ID,
+  FIXTURE_LOGIN,
+  FIXTURE_ACCOUNT_PROVIDER_ID,
+  FIXTURE_SESSION_TOKEN,
 } from './fixtures/sample-profile.js';
 
 const TMP_DIR = resolve(process.cwd(), 'e2e', '.tmp');
@@ -50,6 +53,37 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     status: 'complete',
     snapshot: fusedProfile,
   });
+
+  // 授权分级闸（2026-09-19）：本人账号 + 固定未过期会话 + 一条可点击外部 PR 证据，
+  // 供 gated-content spec 用 jobagent_session cookie 模拟已登录 user。
+  const account = await storage.accounts.upsertFromProvider({
+    id: 'acc-e2e-fixture',
+    identity: {
+      platform: 'github',
+      providerAccountId: FIXTURE_ACCOUNT_PROVIDER_ID,
+      login: FIXTURE_LOGIN,
+      name: 'E2E Fixture',
+      email: null,
+      avatarUrl: null,
+    },
+  });
+  await storage.authSessions.create({
+    id: FIXTURE_SESSION_TOKEN,
+    accountId: account.id,
+    expiresAt: '2030-01-01T00:00:00.000Z',
+  });
+  await storage.evidence.importFromProfile(FIXTURE_PROFILE_ID, [
+    {
+      evidenceId: 'evt-ext-pr-1',
+      sourcePlatform: 'github',
+      sourceType: 'pr',
+      url: 'https://github.com/e2e-fixture-user/core/pull/42',
+      layer: 'L1',
+      claim: 'Authored and merged an external pull request.',
+      rawRef: 'e2e-fixture-user/core#42',
+    },
+  ]);
+
   await storage.close();
 
   // 自检：重新以 readonly 打开，确认 fixture 确实落盘（避免 webServer 读到空库）
