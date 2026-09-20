@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE_PROFILE_ID, FIXTURE_SESSION_TOKEN } from './fixtures/sample-profile.js';
+import {
+  FIXTURE_PROFILE_ID,
+  FIXTURE_GITEE_PROFILE_ID,
+  FIXTURE_SESSION_TOKEN,
+} from './fixtures/sample-profile.js';
 
 /**
  * 授权分级闸 E2E（2026-09-19）：
@@ -44,6 +48,24 @@ test.describe('gated content for anonymous visitors', () => {
   test('interview kit download returns 401 without a session', async ({ page }) => {
     const res = await page.request.get(`${profilePath}/interview-kit.md`);
     expect(res.status()).toBe(401);
+  });
+});
+
+test.describe('sign-in gate follows the profile subject platform', () => {
+  test('a Gitee profile points the interview gate at Gitee OAuth', async ({ page }) => {
+    const giteePath = `/en/report/${FIXTURE_GITEE_PROFILE_ID}`;
+    await page.goto(giteePath);
+
+    const gate = page.getByTestId('interview-gate');
+    await expect(gate).toBeVisible();
+    // 登录墙按画像主体平台选登录方式：Gitee 画像 → /auth/gitee/login（不是 GitHub）
+    await expect(gate.getByTestId('gate-login')).toHaveAttribute(
+      'href',
+      /\/auth\/gitee\/login\?return_to=/,
+    );
+    await expect(gate.getByTestId('gate-login')).toContainText('Gitee');
+    // 题目正文仍折叠
+    expect(await page.locator('.question').count()).toBe(0);
   });
 });
 

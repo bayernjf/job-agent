@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE_PROFILE_ID, FIXTURE_SESSION_TOKEN } from './fixtures/sample-profile.js';
+import {
+  FIXTURE_PROFILE_ID,
+  FIXTURE_GITEE_PROFILE_ID,
+  FIXTURE_GITEE_LOGIN,
+  FIXTURE_SESSION_TOKEN,
+} from './fixtures/sample-profile.js';
 
 /**
  * 痛点解决方案批次 2 的报告页 E2E：
@@ -125,12 +130,12 @@ test.describe('application tracker', () => {
 });
 
 test.describe('candidate search page', () => {
-  test('renders fixture candidates from SSR data and a fused badge for the all-platform profile', async ({
+  test('renders fixture candidates from SSR data with a fused badge and a Gitee-only card', async ({
     page,
   }) => {
     await page.goto('/en/recruit');
     const cards = page.locator('.recruit-grid .recruit-card');
-    await expect(cards).toHaveCount(2);
+    await expect(cards).toHaveCount(3);
 
     // 普通 GitHub 画像卡：裸显平台 github，核验链接指向其 profileId
     const githubCard = cards.filter({ hasText: 'e2e-fixture-user' });
@@ -147,6 +152,15 @@ test.describe('candidate search page', () => {
     await expect(fusedCard.locator('.ja-badge--fused')).toBeVisible();
     await expect(fusedCard.locator('.ja-badge--fused')).toContainText('GitHub + Gitee fused');
     await expect(fusedCard.locator('.recruit-login')).not.toContainText(' all');
+
+    // 纯 Gitee 画像卡：裸显平台 gitee，核验链接指向其 Gitee profileId
+    const giteeCard = cards.filter({ hasText: FIXTURE_GITEE_LOGIN });
+    await expect(giteeCard).toHaveCount(1);
+    await expect(giteeCard.locator('.recruit-login')).toContainText('gitee');
+    await expect(giteeCard.locator('.recruit-view')).toHaveAttribute(
+      'href',
+      new RegExp(`/en/report/${FIXTURE_GITEE_PROFILE_ID}\\?view=recruiter`),
+    );
   });
 });
 
