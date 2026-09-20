@@ -50,6 +50,7 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/design-extension-match-ui-20260914.md](docs/design-extension-match-ui-20260914.md) | 扩展面板岗位匹配 UI 设计 |
 | [docs/design-extension-e2e-20260914.md](docs/design-extension-e2e-20260914.md) | 扩展浏览器级 E2E 设计 |
 | [docs/API.md](docs/API.md) | HTTP API 接口文档（analyze/jobs/profiles/health） |
+| [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md) | 部署 / 上线 Runbook（形态 A/B、生产 env、迁移、cron、上线 smoke） |
 | [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
@@ -81,6 +82,19 @@ pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm migrate:up / migrate:down / migrate:status   # SQLite 迁移（migrate:pg:* 走 Postgres）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 迁移目录对齐
 ```
+
+### 本地配置与登录（可选）
+
+```bash
+cp .env.example .env         # 所有环境变量的权威模板（含注释/默认值）；密钥只填 .env、绝不入库
+```
+
+- **采集凭证**：`GITHUB_TOKEN`（worker 必需，fine-grained PAT 公开只读；生产建议 GitHub App）、`GITEE_TOKEN`（可选，匿名即可读公开数据）。
+- **GitHub 登录（OAuth）**：GitHub → Settings → Developer settings → OAuth Apps，回调填 `http://localhost:3000/auth/github/callback`，scope `user:email`，填入 `GITHUB_OAUTH_CLIENT_ID/SECRET`。
+- **Gitee 登录（OAuth）**：Gitee → 设置 → 第三方应用 → 创建应用，回调填 `http://localhost:3000/auth/gitee/callback`，scope 固定 `user_info`，填入 `GITEE_OAUTH_CLIENT_ID/SECRET`。
+- 两平台共用 `AUTH_STATE_SECRET`（本地可留空，进程内随机）与 `AUTH_CALLBACK_BASE_URL`（本地留空按请求推导）。**不配置某平台时，该平台登录路由返回 501，其余功能照常。**
+- 本地跨端口联调（report:4321 → api:3000）前端需带凭证（已用 `credentials:'include'`）；服务端直连 github.com 受限时配 `JOB_HTTP_PROXY`（Node 全局 fetch 默认不读代理 env，api 启动时经 `proxy-bootstrap.ts` 装全局代理）。
+- 端点 / Cookie / 错误码 / 可见性矩阵见 [docs/API.md](docs/API.md) §1.2；Gitee 协议差异见 [design-gitee-oauth-20260919](docs/design-gitee-oauth-20260919.md)；**生产 / 上线部署**见 [部署 Runbook](docs/deployment-runbook-20260920.md)。
 
 ## Docker 运行
 
