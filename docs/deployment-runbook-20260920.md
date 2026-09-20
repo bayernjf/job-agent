@@ -1,6 +1,8 @@
 # JobAgent 部署 / 上线 Runbook
 
-> 状态：**现行（运维操作手册）**，2026-09-20。本文档只讲"怎么部署、上线前要准备什么、上线后怎么验"，**不替产品负责人做未拍板决策**——部署形态（A/B）、生产域名、demo 配额数值、LLM 厂商等仍以 [待拍板决策清单](待拍板决策清单-20260910.md) 与 [handoff](../handoff.md)「已知限制」为准，文中显式标注。
+> 状态：**现行（运维操作手册）**，2026-09-20。本文档只讲"怎么部署、上线前要准备什么、上线后怎么验"，**不替产品负责人做未拍板决策**——生产域名、demo 配额数值、LLM 厂商等仍以 [待拍板决策清单](待拍板决策清单-20260910.md) 与 [handoff](../handoff.md)「已知限制」为准，文中显式标注。
+>
+> **部署形态已拍板为形态 C（Vercel + Supabase + Cloudflare，见 §4-C，2026-09-20）**；形态 A/B（Docker 自托管）保留为自托管备选。形态 C 的代码改造已完成并通过本地 Vercel 构建验证，但**尚未在真实 Vercel/Supabase 项目上部署实测**。
 >
 > 已验证 / 未验证边界（重要）：
 > - ✅ 已在本机用 Docker 实测：三镜像（api/worker/report）构建、SQLite 与 Postgres 双栈运行时、worker 轮询、demo 闸、真实分析、共享卷、空 PG 并发首迁移（advisory lock 串行化），arm64（Apple Silicon）与 amd64 均跑过（见 handoff item13/已知限制）。
@@ -25,9 +27,10 @@
 
 | # | 事项 | 说明 | 现状 |
 | --- | --- | --- | --- |
-| 1 | **部署形态 A / B** | A 同域反向代理（推荐）/ B 跨子域，决定 Cookie 作用域与 CORS，见 §4 | ⏳ 未拍板 |
-| 2 | **生产域名 + HTTPS 证书** | OAuth 回调、`AUTH_CALLBACK_BASE_URL`、CORS 白名单都依赖它 | ⏳ 未拍板 |
-| 3 | **Postgres 实例** | 生产建议 Postgres；准备连接串、账号、备份策略 | 代码就绪，实例未建 |
+| 1 | **部署形态** | ✅ 已拍板：**形态 C（Vercel + Supabase + Cloudflare，§4-C）**；A/B 为自托管备选 | 形态 C 代码就绪，未真实部署 |
+| 1b | **Vercel 计划** | 每分钟消费分析任务依赖 per-minute cron——**Hobby 计划 cron 每天只能跑 1 次（更频繁表达式直接部署失败），需 Pro（$20/月）**；函数时长两档均为 300s 上限，够用 | ⏳ 待开通/确认 |
+| 2 | **生产域名 + HTTPS 证书** | 形态 C 占位 `app.job-agent.bayjf.com`（Vercel 自动签证书）；落地页继续在 Cloudflare Pages `job-agent.bayjf.com` | ⏳ 域名占位，待绑定 |
+| 3 | **Supabase Postgres** | 建项目（区域建议与 Vercel region `hnd1` 东京一致）；函数用 6543 事务池化串，迁移走 5432 | 代码就绪，项目未建 |
 | 4 | **GitHub OAuth App（生产）** | 回调 `https://<域名>/auth/github/callback`，scope `user:email` | 仅有本地 App（id 3868123，仅 localhost） |
 | 5 | **Gitee OAuth 应用（生产）** | Gitee→设置→第三方应用，回调 `https://<域名>/auth/gitee/callback`，scope `user_info` | ❌ 连本地都还没建真实应用 |
 | 6 | **`AUTH_STATE_SECRET`** | 生产多实例必须固定一个随机 HMAC 密钥；留空则进程内随机、重启使进行中登录失效 | 未生成 |
@@ -62,7 +65,8 @@
 | `DEMO_*`（配额/TTL/并发） | 用默认或拍板值 | 数值未拍板前是建议默认；`DEMO_FUSION_QUOTA_COST` 默认 2 |
 | `JOB_HTTP_PROXY` | 视网络 | 服务端换 OAuth token / 岗位采集走代理；也回退 `HTTPS_PROXY/HTTP_PROXY` |
 | `LLM_*` | 可选 | 不填=纯规则简历；填了才启用润色 |
-| `PUBLIC_API_BASE` | **构建期**变量 | 见 §4，极易踩坑：它在 `docker build` 时固化，不是运行时 |
+| `PUBLIC_API_BASE` | **构建期**变量 | 见 §4，极易踩坑：它在 `docker build` 时固化，不是运行时；**形态 C 不用设**（自动回退同域 `/api`） |
+| `CRON_SECRET` | 形态 C **生产必需** | serverless 内部 cron 端点（`/api/internal/cron/*`）的共享密钥；配了就要求 cron 路径带 `?token=`（常量时间比较），不配仅信任 Vercel 的 `x-vercel-cron` 头。生成：`openssl rand -hex 32` |
 
 ## 4. 两种部署形态（A/B 未拍板，并列给出）
 
@@ -85,7 +89,48 @@
 - `PUBLIC_API_BASE=https://api.example.com` 必须在**构建 report 镜像时**作为 build arg 传入（`import.meta.env.PUBLIC_*` 构建期固化，运行时改 env 无效）。
 - `TRUST_PROXY=true`。
 
-> 两种形态都要求 HTTPS（登录会话是 HttpOnly Cookie）。形态选择未拍板前，不要把任一种的配置当成既定事实。
+> 形态 A/B 都要求 HTTPS（登录会话是 HttpOnly Cookie），属自托管备选；**生产已拍板走形态 C**。
+
+### 形态 C：Vercel（报告页 + API 同域）+ Supabase（Postgres）+ Cloudflare（落地页/DNS）—— ✅ 已拍板
+
+**拓扑**
+
+```text
+Cloudflare Pages   job-agent.bayjf.com        落地页（独立仓 job-agent-landing，保持现状）
+Cloudflare DNS     app.job-agent.bayjf.com    CNAME 到 Vercel（占位域名，可改）
+        └─> Vercel 单项目（Root Directory = apps/report，region hnd1 东京）
+              ├─ /            Astro SSR 报告页（Node serverless function，maxDuration 300s）
+              ├─ /api/*       同域挂载 Hono API（apps/report/src/pages/api/[...slug].ts 转发）
+              └─ /api/internal/cron/*   Vercel Cron 调用（process-job / cleanup）
+Supabase           Postgres（区域与 hnd1 对齐）：6543 事务池化给函数，5432 给本地迁移
+（无常驻 Worker）  分析任务由 Vercel Cron 每分钟调用一次 process-job，每次认领处理一个 job
+```
+
+**为什么这样切**：报告页 SSR 直读 storage（Node 侧 TCP 连 Postgres），Cloudflare Workers V8 无直连 PG 能力，故报告页+API 放 Vercel Node runtime；同域挂载 `/api` 后浏览器天然同源，**无需 CORS、无需跨子域 Cookie、`PUBLIC_API_BASE` 不用设**（`browserApiBase()` 在 Vercel 环境自动回退 `/api`）；SSR 直连库也不存在形态 A 的"浏览器/SSR 基址冲突"。落地页是纯静态站，继续留在 Cloudflare Pages。
+
+**Vercel 项目设置（控制台，一次性）**
+
+1. Import 本仓，**Root Directory 设为 `apps/report`**（`vercel.json` 在该目录；构建命令已在其中写好，会先 `pnpm --filter @jobagent/report... build` 构建 workspace 依赖）。
+2. Framework Preset = Astro；Node 版本 24（与 `.nvmrc` 一致）；Region 选东京 `hnd1`（与 Supabase 区域对齐，且海外直连 GitHub/Gitee，**不需要 `JOB_HTTP_PROXY`**）。
+3. Environment Variables：按 `.env.example` 末尾「生产部署：Vercel + Supabase（形态 C）」段逐项填——`DB_DRIVER=postgres`、`DATABASE_URL`（6543 池化串）、**`DB_AUTO_MIGRATE=false`**（迁移只走本地 5432 流程）、**`API_MOUNT_PREFIX=/api`**（决定对外 OAuth 回调 URI 与临时 Cookie Path，漏配会导致登录回调 404）、`GITHUB_TOKEN`/`GITEE_TOKEN`、OAuth client/secret、`AUTH_STATE_SECRET`、`AUTH_CALLBACK_BASE_URL=https://<域名>`（不含 `/api`）、`TRUST_PROXY=true`、`DEMO_IP_SALT`、`CRON_SECRET`。
+4. Cron：`apps/report/vercel.json` 已声明两条——`* * * * *` 调 `/api/internal/cron/process-job?token=...`（每分钟认领处理一个分析任务）、`17 3 * * *` 调 cleanup（清过期 demo/认证数据）。**部署前必须把路径里的 `REPLACE_WITH_CRON_SECRET` 换成真实 `CRON_SECRET`**（或改用 Vercel 控制台的 Cron 管理界面填）。
+5. **计划限制（2026-09 核实）**：函数时长 Hobby/Pro 默认与上限均含 300s（Pro 可调到 800s），单任务处理够用；但 **Cron 在 Hobby 计划每天只能跑 1 次，每分钟表达式会直接导致部署失败——生产需 Pro 计划**。Hobby 只能用于演示（把 process-job 改成日频，队列基本不可用）。
+6. 自定义域名：Vercel 项目绑定 `app.job-agent.bayjf.com`（占位），再到 Cloudflare DNS 加 CNAME（建议 DNS-only / 关闭橙云代理，让 Vercel 直接终结 TLS，避免边缘与函数区域链路的不确定行为；如坚持开橙云需实测）。
+
+**Supabase 开库与首次迁移**
+
+1. 建项目，区域选与 `hnd1` 同区（东京/新加坡就近）；拿到两条连接串：Session pooler/直连 **5432**、Transaction pooler **6543**（形如 `.env.example` 中的占位）。
+2. 函数运行时用 **6543 + `?pgbouncer=true&sslmode=require`**：连接工厂检测到 6543 或 `pgbouncer=true` 会自动 `prepare:false`（PgBouncer 事务模式不支持 prepared statements），检测到 `sslmode=require/verify-ca/verify-full` 会显式开 TLS。
+3. **首次迁移在本地用 5432 串跑**，不要让 serverless 冷启动碰 DDL：
+   ```bash
+   DB_DRIVER=postgres DATABASE_URL='postgresql://...5432...' pnpm migrate:pg:up
+   ```
+   Vercel 环境显式设 **`DB_AUTO_MIGRATE=false`** 关闭函数冷启动自动迁移（未设时非只读打开默认 autoMigrate；该开关只接受 `true`/`false`），后续结构变更一律先发迁移、再发代码。
+4. Supabase 控制台开启自动备份（Pro 含 PITR）；表清单见 §5。
+
+**岗位日更 / HN 月更不进 serverless**：`jobs sync`（五源、耗时长、易超 300s）用 **GitHub Actions 定时 workflow 跑 CLI**（workflow 文件待补，属后续任务）；demo/auth 清理已由 Vercel Cron cleanup 端点承担，无需再跑 CLI。
+
+**本地/Docker 不受影响**：`astro.config.mjs` 仅在检测到 `VERCEL` 或 `ASTRO_ADAPTER=vercel` 时切到 Vercel 适配器，本地与 Docker 仍是 `@astrojs/node` standalone；本地验证 Vercel 产物：`ASTRO_ADAPTER=vercel pnpm --filter @jobagent/report build`。
 
 ## 5. 数据库
 
@@ -93,6 +138,7 @@
 - 迁移随服务启动自动应用，无需单独迁移步骤；若希望显式控制，可在发布流程里先用 cli 跑一次（cli 非只读打开同样 autoMigrate）。
 - 建议：托管 PG 开自动备份；定期备份 `profiles/evidence/analysis_jobs/accounts/auth_sessions/job_postings/waitlist` 等表。
 - SQLite 仅适合本地 / 单机 demo；多实例或对外服务用 Postgres。
+- **形态 C（Supabase）连接串分工**：serverless 函数用 Transaction pooler **6543**（`?pgbouncer=true`，连接工厂自动关 prepared statements）并设 `DB_AUTO_MIGRATE=false`；迁移/DDL 用 Session pooler/直连 **5432**。两者都建议带 `sslmode=require`。不要把 5432 串给函数（serverless 高频冷连接会耗尽直连会话），也不要让 6543 串跑迁移（池化下 advisory lock/DDL 行为不可靠）。
 
 ## 6. Docker 部署步骤（本地 / staging 已验证；生产域名相关未验证）
 
@@ -177,10 +223,21 @@ services:
 
 > 清理本体（`demo cleanup` / `auth cleanup`）代码已落地并测试；**生产 cron 的实际调度随部署补**（handoff 已知限制）。频率是建议默认，非拍板值。
 
+**形态 C（Vercel，已拍板）的调度映射**：
+
+| 任务 | 形态 C 调度方式 | 端点 / 命令 |
+| --- | --- | --- |
+| 分析任务消费 | **Vercel Cron** 每分钟（需 Pro 计划） | `GET /api/internal/cron/process-job?token=<CRON_SECRET>`，每次认领并处理**一个** job；内置 5min 僵尸回收、demo 并发闸（超闸 defer 不烧 attempts） |
+| demo + auth 清理 | **Vercel Cron** 每天 03:17 | `GET /api/internal/cron/cleanup?token=<CRON_SECRET>&task=all`（task=demo/auth/all，默认 all；保留窗口 24h / 30d） |
+| 岗位日更 / HN 月更 | **GitHub Actions 定时 workflow 跑 CLI**（待补） | 同左表 CLI 命令；不塞进 serverless（时长/预算不可控） |
+
+鉴权：配了 `CRON_SECRET` 则必须带 `?token=`（常量时间比较）；未配时仅信任 Vercel 边缘下发的 `x-vercel-cron: 1` 头（外部无法伪造该头），仅适合临时调试。端点在配置缺失（如无 token）时返回 500，不伪装成功。
+
 ## 8. OAuth 生产配置要点
 
 - GitHub OAuth App：回调 `https://<域名>/auth/github/callback`，scope `user:email`。
 - Gitee 第三方应用：回调 `https://<域名>/auth/gitee/callback`，scope 固定 `user_info`（仅公开身份 id/login/name/头像，邮箱可能为空）。协议三处与 GitHub 的差异见 [design-gitee-oauth-20260919](design-gitee-oauth-20260919.md) §2。
+- **形态 C 注意**：API 同域挂在 `/api` 下，Vercel 环境设 `API_MOUNT_PREFIX=/api` 后，服务端拼出的 redirect_uri 与临时 Cookie Path 自动带前缀；OAuth App 里登记的回调为 `https://app.<域名>/api/auth/github/callback`、`/api/auth/gitee/callback`；`AUTH_CALLBACK_BASE_URL=https://app.<域名>`（不含 `/api`）。
 - 两平台共用 `AUTH_STATE_SECRET` / `AUTH_CALLBACK_BASE_URL` / `AUTH_SESSION_TTL_MS`。
 - 服务端换 token 由 api 发起：服务器直连 github.com / gitee.com 受限时配 `JOB_HTTP_PROXY`（Node 全局 fetch 默认不读代理 env，api 启动时经 `proxy-bootstrap.ts` 安装全局 undici ProxyAgent）。
 - 不配某个平台时，该平台登录路由返回 501、`GET /auth/providers` 只回 configured 布尔，不影响其他功能。
@@ -203,12 +260,15 @@ services:
 6. 跑一次单源分析（GitHub / Gitee / all）确认 worker 消费、报告生成、分享链接可访问。
 7. 手动各跑一次 `jobs sync`、`demo cleanup`、`auth cleanup`，确认退出码 0、计数正常。
 8. （启用 LLM 时）简历「AI 润色」返回 `polish.applied=true`；未配置时优雅回退规则版。
+9. **形态 C 附加**：`https://<域名>/api/health` 返回 `{status:"ok"}`（验证同域 /api 转发）；未带 token 访问 `/api/internal/cron/process-job` 返回 401；带正确 `?token=` 返回 `{ok:true,...}`（无任务时 outcome.idle）。
+10. **形态 C 附加**：浏览器走一次 `/api/auth/github/login` 真实登录，确认跳转的 redirect_uri 与 GitHub App 登记一致、回调后 Cookie 种下（验证 `API_MOUNT_PREFIX=/api` 生效）；Vercel 部署日志确认 cron 每分钟触发且未出现 FUNCTION_INVOCATION_TIMEOUT。
 
 ## 11. 仍未决 / 本手册不替你决定的事
 
-- 部署形态 A/B、生产域名与证书、镜像 registry。
-- **report SSR 服务端取数的 api 基址在反代后的配置方式**（§4 形态 A 的浏览器/SSR 基址冲突）——需 staging 实测，必要时拆成"公开基址 / 内部基址"两个变量（小代码改动，验证后再做）。
+- **形态 C 上线前待办（需真人在控制台操作）**：建 Supabase 项目并跑首次 5432 迁移；Vercel 建项目（Root Directory=`apps/report`）并填环境变量；确认 **Pro 计划**（每分钟 cron 的硬前提）；生成并替换 `CRON_SECRET`；生产 GitHub/Gitee OAuth App 回调登记为 `/api/auth/*`；Cloudflare DNS 绑定最终生产域名（占位 `app.job-agent.bayjf.com`）；真实部署后跑 §10 的 9–10 项 smoke。
+- 自托管形态 A/B 的生产域名与证书、镜像 registry（形态 C 已拍板，A/B 仅备选）。
 - demo 配额 / TTL / 并发的正式数值、cleanup cron 频率最终值。
+- 岗位日更/HN 月更的 **GitHub Actions 定时 workflow 文件待补**（serverless 不承担长耗时采集）。
 - 真实 LLM 厂商 / 单价 / 预算。
 - 真实 Gitee OAuth 应用创建与首次真实冒烟（现有 OAuth 测试全 fake/mock，不打网络）。
 - #9 商业化、#14 合规、真人试用与配额压测。
