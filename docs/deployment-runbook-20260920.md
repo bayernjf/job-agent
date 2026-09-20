@@ -128,7 +128,7 @@ Supabase           Postgres（区域与 hnd1 对齐）：6543 事务池化给函
    Vercel 环境显式设 **`DB_AUTO_MIGRATE=false`** 关闭函数冷启动自动迁移（未设时非只读打开默认 autoMigrate；该开关只接受 `true`/`false`），后续结构变更一律先发迁移、再发代码。
 4. Supabase 控制台开启自动备份（Pro 含 PITR）；表清单见 §5。
 
-**岗位日更 / HN 月更不进 serverless**：`jobs sync`（五源、耗时长、易超 300s）用 **GitHub Actions 定时 workflow 跑 CLI**（workflow 文件待补，属后续任务）；demo/auth 清理已由 Vercel Cron cleanup 端点承担，无需再跑 CLI。
+**岗位日更 / HN 月更不进 serverless**：`jobs sync`（五源、耗时长、易超 300s）由 **GitHub Actions 定时 workflow [`.github/workflows/jobs-sync.yml`](../.github/workflows/jobs-sync.yml) 跑 CLI**（已落地）：UTC 每天 18:17 跑四源日更（stale 7d）、每月 1 日 18:42 跑 HN（`--stale-days 35`），支持 Actions 面板手动触发（daily / hn-monthly 二选一），并发组防止重叠。**上线前需在仓库 Settings → Secrets and variables → Actions 配 `DATABASE_URL`**：用 Supabase **5432 Session pooler/直连串**（Actions 是长生命周期非 serverless 客户端，且任务含多语句 upsert；不要用 6543 事务池化串），workflow 已固定 `DB_DRIVER=postgres`、`DB_AUTO_MIGRATE=false`（只写数据不碰 DDL）；可选 `JOB_HTTP_PROXY`（GitHub runner 在海外直连各源，通常不需要）。demo/auth 清理已由 Vercel Cron cleanup 端点承担，无需再跑 CLI。
 
 **本地/Docker 不受影响**：`astro.config.mjs` 仅在检测到 `VERCEL` 或 `ASTRO_ADAPTER=vercel` 时切到 Vercel 适配器，本地与 Docker 仍是 `@astrojs/node` standalone；本地验证 Vercel 产物：`ASTRO_ADAPTER=vercel pnpm --filter @jobagent/report build`。
 
@@ -229,7 +229,7 @@ services:
 | --- | --- | --- |
 | 分析任务消费 | **Vercel Cron** 每分钟（需 Pro 计划） | `GET /api/internal/cron/process-job?token=<CRON_SECRET>`，每次认领并处理**一个** job；内置 5min 僵尸回收、demo 并发闸（超闸 defer 不烧 attempts） |
 | demo + auth 清理 | **Vercel Cron** 每天 03:17 | `GET /api/internal/cron/cleanup?token=<CRON_SECRET>&task=all`（task=demo/auth/all，默认 all；保留窗口 24h / 30d） |
-| 岗位日更 / HN 月更 | **GitHub Actions 定时 workflow 跑 CLI**（待补） | 同左表 CLI 命令；不塞进 serverless（时长/预算不可控） |
+| 岗位日更 / HN 月更 | **GitHub Actions 定时 workflow 跑 CLI**（已落地 `.github/workflows/jobs-sync.yml`，每日 18:17 UTC / 每月 1 日 18:42 UTC，可手动触发） | 同左表 CLI 命令；需配 Actions secret `DATABASE_URL`（5432 串）；不塞进 serverless（时长/预算不可控） |
 
 鉴权：配了 `CRON_SECRET` 则必须带 `?token=`（常量时间比较）；未配时仅信任 Vercel 边缘下发的 `x-vercel-cron: 1` 头（外部无法伪造该头），仅适合临时调试。端点在配置缺失（如无 token）时返回 500，不伪装成功。
 
@@ -268,7 +268,7 @@ services:
 - **形态 C 上线前待办（需真人在控制台操作）**：建 Supabase 项目并跑首次 5432 迁移；Vercel 建项目（Root Directory=`apps/report`）并填环境变量；确认 **Pro 计划**（每分钟 cron 的硬前提）；生成并替换 `CRON_SECRET`；生产 GitHub/Gitee OAuth App 回调登记为 `/api/auth/*`；Cloudflare DNS 绑定最终生产域名（占位 `app.job-agent.bayjf.com`）；真实部署后跑 §10 的 9–10 项 smoke。
 - 自托管形态 A/B 的生产域名与证书、镜像 registry（形态 C 已拍板，A/B 仅备选）。
 - demo 配额 / TTL / 并发的正式数值、cleanup cron 频率最终值。
-- 岗位日更/HN 月更的 **GitHub Actions 定时 workflow 文件待补**（serverless 不承担长耗时采集）。
+- 岗位日更/HN 月更的 GitHub Actions workflow 已落地（`.github/workflows/jobs-sync.yml`），上线前需在仓库 Actions secrets 配生产 `DATABASE_URL`（5432 Session pooler 串）并在 Actions 面板手动跑一次 daily 验证。
 - 真实 LLM 厂商 / 单价 / 预算。
 - 真实 Gitee OAuth 应用创建与首次真实冒烟（现有 OAuth 测试全 fake/mock，不打网络）。
 - #9 商业化、#14 合规、真人试用与配额压测。

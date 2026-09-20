@@ -1,10 +1,11 @@
 # JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历 + 企业人才检索/投递追踪）
 
-- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领 + GitHub/Gitee 双平台 OAuth）
+- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领 + GitHub/Gitee 双平台 OAuth + 形态 C serverless 内部 cron）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
 - 内容类型：请求/响应均为 `application/json`（健康检查与 OAuth 302 跳转除外）
-- CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）
-- 最后更新：2026-09-19
+- 路径前缀：Hono 内部路由即本文档所列路径（`/analyze`、`/auth/*`…），**不带 `/api` 前缀**。形态 C 同域部署时由报告站 `pages/api/[...slug].ts` 把外部 `/api/*` 剥前缀后转发，并设 `API_MOUNT_PREFIX=/api` 让 OAuth 回调 URI/Cookie Path 带上前缀；故浏览器实际访问的是 `https://<域名>/api/analyze` 等。
+- CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）；形态 C 同域不涉及 CORS。
+- 最后更新：2026-09-20
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`，演示模式完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
 
@@ -46,7 +47,10 @@
 | `PORT` | `3000` | 监听端口 |
 | `DB_DRIVER` | `sqlite` | `sqlite` \| `postgres` |
 | `DB_PATH` | `data/job-agent.db` | SQLite 文件路径（sqlite 时） |
-| `DATABASE_URL` | — | Postgres 连接串（postgres 时） |
+| `DATABASE_URL` | — | Postgres 连接串（postgres 时）；含 `?pgbouncer=true` 或端口 6543 时自动关闭 prepared statements（Supabase 事务池化），按 `sslmode` 显式 TLS |
+| `DB_AUTO_MIGRATE` | 未设置时可写连接自动迁移、只读连接不迁移 | 是否在启动时自动跑迁移；serverless 函数必须显式 `false`（DDL 只在本地用 5432 串跑 `pnpm migrate:pg:up`），仅接受小写 `true`/`false`，其它值 warn 后回退默认 |
+| `API_MOUNT_PREFIX` | 空 | API 在同源下的挂载前缀，形态 C 设 `/api`；影响 OAuth `redirect_uri` 拼接与 state/return Cookie 的 `Path`（变为 `/api/auth`）。Hono 内部路由本身不带前缀，由转发层剥前缀 |
+| `CRON_SECRET` | 空 | `/internal/cron/*` 鉴权密钥；配置后请求必须带 `?token=<值>`（常量时间比较），未配置时仅认 `x-vercel-cron: 1` 头。生产必填，生成：`openssl rand -hex 32` |
 | `PROFILE_CACHE_TTL_MS` | `86400000`（24h） | 完整画像缓存有效期 |
 | `DEMO_SESSION_TTL_MS` | `604800000`（7d） | 演示会话有效期 / Cookie Max-Age |
 | `DEMO_ANALYZE_QUOTA` | `3` | 单会话可触发的新分析次数 |
@@ -873,6 +877,59 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 ```json
 { "status": "ok", "service": "jobagent-api", "time": "2026-09-11T08:00:00.000Z" }
 ```
+
+---
+
+## 5. 内部定时端点（serverless 部署，/internal/cron/*）
+
+形态 C（Vercel 单项目同域，见 [deployment-runbook-20260920.md](deployment-runbook-20260920.md)）没有常驻 Worker：Vercel Cron 定时 GET 这两条端点驱动分析消费与数据清理。本地 / Docker 常驻部署不经过它们（常驻 Worker 自行轮询，清理走宿主 cron 调 CLI）。形态 C 下外部路径为 `/api/internal/cron/*`（前缀由转发层剥离，见文首路径约定）。
+
+**鉴权（二选一）**：
+
+1. 配置了 `CRON_SECRET`：请求必须带 `?token=<CRON_SECRET>`，服务端常量时间比较，不符返回 401；
+2. 未配置 `CRON_SECRET`：仅接受平台注入的 `x-vercel-cron: 1` 请求头（仅建议临时调试，生产必须配 secret）。
+
+### `GET /internal/cron/process-job`
+
+认领并处理**至多一个** `analysis_job`（复用 worker 的 `claimAndProcessOne`：含 5 分钟僵尸任务回收、demo 并发闸退避、失败重试/永久失败判定）。Vercel 每分钟调一次；队列堆积时靠后续调用逐任务消化。
+
+`200`：
+
+```json
+{ "ok": true, "outcome": { "kind": "processed", "jobId": "job-...", "profileId": "prof-..." } }
+```
+
+`outcome.kind` 取值：
+
+| kind | 含义 |
+| --- | --- |
+| `idle` | 当前无可认领任务 |
+| `deferred` | 命中 demo 并发闸，任务保留且不烧 attempts，下一轮再认领（带 `jobId`） |
+| `processed` | 处理完成并写出画像（带 `jobId`、`profileId`） |
+| `failed` | 本次处理失败（带 `jobId`、`permanent`、`message`；永久失败置终态，可重试错误退避） |
+
+`500`：配置错误（如 `GITHUB_TOKEN` 缺失）等异常返回 `{ "ok": false, "error": "..." }`，不伪装成功。
+
+### `GET /internal/cron/cleanup?task=demo|auth|all`
+
+物理清理过期数据，语义与 CLI `jobagent demo cleanup` / `jobagent auth cleanup` 一致；只删会话/限流事件/未认领账号，绝不触碰 `profiles`/`evidence`。`task` 默认 `all`，非法值返回 400。保留窗口：demo/auth 会话与限流事件过期后再留 24h；未认领且无有效会话的账号留 30 天。
+
+`200`：
+
+```json
+{
+  "ok": true,
+  "result": {
+    "task": "all",
+    "demoSessions": 0,
+    "demoRateEvents": 0,
+    "authSessions": 0,
+    "unclaimedAccounts": 0
+  }
+}
+```
+
+> 岗位库日更 / HN 月更**不走**这两条端点（采集耗时不适合 serverless），由 GitHub Actions 定时跑 CLI `jobs sync`，见 `.github/workflows/jobs-sync.yml` 与 Runbook §7。
 
 ---
 
