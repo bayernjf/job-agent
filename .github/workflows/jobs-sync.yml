@@ -1,0 +1,88 @@
+name: Jobs sync
+
+# Production job-posting ingestion for form C (see
+# docs/deployment-runbook-20260920.md §4-C/§7): long-running collection does
+# NOT run inside Vercel serverless functions. GitHub Actions runs the CLI
+# against the production Postgres on a schedule.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DATABASE_URL  Production Supabase SESSION pooler / direct connection
+#                 (port 5432, NOT the 6543 transaction pooler — the CLI is a
+#                 long-lived non-serverless client and also upserts in
+#                 multi-statement batches).
+# Optional secrets:
+#   JOB_HTTP_PROXY  Outbound proxy if the runner network needs one.
+# No GitHub/Gitee token is needed: the five job sources are public APIs.
+#
+# Manual runs: Actions → Jobs sync → Run workflow, pick daily or hn-monthly.
+
+on:
+  schedule:
+    # Daily sources (RemoteOK/Remotive/Greenhouse/Lever), mark stale after 7d.
+    # Off the top of the hour; UTC (18:17 UTC ≈ next-morning Asia time).
+    - cron: '17 18 * * *'
+    # HN "Who is hiring" is a monthly free-text thread; day 1, 18:42 UTC.
+    # Uses --stale-days 35 because markStale is global and must not retire
+    # daily-source jobs observed within the last week.
+    - cron: '42 18 1 * *'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which ingestion to run'
+        type: choice
+        default: daily
+        options:
+          - daily
+          - hn-monthly
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never let two sync runs overlap (e.g. manual run during a scheduled one).
+  group: jobs-sync-${{ github.event.inputs.target || 'scheduled' }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Daily job sources sync
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.target == 'daily') ||
+          (github.event_name == 'schedule' && github.event.schedule == '17 18 * * *')
+        env:
+          DB_DRIVER: postgres
+          DB_AUTO_MIGRATE: 'false'
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JOB_HTTP_PROXY: ${{ secrets.JOB_HTTP_PROXY }}
+        run: node apps/cli/dist/index.js jobs sync
+
+      - name: Monthly HN who-is-hiring sync
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.target == 'hn-monthly') ||
+          (github.event_name == 'schedule' && github.event.schedule == '42 18 1 * *')
+        env:
+          DB_DRIVER: postgres
+          DB_AUTO_MIGRATE: 'false'
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JOB_HTTP_PROXY: ${{ secrets.JOB_HTTP_PROXY }}
+        run: node apps/cli/dist/index.js jobs sync --source hn_whoishiring --stale-days 35
