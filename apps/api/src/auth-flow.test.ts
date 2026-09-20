@@ -518,6 +518,56 @@ describe('Gitee login claim ownership', () => {
   });
 });
 
+describe('OAuth under API_MOUNT_PREFIX=/api (form C same-origin mount)', () => {
+  function mountedApp(repos: StorageContext) {
+    return createApp({
+      repos,
+      authConfig: loadAuthConfig({ API_MOUNT_PREFIX: '/api' }),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+    });
+  }
+
+  it('builds the public redirect_uri and cookie Path with the /api prefix', async () => {
+    const app = await mountedApp(await freshRepos());
+    const res = await app.request('/auth/github/login');
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get('location') ?? '');
+    // FakeAuthProvider 直接回跳到 redirect_uri，故 Location 路径即对外回调路径
+    expect(location.pathname).toBe('/api/auth/github/callback');
+
+    const setCookies =
+      typeof res.headers.getSetCookie === 'function'
+        ? res.headers.getSetCookie()
+        : [res.headers.get('set-cookie') ?? ''];
+    const stateCookie = setCookies.find((sc) => sc.startsWith('jobagent_oauth_state='));
+    expect(stateCookie).toBeTruthy();
+    expect(stateCookie).toMatch(/Path=\/api\/auth/i);
+  });
+
+  it('completes the callback flow and clears the state cookie on the prefixed path', async () => {
+    const repos = await freshRepos();
+    const app = await mountedApp(repos);
+
+    const loginRes = await app.request('/auth/github/login');
+    const state = extractCookies(loginRes).jobagent_oauth_state;
+    const callbackRes = await app.request(
+      `/auth/github/callback?state=${encodeURIComponent(state!)}&code=fake-code`,
+      { headers: { Cookie: `jobagent_oauth_state=${state}` } },
+    );
+    expect(callbackRes.status).toBe(302);
+    const session = extractCookies(callbackRes).jobagent_session;
+    expect(session).toBeTruthy();
+
+    const setCookies =
+      typeof callbackRes.headers.getSetCookie === 'function'
+        ? callbackRes.headers.getSetCookie()
+        : [callbackRes.headers.get('set-cookie') ?? ''];
+    // state 清理指令必须落在带前缀的公开路径上，浏览器才会真正删除
+    const stateClearing = setCookies.filter((sc) => sc.startsWith('jobagent_oauth_state='));
+    expect(stateClearing.some((sc) => /Path=\/api\/auth/i.test(sc))).toBe(true);
+  });
+});
+
 describe('GET /auth/providers', () => {
   it('reports both platforms as unconfigured when providers are forced off', async () => {
     const app = await createApp({

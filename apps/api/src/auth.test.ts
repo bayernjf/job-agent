@@ -43,6 +43,16 @@ describe('loadAuthConfig', () => {
     expect(cfg.isProduction).toBe(true);
   });
 
+  it('normalizes API_MOUNT_PREFIX for same-origin /api mount (form C)', () => {
+    expect(loadAuthConfig({ API_MOUNT_PREFIX: '/api/' }).mountPrefix).toBe('/api');
+    expect(loadAuthConfig({ API_MOUNT_PREFIX: ' /api/v1 ' }).mountPrefix).toBe('/api/v1');
+    expect(loadAuthConfig({}).mountPrefix).toBe('');
+    // 非法值（不以 / 开头、含空格/协议/主机名）回退根挂载
+    expect(loadAuthConfig({ API_MOUNT_PREFIX: 'api' }).mountPrefix).toBe('');
+    expect(loadAuthConfig({ API_MOUNT_PREFIX: 'https://evil.com/api' }).mountPrefix).toBe('');
+    expect(loadAuthConfig({ API_MOUNT_PREFIX: '/a b' }).mountPrefix).toBe('');
+  });
+
   it('reports gitee as configured only when both GITEE_OAUTH id and secret are present', () => {
     expect(loadAuthConfig({}).gitee.configured).toBe(false);
     expect(
