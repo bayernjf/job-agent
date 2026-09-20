@@ -25,6 +25,7 @@
     "@jobagent/resume-core": "workspace:*",
     "@jobagent/shared": "workspace:*",
     "@jobagent/storage": "workspace:*",
+    "@jobagent/worker": "workspace:*",
     "better-sqlite3": "^12.0.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
