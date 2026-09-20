@@ -31,6 +31,12 @@ export interface AuthConfig {
    * 推导（本地 http://localhost:3000）。
    */
   callbackBaseUrl: string;
+  /**
+   * API 在同源下的挂载前缀（不含尾斜杠），如 `/api`（形态 C：报告页同域把 Hono
+   * 挂在 /api/* 下）。它只影响**对外可见**的 OAuth redirect_uri 与临时 Cookie
+   * Path（Hono 内部路由仍注册在 /auth/*，由平台层剥前缀转发）；根挂载时为空串。
+   */
+  mountPrefix: string;
   /** 登录成功后跳转的前端地址（报告页/落地页）；默认 '/'（同源首页） */
   afterLoginRedirectUrl: string;
   isProduction: boolean;
@@ -60,6 +66,21 @@ function trimOrEmpty(raw: string | undefined): string {
   return raw?.trim() ?? '';
 }
 
+/**
+ * 归一化 API 挂载前缀：去空白与尾斜杠、必须以 / 开头、只允许安全路径字符
+ * （字母数字/-/_，可多级）。非法值 warn 并回退根挂载（空串），避免拼出畸形
+ * redirect_uri 或 Cookie Path。
+ */
+function normalizeMountPrefix(raw: string | undefined): string {
+  const value = trimOrEmpty(raw).replace(/\/+$/, '');
+  if (value === '') return '';
+  if (!value.startsWith('/') || !/^\/[A-Za-z0-9/_-]+$/.test(value)) {
+    console.warn(`[auth-config] invalid API_MOUNT_PREFIX=${JSON.stringify(raw)}, fallback to ''`);
+    return '';
+  }
+  return value;
+}
+
 /** 组装单个平台凭证配置；id 与 secret 都非空才 configured。 */
 function providerConfig(clientId: string, clientSecret: string): OAuthProviderConfig {
   return { clientId, clientSecret, configured: Boolean(clientId && clientSecret) };
@@ -86,6 +107,7 @@ export function loadAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig
     ),
     stateSecret: trimOrEmpty(env.AUTH_STATE_SECRET),
     callbackBaseUrl: trimOrEmpty(env.AUTH_CALLBACK_BASE_URL).replace(/\/+$/, ''),
+    mountPrefix: normalizeMountPrefix(env.API_MOUNT_PREFIX),
     afterLoginRedirectUrl: trimOrEmpty(env.AUTH_AFTER_LOGIN_URL) || AUTH_DEFAULTS.afterLoginRedirectUrl,
     isProduction: env.NODE_ENV === 'production',
   };

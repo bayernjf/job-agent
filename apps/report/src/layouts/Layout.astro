@@ -8,6 +8,7 @@ import '../styles/global.css';
 import { createTranslator, type Locale, type MessageKey } from '../i18n/index.js';
 import DemoBanner from '../components/DemoBanner.tsx';
 import AccountMenu from '../components/AccountMenu.tsx';
+import { browserApiBase } from '../lib/api-base.js';
 
 interface Props {
   locale: Locale;
@@ -19,8 +20,8 @@ const { locale, titleKey, title } = Astro.props;
 const t = createTranslator(locale);
 const otherLocale: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
 
-// API 地址：与各页一致，默认同源
-const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
+// API 地址：显式 PUBLIC_API_BASE 优先；Vercel 同域为 /api；本地默认同源
+const apiBase = browserApiBase();
 
 const pageTitle = title
   ? `${title} · ${t('app.name')}`

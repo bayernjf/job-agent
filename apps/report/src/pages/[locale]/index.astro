@@ -8,6 +8,7 @@ import AnalyzeForm from '../../components/AnalyzeForm.tsx';
 import PresetList from '../../components/PresetList.tsx';
 import { isLocale, type Locale } from '../../i18n/index.js';
 import { createTranslator } from '../../i18n/index.js';
+import { browserApiBase } from '../../lib/api-base.js';
 
 const { locale: rawLocale } = Astro.params;
 if (!isLocale(rawLocale)) {
@@ -16,8 +17,8 @@ if (!isLocale(rawLocale)) {
 const locale: Locale = rawLocale;
 const t = createTranslator(locale);
 
-// API 地址：服务端环境变量或同源（MVP 默认同源）
-const apiBase = import.meta.env.PUBLIC_API_BASE ?? '';
+// API 地址：显式 PUBLIC_API_BASE 优先；Vercel 同域为 /api；本地默认同源
+const apiBase = browserApiBase();
 ---
 
 <Layout locale={locale} titleKey="home.title">

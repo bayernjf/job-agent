@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2 均已落地**；真实性规则 0.3 经真实双源 26 账号回归复核零误伤（holilayet 修复确认），**活跃待办 item 1–27 全部关闭**，剩余推进项均卡外部条件/拍板（部署形态与生产域名、demo 配额数值、账号体系方向、LLM 厂商、#14 合规，见 handoff）。pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸均已落地**；真实性规则 0.3 经真实双源 26 账号回归复核零误伤（holilayet 修复确认），**活跃待办 item 1–34 全部完成并经 PR #66 并入 `main`**，剩余推进项均卡外部条件/拍板（生产域名/部署形态、demo 配额数值、LLM 厂商、真实 Gitee OAuth 首次冒烟、#14 合规，见 handoff）。pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -49,7 +49,9 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/design-targeted-resume-20260915.md](docs/design-targeted-resume-20260915.md) | 岗位定向简历设计（no-fabrication/polish 安全层/本地档案 canonical） |
 | [docs/design-extension-match-ui-20260914.md](docs/design-extension-match-ui-20260914.md) | 扩展面板岗位匹配 UI 设计 |
 | [docs/design-extension-e2e-20260914.md](docs/design-extension-e2e-20260914.md) | 扩展浏览器级 E2E 设计 |
-| [docs/API.md](docs/API.md) | HTTP API 接口文档（analyze/jobs/profiles/health） |
+| [docs/API.md](docs/API.md) | HTTP API 接口文档（analyze/jobs/profiles/health + GitHub/Gitee OAuth/认领/可见性矩阵） |
+| [docs/design-auth-gating-20260919.md](docs/design-auth-gating-20260919.md) | 账号收尾：OAuth return_to 深链回跳 + 报告页授权分级闸两档可见性 |
+| [docs/design-gitee-oauth-20260919.md](docs/design-gitee-oauth-20260919.md) | Gitee OAuth 登录与本人画像认领（协议差异 / AuthProvider / /auth/providers） |
 | [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md) | 部署 / 上线 Runbook（形态 A/B、生产 env、迁移、cron、上线 smoke） |
 | [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
