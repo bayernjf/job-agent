@@ -33,11 +33,25 @@ const POSTGRES_MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations/
  * - sqlite（默认）：本地文件/内存库，零外部依赖。
  * - postgres：生产；必须提供 DATABASE_URL（或 config.databaseUrl）。
  */
+/**
+ * 解析 DB_AUTO_MIGRATE：未设置返回 undefined（沿用 autoMigrate 默认逻辑）；
+ * 仅接受 'true'/'false'（小写、去空白），其他值 warn 并回退默认。
+ * serverless 形态（Vercel + Supabase 事务池化）应显式设 'false'，DDL 只走 5432 迁移流程。
+ */
+export function envAutoMigrate(): boolean | undefined {
+  const raw = process.env.DB_AUTO_MIGRATE?.trim().toLowerCase();
+  if (raw === undefined || raw === '') return undefined;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  console.warn(`[storage] invalid DB_AUTO_MIGRATE=${JSON.stringify(raw)}, fallback to default`);
+  return undefined;
+}
+
 export async function createStorage(config: StorageConfig = {}): Promise<StorageContext> {
   const driver: StorageDriver =
     config.driver ?? (process.env.DB_DRIVER as StorageDriver | undefined) ?? 'sqlite';
 
-  const autoMigrate = config.autoMigrate ?? !config.readonly;
+  const autoMigrate = config.autoMigrate ?? envAutoMigrate() ?? !config.readonly;
 
   if (driver === 'postgres') {
     const databaseUrl = config.databaseUrl ?? process.env.DATABASE_URL;
