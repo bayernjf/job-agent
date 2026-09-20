@@ -22,6 +22,13 @@ export const FIXTURE_FUSED_PROFILE_ID = 'profe2efixture00000000000001';
 export const FIXTURE_FUSED_LOGIN = 'e2e-fused-user';
 
 /**
+ * Gitee 主体画像 fixture（#3）：snapshot.subject.platform='gitee'，存储行 subject_platform='gitee'。
+ * 用于断言授权分级闸的 SSR 登录墙按画像主体平台引导到 Gitee OAuth（而非 GitHub）。
+ */
+export const FIXTURE_GITEE_PROFILE_ID = 'profe2efixture00000000000002';
+export const FIXTURE_GITEE_LOGIN = 'e2e-gitee-user';
+
+/**
  * 授权分级闸 E2E：一个本人账号（login 与 FIXTURE_LOGIN 一致）+ 固定未过期会话 token。
  * spec 用 context.addCookies 种 jobagent_session 模拟"已登录 user"。
  */
@@ -37,10 +44,13 @@ const EVIDENCE = {
   cadence: 'evt-cadence',
 } as const;
 
-export function buildFixtureProfile(overrides: { id?: string; login?: string; displayName?: string } = {}): AbilityProfile {
+export function buildFixtureProfile(
+  overrides: { id?: string; login?: string; displayName?: string; platform?: 'github' | 'gitee' } = {},
+): AbilityProfile {
   const profileId = overrides.id ?? FIXTURE_PROFILE_ID;
   const login = overrides.login ?? FIXTURE_LOGIN;
   const displayName = overrides.displayName ?? 'E2E Fixture User';
+  const platform = overrides.platform ?? 'github';
   const profile = {
     profileId,
     analyzerVersion: 'schema-0.1-engine-0.1.0',
@@ -51,11 +61,14 @@ export function buildFixtureProfile(overrides: { id?: string; login?: string; di
     },
     analysisLayers: ['L0', 'L1'] as const,
     subject: {
-      platform: 'github' as const,
+      platform,
       login,
       displayName,
-      avatarUrl: `https://avatars.githubusercontent.com/u/0?v=4`,
-      profileUrl: `https://github.com/${login}`,
+      avatarUrl:
+        platform === 'gitee'
+          ? 'https://gitee.com/assets/no_portrait.png'
+          : `https://avatars.githubusercontent.com/u/0?v=4`,
+      profileUrl: platform === 'gitee' ? `https://gitee.com/${login}` : `https://github.com/${login}`,
       claimed: false,
     },
     summary: {
@@ -118,6 +131,16 @@ export function buildFixtureProfile(overrides: { id?: string; login?: string; di
 
   // 契约自检：任何字段不符合 AbilityProfile 立即抛错，避免落盘后 snapshot 变 null。
   return AbilityProfileSchema.parse(profile);
+}
+
+/** Gitee 主体画像 fixture：subject.platform='gitee'，其余与标准 fixture 同形。 */
+export function buildGiteeFixtureProfile(): AbilityProfile {
+  return buildFixtureProfile({
+    id: FIXTURE_GITEE_PROFILE_ID,
+    login: FIXTURE_GITEE_LOGIN,
+    displayName: 'E2E Gitee User',
+    platform: 'gitee',
+  });
 }
 
 /** 融合画像 fixture：snapshot 形状与普通画像一致（platform 仍 github），融合身份只在存储行列。 */
