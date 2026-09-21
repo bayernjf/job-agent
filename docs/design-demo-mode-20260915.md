@@ -748,8 +748,8 @@ demo.establishing        正在进入演示… / Starting demo…
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `DEMO_SESSION_TTL_MS` | `604800000`（7 天，建议值待拍板） | 演示会话有效期，同时是 Cookie Max-Age |
-| `DEMO_ANALYZE_QUOTA` | `3`（建议值待拍板） | 单会话可触发的新分析次数 |
+| `DEMO_SESSION_TTL_MS` | `86400000`（**2026-09-21 已拍板**，24 小时） | 演示会话有效期，同时是 Cookie Max-Age |
+| `DEMO_ANALYZE_QUOTA` | `3`（**2026-09-21 已拍板**） | 单会话可触发的新分析次数 |
 | `DEMO_FUSION_QUOTA_COST` | `2`（**2026-09-18 已拍板**） | 一次 `platform=all` 双源融合作业扣减的配额权重（约 2x 采集成本）；单源 github/gitee 扣 1；positiveInt、最小 1，剩余不足整单拒绝 |
 | `DEMO_SESSION_RATE_PER_HOUR` | `5` | 单 IP 每小时建会话上限 |
 | `DEMO_ANALYZE_RATE_PER_HOUR` | `10` | 单 IP 每小时触发分析上限 |
@@ -819,7 +819,7 @@ demo.establishing        正在进入演示… / Starting demo…
 | --- | --- | --- | --- |
 | 1 | 配额数值：会话分析次数、IP 建会话/分析/match 窗口 | 3 次/会话；5 建会话/h/IP；10 分析/h/IP；match 60/h/IP 仅兜底、**不设会话硬配额** | demo-config 默认值、§14 测试断言、上线后按真实 GitHub 消耗日志调整 |
 | 2 | 是否允许自选真实用户名（还是只给预置快照） | **允许**（这是"进入真实产品"的核心感知；预置负责秒进、自选负责真实感）；若想零实时 token 成本则只留预置 | §7.3 是否保留完整链路、§9.3 自动建会话逻辑 |
-| 3 | 会话 TTL | 7 天（足够回访、短于滥用窗口）；cleanup 保留期 24h | Cookie Max-Age、demo_sessions.expires_at |
+| 3 | ✅ **已拍板 2026-09-21：会话 TTL 24 小时**；cleanup 保留期仍 24h | Cookie Max-Age、demo_sessions.expires_at |
 | 4 | 部署形态：同域反代（A）还是跨子域（B） | **A 同域反代**（Cookie 最简、不碰 CORS 凭证问题）；现状 API `origin:'*'` 与凭证 Cookie 不兼容，必须在上线前拍板 | §7.6 Cookie Domain、CORS_ALLOW_ORIGINS、前端 credentials、TRUST_PROXY |
 | 5 | 3 个预置示例账号具体选谁 | 从第三轮校准 26 账号中选结论稳定的 likely/mixed/suspicious 各一；suspicious 候选可能被封/改名，seed 时复跑验证、只展示 ready 项；**不在设计阶段写死** | `DEMO_PRESET_LOGINS`/代码常量、seed 清单 |
 | 6 | `platform=all` 融合作业的配额权重 | ✅ **已拍板 2026-09-18：一次扣 2**（单源 github/gitee 扣 1；约 2x 采集成本）。env `DEMO_FUSION_QUOTA_COST`（默认 2、最小 1），剩余不足整单拒绝、不部分扣，`jobs.create` 失败按原权重补偿；IP 窗按请求计 1、Worker 并发闸不按 cost | demo-config `fusionAnalyzeCost`、§3.1/§5.4、storage 双方言仓储、API `/analyze`、[design-cross-source-fusion §8.5/§8.7](design-cross-source-fusion-20260915.md) |
