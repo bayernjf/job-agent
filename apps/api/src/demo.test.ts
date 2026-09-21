@@ -15,7 +15,7 @@ const NOW = '2026-09-15T12:00:00.000Z';
 
 function makeConfig(overrides: Partial<DemoConfig> = {}): DemoConfig {
   return {
-    sessionTtlMs: 7 * 24 * 60 * 60 * 1000,
+    sessionTtlMs: 24 * 60 * 60 * 1000,
     analyzeQuota: 3,
     fusionAnalyzeCost: 2,
     sessionRatePerHour: 5,
@@ -129,7 +129,7 @@ describe('POST /demo/sessions', () => {
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('SameSite=Lax');
     expect(setCookie).toContain('Path=/');
-    expect(setCookie).toContain('Max-Age=604800');
+    expect(setCookie).toContain('Max-Age=86400');
     // 本地非生产不带 Secure
     expect(setCookie).not.toContain('Secure');
 
@@ -138,7 +138,7 @@ describe('POST /demo/sessions', () => {
     expect(body.analyzeQuota).toBe(3);
     expect(body.analyzeUsed).toBe(0);
     expect(body.analyzeRemaining).toBe(3);
-    expect(body.expiresAt).toBe('2026-09-22T12:00:00.000Z');
+    expect(body.expiresAt).toBe('2026-09-16T12:00:00.000Z');
   });
 
   it('is idempotent for an already-active demo session', async () => {
@@ -366,7 +366,7 @@ describe('POST /analyze demo gating', () => {
     expect(body.analyzeQuota).toBe(3);
     expect(body.analyzeUsed).toBe(3);
     expect(body.analyzeRemaining).toBe(0);
-    expect(body.resetAt).toBe('2026-09-22T12:00:00.000Z');
+    expect(body.resetAt).toBe('2026-09-16T12:00:00.000Z');
   });
 
   it('(7) returns 429 DEMO_RATE_LIMITED when the IP analyze window is full', async () => {
