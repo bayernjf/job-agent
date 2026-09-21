@@ -18,6 +18,7 @@ JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项�
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
+- **切换 Node 版本后必须重编译原生依赖**：`better-sqlite3` 是 native addon，其二进制 ABI 与编译时的 Node 大版本绑定（Node 22＝`NODE_MODULE_VERSION` 127、Node 24＝137）。用 fnm/nvm 切到 `.nvmrc` 版本后，若加载报 `NODE_MODULE_VERSION ... requires ...`、或大量 SQLite 测试集体崩，在仓库根运行 **`pnpm rebuild -r better-sqlite3`**——必须带 **`-r`** 递归到 workspace 子包（根目录 `pnpm rebuild better-sqlite3` 因子包依赖 selector 不匹配会**静默 no-op**）；该改动只作用于不入库的 `node_modules`。CI 在 Linux runner 上全新 install，不受此影响。
 - 后端：Hono + Zod；分析任务由独立 Worker 消费
 - 数据库：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（**Drizzle 与方言差异只允许出现在 `packages/storage` 内部**，业务只依赖统一 async 仓储接口与 `createStorage()` 工厂、按 `DB_DRIVER` 切换，见下；MVP 不引入 Redis）
 - GitHub 采集：官方 Octokit，GraphQL 批量优先、REST 补；生产用 GitHub App
