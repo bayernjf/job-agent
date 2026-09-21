@@ -42,7 +42,7 @@ export interface DemoConfig {
 }
 
 export const DEMO_DEFAULTS = {
-  sessionTtlMs: 7 * 24 * 60 * 60 * 1000, // 604800000，7 天
+  sessionTtlMs: 24 * 60 * 60 * 1000, // 86400000，24 小时（2026-09-21 拍板，#14 同批）
   analyzeQuota: 3,
   fusionAnalyzeCost: 2, // platform=all 双源融合约 2x 成本，一次扣 2（2026-09-18 拍板）
   sessionRatePerHour: 5,
