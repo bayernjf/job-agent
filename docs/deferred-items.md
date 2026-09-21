@@ -58,6 +58,7 @@
 | 落地页 `--lui-*` 纳入共享 token 体系 | 落地页是独立仓库、自有变量体系，由负责人自行推进；本仓内 report 与 extension 已共享 `packages/ui-tokens`（2026-09-14，见 [design-tokens](design-tokens-20260910.md)） | 落地页需要与本仓视觉统一（品牌一致性成为硬需求）时 | [design-tokens](design-tokens-20260910.md) |
 | i18n 运行时抽共享包（`packages/i18n`） | 目前仅 report 与 extension 两个前端、字典各自演化，各持一份无 DOM 依赖的小运行时成本最低 | 出现第三个前端，或两端都需要复数/性别/复杂日期等复杂规则时 | [design-i18n §8.1](design-i18n-20260910.md) |
 | Stylelint / 自动化 token 与文案检查 | MVP 用单测 + 只读脚本即可守住"禁 hex""禁硬编码文案"，引 lint 增加工具链 | 硬编码 hex 或文案靠人工 review 漏过两次，或组件数量增长使人工 review 不可靠 | [design-tokens](design-tokens-20260910.md)、[design-i18n](design-i18n-20260910.md) |
+| 采集层证据 `claim` 模板双语化（`github-source`/`gitee-source` 的 `evidence.ts` 现为写死中文，如「仓库 owner/name（语言）：N star / M fork，最近推送 …」） | claim 是采集期写入证据快照的文本、不属于前端 `t()`，双语化需在证据结构中携带可本地化字段或按 locale 渲染，并影响已生成画像；当前中英用户均能读懂 star/fork/日期，非上线阻塞，CWS 英文截图 02 会露出该中文行 | 英文报告/扩展面向真实英文用户公开发布前，或商店审核/用户明确反馈英文界面夹中文证据描述时 | [../AGENTS.md](../AGENTS.md)（i18n 规范）、handoff item40 |
 
 ### 合规线
 
