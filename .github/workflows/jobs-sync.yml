@@ -15,6 +15,10 @@ name: Jobs sync
 # No GitHub/Gitee token is needed: the five job sources are public APIs.
 #
 # Manual runs: Actions → Jobs sync → Run workflow, pick daily or hn-monthly.
+#
+# While DATABASE_URL is absent (form C not yet deployed), scheduled runs finish
+# successfully with the install/build/sync steps skipped and a visible warning;
+# a manual workflow_dispatch run still fails fast to surface the misconfiguration.
 
 on:
   schedule:
@@ -59,16 +63,41 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
 
+      # The form C production database is provisioned out-of-band (Runbook
+      # §4-C, handoff item37 P0-3). Until the DATABASE_URL secret exists, an
+      # unattended schedule run has nothing to sync: skip the build and ingestion
+      # with a visible warning instead of failing every night. A manual dispatch
+      # is an explicit operator request, so a missing secret there stays a hard
+      # error. The CLI still fails fast as a last line of defense.
+      - name: Guard DATABASE_URL secret
+        id: guard
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -n "$DATABASE_URL" ]; then
+            echo "has_db=true" >> "$GITHUB_OUTPUT"
+            echo "DATABASE_URL is configured; ingestion will run."
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo '::error::repository secret DATABASE_URL is not set. Add the Supabase 5432 SESSION pooler connection string at Settings -> Secrets and variables -> Actions (see workflow header and Runbook §4-C).'
+            exit 1
+          else
+            echo '::warning::DATABASE_URL is not configured yet (form C production database not provisioned; handoff item37 P0-3). Skipping this scheduled ingestion — add the secret to activate the cron.'
+            echo "has_db=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
+        if: steps.guard.outputs.has_db == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build
+        if: steps.guard.outputs.has_db == 'true'
         run: pnpm -r build
 
       - name: Daily job sources sync
         if: |
-          (github.event_name == 'workflow_dispatch' && inputs.target == 'daily') ||
-          (github.event_name == 'schedule' && github.event.schedule == '17 18 * * *')
+          steps.guard.outputs.has_db == 'true' &&
+          ((github.event_name == 'workflow_dispatch' && inputs.target == 'daily') ||
+           (github.event_name == 'schedule' && github.event.schedule == '17 18 * * *'))
         env:
           DB_DRIVER: postgres
           DB_AUTO_MIGRATE: 'false'
@@ -78,8 +107,9 @@ jobs:
 
       - name: Monthly HN who-is-hiring sync
         if: |
-          (github.event_name == 'workflow_dispatch' && inputs.target == 'hn-monthly') ||
-          (github.event_name == 'schedule' && github.event.schedule == '42 18 1 * *')
+          steps.guard.outputs.has_db == 'true' &&
+          ((github.event_name == 'workflow_dispatch' && inputs.target == 'hn-monthly') ||
+           (github.event_name == 'schedule' && github.event.schedule == '42 18 1 * *'))
         env:
           DB_DRIVER: postgres
           DB_AUTO_MIGRATE: 'false'

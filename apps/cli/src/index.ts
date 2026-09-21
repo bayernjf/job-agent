@@ -168,12 +168,21 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     const { values, positionals } = parseArgs({
       args: rest,
       allowPositionals: true,
-      options: { out: { type: 'string', short: 'o' }, platform: { type: 'string' } },
+      options: {
+        out: { type: 'string', short: 'o' },
+        platform: { type: 'string' },
+        format: { type: 'string' },
+      },
     });
     const login = positionals[0];
     const platform = parsePlatform(values.platform);
     if (!platform) {
       logger.error('--platform must be one of: github, gitee, all (default github; all = fused GitHub+Gitee, analyze only)');
+      return 2;
+    }
+    const format = values.format ?? 'json';
+    if (!['json', 'markdown', 'md', 'html'].includes(format)) {
+      logger.error('--format must be one of: json, markdown, html (default json)');
       return 2;
     }
     if (!login) {
@@ -182,8 +191,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     }
     try {
       const result = await analyzeLogin(login, deps, platform);
-      const json = JSON.stringify(result, null, 2);
-      writeOutput(values.out, json, logger, stdout);
+      writeOutput(values.out, renderProfile(result, format), logger, stdout);
       return 0;
     } catch (err) {
       logger.error(`analyze failed for ${login}: ${(err as Error).message}`);

@@ -56,7 +56,21 @@ function sampleProfile(overrides: Partial<AbilityProfile> = {}): AbilityProfile 
   };
 }
 
+function sampleEvidence(login: string): EvidenceItem {
+  return {
+    evidenceId: `repo:${login}/sample-repo`,
+    sourcePlatform: 'github',
+    sourceType: 'repo',
+    url: `https://github.com/${login}/sample-repo`,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    layer: 'L0',
+    claim: 'Public repository exists',
+    rawRef: `${login}/sample-repo`,
+  };
+}
+
 function fakeCollectedData(login: string): GitHubCollectedData {
+  const evidence = [sampleEvidence(login)];
   const input: AnalyzerInput = {
     subject: {
       login,
@@ -84,13 +98,13 @@ function fakeCollectedData(login: string): GitHubCollectedData {
       totalRepositoryContributions: 5,
       contributionMonths: [],
     },
-    evidence: [] as EvidenceItem[],
+    evidence: evidence as EvidenceItem[],
     missing: [],
     collectedAt: '2026-09-11T00:00:00.000Z',
   };
   return {
     input,
-    evidence: [],
+    evidence,
     meta: {
       budgetUsed: { graphqlPoints: 10, restCalls: 2 },
       missing: [],
@@ -116,9 +130,17 @@ function asSources(source: ReturnType<typeof makeFakeSource>) {
 function fakeGiteeData(login: string, missing: string[] = []): GiteeCollectedData {
   const base = fakeCollectedData(login);
   base.input.subject.profileUrl = `https://gitee.com/${login}`;
+  const giteeEvidence: EvidenceItem[] = [
+    {
+      ...sampleEvidence(login),
+      sourcePlatform: 'gitee',
+      url: `https://gitee.com/${login}/sample-repo`,
+    },
+  ];
+  base.input.evidence = giteeEvidence;
   return {
     input: base.input,
-    evidence: [],
+    evidence: giteeEvidence,
     meta: { budgetUsed: { restCalls: 3 }, missing },
   } as unknown as GiteeCollectedData;
 }
@@ -155,6 +177,11 @@ describe('processJob', () => {
     expect(profile).toBeDefined();
     expect(profile!.subjectLogin).toBe('test-user');
     expect(profile!.status).toBe('complete');
+
+    // 证据行非空落库（报告页证据链接与可回溯性的前提）
+    const storedEvidence = await repos.evidence.listByProfile(result.profileId);
+    expect(storedEvidence.length).toBeGreaterThan(0);
+    expect(storedEvidence[0]!.url).toBe('https://github.com/test-user/sample-repo');
 
     // 任务标记成功
     const updatedJob = (await repos.jobs.getById(jobId))!;
@@ -248,6 +275,11 @@ describe('processJob', () => {
     // 融合报告同时挂进画像快照并持久化（报告页可读取），而非只停留在日志/返回值
     expect(result.profile.fusion).toBeDefined();
     expect(stored!.snapshot!.fusion).toEqual(result.fusion);
+
+    // 融合后的证据同样落库（同 id 跨源去重，保留主源条目）
+    const fusedEvidence = await repos.evidence.listByProfile(result.profileId);
+    expect(fusedEvidence.length).toBeGreaterThan(0);
+    expect(fusedEvidence.some((e) => e.sourcePlatform === 'github')).toBe(true);
 
     const done = (await repos.jobs.getById(jobId))!;
     expect(done.status).toBe('succeeded');

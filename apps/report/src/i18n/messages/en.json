@@ -56,6 +56,8 @@
   "report.viewOnGithub": "View on GitHub",
   "report.dataSource": "Data sources & limitations",
   "report.dispute": "Raise a dispute",
+  "report.dispute.subject": "Report dispute",
+  "report.dispute.body": "If you believe a conclusion is wrong or evidence is inaccurate, email us the details and we will review and correct it.",
   "report.summary.title": "Summary",
   "report.summary.headline": "Headline",
   "report.authenticity.title": "Authenticity Assessment",

@@ -27,6 +27,9 @@ const t = createTranslator(locale);
 // API 地址：显式 PUBLIC_API_BASE 优先；Vercel 同域为 /api；本地默认同源
 const apiBase = browserApiBase();
 
+const disputeEmail =
+  (import.meta.env.PUBLIC_DISPUTE_EMAIL as string | undefined) ?? 'dispute@job-agent.bayjf.com';
+
 const profileRecord = profileId ? await loadProfileRecord(profileId) : null;
 const profile = profileRecord?.snapshot ?? null;
 
@@ -541,18 +544,29 @@ const applicationStatusLabels = {
     }
 
     <!-- 局限与说明 -->
-    {
-      profile.caveats.length > 0 && (
-        <section class="ja-card caveats">
-          <h2>{t('report.caveats.title')}</h2>
+    <section class="ja-card caveats">
+      <h2>{t('report.caveats.title')}</h2>
+      {
+        profile.caveats.length > 0 && (
           <ul class="ja-stack-1">
             {profile.caveats.map((caveat) => (
               <li>{caveat}</li>
             ))}
           </ul>
-        </section>
-      )
-    }
+        )
+      }
+      <p class="dispute">
+        <a
+          href={`mailto:${disputeEmail}?subject=${encodeURIComponent(
+            `${t('report.dispute.subject')}: ${profileId}`,
+          )}`}
+        >
+          {t('report.dispute')}
+        </a>
+        {' — '}
+        {t('report.dispute.body')}
+      </p>
+    </section>
   </div>
 </Layout>
 
@@ -697,6 +711,12 @@ const applicationStatusLabels = {
   }
 
   .caveats li {
+    font-size: var(--ja-text-sm);
+    color: var(--ja-color-fg-muted);
+  }
+
+  .caveats .dispute {
+    margin-top: var(--ja-space-3);
     font-size: var(--ja-text-sm);
     color: var(--ja-color-fg-muted);
   }

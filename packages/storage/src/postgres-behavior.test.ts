@@ -21,6 +21,12 @@ import { openPostgres } from './postgres/connection.js';
 
 const EMBEDDED_DIR = resolve(process.cwd(), 'data', 'pg-test-embedded');
 const EMBEDDED_PORT = 5433;
+// initdb cold start (initialise()) can take tens of seconds and varies with
+// disk/CPU load, especially when `pnpm -r test` runs packages concurrently.
+// Give it headroom so a slow boot is not mistaken for a hung hook. CI sets
+// DATABASE_TEST_URL (docker postgres service) and never boots embedded PG, so
+// this timeout only affects local runs.
+const EMBEDDED_BOOT_TIMEOUT_MS = 120_000;
 
 function minimalSnapshot(login: string): AbilityProfile {
   return {
@@ -69,6 +75,8 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       // 2. 自动启动 embedded-postgres
       try {
         rmSync(EMBEDDED_DIR, { recursive: true, force: true });
+        const bootStartedAt = Date.now();
+        const elapsedMs = (): number => Date.now() - bootStartedAt;
         embedded = new EmbeddedPostgres({
           databaseDir: EMBEDDED_DIR,
           user: 'test',
@@ -76,12 +84,18 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
           port: EMBEDDED_PORT,
           persistent: false,
           initdbFlags: ['--locale=C', '--encoding=UTF8'],
+          // onLog is too noisy to keep; onError must stay visible so a stalled
+          // boot is not a silent, undiagnosable hang.
           onLog: () => {},
-          onError: () => {},
+          onError: (messageOrError) =>
+            console.warn('[postgres-behavior] embedded postgres error:', messageOrError),
         });
         await embedded.initialise();
+        console.warn(`[postgres-behavior] initialise() done in ${elapsedMs()}ms`);
         await embedded.start();
+        console.warn(`[postgres-behavior] start() done in ${elapsedMs()}ms`);
         await embedded.createDatabase('jobagent_test');
+        console.warn(`[postgres-behavior] createDatabase() done in ${elapsedMs()}ms`);
         pgUrl = `postgres://test:test@localhost:${EMBEDDED_PORT}/jobagent_test`;
       } catch (err) {
         unavailable = (err as Error).message;
@@ -103,7 +117,7 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       unavailable = (err as Error).message;
       console.warn('[postgres-behavior] createStorage failed, tests skip:', unavailable);
     }
-  }, 60000);
+  }, EMBEDDED_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     await storage?.close();
