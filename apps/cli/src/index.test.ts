@@ -310,6 +310,40 @@ describe('cli run', () => {
     rmSync(outFile, { force: true });
   });
 
+  it('analyze --format markdown renders a Markdown report', async () => {
+    const c = capture();
+    const code = await run(
+      ['analyze', 'dev-strong', '--format', 'markdown'],
+      c.deps({ collect: async (login) => fakeCollected(login) }),
+    );
+    expect(code).toBe(0);
+    expect(c.stdout.trimStart().startsWith('# ')).toBe(true);
+    expect(c.stdout).toContain('dev-strong');
+    // markdown 不是 JSON
+    expect(() => JSON.parse(c.stdout)).toThrow();
+  });
+
+  it('analyze --format html renders an HTML document', async () => {
+    const c = capture();
+    const code = await run(
+      ['analyze', 'dev-strong', '--format', 'html'],
+      c.deps({ collect: async (login) => fakeCollected(login) }),
+    );
+    expect(code).toBe(0);
+    expect(c.stdout).toContain('<html');
+    expect(c.stdout).toContain('dev-strong');
+  });
+
+  it('exits 2 on an unknown --format value', async () => {
+    const c = capture();
+    const code = await run(
+      ['analyze', 'dev-strong', '--format', 'pdf'],
+      c.deps({ collect: async (login) => fakeCollected(login) }),
+    );
+    expect(code).toBe(2);
+    expect(c.stderr).toContain('--format');
+  });
+
   it('exits 1 with guidance when GITHUB_TOKEN is missing and no source injected', async () => {
     const c = capture();
     const code = await run(['analyze', 'dev-strong'], { ...c.deps(undefined), token: undefined });
