@@ -14,6 +14,7 @@
  */
 import type { APIRoute } from 'astro';
 import { createApp } from '@jobagent/api';
+import { stripApiPrefix } from '../../lib/api-prefix';
 
 type JobAgentApp = Awaited<ReturnType<typeof createApp>>;
 
@@ -32,7 +33,7 @@ async function forwardToHono(request: Request): Promise<Response> {
   const app = await getApp();
   const url = new URL(request.url);
   // /api → /，/api/ → /，/api/analyze → /analyze；query string 由 URL 对象保留
-  url.pathname = url.pathname.replace(/^\/api(?:\/|$)/, '/');
+  url.pathname = stripApiPrefix(url.pathname);
   // new Request 保留 method/headers/body；Hono 返回标准 Web Response，Astro 可直接回传
   return app.fetch(new Request(url, request));
 }
