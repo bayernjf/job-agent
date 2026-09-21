@@ -34,6 +34,7 @@ import type { AbilityProfile } from '@jobagent/shared';
 import {
   createStorage,
   type IAnalysisJobsRepository,
+  type IEvidenceRepository,
   type IProfilesRepository,
   type StoredAnalysisJob,
 } from '@jobagent/storage';
@@ -43,6 +44,7 @@ import {
 export interface WorkerRepos {
   jobs: IAnalysisJobsRepository;
   profiles: IProfilesRepository;
+  evidence: IEvidenceRepository;
 }
 
 /** 统一证据源接口：GitHubSource 与 GiteeSource 均满足此形态 */
@@ -246,7 +248,11 @@ export async function processJob(
     snapshot: profile,
   });
 
-  // 5. 标记任务成功
+  // 5. Persist evidence rows so report pages can render source links and recruiters can
+  //    trace every claim. analyzerInput.evidence is source-agnostic (fusion-deduped for all).
+  await repos.evidence.importFromProfile(profileId, analyzerInput.evidence);
+
+  // 6. 标记任务成功
   await repos.jobs.succeed(job.id, profileId, budgetUsed, missing);
   logger.info(`[worker] job ${job.id} succeeded: profile ${profileId} (persisted as ${persistPlatform})`);
 
