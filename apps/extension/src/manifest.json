@@ -26,7 +26,9 @@
         "https://*/*careers*",
         "https://*/*jobs*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -37,7 +39,20 @@
       "https://job-agent.bayjf.com/*"
     ]
   },
-  "permissions": ["storage"],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "tokens.css",
+        "panel.css"
+      ],
+      "matches": [
+        "https://*/*"
+      ]
+    }
+  ],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://*.greenhouse.io/*",
     "https://*.lever.co/*",
