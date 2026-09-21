@@ -341,4 +341,96 @@ describe('lever summary → questions[*] mapping', () => {
     expect(why.value).toBe('TypeScript 后端工程师，开源维护者。');
     expect(salary.value).toBe('');
   });
+
+  // Lever renders phone as type="tel" and LinkedIn/GitHub as type="url". The fake
+  // querySelectorAll only returns a field when the product selector actually lists
+  // its type, so this guards against collectFields dropping tel/url inputs again.
+  it('fills Lever phone (tel) and LinkedIn/GitHub (url) fields', () => {
+    const mkInput = (name: string, type: string) => ({
+      tagName: 'INPUT',
+      name,
+      type,
+      value: '',
+      placeholder: '',
+      id: null,
+      getAttribute: () => null,
+      closest: () => null,
+      previousElementSibling: null,
+      dispatchEvent: () => true,
+    });
+    const fields = [
+      mkInput('name', 'text'),
+      mkInput('email', 'email'),
+      mkInput('phone', 'tel'),
+      mkInput('urls[LinkedIn]', 'url'),
+      mkInput('urls[GitHub]', 'url'),
+    ];
+    const matchesSelector = (el: { tagName: string; type: string }, sel: string): boolean => {
+      if (el.tagName === 'TEXTAREA') return sel.includes('textarea');
+      if (el.type === 'tel') return sel.includes('input[type="tel"]');
+      if (el.type === 'url') return sel.includes('input[type="url"]');
+      if (el.type === 'email') return sel.includes('input[type="email"]');
+      if (el.type === 'text') return sel.includes('input[type="text"]');
+      return false;
+    };
+    const doc = {
+      querySelectorAll: (sel: string) => (sel === '*' ? [] : fields.filter((el) => matchesSelector(el, sel))),
+      querySelector: () => null,
+    } as unknown as Document;
+    const values = [
+      { key: 'full_name' as const, value: 'Demo Dev' },
+      { key: 'email' as const, value: 'd@example.dev' },
+      { key: 'phone' as const, value: '+1 555 010 2048' },
+      { key: 'linkedin_url' as const, value: 'https://linkedin.com/in/demo' },
+      { key: 'github_url' as const, value: 'https://github.com/demo' },
+    ];
+    const written = leverAdapter.fill(doc, values);
+    expect((fields[2] as unknown as { value: string }).value).toBe('+1 555 010 2048');
+    expect((fields[3] as unknown as { value: string }).value).toBe('https://linkedin.com/in/demo');
+    expect((fields[4] as unknown as { value: string }).value).toBe('https://github.com/demo');
+    expect(written).toBe(5);
+  });
+
+  // Flat Lever forms put the <label> directly before the field with no wrapper div
+  // and no id/for pair; the preceding-sibling label must still be recognised.
+  it('writes summary when the question label is a flat preceding sibling', () => {
+    const label = (text: string) => ({ tagName: 'LABEL', textContent: text });
+    const why = {
+      tagName: 'TEXTAREA',
+      id: '',
+      name: 'questions[why-lumen]',
+      value: '',
+      placeholder: '',
+      getAttribute: () => null,
+      closest: () => null,
+      previousElementSibling: label('Why do you want to work at Lumen Labs?'),
+      dispatchEvent: () => true,
+    };
+    const salary = {
+      tagName: 'INPUT',
+      type: 'text',
+      id: '',
+      name: 'questions[salary]',
+      value: '',
+      placeholder: '',
+      getAttribute: () => null,
+      closest: () => null,
+      previousElementSibling: label('What is your salary expectation?'),
+      dispatchEvent: () => true,
+    };
+    const fields = [salary, why];
+    const matchesSelector = (el: { tagName: string; type?: string }, sel: string): boolean => {
+      if (el.tagName === 'TEXTAREA') return sel.includes('textarea');
+      return sel.includes('input[type="text"]');
+    };
+    const doc = {
+      querySelectorAll: (sel: string) => (sel === '*' ? [] : fields.filter((el) => matchesSelector(el, sel))),
+      querySelector: () => null,
+    } as unknown as Document;
+    const values = [{ key: 'summary' as const, value: 'Summary body.' }];
+    const written = leverAdapter.fill(doc, values);
+    expect(written).toBe(1);
+    expect((why as unknown as { value: string }).value).toBe('Summary body.');
+    expect((salary as unknown as { value: string }).value).toBe('');
+  });
 });
