@@ -127,8 +127,12 @@ function allDocuments(doc: Document): Document[] {
 
 /** 递归收集 root（Document/ShadowRoot）内的可填字段，含嵌套 shadow DOM（Workday 全组件化表单） */
 function collectFields(root: Document | ShadowRoot): Array<HTMLInputElement | HTMLTextAreaElement> {
+  // Real Lever forms render phone as type="tel" and LinkedIn/GitHub/website as type="url";
+  // both must be collected or keyword matching can never fill them.
   const fields = Array.from(
-    root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[type="text"], input[type="email"], input:not([type]), textarea'),
+    root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+      'input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input:not([type]), textarea',
+    ),
   );
   for (const el of Array.from(root.querySelectorAll('*'))) {
     if (el.shadowRoot) fields.push(...collectFields(el.shadowRoot));
@@ -201,6 +205,13 @@ export function findLabeledQuestion(
         labelText = d.querySelector(`label[for="${el.id}"]`)?.textContent ?? '';
       }
       if (!labelText) labelText = el.getAttribute('aria-label') ?? '';
+      if (!labelText) {
+        // Flat forms (real Lever included) place the <label> as the immediate
+        // preceding sibling with no wrapper; that is more precise than the
+        // container's first label (which may be an unrelated field such as name).
+        const prev = el.previousElementSibling;
+        if (prev && prev.tagName === 'LABEL') labelText = prev.textContent ?? '';
+      }
       if (!labelText) {
         const host = el.closest?.('div, fieldset, section');
         labelText = host?.querySelector('label')?.textContent ?? '';

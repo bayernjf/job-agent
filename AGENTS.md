@@ -18,6 +18,7 @@ JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项�
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
+- **切换 Node 版本后必须重编译原生依赖**：`better-sqlite3` 是 native addon，其二进制 ABI 与编译时的 Node 大版本绑定（Node 22＝`NODE_MODULE_VERSION` 127、Node 24＝137）。用 fnm/nvm 切到 `.nvmrc` 版本后，若加载报 `NODE_MODULE_VERSION ... requires ...`、或大量 SQLite 测试集体崩，在仓库根运行 **`pnpm rebuild -r better-sqlite3`**——必须带 **`-r`** 递归到 workspace 子包（根目录 `pnpm rebuild better-sqlite3` 因子包依赖 selector 不匹配会**静默 no-op**）；该改动只作用于不入库的 `node_modules`。CI 在 Linux runner 上全新 install，不受此影响。
 - 后端：Hono + Zod；分析任务由独立 Worker 消费
 - 数据库：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（**Drizzle 与方言差异只允许出现在 `packages/storage` 内部**，业务只依赖统一 async 仓储接口与 `createStorage()` 工厂、按 `DB_DRIVER` 切换，见下；MVP 不引入 Redis）
 - GitHub 采集：官方 Octokit，GraphQL 批量优先、REST 补；生产用 GitHub App
@@ -91,7 +92,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 4. `analyzer-core`（**纯函数、带版本、无 I/O**）计算真实性信号、能力标签、规则化面试题，产出完整 `AbilityProfile`。
 5. 画像以**不可变快照**写入 `profiles`，证据写入 `evidence`；分享链接永远指向生成时版本。
 6. 任一层失败必须显式标注缺失，**禁止输出"看似完整"的报告**。
-7. **演示模式三态身份（anonymous/demo/user，设计见 docs/design-demo-mode-20260915.md）**：只读公开端点全放行；唯一受限是"触发新分析"，画像缓存命中先于权限检查、任何身份放行且不扣配额；demo（HttpOnly Cookie `jobagent_demo`）经受三道闸——会话单条条件 UPDATE 原子扣减、IP 加盐哈希滑窗、Worker demo 并发闸（formal 永不被闸）。**扣减按作业成本权重（2026-09-18 拍板）**：单源 github/gitee 扣 1，`platform=all` 双源融合作业扣 `fusionAnalyzeCost`（默认 2，env `DEMO_FUSION_QUOTA_COST`，最小 1）；条件 UPDATE 用 `analyze_count + cost <= quota`，**剩余不足 cost 整单影响 0 行、绝不部分扣减**，`jobs.create` 失败在 catch 按原 cost 补偿（SQLite `MAX`/PG `GREATEST` 兜底不为负）；IP 滑窗按请求数计 1、Worker 并发闸不按 cost（all 只占一个 job 槽）。改 `/analyze`、Worker 认领或配额逻辑时必须保持这些顺序与错误码（DEMO_REQUIRED/QUOTA_EXCEEDED/RATE_LIMITED），且**不得把 analyzer-core 拖入身份/配额逻辑**。
+7. **演示模式三态身份（anonymous/demo/user，设计见 docs/design-demo-mode-20260915.md）**：只读公开端点全放行；唯一受限是"触发新分析"，画像缓存命中先于权限检查、任何身份放行且不扣配额；demo（HttpOnly Cookie `jobagent_demo`）经受三道闸——会话单条条件 UPDATE 原子扣减、IP 加盐哈希滑窗、Worker demo 并发闸（formal 永不被闸）。**扣减按作业成本权重（2026-09-18 拍板）**：单源 github/gitee 扣 1，`platform=all` 双源融合作业扣 `fusionAnalyzeCost`（默认 2，env `DEMO_FUSION_QUOTA_COST`，最小 1）；条件 UPDATE 用 `analyze_count + cost <= quota`，**剩余不足 cost 整单影响 0 行、绝不部分扣减**，`jobs.create` 失败在 catch 按原 cost 补偿（SQLite `MAX`/PG `GREATEST` 兜底不为负）；IP 滑窗按请求数计 1、Worker 并发闸不按 cost（all 只占一个 job 槽）。改 `/analyze`、Worker 认领或配额逻辑时必须保持这些顺序与错误码（DEMO_REQUIRED/QUOTA_EXCEEDED/RATE_LIMITED），且**不得把 analyzer-core 拖入身份/配额逻辑**。**会话配额与 TTL（2026-09-21 拍板，#14 同批）**：每会话 3 次新分析、有效期 24h（`DEMO_SESSION_TTL_MS=86400000`，代码默认值已对齐）。
 8. **报告页授权分级闸与登录回跳（2026-09-19 落地，设计见 [docs/design-auth-gating-20260919.md](docs/design-auth-gating-20260919.md)）**：报告页是 Astro SSR **直读只读 storage（不走 API）**，身份由 `apps/report/src/lib/auth.ts` 的 `resolveViewer` 解析（只读、不 `touch`、坏/过期会话静默降级匿名）。两档可见性——未登录（anonymous/demo）可见结论/技能/匹配/简历/投递与匹配理由证据（决策 #10 要求可回溯），登录 `user` 才可见招聘方三视图**原始证据外链、面试题、`interview-kit.md`**（该端点未登录 `401`）；登录墙用纯 SSR `GateCard`，登录链接必须带同源 `return_to`（API 侧 `sanitizeReturnTo` 白名单防开放重定向）。**JSON API `GET /profiles/:id` 与 `/exportable` 保持公开**（扩展一键填充依赖 exportable，其投影无证据 URL/面试题），字段级 API 裁剪缓做（见 deferred）。改报告页/认证时保持「结论公开、证据原文登录可见」矩阵，勿把 analyzer-core 拖入身份逻辑。
 
 ### 内核与 I/O 分离（硬约束）

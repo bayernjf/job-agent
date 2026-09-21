@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸均已落地**；真实性规则 0.3 经真实双源 26 账号回归复核零误伤（holilayet 修复确认），**活跃待办 item 1–34 全部完成并经 PR #66 并入 `main`**，剩余推进项均卡外部条件/拍板（生产域名/部署形态、demo 配额数值、LLM 厂商、真实 Gitee OAuth 首次冒烟、#14 合规，见 handoff）。pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸均已落地**；真实性规则 0.3 经真实双源 26 账号回归复核零误伤（holilayet 修复确认），**活跃待办 item 1–36 已全部完成并经 PR #69 并入 `main`；item37 的 P0-1/P0-2 修复与 #14 决策已在 `dev` 落地、尚未合入 `main`**，剩余推进项均卡外部条件（形态 C 真实部署的控制台操作、LLM 厂商、真实 Gitee OAuth 首次冒烟，见 handoff）。pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -14,7 +14,7 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 - **P1 稳定期**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过（Greenhouse + Lever 真实写入），summary→自定义问题映射、中英 i18n + 共享设计 token、岗位匹配面板、浏览器级 E2E、本地档案跨端自动同步（chrome.storage + externally_connectable）均已落地；[试用安装指南](apps/extension/INSTALL.md) 已就绪，待真实用户装扩展试用与 Workday 直渲染租户端到端。
 - **P2 完成**：五源岗位库（RemoteOK/Remotive/Greenhouse/Lever/HN）入库与增量同步、纯函数 `matchJobs` 技能匹配、API 岗位搜索/匹配端点、画像↔岗位推荐端到端接线（报告页推荐岛 + 扩展匹配面板，可解释 fieldScores/skillReasons）均落地。
 - **Gitee 第二证据源完成**：`packages/gitee-source`（v5 REST-only）+ CLI/API/Worker/报告页/扩展全链路平台切换，海内外同步；双源在线融合画像（`platform=all`，镜像去重 + 跨源同帖去重 7 天窗 + 融合作业 demo 配额扣 2）与 FusionReport 去重统计已落地。
-- **演示模式完成**：免注册「试用演示」以 HttpOnly Cookie 临时身份进入真实产品，三态身份 + 会话/IP/Worker 三道配额闸 + 三态预置示例，代码全落地；剩余配额数值与部署形态待拍板。
+- **演示模式完成**：免注册「试用演示」以 HttpOnly Cookie 临时身份进入真实产品，三态身份 + 会话/IP/Worker 三道配额闸 + 三态预置示例，代码全落地；配额已于 2026-09-21 拍板：每会话 3 次新分析（融合扣 2）、有效期 24h；部署形态 C 代码就绪、待真实部署。
 - **岗位定向简历完成（P-R1/P-R2/P-R3 可闭环子项）**：在画像范围内按岗位生成匹配度高的简历（no-fabrication，每条断言挂证据、只重排不造事实），CLI build/batch + API + 报告页 ResumeBuilder + 扩展深链 + OpenAI 兼容可选润色（默认关闭）；真实 LLM 需自配 `LLM_*`。
 - **招聘痛点解决方案批次 1+2 完成**：企业核验视图（`?view=recruiter`）、面试准备包导出、画像库人才检索（`/candidates`）、企业筛选工作台（`/recruit`）、投递记录追踪（applications）均已落地；批次 3 依赖外部条件。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
@@ -25,7 +25,7 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | --- | --- |
 | [docs/PRD.md](docs/PRD.md) | 产品需求：范围、F1–F9、数据契约、指标、风险 |
 | [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) | 技术栈、架构、工程结构与 M1 落地顺序 |
-| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#8 已拍板，含 #15/#16 追加） |
+| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#8 已拍板，含 #15/#16 追加，#14 2026-09-21 已拍板） |
 | [docs/讨论记录-01-切入口与MVP收敛-20260910.md](docs/讨论记录-01-切入口与MVP收敛-20260910.md) | 关键产品判断的讨论过程与依据 |
 | [docs/讨论记录-02-投递功能与竞品分析-20260911.md](docs/讨论记录-02-投递功能与竞品分析-20260911.md) | 投递方向、四种技术路径、职位聚合/扩展可行性 |
 | [docs/产品构想-以GitHub为桥梁的招聘系统.md](docs/产品构想-以GitHub为桥梁的招聘系统.md) | 最初的产品构想与市场背景 |

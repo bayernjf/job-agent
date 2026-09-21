@@ -7,17 +7,32 @@
  *
  * 注意：SSR 直读 storage 的页面不经过该基址；它只用于客户端 fetch（创建分析、投递、认证等）。
  * 本文件是被 .astro frontmatter 引用的纯 .ts（不在 vite/client 类型工程内），
- * 故对 import.meta.env 做最小化显式转换，运行期仍由 Astro/Vite 静态替换 PUBLIC_* 变量。
+ * 故对 import.meta.env 做最小化显式转换，运行期仍由 Astro/Vite 静态替换 PUBLIC_* 变量
+ * （静态替换使 vi.stubEnv 无法在测试里改 PUBLIC_*，故解析逻辑抽为 resolveBrowserApiBase 纯函数）。
  */
-export function browserApiBase(): string {
-  const importMetaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> })
-    .env;
-  const explicit = importMetaEnv?.PUBLIC_API_BASE;
+export interface ApiBaseEnv {
+  /** PUBLIC_API_BASE 原始值 */
+  publicApiBase?: string;
+  /** process.env.VERCEL（Vercel 运行时为 '1'） */
+  vercel?: string;
+}
+
+export function resolveBrowserApiBase(env: ApiBaseEnv): string {
+  const explicit = env.publicApiBase;
   if (typeof explicit === 'string' && explicit.trim() !== '') {
     return explicit.trim();
   }
-  if (process.env.VERCEL) {
+  if (env.vercel) {
     return '/api';
   }
   return '';
+}
+
+export function browserApiBase(): string {
+  const importMetaEnv = (import.meta as unknown as { env?: Record<string, string | undefined> })
+    .env;
+  return resolveBrowserApiBase({
+    publicApiBase: importMetaEnv?.PUBLIC_API_BASE,
+    vercel: process.env.VERCEL,
+  });
 }

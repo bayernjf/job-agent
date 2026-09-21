@@ -56,6 +56,8 @@
   "report.viewOnGithub": "在 GitHub 查看",
   "report.dataSource": "数据来源与局限",
   "report.dispute": "提交异议",
+  "report.dispute.subject": "报告异议",
+  "report.dispute.body": "如认为结论有误或证据失实，请邮件说明，我们会复核并更正。",
   "report.summary.title": "概述",
   "report.summary.headline": "摘要",
   "report.authenticity.title": "真实性评估",
