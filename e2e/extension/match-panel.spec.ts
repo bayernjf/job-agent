@@ -22,6 +22,18 @@ test.describe('extension match panel', () => {
     await openPanel();
     await expect(extPage.locator('#jobagent-autofill-panel .ja-panel')).toBeVisible();
     await expect(extPage.getByPlaceholder('e.g. sindresorhus')).toBeVisible();
+
+    // Regression: tokens.css/panel.css must be exposed via web_accessible_resources so
+    // they actually apply inside the Shadow DOM (otherwise the panel renders unstyled).
+    const styles = await extPage.locator('#jobagent-autofill-overlay').evaluate((host) => {
+      const sr = host.shadowRoot as ShadowRoot;
+      return {
+        panelWidth: getComputedStyle(sr.querySelector('.ja-panel') as Element).width,
+        fabBg: getComputedStyle(sr.querySelector('.ja-fab') as Element).backgroundColor,
+      };
+    });
+    expect(styles.panelWidth).toBe('320px');
+    expect(styles.fabBg).toBe('rgb(22, 163, 74)'); // --ja-color-accent (green-600), not the unstyled default button grey
   });
 
   test('links to the web demo without sharing extension credentials', async ({ extPage, openPanel }) => {
