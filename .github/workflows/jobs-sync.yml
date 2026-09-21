@@ -59,6 +59,15 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
 
+      - name: Verify DATABASE_URL secret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo '::error::repository secret DATABASE_URL is not set. Add the Supabase 5432 SESSION pooler connection string at Settings -> Secrets and variables -> Actions (see workflow header and Runbook §4-C).'
+            exit 1
+          fi
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
