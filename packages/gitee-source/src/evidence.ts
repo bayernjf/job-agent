@@ -20,7 +20,7 @@ export function buildGiteeSubjectEvidence(
     url: subject.profileUrl,
     occurredAt: window.since,
     layer: 'L0',
-    claim: `Gitee 账号 ${subject.login}：创建于 ${window.since.slice(0, 10)}，${subject.followers} 关注者，${subject.publicRepos} 个公开仓库`,
+    claim: `Gitee account ${subject.login}: created ${window.since.slice(0, 10)}, ${subject.followers} followers, ${subject.publicRepos} public repositories`,
     rawRef: subject.login,
   };
 }
@@ -33,7 +33,7 @@ export function buildGiteeRepoEvidence(repo: AnalyzerInput['repos'][number]): Ev
     url: repo.url,
     occurredAt: repo.pushedAt ?? undefined,
     layer: 'L0',
-    claim: `仓库 ${repo.ownerLogin}/${repo.name}${repo.primaryLanguage ? `（${repo.primaryLanguage}）` : ''}：${repo.stargazerCount} star / ${repo.forkCount} fork，最近推送 ${repo.pushedAt ? repo.pushedAt.slice(0, 10) : '无'}`,
+    claim: `Repository ${repo.ownerLogin}/${repo.name}${repo.primaryLanguage ? ` (${repo.primaryLanguage})` : ''}: ${repo.stargazerCount} stars / ${repo.forkCount} forks, last pushed ${repo.pushedAt ? repo.pushedAt.slice(0, 10) : 'never'}`,
     rawRef: `${repo.ownerLogin}/${repo.name}`,
   };
 }
@@ -46,7 +46,7 @@ export function buildGiteeCommitEvidence(commit: AnalyzerInput['commits'][number
     url: `https://gitee.com/${commit.repoName}/commit/${commit.oid}`,
     occurredAt: commit.committedAt,
     layer: 'L1',
-    claim: commit.messageHeadline || `提交 ${commit.oid.slice(0, 7)}（${commit.repoName}）`,
+    claim: commit.messageHeadline || `Commit ${commit.oid.slice(0, 7)} (${commit.repoName})`,
     rawRef: `${commit.repoName}#${commit.oid}`,
   };
 }
@@ -59,7 +59,7 @@ export function buildGiteePullRequestEvidence(pr: AnalyzerInput['pullRequests'][
     url: pr.url,
     occurredAt: pr.createdAt,
     layer: 'L1',
-    claim: `PR「${pr.title}」（${pr.repoNameWithOwner}#${pr.number}）`,
+    claim: `PR "${pr.title}" (${pr.repoNameWithOwner}#${pr.number})`,
     rawRef: `${pr.repoNameWithOwner}#${pr.number}`,
   };
 }
@@ -72,7 +72,7 @@ export function buildGiteeIssueEvidence(issue: AnalyzerInput['issues'][number]):
     url: issue.url,
     occurredAt: issue.createdAt,
     layer: 'L1',
-    claim: `Issue「${issue.title}」（${issue.repoNameWithOwner}#${issue.number}）`,
+    claim: `Issue "${issue.title}" (${issue.repoNameWithOwner}#${issue.number})`,
     rawRef: `${issue.repoNameWithOwner}#${issue.number}`,
   };
 }
