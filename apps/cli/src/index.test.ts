@@ -64,7 +64,7 @@ function makeInput(login: string) {
         url: `https://github.com/${login}`,
         occurredAt: '2024-01-01T00:00:00Z',
         layer: 'L0',
-        claim: `GitHub 账号 ${login}`,
+        claim: `GitHub account ${login}`,
         rawRef: login,
       },
       {
@@ -74,7 +74,7 @@ function makeInput(login: string) {
         url: `https://github.com/${login}/demo`,
         occurredAt: '2025-12-01T00:00:00Z',
         layer: 'L0',
-        claim: '仓库 demo',
+        claim: 'Repository demo',
         rawRef: 'demo',
       },
       {
