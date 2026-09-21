@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .canvas { overflow: hidden; position: relative; }
+
+      /* ---------- Small promotional tile 440x280 (required) ---------- */
+      #small {
+        width: 440px; height: 280px;
+        background: linear-gradient(140deg, #15803d 0%, #16a34a 52%, #22c55e 100%);
+        color: #fff;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 12px;
+      }
+      #small .glow {
+        position: absolute; width: 360px; height: 360px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,255,255,.22), rgba(255,255,255,0) 65%);
+        top: -150px; right: -110px;
+      }
+      #small .icon-badge {
+        width: 88px; height: 88px; border-radius: 22px; background: #fff;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 12px 30px rgba(0,0,0,.22);
+      }
+      #small .icon-badge img { width: 66px; height: 66px; }
+      #small .wordmark { font-size: 34px; font-weight: 800; letter-spacing: -.5px; }
+      #small .tagline { font-size: 14.5px; font-weight: 500; opacity: .95; letter-spacing: .1px; }
+      #small .pill {
+        margin-top: 4px; font-size: 11.5px; font-weight: 600; letter-spacing: .6px;
+        text-transform: uppercase; background: rgba(255,255,255,.18);
+        border: 1px solid rgba(255,255,255,.35); border-radius: 999px; padding: 5px 13px;
+      }
+
+      /* ---------- Marquee 1400x560 (optional / featured) ---------- */
+      #marquee {
+        width: 1400px; height: 560px;
+        background: linear-gradient(120deg, #0b1220 0%, #101a2e 55%, #0f2418 100%);
+        color: #fff;
+        display: grid; grid-template-columns: 1.05fr 1fr; align-items: center;
+        padding: 0 80px;
+      }
+      #marquee .orb {
+        position: absolute; border-radius: 50%; filter: blur(2px);
+      }
+      #marquee .orb1 { width: 520px; height: 520px; right: -160px; top: -180px;
+        background: radial-gradient(circle, rgba(34,197,94,.28), rgba(34,197,94,0) 68%); }
+      #marquee .orb2 { width: 420px; height: 420px; left: -140px; bottom: -200px;
+        background: radial-gradient(circle, rgba(22,163,74,.22), rgba(22,163,74,0) 68%); }
+      #marquee .left { position: relative; z-index: 2; }
+      #marquee .brandrow { display: flex; align-items: center; gap: 22px; margin-bottom: 26px; }
+      #marquee .brandrow .icon-badge {
+        width: 92px; height: 92px; border-radius: 24px; background: #fff;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 16px 40px rgba(0,0,0,.4);
+      }
+      #marquee .brandrow img { width: 70px; height: 70px; }
+      #marquee .wordmark { font-size: 56px; font-weight: 800; letter-spacing: -1px; }
+      #marquee h2 { font-size: 34px; font-weight: 700; line-height: 1.25; letter-spacing: -.3px; max-width: 560px; }
+      #marquee h2 em { font-style: normal; color: #4ade80; }
+      #marquee .sub { margin-top: 16px; font-size: 19px; color: #9fb0c3; max-width: 520px; line-height: 1.5; }
+      #marquee .right { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 20px; }
+      #marquee .feat {
+        display: flex; align-items: center; gap: 20px;
+        background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);
+        border-radius: 18px; padding: 22px 26px; backdrop-filter: blur(4px);
+      }
+      #marquee .feat .glyph {
+        width: 58px; height: 58px; border-radius: 15px; flex: none;
+        background: linear-gradient(135deg, #16a34a, #22c55e);
+        display: flex; align-items: center; justify-content: center;
+      }
+      #marquee .feat h3 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+      #marquee .feat p { font-size: 15.5px; color: #9fb0c3; line-height: 1.45; }
+    </style>
+  </head>
+  <body>
+    <div id="small" class="canvas">
+      <div class="glow"></div>
+      <div class="icon-badge"><img src="icon128.png" alt="" /></div>
+      <div class="wordmark">JobAgent</div>
+      <div class="tagline">Verified developer profiles · One-click apply</div>
+      <div class="pill">Evidence-backed hiring</div>
+    </div>
+
+    <div style="height:24px"></div>
+
+    <div id="marquee" class="canvas">
+      <div class="orb orb1"></div>
+      <div class="orb orb2"></div>
+      <div class="left">
+        <div class="brandrow">
+          <div class="icon-badge"><img src="icon128.png" alt="" /></div>
+          <div class="wordmark">JobAgent</div>
+        </div>
+        <h2>Your real GitHub work, <em>verified</em> and ready to apply.</h2>
+        <p class="sub">An evidence-backed ability profile with job matching and one-click form autofill on Greenhouse and Lever.</p>
+      </div>
+      <div class="right">
+        <div class="feat">
+          <div class="glyph">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          </div>
+          <div>
+            <h3>Evidence-backed profiles</h3>
+            <p>Every skill claim links to public commits, PRs and issues.</p>
+          </div>
+        </div>
+        <div class="feat">
+          <div class="glyph">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          </div>
+          <div>
+            <h3>Skill-based job matches</h3>
+            <p>Openings ranked by the skills proven in your public work.</p>
+          </div>
+        </div>
+        <div class="feat">
+          <div class="glyph">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 13h5l-1 8 8-10h-5z"/></svg>
+          </div>
+          <div>
+            <h3>One-click autofill</h3>
+            <p>Pre-fill Greenhouse and Lever applications in seconds.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
