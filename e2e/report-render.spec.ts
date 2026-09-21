@@ -33,6 +33,11 @@ test.describe('report page SSR render', () => {
 
     // 盲区
     await expect(page.getByText(/Private contribution graph/)).toBeVisible();
+
+    // 异议入口：mailto 始终渲染，主题带画像 id
+    const dispute = page.locator('.caveats .dispute a');
+    await expect(dispute).toBeVisible();
+    await expect(dispute).toHaveAttribute('href', /^mailto:dispute@job-agent\.bayjf\.com\?subject=.*profe2efixture/);
   });
 
   test('renders the same fixture under Chinese route', async ({ page }) => {
