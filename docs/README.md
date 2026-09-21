@@ -7,7 +7,7 @@
 | 我想… | 看 |
 | --- | --- |
 | 知道现在做到哪、接下来做什么 | [../handoff.md](../handoff.md) ★ 交接必读 |
-| 判断项目是否达到可上线 MVP / 回看上线就绪度评审与 P0 处置状态 | [评审-MVP-20260921.md](评审-MVP-20260921.md) ★（P0-1/P0-2 已修复，P0-3 部署与 #14 合规待用户） |
+| 判断项目是否达到可上线 MVP / 回看上线就绪度评审与 P0 处置状态 | [评审-MVP-20260921.md](评审-MVP-20260921.md) ★（P0-1/P0-2 已修复、#14 已拍板，仅剩 P0-3 部署控制台操作待用户） |
 | 回看已完成待办明细 / 旧变更流水 / 历史 Git 同步态（handoff 归档，只读） | [handoff-archive-2026-09-20.md](handoff-archive-2026-09-20.md)（item30–36：OAuth 端到端/授权闸/Gitee OAuth/部署加固/形态 C/Actions）、[handoff-archive-2026-09-19.md](handoff-archive-2026-09-19.md)（item28/29 账号主脊 + 登录认领/认证清理）、[handoff-archive-2026-09-18.md](handoff-archive-2026-09-18.md)（item 1–27） |
 | 接 GitHub / Gitee 登录 / 本人认领 / 会话与认领规则，或清理过期会话、闲置账号 | [API.md](API.md) §1.2（/auth/*、/auth/providers、claim 端点与错误码）+ Gitee 协议差异见 [design-gitee-oauth-20260919.md](design-gitee-oauth-20260919.md) + handoff item28/item29/item33；CLI `jobagent auth cleanup` 见 [../AGENTS.md](../AGENTS.md) 常用命令 |
 | 登录后回到原页面（return_to 深链）/ 未登录为何看到登录墙、哪些内容要登录（授权分级闸、证据外链/面试题/面试包 401） | [design-auth-gating-20260919.md](design-auth-gating-20260919.md) ★ + [API.md](API.md) §1.2 可见性矩阵（handoff item31/32） |
@@ -17,13 +17,13 @@
 | 了解投递功能方向、Jobright 竞品深度分析、四种技术路径对比 | [讨论记录-02-投递功能与竞品分析-20260911.md](讨论记录-02-投递功能与竞品分析-20260911.md) |
 | 看技术栈选型、运行架构、目录规划、M1 排期与 Spike | [技术选型-MVP-20260910.md](技术选型-MVP-20260910.md) |
 | 一页看懂当前技术栈分层（客户端/服务/内核/采集/持久化五层 + 各包职责 + 数据流） | [技术栈总览-分层架构-20260916.md](技术栈总览-分层架构-20260916.md) |
-| 逐条看待拍板事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已拍板，#9–#14 延后） |
+| 逐条看待拍板事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已拍板，#9–#13 延后，#14 2026-09-21 已拍板） |
 | 看哪些事被刻意缓做、什么条件下重启 | [deferred-items.md](deferred-items.md) |
 | 接手写代码 / 了解工程硬约束 | [../AGENTS.md](../AGENTS.md) + [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
 | 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
 | 处理 CI 密钥扫描（gitleaks）误报 / 增删 allowlist | [../AGENTS.md](../AGENTS.md)（工程化门禁）+ [../.gitleaks.toml](../.gitleaks.toml) |
-| 部署 / 上线（形态 A/B 反代、生产 env、自动迁移、jobs/demo/auth 定时任务、上线 smoke） | [deployment-runbook-20260920.md](deployment-runbook-20260920.md) ★（域名/形态/配额仍待拍板，生产反代拓扑待 staging 实测） |
+| 部署 / 上线（形态 A/B 反代、生产 env、自动迁移、jobs/demo/auth 定时任务、上线 smoke） | [deployment-runbook-20260920.md](deployment-runbook-20260920.md) ★（形态 C 与 demo 配额已拍板，生产反代拓扑待 staging 实测） |
 | 看 AI 求职赛道的竞品认知、机会与跟进清单 | [市场调研-AI求职赛道-20260910.md](市场调研-AI求职赛道-20260910.md) |
 | 看中国招聘市场企业端/求职者端双方痛点与共同根源（量化证据 + 对产品启示） | [市场调研-招聘市场痛点-20260916.md](市场调研-招聘市场痛点-20260916.md) |
 | 看痛点对应解决方案、已覆盖/需新增对位与实施批次（批1 产品化 + 批2 新接口已落地见 handoff item21；批3 待外部条件） | [设计-痛点解决方案-20260916.md](设计-痛点解决方案-20260916.md) |
