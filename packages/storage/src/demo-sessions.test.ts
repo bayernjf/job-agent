@@ -107,6 +107,59 @@ describe('SqliteDemoSessionsRepository', () => {
     expect((await repo.getActive('s1', T0))!.analyzeCount).toBe(0);
   });
 
+  it('never over-issues slots under concurrent acquire requests', async () => {
+    const repo = freshRepo();
+    await repo.create(makeSession('s1', T0));
+    const quota = 3;
+
+    // 10 个并发请求（微任务交错）抢 3 个配额：恰好 3 个放行、其余 quota_exceeded
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => repo.acquireAnalyzeSlot('s1', quota, T0)),
+    );
+    const granted = results.filter((r) => r.granted);
+    const denied = results.filter((r) => !r.granted);
+    expect(granted).toHaveLength(3);
+    expect(denied).toHaveLength(7);
+    for (const d of denied) {
+      if (!d.granted) expect(d.reason).toBe('quota_exceeded');
+    }
+    expect((await repo.getActive('s1', T0))!.analyzeCount).toBe(3);
+  });
+
+  it('never over-issues weighted slots under concurrent fused-job requests', async () => {
+    const repo = freshRepo();
+    await repo.create(makeSession('s1', T0));
+    const quota = 3;
+
+    // 3 个并发 cost 2 请求：只够放行 1 个，其余整单拒绝、used 停在 2
+    const results = await Promise.all(
+      Array.from({ length: 3 }, () => repo.acquireAnalyzeSlot('s1', quota, T0, 2)),
+    );
+    expect(results.filter((r) => r.granted)).toHaveLength(1);
+    for (const d of results.filter((r) => !r.granted)) {
+      if (!d.granted) {
+        expect(d.reason).toBe('quota_exceeded');
+        expect(d.used).toBe(2);
+      }
+    }
+    expect((await repo.getActive('s1', T0))!.analyzeCount).toBe(2);
+  });
+
+  it('counts IP rate events at the sliding-window boundary', async () => {
+    const repo = freshRepo();
+    const windowMs = 60 * 60 * 1000;
+    // 滑窗 since = now - windowMs；谓词为严格 createdAt > since
+    await repo.insertRateEvent('hash-a', 'analyze', T0);
+    await repo.insertRateEvent('hash-a', 'analyze', iso(T0, windowMs - 1));
+
+    // since 早于 T0：两个事件都在窗内
+    expect(await repo.countRateEvents('hash-a', 'analyze', iso(T0, -1))).toBe(2);
+    // since 恰为 T0：T0 事件严格落在边界外、被滑出，只剩 1
+    expect(await repo.countRateEvents('hash-a', 'analyze', T0)).toBe(1);
+    // since 晚于最后一个事件：窗口内为 0
+    expect(await repo.countRateEvents('hash-a', 'analyze', iso(T0, windowMs))).toBe(0);
+  });
+
   it('reports precise deny reasons for unknown, exited and expired', async () => {
     const repo = freshRepo();
     const missing = await repo.acquireAnalyzeSlot('nope', 3, T0);

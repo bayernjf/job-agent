@@ -70,6 +70,8 @@ function minimalSnapshot(login: string): AbilityProfile {
   } as unknown as AbilityProfile;
 }
 
+const T_NOW = '2026-09-22T00:00:00.000Z';
+
 describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
   let storage: StorageContext | undefined;
   let embedded: EmbeddedPostgres | null = null;
@@ -167,6 +169,50 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       rmSync(EMBEDDED_DIR, { recursive: true, force: true });
     }
   }, TEARDOWN_TIMEOUT_MS * 3);
+
+  // 真实竞态：多个并发请求同时走条件 UPDATE ... RETURNING 扣减配额，
+  // 行锁必须串行化更新——放行数恰好等于配额，绝不超发。
+  pgIt('never over-issues analyze slots under concurrent requests', async (s) => {
+    const sessionId = `demo_${randomUUID().replace(/-/g, '')}`;
+    await s.demoSessions.create({
+      id: sessionId,
+      expiresAt: '2026-09-30T00:00:00.000Z',
+      ipHash: null,
+    });
+    const quota = 3;
+
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        s.demoSessions.acquireAnalyzeSlot(sessionId, quota, T_NOW),
+      ),
+    );
+    expect(results.filter((r) => r.granted)).toHaveLength(3);
+    expect(results.filter((r) => !r.granted)).toHaveLength(7);
+    expect((await s.demoSessions.getActive(sessionId, T_NOW))!.analyzeCount).toBe(3);
+  });
+
+  pgIt('never partially deducts weighted slots under concurrent fused requests', async (s) => {
+    const sessionId = `demo_${randomUUID().replace(/-/g, '')}`;
+    await s.demoSessions.create({
+      id: sessionId,
+      expiresAt: '2026-09-30T00:00:00.000Z',
+      ipHash: null,
+    });
+
+    const results = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        s.demoSessions.acquireAnalyzeSlot(sessionId, 3, T_NOW, 2),
+      ),
+    );
+    expect(results.filter((r) => r.granted)).toHaveLength(1);
+    for (const d of results.filter((r) => !r.granted)) {
+      if (!d.granted) {
+        expect(d.reason).toBe('quota_exceeded');
+        expect(d.used).toBe(2);
+      }
+    }
+    expect((await s.demoSessions.getActive(sessionId, T_NOW))!.analyzeCount).toBe(2);
+  });
 
   pgIt('creates, claims FIFO and succeeds a job', async (s) => {
     const suffix = randomUUID().slice(0, 8);
