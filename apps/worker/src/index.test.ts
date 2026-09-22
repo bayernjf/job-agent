@@ -339,6 +339,87 @@ describe('processJob', () => {
   });
 });
 
+describe('degradation under collection faults', () => {
+  it('treats a budget-exhausted timeout as transient and requeues the job', async () => {
+    const repos = await freshRepos();
+    const jobId = `job-${randomUUID().slice(0, 8)}`;
+    await repos.jobs.create({ id: jobId, subjectLogin: 'slow-user' });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+
+    const timeoutSource = {
+      collect: vi.fn(async () => {
+        throw Object.assign(new Error('Collection timed out after L0'), {
+          code: 'budget_exhausted',
+        });
+      }),
+    };
+
+    await expect(
+      processJob(job, repos, asSources(timeoutSource)),
+    ).rejects.toThrow('Collection timed out after L0');
+
+    // 瞬时错误：handleJobFailure 退回队列等待重试，不永久失败
+    await handleJobFailure(job, repos, new Error('Collection timed out after L0') as Error & { code: string }, 3);
+    const updated = (await repos.jobs.getById(jobId))!;
+    expect(updated.status).toBe('queued');
+  });
+
+  it('marks missing sections on the profile caveat when collection is partial', async () => {
+    const repos = await freshRepos();
+    const jobId = `job-${randomUUID().slice(0, 8)}`;
+    await repos.jobs.create({ id: jobId, subjectLogin: 'partial-user' });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+
+    const data = fakeCollectedData('partial-user');
+    data.input.commits = [];
+    data.input.pullRequests = [];
+    data.input.issues = [];
+    data.input.contributions.totalCommitContributions = 0;
+    data.input.missing = ['pull_requests', 'issues', 'events'];
+    data.meta.missing = ['pull_requests', 'issues', 'events'];
+    const source = makeFakeSource(data);
+
+    const result = await processJob(job, repos, asSources(source));
+
+    // 缺失项透传到画像 caveat，报告无法假装完整
+    expect(result.profile.caveats.some((c) => c.includes('Partial data missing'))).toBe(true);
+    expect(result.profile.caveats.join('')).toContain('pull_requests');
+    // 无行为证据：真实性降级为 insufficient_data，而非 likely_authentic
+    expect(result.profile.authenticity.status).toBe('insufficient_data');
+    expect((await repos.jobs.getById(jobId))!.missing).toEqual([
+      'pull_requests',
+      'issues',
+      'events',
+    ]);
+  });
+
+  it('does not output a likely-authentic profile from L0-only half evidence', async () => {
+    const repos = await freshRepos();
+    const jobId = `job-${randomUUID().slice(0, 8)}`;
+    await repos.jobs.create({ id: jobId, subjectLogin: 'l0-only' });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+
+    // 仅 L0 仓库元数据：有 repo、有 evidence，但 L1 时序（commit/PR/issue）全空
+    const data = fakeCollectedData('l0-only');
+    data.input.commits = [];
+    data.input.pullRequests = [];
+    data.input.issues = [];
+    data.input.contributions.totalCommitContributions = 5;
+    data.input.missing = ['commits', 'pull_requests', 'issues'];
+    data.meta.missing = ['commits', 'pull_requests', 'issues'];
+    const source = makeFakeSource(data);
+
+    const result = await processJob(job, repos, asSources(source));
+
+    const stored = await repos.profiles.getById(result.profileId);
+    expect(stored!.snapshot!.authenticity.status).not.toBe('likely_authentic');
+    expect(result.profile.authenticity.status).toBe('insufficient_data');
+    // 证据链接仍落库（可回溯），但结论本身已显式降级
+    const storedEvidence = await repos.evidence.listByProfile(result.profileId);
+    expect(storedEvidence.length).toBeGreaterThan(0);
+  });
+});
+
 describe('handleJobFailure', () => {
   it('resets to queued when attempts < maxRetries', async () => {
     const repos = await freshRepos();
