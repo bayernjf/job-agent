@@ -14,9 +14,11 @@ interface Props {
   locale: Locale;
   titleKey?: MessageKey;
   title?: string;
+  /** robots 指令；招聘方视图等内部页传 noindex,nofollow */
+  robots?: string;
 }
 
-const { locale, titleKey, title } = Astro.props;
+const { locale, titleKey, title, robots = 'index,follow' } = Astro.props;
 const t = createTranslator(locale);
 const otherLocale: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
 
@@ -40,6 +42,7 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={t('app.tagline')} />
+    <meta name="robots" content={robots} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{pageTitle}</title>
   </head>
