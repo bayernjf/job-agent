@@ -90,4 +90,11 @@ describe('resume contracts', () => {
     const bad = LocalResumeFieldsSchema.safeParse({ personalSite: 'not-a-url' });
     expect(bad.success).toBe(false);
   });
+
+  it('accepts a well-formed linkedinUrl and rejects a malformed one', () => {
+    const ok = LocalResumeFieldsSchema.safeParse({ linkedinUrl: 'https://linkedin.com/in/alice' });
+    expect(ok.success).toBe(true);
+    const bad = LocalResumeFieldsSchema.safeParse({ linkedinUrl: 'linkedin.com/in/alice' });
+    expect(bad.success).toBe(false);
+  });
 });
