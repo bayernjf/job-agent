@@ -96,6 +96,7 @@ describe('local profile canonical (item19 ①)', () => {
         phone: '123',
         location: 'Remote',
         personalSite: 'https://al.dev',
+        linkedinUrl: 'https://linkedin.com/in/al',
       });
       expect(r.education).toEqual([{ school: 'ZJU', degree: 'BS', period: '2018-09 – 2022-06' }]);
       expect(r.workHistory).toEqual([
@@ -103,10 +104,16 @@ describe('local profile canonical (item19 ①)', () => {
       ]);
     });
 
-    it('prefers personalSite but falls back to linkedinUrl', () => {
-      expect(localProfileToResumeFields({ linkedinUrl: 'https://linkedin.com/in/b' }).personalSite).toBe(
-        'https://linkedin.com/in/b',
-      );
+    it('projects personalSite and linkedinUrl as independent contact fields', () => {
+      const onlyLinkedIn = localProfileToResumeFields({ linkedinUrl: 'https://linkedin.com/in/b' });
+      expect(onlyLinkedIn.linkedinUrl).toBe('https://linkedin.com/in/b');
+      expect(onlyLinkedIn.personalSite).toBeUndefined();
+      const both = localProfileToResumeFields({
+        personalSite: 'https://b.dev',
+        linkedinUrl: 'https://linkedin.com/in/b',
+      });
+      expect(both.personalSite).toBe('https://b.dev');
+      expect(both.linkedinUrl).toBe('https://linkedin.com/in/b');
     });
 
     it('filters out education without a degree and work without a role (no fabrication)', () => {

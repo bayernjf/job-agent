@@ -488,6 +488,7 @@ export const LocalResumeFieldsSchema = z.object({
   phone: z.string().optional(),
   location: z.string().optional(),
   personalSite: z.string().url().optional(),
+  linkedinUrl: z.string().url().optional(),
   education: z.array(LocalResumeEducationSchema).optional(),
   workHistory: z.array(LocalResumeWorkSchema).optional(),
 });
@@ -629,7 +630,7 @@ export function sanitizeLocalProfile(input: LocalProfileFields): LocalProfileFie
 
 /**
  * canonical → 简历请求形状（严格投影，绝不臆造）。
- * - personalSite 缺省时用 linkedinUrl 落到简历唯一 URL 槽；
+ * - personalSite 与 linkedinUrl 各自独立透传到简历 contact 行；
  * - period 由 start/end 派生；
  * - 教育项必须 school+degree、工作项必须 company+role，否则过滤（简历 Zod 要求非空）。
  */
@@ -640,8 +641,8 @@ export function localProfileToResumeFields(c: LocalProfileFields): LocalResumeFi
   if (clean.email) out.email = clean.email;
   if (clean.phone) out.phone = clean.phone;
   if (clean.location) out.location = clean.location;
-  const site = clean.personalSite ?? clean.linkedinUrl;
-  if (site) out.personalSite = site;
+  if (clean.personalSite) out.personalSite = clean.personalSite;
+  if (clean.linkedinUrl) out.linkedinUrl = clean.linkedinUrl;
   const education = (clean.education ?? [])
     .filter((e): e is LocalProfileEducation & { school: string; degree: string } => Boolean(e.degree))
     .map((e) => ({ school: e.school, degree: e.degree, period: formatRange(e.start, e.end) }));
@@ -687,6 +688,7 @@ export function legacyResumeToLocalProfile(old: LocalResumeFields): LocalProfile
     phone: old.phone,
     location: old.location,
     personalSite: old.personalSite,
+    linkedinUrl: old.linkedinUrl,
     education: (old.education ?? []).map((e) => ({ school: e.school, degree: e.degree, ...splitRange(e.period) })),
     workHistory: (old.workHistory ?? []).map((w) => ({
       company: w.company,
