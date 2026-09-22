@@ -67,7 +67,7 @@ export default function PresetList({ locale, apiBase, title, viewLabel, authLabe
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/demo/presets`, { credentials: 'same-origin' })
+    fetch(`${apiBase}/demo/presets`, { credentials: 'include' })
       .then((r) => r.json())
       .then((data: DemoPreset[]) => {
         if (!cancelled) setPresets(data.filter((p) => p.ready && p.profileId));
