@@ -13,7 +13,8 @@ import type { Page } from '@playwright/test';
 async function loadProfile(page: Page): Promise<void> {
   await page.getByPlaceholder('e.g. sindresorhus').fill('e2e-fixture-user');
   await page.getByRole('button', { name: 'Load verified profile' }).click();
-  await page.locator('.ja-result').waitFor({ timeout: 5000 });
+  // The first request goes through the background relay; on a cold SW it can be slow.
+  await page.locator('.ja-result').waitFor({ timeout: 15_000 });
 }
 
 test.describe('extension match panel', () => {
