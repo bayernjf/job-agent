@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸均已落地**；真实性规则 0.3 经真实双源 26 账号回归复核零误伤（holilayet 修复确认），**活跃待办 item 1–36 已全部完成并经 PR #69 并入 `main`；item37 的 P0-1/P0-2 修复与 #14 决策已在 `dev` 落地、尚未合入 `main`**，剩余推进项均卡外部条件（形态 C 真实部署的控制台操作、LLM 厂商、真实 Gitee OAuth 首次冒烟，见 handoff）。pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸均已落地**；真实性规则 0.3 经真实双源 26 账号回归复核零误伤（holilayet 修复确认）。**2026-09-22 上线就绪度评审结论：代码级 MVP 已达成（F1–F7 全闭环、门禁与双套 E2E 全绿），上线级 MVP 的唯一硬阻塞是 P0-3「形态 C」生产部署的控制台操作（Vercel + Supabase，执行单已就绪）**，其余推进项均卡外部条件（部署拍板、LLM 厂商、CWS 上架、真实 Gitee OAuth 首次冒烟，见 handoff 与 `docs/评审-MVP-20260922.md`）。pnpm workspaces 全仓（13 workspace）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -53,6 +53,8 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/design-auth-gating-20260919.md](docs/design-auth-gating-20260919.md) | 账号收尾：OAuth return_to 深链回跳 + 报告页授权分级闸两档可见性 |
 | [docs/design-gitee-oauth-20260919.md](docs/design-gitee-oauth-20260919.md) | Gitee OAuth 登录与本人画像认领（协议差异 / AuthProvider / /auth/providers） |
 | [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md) | 部署 / 上线 Runbook（形态 A/B、生产 env、迁移、cron、上线 smoke） |
+| [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md) | 形态 C 上线照勾执行单（Vercel 单项目 + Supabase + Cloudflare DNS + Vercel Cron） |
+| [docs/评审-MVP-20260922.md](docs/评审-MVP-20260922.md) | 上线就绪度评审：代码级 MVP 已达成，唯一硬阻塞 P0-3 生产部署 |
 | [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
@@ -96,7 +98,7 @@ cp .env.example .env         # 所有环境变量的权威模板（含注释/默
 - **Gitee 登录（OAuth）**：Gitee → 设置 → 第三方应用 → 创建应用，回调填 `http://localhost:3000/auth/gitee/callback`，scope 固定 `user_info`，填入 `GITEE_OAUTH_CLIENT_ID/SECRET`。
 - 两平台共用 `AUTH_STATE_SECRET`（本地可留空，进程内随机）与 `AUTH_CALLBACK_BASE_URL`（本地留空按请求推导）。**不配置某平台时，该平台登录路由返回 501，其余功能照常。**
 - 本地跨端口联调（report:4321 → api:3000）前端需带凭证（已用 `credentials:'include'`）；服务端直连 github.com 受限时配 `JOB_HTTP_PROXY`（Node 全局 fetch 默认不读代理 env，api 启动时经 `proxy-bootstrap.ts` 装全局代理）。
-- 端点 / Cookie / 错误码 / 可见性矩阵见 [docs/API.md](docs/API.md) §1.2；Gitee 协议差异见 [design-gitee-oauth-20260919](docs/design-gitee-oauth-20260919.md)；**生产 / 上线部署**见 [部署 Runbook](docs/deployment-runbook-20260920.md)。
+- 端点 / Cookie / 错误码 / 可见性矩阵见 [docs/API.md](docs/API.md) §1.2；Gitee 协议差异见 [design-gitee-oauth-20260919](docs/design-gitee-oauth-20260919.md)；**生产 / 上线部署**形态 C（Vercel + Supabase）照勾 [部署执行单](docs/部署执行单-形态C-20260921.md)，形态 A/B 与通用说明见 [部署 Runbook](docs/deployment-runbook-20260920.md)。
 
 ## Docker 运行
 

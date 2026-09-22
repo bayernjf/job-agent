@@ -142,9 +142,13 @@ export async function processJob(
 ): Promise<ProcessJobResult> {
   const login = job.subjectLogin;
   const requestedPlatform = job.subjectPlatform ?? 'github';
+  const t0 = Date.now();
   logger.info(
     `[worker] job ${job.id} start: collect ${login} (platform=${requestedPlatform}, attempt ${job.attempts})`,
   );
+
+  // NFR-7 可观测：采集 / 分析 / 持久化分段计时，随成功日志输出，供生产按日志聚合 P95。
+  const collectStart = Date.now();
 
   // 1. 采集（L0 + L1）并准备分析输入。
   //    platform=all：主源 GitHub + 辅源 Gitee 双采、fuseInputs 镜像去重（fusion 设计 §8）；
@@ -218,8 +222,10 @@ export async function processJob(
 
   // 2. 更新进度阶段
   await repos.jobs.updateStage(job.id, 'L1');
+  const collectMs = Date.now() - collectStart;
 
   // 3. 分析（纯函数，无 I/O）
+  const analyzeStart = Date.now();
   const profileId = randomUUID();
   const profile = analyze(analyzerInput, {
     profileId,
@@ -228,13 +234,15 @@ export async function processJob(
     // 双源融合时把融合报告挂进画像快照（随 snapshot 持久化）；单源/Gitee 404 降级时缺省
     ...(fusionReport ? { fusion: fusionReport } : {}),
   });
+  const analyzeMs = Date.now() - analyzeStart;
   logger.info(
-    `[worker] job ${job.id} analyzed: authenticity=${profile.authenticity.status} ` +
+    `[worker] job ${job.id} analyzed in ${analyzeMs}ms: authenticity=${profile.authenticity.status} ` +
       `(confidence=${profile.authenticity.confidence}), ${profile.skillTags.length} skill tags`,
   );
 
   // 4. 写入不可变画像快照。
   //    融合画像在检索键列存 'all'（与单源隔离），snapshot 内 subject.platform 仍为主源 github。
+  const persistStart = Date.now();
   await repos.profiles.insert({
     id: profileId,
     analyzerVersion: profile.analyzerVersion,
@@ -254,7 +262,16 @@ export async function processJob(
 
   // 6. 标记任务成功
   await repos.jobs.succeed(job.id, profileId, budgetUsed, missing);
-  logger.info(`[worker] job ${job.id} succeeded: profile ${profileId} (persisted as ${persistPlatform})`);
+  const persistMs = Date.now() - persistStart;
+  const totalMs = Date.now() - t0;
+  const budgetSummary = Object.entries(budgetUsed)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(',');
+  logger.info(
+    `[worker] job ${job.id} succeeded: profile ${profileId} (persisted as ${persistPlatform}) ` +
+      `timingMs total=${totalMs} collect=${collectMs} analyze=${analyzeMs} persist=${persistMs} ` +
+      `budget[${budgetSummary}] missing=${missing.length}`,
+  );
 
   return {
     profileId,

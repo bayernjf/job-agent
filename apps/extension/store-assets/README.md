@@ -54,9 +54,63 @@ without rebuilding native deps.
    the OS language. Verify every PNG with
    `sips -g pixelWidth -g pixelHeight <file>` before uploading.
 
-Before a **production** listing release, rebuild the extension against the
-production API base and re-run the captures so the advanced "API endpoint"
-field no longer shows its `http://localhost:3000` placeholder.
+Before a **production** listing release, build the extension in release mode
+(strips every localhost grant, pins the production site origin, and refuses to
+build against a localhost API):
+
+```sh
+EXTENSION_RELEASE=1 \
+EXTENSION_API_BASE=https://<app-origin>/api \
+EXTENSION_SITE_ORIGIN=https://<app-origin> \
+pnpm --filter @jobagent/extension build
+```
+
+Then re-run the captures so the advanced "API endpoint" field and every panel
+link point at production rather than the `http://localhost:3000` placeholder.
+
+## Pre-submit checklist (CWS)
+
+Work through this before uploading the zip to the Chrome Web Store. Items marked
+**[decision]** depend on the production deployment (Form C execution sheet) and
+cannot be closed by code alone.
+
+1. **[decision] Production domain decided** (B1, suggested `app.job-agent.bayjf.com`).
+   The committed `src/manifest.json` still contains the placeholder
+   `https://job-agent.bayjf.com` (the landing-page domain) plus localhost grants;
+   do not ship it verbatim. The release build above rewrites the placeholder and
+   strips localhost entries — verify `dist/manifest.json` afterwards.
+2. **Release build green**: `EXTENSION_RELEASE=1` build refuses localhost
+   `EXTENSION_API_BASE`/`EXTENSION_SITE_ORIGIN`; confirm `dist/manifest.json`
+   contains no `localhost`/`127.0.0.1` entry and the API base is the same-origin
+   `/api` URL (the panel calls the API through the background service worker).
+3. **Screenshots recaptured with current code + production build** (see
+   [Known capture-time caveats](#known-capture-time-caveats)): the tracked
+   screenshots date from 2026-09-21 and screenshot 02 still shows pre-item41
+   **Chinese evidence claims**; recapture requires a profile regenerated after
+   the English-claim change (item41, commit `3ddd18c`). Re-run the captures with
+   the release build so no `localhost` UI is visible.
+4. **Fixed extension ID preserved**: `src/manifest.json` ships a `key`
+   (derived ID `dgbnkdljapgglpdcmncbleioocbjfmmc`) so the CWS listing, the
+   report page's `externally_connectable` calls and existing unpacked users keep
+   one identity. `key.pem` must stay out of git/public bundles; after the first
+   CWS publish, dev unpacked copies with the same key upgrade in place, older
+   copies without it should be removed to avoid double-install confusion.
+5. **Image sizes verified**: 5× 1280×800 screenshots, 440×280 small tile
+   (required), 1400×560 marquee (required for featuring), 128×128 in-package
+   icon — check with `sips -g pixelWidth -g pixelHeight <file>`.
+6. **Listing copy pasted** from [Store listing copy](#store-listing-copy) below
+   (en + zh-CN); confirm the detailed-description length against the live CWS
+   dashboard input.
+7. **CWS metadata prepared**: category Productivity; single-purpose statement
+   (one-click ATS autofill from a verified profile); permission justifications
+   for `storage` and the host patterns (the broad `*/*careers*`、`*/*jobs*`
+   globs exist to catch customer-hosted ATS pages — expect a review question);
+   privacy practices (no collection of personal data by the extension; email/
+   phone/LinkedIn stay local; passwords never touched) and a privacy-policy URL
+   on the deployed site.
+8. **Production API live** before submission review: presets and
+   `GET /profiles/by-subject/:platform/:login` must answer on the production
+   origin, otherwise the panel shows empty states during review.
 
 ## Store listing copy
 
@@ -133,10 +187,14 @@ field no longer shows its `http://localhost:3000` placeholder.
 
 ## Known capture-time caveats
 
-- Screenshot 02 surfaces repository evidence lines whose claim template is
-  currently Chinese in the collection layer (`github-source`/`gitee-source`
-  `evidence.ts`); bilingual evidence claims are tracked as a follow-up. The score
-  breakdown itself is language-neutral.
+- Screenshot 02 surfaces repository evidence lines. The collection-layer claim
+  templates were localized to English in item41 (commit `3ddd18c`, 2026-09-22),
+  but the **tracked screenshots were captured 2026-09-21 against a profile
+  snapshotted before that change**, so 02 still shows Chinese evidence claims
+  (`仓库 … 1 star / 0 fork，最近推送 …`). Recapture after regenerating the
+  demo profile with current code (the evidence text is stored on the snapshot
+  and is not re-translated at render time). The score breakdown itself is
+  language-neutral.
 - The demo report uses the public demo preset logins (including well-known public
   accounts). All displayed data is public behavioural information with no private
   contact fields; swap the preset accounts before publishing if desired.

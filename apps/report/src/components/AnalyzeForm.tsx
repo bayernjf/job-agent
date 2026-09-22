@@ -87,7 +87,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
       const timer = setTimeout(async () => {
         try {
           const res = await fetch(`${apiBase}/jobs/${jobId}`, {
-            credentials: 'same-origin',
+            credentials: 'include',
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const job = (await res.json()) as {
@@ -155,7 +155,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
         const postAnalyze = () =>
           fetch(`${apiBase}/analyze`, {
             method: 'POST',
-            credentials: 'same-origin',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username: trimmed, platform }),
           });
@@ -169,7 +169,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
             setStatusText(startingDemoLabel);
             const started = await fetch(`${apiBase}/demo/sessions`, {
               method: 'POST',
-              credentials: 'same-origin',
+              credentials: 'include',
             });
             if (started.ok) res = await postAnalyze();
           }

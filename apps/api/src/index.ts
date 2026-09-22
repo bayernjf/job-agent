@@ -785,6 +785,8 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       latestProfile.status === 'complete' &&
       Date.now() - Date.parse(latestProfile.updatedAt) < cacheTtlMs
     ) {
+      // NFR-7 可观测：缓存命中（不扣配额），与下方 cache_miss 配对统计命中率。
+      console.info(`[analyze] result=cache_hit platform=${platform} login=${username}`);
       return c.json({
         profileId: latestProfile.id,
         status: 'succeeded',
@@ -797,6 +799,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     // 缓存未命中、需要触发新分析——这是唯一被演示身份限制的动作。
     const principal = c.get('principal');
     if (principal.kind === 'anonymous') {
+      console.info(`[analyze] result=blocked reason=demo_required platform=${platform} login=${username}`);
       return c.json(
         {
           error: 'demo session required to start a new analysis',
@@ -810,6 +813,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       // 登录用户（决策 #1-A 主脊）：不占演示会话配额，active 去重后直接建分析任务。
       const existingUserJob = await repos.jobs.latestActiveBySubject(platform, username);
       if (existingUserJob) {
+        console.info(
+          `[analyze] result=dedup requester=user platform=${platform} login=${username} job=${existingUserJob.id}`,
+        );
         return c.json({
           jobId: existingUserJob.id,
           status: existingUserJob.status,
@@ -825,6 +831,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
         requesterKind: 'user',
         demoSessionId: null,
       });
+      console.info(`[analyze] result=queued requester=user platform=${platform} login=${username} job=${userJobId}`);
       return c.json(
         {
           jobId: userJobId,
@@ -842,6 +849,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     // active 去重先于配额扣减：已有在跑任务直接复用，不白扣一次会话名额
     const existing = await repos.jobs.latestActiveBySubject(platform, username);
     if (existing) {
+      console.info(
+        `[analyze] result=dedup requester=demo platform=${platform} login=${username} job=${existing.id}`,
+      );
       return c.json({
         jobId: existing.id,
         status: existing.status,
@@ -859,6 +869,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
         oneHourAgo(nowIso),
       );
       if (recent >= cfg.analyzeRatePerHour) {
+        console.info(
+          `[analyze] result=blocked reason=ip_rate_limited platform=${platform} login=${username}`,
+        );
         return c.json(
           {
             error: 'demo analyze rate limit exceeded',
@@ -882,6 +895,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     );
     if (!slot.granted) {
       if (slot.reason === 'quota_exceeded') {
+        console.info(
+          `[analyze] result=blocked reason=quota_exhausted platform=${platform} login=${username} used=${slot.used}`,
+        );
         return c.json(
           {
             error: 'demo analyze quota exhausted',
@@ -922,6 +938,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       login: username,
     });
 
+    console.info(
+      `[analyze] result=queued requester=demo platform=${platform} login=${username} job=${jobId} remaining=${slot.remaining} cost=${analyzeCost}`,
+    );
     return c.json(
       {
         jobId,
