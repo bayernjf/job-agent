@@ -53,7 +53,7 @@ const AUTH_STATUS_KEY: Record<AuthenticityStatus, MessageKey> = {
 };
 
 export interface PanelHandle {
-  toggle(): void;
+  toggle(): boolean;
 }
 
 function initialLocale(): Locale {
@@ -70,14 +70,18 @@ function initialLocale(): Locale {
 export function mountPanel(shadow: ShadowRoot, ats: AtsAdapter): PanelHandle {
   const mount = document.createElement('div');
   mount.id = 'jobagent-autofill-panel';
+  mount.setAttribute('role', 'dialog');
+  mount.setAttribute('aria-label', 'JobAgent');
+  mount.style.display = 'none';
   shadow.appendChild(mount);
   const root = createRoot(mount);
   root.render(<Panel ats={ats} />);
   let visible = false;
   return {
-    toggle(): void {
+    toggle(): boolean {
       visible = !visible;
       mount.style.display = visible ? '' : 'none';
+      return visible;
     },
   };
 }
@@ -242,12 +246,13 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
       </a>
 
       <form onSubmit={handleAnalyze}>
-        <div className="ja-platform-switch" role="group" aria-label="Platform">
+        <div className="ja-platform-switch" role="group" aria-label={t('panel.platformGroupLabel')}>
           <button
             type="button"
             className={`ja-platform-btn ${platform === 'github' ? 'ja-platform-btn--active' : ''}`}
             onClick={() => setPlatform('github')}
             disabled={loading}
+            aria-pressed={platform === 'github'}
           >
             {t('panel.platformGithub')}
           </button>
@@ -256,6 +261,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
             className={`ja-platform-btn ${platform === 'gitee' ? 'ja-platform-btn--active' : ''}`}
             onClick={() => setPlatform('gitee')}
             disabled={loading}
+            aria-pressed={platform === 'gitee'}
           >
             {t('panel.platformGitee')}
           </button>
@@ -265,6 +271,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
             onClick={() => setPlatform('all')}
             disabled={loading}
             title={t('panel.platformFusedTitle')}
+            aria-pressed={platform === 'all'}
           >
             {t('panel.platformFused')}
           </button>
@@ -309,7 +316,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
         </button>
       </form>
 
-      {error && <div className="ja-error">{error}</div>}
+      {error && <div className="ja-error" role="alert">{error}</div>}
 
       {profile && (
         <div className="ja-result">
@@ -330,7 +337,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
           </div>
 
           {matchState !== 'idle' && (
-            <div className="ja-match">
+            <div className="ja-match" aria-live="polite">
               <div className="ja-match-header">
                 <span className="ja-match-title">
                   {t('match.title')}
@@ -352,7 +359,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
               {matchState === 'empty' && <div className="ja-match-empty">{t('match.empty')}</div>}
 
               {matchState === 'error' && (
-                <div className="ja-match-error">
+                <div className="ja-match-error" role="alert">
                   {t('match.error')}
                   {matchError && <span className="ja-match-error-detail">: {matchError}</span>}
                   <button type="button" className="ja-match-retry" onClick={() => void loadMatches(profile.profileId)}>
@@ -502,7 +509,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
             {t('panel.fill')}
           </button>
           {filled !== null && (
-            <div className="ja-note">{t('panel.filledNote', { count: filled })}</div>
+            <div className="ja-note" role="status">{t('panel.filledNote', { count: filled })}</div>
           )}
         </div>
       )}
