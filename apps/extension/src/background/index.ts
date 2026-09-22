@@ -16,6 +16,7 @@ import {
   type ExtLocalProfileResponse,
 } from '@jobagent/shared';
 import { readStoredLocalProfile, writeStoredLocalProfile } from '../lib/local-profile-storage.js';
+import { isApiRequestMessage, relayApiRequest } from '../lib/sw-relay.js';
 
 chrome.runtime.onInstalled.addListener(() => {
   // 占位：预留安装事件，后续可在此做版本迁移/一次性初始化。
@@ -45,6 +46,17 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   const req = message as ExtLocalProfileRequest;
   if (req && (req.type === EXT_MSG_GET_LOCAL_PROFILE || req.type === EXT_MSG_SET_LOCAL_PROFILE)) {
     void handle(req).then(sendResponse);
+    return true; // 异步 sendResponse，保持消息通道打开
+  }
+  return false; // 不识别，不响应
+});
+
+// internal 消息（来自本扩展 content script）：代发 API 请求。
+// SW 以扩展源 + host_permissions 跨域授权发起，规避 ATS 页面源的 CORS /
+// 混合内容 / 私有网络访问限制（见 sw-relay.ts）。只放行 GET/POST 与 http(s)。
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (isApiRequestMessage(message)) {
+    void relayApiRequest(message).then(sendResponse);
     return true; // 异步 sendResponse，保持消息通道打开
   }
   return false; // 不识别，不响应

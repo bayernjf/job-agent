@@ -28,6 +28,8 @@ interface MatchReply {
 interface Harness {
   page: Page;
   setMatchResponder: (fn: (callCount: number) => MatchReply) => void;
+  /** 最近一次 POST /analyze 的请求体（在 context 级路由捕获，含 service worker 发出的请求）。 */
+  lastAnalyzeBody: () => unknown;
   openPanel: () => Promise<void>;
 }
 
@@ -40,6 +42,7 @@ interface ExtensionFixtures {
   extPage: Page;
   openPanel: () => Promise<void>;
   setMatchResponder: (fn: (callCount: number) => MatchReply) => void;
+  lastAnalyzeBody: () => unknown;
 }
 
 export const test = base.extend<ExtensionFixtures>({
@@ -58,14 +61,26 @@ export const test = base.extend<ExtensionFixtures>({
     });
 
     // match 响应器：默认三档列表，用例可覆盖；handler 始终读最新引用。
-    const state: { responder: (n: number) => MatchReply; calls: number } = {
+    const state: {
+      responder: (n: number) => MatchReply;
+      calls: number;
+      analyzeBody: unknown;
+    } = {
       responder: () => ({ status: 200, body: THREE_TIER_MATCHES }),
       calls: 0,
+      analyzeBody: null,
     };
 
-    await context.route('**/analyze', (route) =>
-      route.fulfill({ json: { profileId: FIXTURE_PROFILE_ID } }),
-    );
+    // /analyze 由 context 级路由拦截（content script 经 service worker 代发，
+    // page 级 route 拦不到 SW 请求）；记录请求体供平台切换等用例断言。
+    await context.route('**/analyze', (route) => {
+      try {
+        state.analyzeBody = JSON.parse(route.request().postData() ?? '{}');
+      } catch {
+        state.analyzeBody = null;
+      }
+      return route.fulfill({ json: { profileId: FIXTURE_PROFILE_ID } });
+    });
     await context.route('**/profiles/*/exportable', (route) =>
       route.fulfill({ json: toExportableProfile(buildFixtureProfile()) }),
     );
@@ -92,6 +107,9 @@ export const test = base.extend<ExtensionFixtures>({
         state.responder = fn;
         state.calls = 0;
       },
+      lastAnalyzeBody() {
+        return state.analyzeBody;
+      },
       async openPanel() {
         const fab = page.locator('.ja-fab');
         const panel = page.locator('#jobagent-autofill-panel');
@@ -111,6 +129,7 @@ export const test = base.extend<ExtensionFixtures>({
   extPage: async ({ _harness }, use) => use(_harness.page),
   openPanel: async ({ _harness }, use) => use(_harness.openPanel),
   setMatchResponder: async ({ _harness }, use) => use(_harness.setMatchResponder),
+  lastAnalyzeBody: async ({ _harness }, use) => use(_harness.lastAnalyzeBody),
 });
 
 export { expect } from '@playwright/test';
