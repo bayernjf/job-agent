@@ -49,6 +49,10 @@ export default defineConfig({
     env: {
       DB_DRIVER: 'sqlite',
       DB_PATH: FIXTURE_DB,
+      // Astro 7 auto-detects AI-agent shells and daemonizes `astro dev`, which
+      // makes the foreground process exit and Playwright report "exited early".
+      // This marker disables that detection and keeps the server attached.
+      ASTRO_DEV_BACKGROUND: '1',
     },
   },
 });

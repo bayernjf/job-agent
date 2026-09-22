@@ -4,6 +4,7 @@
   "panel.atsLabel": "ATS: {name}",
   "panel.usernameLabel": "username",
   "panel.usernamePlaceholder": "e.g. sindresorhus",
+  "panel.platformGroupLabel": "Evidence source platform",
   "panel.platformGithub": "GitHub",
   "panel.platformGitee": "Gitee",
   "panel.platformFused": "Fused",

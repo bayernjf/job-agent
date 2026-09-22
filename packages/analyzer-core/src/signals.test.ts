@@ -808,3 +808,158 @@ describe('computeAuthenticity (status & confidence)', () => {
     expect(strong.signals.find((s) => s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS)?.detail).toContain('strong positive signal');
   });
 });
+
+describe('adversarial and boundary negative samples (rule 0.3)', () => {
+  function forkRepo(name: string, stars: number, ownerLogin = 'fork-farm'): AnalyzerRepo {
+    return {
+      name,
+      ownerLogin,
+      url: `https://github.com/${ownerLogin}/${name}`,
+      isFork: true,
+      isArchived: false,
+      primaryLanguage: 'JavaScript',
+      topics: [],
+      description: null,
+      stargazerCount: stars,
+      forkCount: 0,
+      pushedAt: '2026-08-01T00:00:00Z',
+      createdAt: '2026-05-01T00:00:00Z',
+    };
+  }
+
+  it('rates a pure-fork mirror with no own behavior as insufficient_data', () => {
+    const input = buildInput({
+      login: 'fork-farm',
+      repos: [forkRepo('famous-a', 300), forkRepo('famous-b', 100)],
+      commits: [],
+      pullRequests: [],
+      issues: [],
+      contributions: {
+        totalCommitContributions: 0,
+        totalPullRequestContributions: 0,
+        totalIssueContributions: 0,
+        totalRepositoryContributions: 0,
+        contributionMonths: [],
+      },
+    });
+    const result = computeAuthenticity(input);
+    expect(result.status).toBe('insufficient_data');
+    expect(result.confidence).toBe(0.35);
+    expect(result.signals.some((s) => s.code === SIGNAL_CODES.EMPTY_ACTIVITY)).toBe(true);
+  });
+
+  it('rates a completely empty timeline as insufficient_data', () => {
+    const input = buildInput({
+      repos: [],
+      commits: [],
+      pullRequests: [],
+      issues: [],
+      contributions: {
+        totalCommitContributions: 0,
+        totalPullRequestContributions: 0,
+        totalIssueContributions: 0,
+        totalRepositoryContributions: 0,
+        contributionMonths: [],
+      },
+    });
+    const result = computeAuthenticity(input);
+    expect(result.status).toBe('insufficient_data');
+    expectValidRefs(input);
+  });
+
+  it('pins the 2000-star boundary for star-activity mismatch', () => {
+    const below = buildInput({
+      repos: [
+        {
+          ...forkRepo('repo', 1999, 'dev-strong'),
+          isFork: false,
+        },
+      ],
+      commits: [],
+      pullRequests: [],
+      issues: [],
+      contributions: {
+        totalCommitContributions: 0,
+        totalPullRequestContributions: 0,
+        totalIssueContributions: 0,
+        totalRepositoryContributions: 0,
+        contributionMonths: [],
+      },
+    });
+    expect(
+      computeAuthenticitySignals(below).some(
+        (s) => s.code === SIGNAL_CODES.STAR_ACTIVITY_MISMATCH && s.severity === 'risk',
+      ),
+    ).toBe(false);
+
+    const atBoundary = buildInput({
+      repos: [
+        {
+          ...forkRepo('repo', 2000, 'dev-strong'),
+          isFork: false,
+        },
+      ],
+      commits: [],
+      pullRequests: [],
+      issues: [],
+      contributions: {
+        totalCommitContributions: 5,
+        totalPullRequestContributions: 0,
+        totalIssueContributions: 0,
+        totalRepositoryContributions: 0,
+        contributionMonths: [],
+      },
+    });
+    expect(
+      computeAuthenticitySignals(atBoundary).some(
+        (s) => s.code === SIGNAL_CODES.STAR_ACTIVITY_MISMATCH && s.severity === 'risk',
+      ),
+    ).toBe(true);
+  });
+
+  it('pins the 50:1 star-to-commit boundary for a short unestablished account', () => {
+    function ratioInput(commitCount: number): AnalyzerInput {
+      const commits: AnalyzerCommit[] = Array.from({ length: commitCount }, (_, i) => ({
+        oid: `b0000000000000000000000000000000000000${String(i).padStart(3, '0')}`,
+        committedAt: '2026-07-15T10:00:00Z',
+        authorName: 'Dev Strong',
+        authorEmail: 'dev.strong@example.com',
+        repoName: 'dev-strong/repo',
+        messageHeadline: `commit ${i + 1}`,
+      }));
+      return buildInput({
+        repos: [
+          {
+            ...forkRepo('repo', 2000, 'dev-strong'),
+            isFork: false,
+          },
+        ],
+        commits,
+        pullRequests: [],
+        issues: [],
+        contributions: {
+          totalCommitContributions: commitCount,
+          totalPullRequestContributions: 0,
+          totalIssueContributions: 0,
+          totalRepositoryContributions: 0,
+          contributionMonths: [],
+        },
+      });
+    }
+
+    // 2000 stars / 41 commits ≈ 48.8:1：未达极端阈值
+    expect(
+      computeAuthenticitySignals(ratioInput(41)).some(
+        (s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO,
+      ),
+    ).toBe(false);
+    // 2000 stars / 40 commits 恰好 50:1：raw extreme，短历史无协作 → risk
+    const atBoundary = computeAuthenticity(ratioInput(40));
+    expect(
+      atBoundary.signals.some(
+        (s) => s.code === SIGNAL_CODES.STAR_TO_COMMIT_RATIO && s.severity === 'risk',
+      ),
+    ).toBe(true);
+    expect(atBoundary.status).toBe('suspicious');
+  });
+});
