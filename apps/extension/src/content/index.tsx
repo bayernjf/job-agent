@@ -41,9 +41,13 @@ function mountOverlay(ats: AtsAdapter): void {
     <button
       className="ja-fab"
       type="button"
+      aria-haspopup="dialog"
+      aria-expanded="false"
       onClick={(e) => {
         e.stopPropagation();
-        if (handle) handle.toggle();
+        if (handle) {
+          e.currentTarget.setAttribute('aria-expanded', String(handle.toggle()));
+        }
       }}
     >
       JobAgent

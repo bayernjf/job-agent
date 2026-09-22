@@ -4,6 +4,7 @@
   "panel.atsLabel": "ATS：{name}",
   "panel.usernameLabel": "用户名",
   "panel.usernamePlaceholder": "例如 sindresorhus",
+  "panel.platformGroupLabel": "证据来源平台",
   "panel.platformGithub": "GitHub",
   "panel.platformGitee": "Gitee",
   "panel.platformFused": "融合",
