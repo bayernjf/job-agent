@@ -138,6 +138,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 - 测试**就近放置**：`*.test.ts` / `*.test.tsx`，Vitest；E2E 用 Playwright。
 - **`analyzer-core` 测试优先级最高**：基于 `tests/fixtures` 脱敏夹具覆盖每条真实性信号，以及"证据不足→`insufficient_data`"分支。
 - **默认确定性**：测试不打真实 GitHub、不调真实 LLM，外部响应一律用录制夹具/fake；API/Worker 对夹具做集成测试；Playwright 覆盖"输入用户名→生成→报告→分享"主链路。扩展另有独立 E2E（`pnpm e2e:extension`，配置 `playwright.extension.config.ts`、用例在 `e2e/extension/`）：`launchPersistentContext` + `--headless=new` 加载 unpacked MV3，route 拦截 ATS 页与全部 API，覆盖 content script 注入/Shadow DOM 面板/岗位匹配区块，不连真实 ATS、不打网络。
+- **storage 的 7 例真实 Postgres 行为测试**（`packages/storage/src/postgres-behavior.test.ts`）：CI 与有 Docker 的机器用 `DATABASE_TEST_URL` 指向真实 PG 实跑（CI 已配 `postgres:16-alpine` service）；无该变量时自动起 embedded-postgres，起不来则 7 例 skip（不是失败）。**已知 macOS 兼容问题**：embedded-postgres 18.1.0-beta.15 内置 PG 二进制在部分 macOS（2026-09 在 macOS 26 实测）启动即 FATAL `postmaster became multithreaded during startup`，与 LC_ALL/Node 无关，属系统级问题；本机要让 7 例转绿，用 Docker PG 并设 `DATABASE_TEST_URL=postgres://...`（`docker compose --profile with-pg up -d`）。测试已对该失败路径做健壮性处理（非 Error reject 防御、teardown 限时不挂 hook），排查时看 `[postgres-behavior] ... tests skip:` 警告里的真实原因。
 - 交付前：`pnpm -r typecheck` + 相关测试 + `pnpm -r build` + `git diff --check`，并在汇报中说明验证覆盖与未覆盖项。
 
 ## 工程化门禁
