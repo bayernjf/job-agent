@@ -412,6 +412,29 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 ---
 
+## 3.0 按主体账号查询最新完整画像
+
+### `GET /profiles/by-subject/:platform/:login`
+
+按证据源平台与账号 login 反查该主体最近一版 `complete` 画像的轻量指针，供已持有账号身份的调用方在触发新分析前判断是否已有可引用画像。
+
+- 路径参数：`platform`（`github` / `gitee`）、`login`（平台账号 login）；校验失败返回 400。
+- 命中（200）：
+
+```json
+{
+  "profileId": "prf_...",
+  "status": "complete",
+  "cached": true,
+  "analyzerVersion": "0.3",
+  "updatedAt": "2026-09-20T08:00:00.000Z"
+}
+```
+
+- 无完整画像（404）：`{ "error": "no complete profile for subject", "code": "PROFILE_NOT_FOUND" }`
+
+---
+
 ## 3.1 查询可导出画像（P1 扩展消费）
 
 ### `GET /profiles/:id/exportable`
