@@ -531,6 +531,105 @@ describe('GET /profiles/:id/exportable', () => {
   });
 });
 
+describe('GET /profiles/by-subject/:platform/:login', () => {
+  async function seedProfile(
+    repos: StorageContext,
+    id: string,
+    login: string,
+    platform: 'github' | 'gitee',
+    status: 'complete' | 'partial' = 'complete',
+  ): Promise<void> {
+    const snapshot = sampleProfile(id, login);
+    await repos.profiles.insert({
+      id,
+      analyzerVersion: snapshot.analyzerVersion,
+      subjectPlatform: platform,
+      subjectLogin: login,
+      subjectClaimed: false,
+      dataWindowSince: snapshot.dataWindow.since,
+      dataWindowUntil: snapshot.dataWindow.until,
+      status,
+      snapshot: status === 'complete' ? snapshot : { ...snapshot, subject: { ...snapshot.subject, platform } },
+    });
+  }
+
+  it('returns the profileId pointer for an existing complete github profile (anonymous, no TTL)', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    await seedProfile(repos, 'prof-gh-1', 'torvalds', 'github');
+
+    // 无任何 Cookie（匿名）也应命中；端点刻意不读 24h 缓存 TTL、不扣配额、不触发分析
+    const res = await app.request('/profiles/by-subject/github/torvalds');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.profileId).toBe('prof-gh-1');
+    expect(body.status).toBe('complete');
+    expect(body.cached).toBe(true);
+    expect(body.analyzerVersion).toBeTruthy();
+    expect(body.updatedAt).toBeTruthy();
+    // 只回 profileId 指针，不在登录名维度重复暴露画像内容（内容仍走公开 exportable 投影）
+    expect(body.snapshot).toBeUndefined();
+    expect(body.skills).toBeUndefined();
+
+    // 只读解析不应创建任何分析任务
+    const queued = await repos.jobs.listQueued();
+    expect(queued).toHaveLength(0);
+  });
+
+  it('resolves a gitee-platform complete profile', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    await seedProfile(repos, 'prof-gitee-1', 'gitee_dev', 'gitee');
+
+    const res = await app.request('/profiles/by-subject/gitee/gitee_dev');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.profileId).toBe('prof-gitee-1');
+  });
+
+  it('does not match a same-login profile on another platform', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    await seedProfile(repos, 'prof-gh-only', 'same-login', 'github');
+
+    const res = await app.request('/profiles/by-subject/gitee/same-login');
+    expect(res.status).toBe(404);
+    const body = await res.json() as any;
+    expect(body.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('returns 404 when no profile exists for the subject', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/profiles/by-subject/github/nobody');
+    expect(res.status).toBe(404);
+    const body = await res.json() as any;
+    expect(body.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('returns 404 when the latest profile is only partial (not complete)', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    await seedProfile(repos, 'prof-partial', 'partial-user', 'github', 'partial');
+
+    const res = await app.request('/profiles/by-subject/github/partial-user');
+    expect(res.status).toBe(404);
+    const body = await res.json() as any;
+    expect(body.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('rejects platform=all (no single-subject snapshot for fused jobs)', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/profiles/by-subject/all/someone');
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a login that does not start with an alphanumeric', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/profiles/by-subject/github/-bad');
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('404 fallback', () => {
   it('returns 404 for unknown routes', async () => {
     const app = await createApp({ repos: await freshRepos() });
