@@ -164,6 +164,29 @@ test.describe('extension match panel', () => {
 
     await expect(items.nth(2).locator('.ja-match-resume')).toHaveAttribute('href', /resumeJob=row-job-low$/);
   });
+
+  test('local details expose both LinkedIn and personal site inputs (field parity with report page)', async ({
+    extPage,
+    openPanel,
+  }) => {
+    await openPanel();
+    await loadProfile(extPage);
+
+    const details = extPage.locator('.ja-result .ja-details');
+    await details.locator('summary').click();
+
+    // 两端本地档案字段对齐：扩展面板同时有 LinkedIn 与 Personal site（此前缺 personalSite）
+    const linkedinInput = details.getByLabel('LinkedIn');
+    const siteInput = details.getByLabel('Personal site');
+    await expect(linkedinInput).toBeVisible();
+    await expect(siteInput).toBeVisible();
+
+    // 受控输入可填且值保留（保存与 ATS 投影由 shared 纯函数单测覆盖）
+    await siteInput.fill('https://alice.dev');
+    await expect(siteInput).toHaveValue('https://alice.dev');
+    await linkedinInput.fill('https://www.linkedin.com/in/alice');
+    await expect(linkedinInput).toHaveValue('https://www.linkedin.com/in/alice');
+  });
 });
 
 test.describe('extension platform switcher', () => {
