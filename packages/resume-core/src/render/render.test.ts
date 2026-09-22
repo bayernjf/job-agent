@@ -74,6 +74,18 @@ describe('renderMarkdown', () => {
     expect(md).toContain('## Summary');
     expect(md).toContain('Highlights');
   });
+
+  it('renders LinkedIn once in the contact line when provided, and omits when absent', () => {
+    const linkedin = 'https://linkedin.com/in/alice';
+    const withLinkedIn = renderMarkdown(
+      buildResume({ ...baseInput(), local: { linkedinUrl: linkedin } }),
+      'en',
+    );
+    expect(withLinkedIn).toContain(linkedin);
+    expect(withLinkedIn.split(linkedin)).toHaveLength(2); // exactly once
+    const without = renderMarkdown(buildResume(baseInput()), 'en');
+    expect(without).not.toContain('linkedin.com');
+  });
 });
 
 describe('renderHtml', () => {
