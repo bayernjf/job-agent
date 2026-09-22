@@ -105,10 +105,21 @@ export const test = base.extend<ExtensionFixtures>({
       route.fulfill({ contentType: 'text/html', body: ATS_HTML }),
     );
 
+    // Warm up the MV3 service worker before loading the ATS page. Under load the
+    // unpacked extension's cold start otherwise races content-script injection and
+    // the first sw-relay request, producing intermittent timeouts.
+    let sw = context.serviceWorkers()[0];
+    if (!sw) {
+      sw = await context.waitForEvent('serviceworker', { timeout: 15_000 });
+    }
+    await sw.evaluate(() => (self as unknown as { chrome: { runtime?: { id: string } } }).chrome?.runtime?.id);
+
     const page = await context.newPage();
     await page.goto(ATS_PAGE_URL, { waitUntil: 'domcontentloaded' });
     // content script 在 document_idle 注入，等悬浮按钮出现即扩展就绪。
-    await page.locator('.ja-fab').waitFor({ timeout: 10_000 });
+    // 冷启动高负载时注入可显著变慢，给 30s 裕量（可用 env 覆盖）。
+    const fabTimeout = Number(process.env.EXT_FAB_TIMEOUT_MS ?? 30_000);
+    await page.locator('.ja-fab').waitFor({ timeout: fabTimeout });
 
     const harness: Harness = {
       page,
@@ -125,7 +136,7 @@ export const test = base.extend<ExtensionFixtures>({
         if ((await panel.count()) === 0 || !(await panel.isVisible())) {
           await fab.click();
         }
-        await panel.waitFor({ state: 'visible', timeout: 5000 });
+        await panel.waitFor({ state: 'visible', timeout: 10_000 });
       },
     };
 
