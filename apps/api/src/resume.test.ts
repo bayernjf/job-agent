@@ -158,6 +158,8 @@ describe('POST /resumes/build', () => {
         local: {
           fullName: 'Alice Zhang',
           email: 'alice@example.com',
+          personalSite: 'https://alice.dev',
+          linkedinUrl: 'https://www.linkedin.com/in/alice',
           education: [{ school: 'Example University', degree: 'BSc CS', period: '2016–2020' }],
         },
       }),
@@ -166,6 +168,9 @@ describe('POST /resumes/build', () => {
     const { draft } = (await res.json()) as BuildOkResponse;
     expect(draft.header.name).toBe('Alice Zhang');
     expect(draft.header.contact?.email).toBe('alice@example.com');
+    // personalSite 与 linkedinUrl 作为独立 contact 字段透传，互不回退/合并
+    expect(draft.header.contact?.personalSite).toBe('https://alice.dev');
+    expect(draft.header.contact?.linkedinUrl).toBe('https://www.linkedin.com/in/alice');
     const edu = draft.localSections.education;
     expect(edu).toHaveLength(1);
     expect(edu[0]?.source).toBe('local');

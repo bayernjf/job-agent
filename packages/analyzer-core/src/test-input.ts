@@ -212,7 +212,7 @@ export function buildInput(seed: InputSeed = {}): AnalyzerInput {
       url: `https://github.com/${login}`,
       occurredAt: seed.createdAt ?? '2018-03-14T00:00:00Z',
       layer: 'L0',
-      claim: `GitHub 账号 ${login}`,
+      claim: `GitHub account ${login}`,
       rawRef: login,
     },
     ...repos.map((r) => ({
@@ -222,7 +222,7 @@ export function buildInput(seed: InputSeed = {}): AnalyzerInput {
       url: r.url,
       occurredAt: r.pushedAt ?? undefined,
       layer: 'L0' as const,
-      claim: `仓库 ${r.name}`,
+      claim: `Repository ${r.name}`,
       rawRef: `${r.ownerLogin}/${r.name}`,
     })),
     ...commits.map(commitEvidence),

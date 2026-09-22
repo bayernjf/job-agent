@@ -23,6 +23,7 @@
   "panel.phoneLabel": "Phone",
   "panel.locationLabel": "Location",
   "panel.linkedinLabel": "LinkedIn",
+  "panel.siteLabel": "Personal site",
   "panel.fill": "Fill the form",
   "panel.filledNote": "Filled {count} field(s); complete any remaining fields manually.",
   "auth.likely_authentic": "Likely authentic",

@@ -58,6 +58,9 @@
     "https://*.lever.co/*",
     "https://*.myworkdayjobs.com/*",
     "https://*/*careers*",
-    "https://*/*jobs*"
+    "https://*/*jobs*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "https://job-agent.bayjf.com/*"
   ]
 }

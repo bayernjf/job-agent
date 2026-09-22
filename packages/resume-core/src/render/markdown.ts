@@ -37,6 +37,7 @@ export function renderMarkdown(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-
     contact.phone,
     contact.location,
     contact.personalSite,
+    contact.linkedinUrl,
     contact.profileUrl,
   ].filter(Boolean) as string[];
 

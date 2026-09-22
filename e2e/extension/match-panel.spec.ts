@@ -1,5 +1,6 @@
 import { test, expect } from './extension-test.js';
 import { THREE_TIER_MATCHES, EMPTY_MATCHES } from './fixtures.js';
+import { FIXTURE_PROFILE_ID } from '../fixtures/sample-profile.js';
 import type { Page } from '@playwright/test';
 
 /**
@@ -163,12 +164,36 @@ test.describe('extension match panel', () => {
 
     await expect(items.nth(2).locator('.ja-match-resume')).toHaveAttribute('href', /resumeJob=row-job-low$/);
   });
+
+  test('local details expose both LinkedIn and personal site inputs (field parity with report page)', async ({
+    extPage,
+    openPanel,
+  }) => {
+    await openPanel();
+    await loadProfile(extPage);
+
+    const details = extPage.locator('.ja-result .ja-details');
+    await details.locator('summary').click();
+
+    // 两端本地档案字段对齐：扩展面板同时有 LinkedIn 与 Personal site（此前缺 personalSite）
+    const linkedinInput = details.getByLabel('LinkedIn');
+    const siteInput = details.getByLabel('Personal site');
+    await expect(linkedinInput).toBeVisible();
+    await expect(siteInput).toBeVisible();
+
+    // 受控输入可填且值保留（保存与 ATS 投影由 shared 纯函数单测覆盖）
+    await siteInput.fill('https://alice.dev');
+    await expect(siteInput).toHaveValue('https://alice.dev');
+    await linkedinInput.fill('https://www.linkedin.com/in/alice');
+    await expect(linkedinInput).toHaveValue('https://www.linkedin.com/in/alice');
+  });
 });
 
 test.describe('extension platform switcher', () => {
   test('shows GitHub, Gitee and fused buttons and sends platform in analyze request', async ({
     extPage,
     openPanel,
+    lastAnalyzeBody,
   }) => {
     await openPanel();
 
@@ -177,14 +202,6 @@ test.describe('extension platform switcher', () => {
     await expect(extPage.getByRole('button', { name: 'Gitee' })).toBeVisible();
     await expect(extPage.getByRole('button', { name: 'Fused' })).toBeVisible();
 
-    // 捕获 POST /analyze body
-    let postedPlatform = '';
-    await extPage.route('**/analyze', async (route) => {
-      const body = JSON.parse(route.request().postData() ?? '{}');
-      postedPlatform = body.platform;
-      await route.fulfill({ json: { profileId: 'prof-test' } });
-    });
-
     // 切换到 Gitee
     await extPage.getByRole('button', { name: 'Gitee' }).click();
     await expect(extPage.getByRole('button', { name: 'Gitee' })).toHaveClass(/ja-platform-btn--active/);
@@ -192,20 +209,17 @@ test.describe('extension platform switcher', () => {
     await extPage.getByPlaceholder('e.g. sindresorhus').fill('gitee-user');
     await extPage.getByRole('button', { name: 'Load verified profile' }).click();
 
-    // 等画像区出现
+    // 等画像区出现（/analyze 经 service worker 代发，由 context 级路由捕获请求体）
     await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
-    expect(postedPlatform).toBe('gitee');
+    expect((lastAnalyzeBody() as { platform?: string }).platform).toBe('gitee');
   });
 
-  test('sends platform=all when the fused option is selected', async ({ extPage, openPanel }) => {
+  test('sends platform=all when the fused option is selected', async ({
+    extPage,
+    openPanel,
+    lastAnalyzeBody,
+  }) => {
     await openPanel();
-
-    let postedPlatform = '';
-    await extPage.route('**/analyze', async (route) => {
-      const body = JSON.parse(route.request().postData() ?? '{}');
-      postedPlatform = body.platform;
-      await route.fulfill({ json: { profileId: 'prof-test' } });
-    });
 
     // 切换到 GitHub + Gitee 融合
     await extPage.getByRole('button', { name: 'Fused' }).click();
@@ -215,6 +229,40 @@ test.describe('extension platform switcher', () => {
     await extPage.getByRole('button', { name: 'Load verified profile' }).click();
 
     await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
-    expect(postedPlatform).toBe('all');
+    expect((lastAnalyzeBody() as { platform?: string }).platform).toBe('all');
+  });
+});
+
+test.describe('cached snapshot resolution by subject (#55)', () => {
+  test('loads an existing complete snapshot via by-subject without POST /analyze', async ({
+    extPage,
+    openPanel,
+    lastAnalyzeBody,
+  }) => {
+    // 在用例级覆盖 fixture 的 by-subject 404：已有 complete 快照，只回 profileId 指针。
+    // Playwright 后注册的路由先匹配并 fulfill，不会落到 fixture 的 404。
+    await extPage.context().route('**/profiles/by-subject/**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          profileId: FIXTURE_PROFILE_ID,
+          status: 'complete',
+          cached: true,
+        }),
+      }),
+    );
+
+    await openPanel();
+    await extPage.getByPlaceholder('e.g. sindresorhus').fill('cached-user');
+    await extPage.getByRole('button', { name: 'Load verified profile' }).click();
+
+    await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
+
+    // 命中已有快照：不得触发 POST /analyze（不扣演示配额、不受画像 24h 缓存 TTL 限制）。
+    expect(lastAnalyzeBody()).toBeNull();
+
+    // exportable 画像与岗位匹配链路仍正常加载。
+    await expect(extPage.locator('.ja-match-list .ja-match-item')).toHaveCount(3);
   });
 });
