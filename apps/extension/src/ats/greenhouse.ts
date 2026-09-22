@@ -25,9 +25,9 @@ export const greenhouseAdapter: AtsAdapter = {
 
   fill(doc: Document, values: FillValue[]): number {
     let written = 0;
-    const set = (keywords: string[], value: string | undefined): void => {
+    const set = (keywords: string[], value: string | undefined, exclude: string[] = []): void => {
       if (!value) return;
-      const el = findFields(doc, keywords)[0];
+      const el = findFields(doc, keywords, exclude)[0];
       if (el) {
         el.value = value;
         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -40,10 +40,13 @@ export const greenhouseAdapter: AtsAdapter = {
     set(['first_name'], nameParts[0]);
     set(['last_name'], nameParts.slice(1).join(' '));
     set(['email'], valueFor(values, 'email'));
-    set(['phone'], valueFor(values, 'phone'));
-    set(['country', 'location'], valueFor(values, 'location'));
+    set(['phone'], valueFor(values, 'phone'), ['country', 'dial', 'area']);
+    // Location 只落城市字段（aria-label "Location (City)"、name job_application[location]）；
+    // 必须排除电话分组里的 Country/区号框（真机冒烟：城市串曾被误填进区号框）。
+    set(['location'], valueFor(values, 'location'), ['phone', 'country', 'dial', 'area code']);
     set(['linkedin'], valueFor(values, 'linkedin_url'));
-    set(['github'], valueFor(values, 'github_url'));
+    set(['website', 'portfolio'], valueFor(values, 'personal_website_url'), ['linkedin', 'github']);
+    set(['github'], valueFor(values, 'github_url'), ['linkedin', 'website', 'portfolio']);
     // summary：先试 cover_letter/summary 关键词字段，未命中则写入动机/自我介绍类自定义问题
     const summary = valueFor(values, 'summary');
     if (summary) {

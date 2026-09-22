@@ -60,7 +60,14 @@ function localItems(list: ResumeEntry[]): string {
 export function renderHtml(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN'): string {
   const copy = resumeCopy(locale);
   const contact = draft.header.contact ?? {};
-  const contactParts = [contact.email, contact.phone, contact.location, contact.personalSite, contact.profileUrl]
+  const contactParts = [
+    contact.email,
+    contact.phone,
+    contact.location,
+    contact.personalSite,
+    contact.linkedinUrl,
+    contact.profileUrl,
+  ]
     .filter(Boolean)
     .map((v) => escapeHtml(v as string));
   const tj = draft.targetJob;

@@ -22,6 +22,7 @@
  *   GET  /auth/me        — 当前登录身份（刻意不含 email/providerAccountId）
  *   POST /profiles/:id/claim — 登录用户认领本人画像（平台登录名一致才放行）
  *   GET  /jobs/:id       — 查询任务状态（queued/running/succeeded/failed + stage + profileId）
+ *   GET  /profiles/by-subject/:platform/:login — 公开只读解析某主体最新 complete 画像（无 TTL/不扣配额，扩展加载已有画像用）
  *   GET  /profiles/:id   — 查询画像快照（完整 AbilityProfile JSON）
  *   GET  /job-postings   — 岗位检索（P2-D 职位聚合消费侧）
  *   POST /job-postings/match — 按画像技能匹配岗位
@@ -948,6 +949,38 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     return c.json(formatJob(job));
   });
 
+  // GET /profiles/by-subject/:platform/:login：公开只读解析某主体最新 complete 画像。
+  // 与 POST /analyze 的缓存命中不同，这里不看 24h TTL、不扣配额、不触发新分析、任何身份放行——
+  // 画像快照本就永久可分享（GET /profiles/:id 与 /exportable 公开）。仅返回 profileId 指针，
+  // 扩展据此再走公开 exportable 投影，避免在登录名维度重复暴露画像内容。
+  // 必须注册在 GET /profiles/:id 之前，否则 'by-subject' 会被当作 :id。
+  const SubjectLookupParamSchema = z.object({
+    platform: z.enum(['github', 'gitee']), // platform=all 是双源作业参数，不存在单一主体快照
+    login: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, 'login must start with an alphanumeric'),
+  });
+  app.get('/profiles/by-subject/:platform/:login', async (c) => {
+    const parsed = SubjectLookupParamSchema.safeParse(c.req.param());
+    if (!parsed.success) {
+      return c.json({ error: 'invalid platform or login' }, 400);
+    }
+    const { platform, login } = parsed.data;
+    const latest = await repos.profiles.latestBySubject(platform, login);
+    if (latest && latest.status === 'complete') {
+      return c.json({
+        profileId: latest.id,
+        status: 'complete',
+        cached: true,
+        analyzerVersion: latest.analyzerVersion,
+        updatedAt: latest.updatedAt,
+      });
+    }
+    return c.json({ error: 'no complete profile for subject', code: 'PROFILE_NOT_FOUND' }, 404);
+  });
+
   // GET /profiles/:id：查询画像快照
   app.get('/profiles/:id', async (c) => {
     const parsed = ProfileIdParamSchema.safeParse(c.req.param());
@@ -1417,7 +1450,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, GET /auth/gitee/login, GET /auth/gitee/callback, GET /auth/providers, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, GET /jobs/:id, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, GET /auth/gitee/login, GET /auth/gitee/callback, GET /auth/providers, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, GET /jobs/:id, GET /profiles/by-subject/:platform/:login, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, GET /health`);
   });
 }
 

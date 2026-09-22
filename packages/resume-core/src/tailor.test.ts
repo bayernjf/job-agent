@@ -160,6 +160,8 @@ describe('buildResume', () => {
       local: {
         fullName: 'Zhang San',
         email: 'zs@example.com',
+        personalSite: 'https://zhangsan.dev',
+        linkedinUrl: 'https://linkedin.com/in/zhangsan',
         education: [{ school: 'X University', degree: 'BSc CS', period: '2018–2022' }],
         workHistory: [{ company: 'Old Co', role: 'Engineer', period: '2022–2024' }],
       },
@@ -167,6 +169,8 @@ describe('buildResume', () => {
     const draft = buildResume(input);
     expect(draft.header.name).toBe('Zhang San');
     expect(draft.header.contact?.email).toBe('zs@example.com');
+    expect(draft.header.contact?.personalSite).toBe('https://zhangsan.dev');
+    expect(draft.header.contact?.linkedinUrl).toBe('https://linkedin.com/in/zhangsan');
     expect(draft.localSections.education[0]?.source).toBe('local');
     expect(draft.localSections.education[0]?.evidenceRefs).toEqual([]);
     expect(draft.localSections.workHistory[0]?.text).toContain('Old Co');

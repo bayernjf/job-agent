@@ -146,16 +146,24 @@ test.describe('targeted resume builder', () => {
     const builder = page.locator('.resume-builder');
     await builder.getByRole('button', { name: /Add local details/ }).click();
     await builder.locator('.resume-local-grid input').first().fill('Alice Zhang');
+    // LinkedIn 是与 personalSite 并列的独立 contact 字段，填了才随简历请求透传
+    await builder
+      .locator('input[placeholder="https://www.linkedin.com/in/"]')
+      .fill('https://www.linkedin.com/in/alice');
     await builder.getByRole('button', { name: 'Apply & regenerate' }).click();
 
-    // 第二次请求携带 local.fullName
+    // 第二次请求携带 local.fullName 与 local.linkedinUrl（各自独立，不互相回退）
     await expect.poll(() => requests.length).toBe(2);
     const second = requests[1] as Record<string, unknown>;
-    expect(second.local).toMatchObject({ fullName: 'Alice Zhang' });
+    expect(second.local).toMatchObject({
+      fullName: 'Alice Zhang',
+      linkedinUrl: 'https://www.linkedin.com/in/alice',
+    });
 
     // 仅落本机 localStorage
     const stored = await page.evaluate((key) => localStorage.getItem(key), LOCAL_FIELDS_KEY);
     expect(stored).toContain('Alice Zhang');
+    expect(stored).toContain('linkedin.com/in/alice');
   });
 
   test('migrates the legacy resume localStorage key to canonical once, splitting free-text period', async ({

@@ -27,6 +27,30 @@ const EMBEDDED_PORT = 5433;
 // DATABASE_TEST_URL (docker postgres service) and never boots embedded PG, so
 // this timeout only affects local runs.
 const EMBEDDED_BOOT_TIMEOUT_MS = 120_000;
+// Teardown must stay bounded: when embedded-postgres' start() fails after the
+// postgres process already exited, its stop() waits forever for an 'exit' event
+// that never fires (start() also rejects with `undefined` on that path).
+const TEARDOWN_TIMEOUT_MS = 10_000;
+
+function describeError(err: unknown): string {
+  // embedded-postgres rejects start() with `undefined` on early process close
+  // (e.g. macOS postmaster "became multithreaded during startup" FATAL); reading
+  // .message blindly throws a TypeError that hides the real cause.
+  return err instanceof Error ? err.message : String(err);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${ms}ms`)),
+        ms,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 function minimalSnapshot(login: string): AbilityProfile {
   return {
@@ -49,6 +73,8 @@ function minimalSnapshot(login: string): AbilityProfile {
 describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
   let storage: StorageContext | undefined;
   let embedded: EmbeddedPostgres | null = null;
+  // embedded 集群是否真正启动成功；start() 失败后不得再调 stop()（会永久挂起）
+  let embeddedRunning = false;
   // 已迁移测试库的连接串；adminUrl 指向维护库（postgres），用于创建/删除临时库
   let basePgUrl: string | undefined;
   let adminUrl: string | undefined;
@@ -96,9 +122,10 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
         console.warn(`[postgres-behavior] start() done in ${elapsedMs()}ms`);
         await embedded.createDatabase('jobagent_test');
         console.warn(`[postgres-behavior] createDatabase() done in ${elapsedMs()}ms`);
+        embeddedRunning = true;
         pgUrl = `postgres://test:test@localhost:${EMBEDDED_PORT}/jobagent_test`;
       } catch (err) {
-        unavailable = (err as Error).message;
+        unavailable = describeError(err);
         console.warn('[postgres-behavior] embedded-postgres unavailable, tests skip:', unavailable);
         return;
       }
@@ -114,22 +141,32 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
         autoMigrate: true,
       });
     } catch (err) {
-      unavailable = (err as Error).message;
+      unavailable = describeError(err);
       console.warn('[postgres-behavior] createStorage failed, tests skip:', unavailable);
     }
   }, EMBEDDED_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
-    await storage?.close();
-    if (embedded) {
+    if (storage) {
       try {
-        await embedded.stop();
-      } catch {
-        // best-effort
+        await withTimeout(storage.close(), TEARDOWN_TIMEOUT_MS, 'storage.close()');
+      } catch (err) {
+        console.warn('[postgres-behavior] storage close failed:', describeError(err));
+      }
+    }
+    if (embedded) {
+      // start() 失败后 postgres 进程已退出，stop() 会永久等待 exit 事件；
+      // 只有确认启动成功才 stop，且整体限时兜底。
+      if (embeddedRunning) {
+        try {
+          await withTimeout(embedded.stop(), TEARDOWN_TIMEOUT_MS, 'embedded.stop()');
+        } catch (err) {
+          console.warn('[postgres-behavior] embedded stop failed:', describeError(err));
+        }
       }
       rmSync(EMBEDDED_DIR, { recursive: true, force: true });
     }
-  });
+  }, TEARDOWN_TIMEOUT_MS * 3);
 
   pgIt('creates, claims FIFO and succeeds a job', async (s) => {
     const suffix = randomUUID().slice(0, 8);

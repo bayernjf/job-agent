@@ -63,6 +63,7 @@ export interface ResumeLabels {
   fieldPhone: string;
   fieldLocation: string;
   fieldSite: string;
+  fieldLinkedIn: string;
   educationLabel: string;
   workLabel: string;
   addEducation: string;
@@ -476,6 +477,15 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
                     placeholder="https://"
                     value={local.personalSite ?? ''}
                     onChange={(e) => setSimple('personalSite', e.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>{labels.fieldLinkedIn}</span>
+                  <input
+                    type="url"
+                    placeholder="https://www.linkedin.com/in/"
+                    value={local.linkedinUrl ?? ''}
+                    onChange={(e) => setSimple('linkedinUrl', e.target.value)}
                   />
                 </label>
               </div>

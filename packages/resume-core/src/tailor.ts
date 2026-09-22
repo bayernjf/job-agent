@@ -107,6 +107,7 @@ function buildContact(local: LocalResumeFields | undefined, profileUrl: string):
   if (local?.phone) contact.phone = local.phone;
   if (local?.location) contact.location = local.location;
   if (local?.personalSite) contact.personalSite = local.personalSite;
+  if (local?.linkedinUrl) contact.linkedinUrl = local.linkedinUrl;
   return contact;
 }
 

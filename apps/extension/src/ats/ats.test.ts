@@ -293,6 +293,80 @@ describe('greenhouse summary → question_* mapping', () => {
   });
 });
 
+describe('greenhouse standard field disambiguation (#56/#57)', () => {
+  const greenhouseAdapter = listAdapters().find((a) => a.id === 'greenhouse')!;
+
+  // 标准字段（非 question_* 自定义问题）的最小 fake：collectFields 的并集选择器含 'input'，
+  // 故 docWithInputs 对任何含 'input' 的 selector 返回全部输入框，数组顺序即 DOM 顺序。
+  function inputField(id: string, name: string, ariaLabel: string): HTMLInputElement {
+    return {
+      id,
+      name,
+      value: '',
+      placeholder: '',
+      getAttribute(attr: string) {
+        if (attr === 'id') return id;
+        if (attr === 'aria-label') return ariaLabel;
+        return null;
+      },
+      closest: () => null,
+      dispatchEvent: () => true,
+    } as unknown as HTMLInputElement;
+  }
+
+  function docWithInputs(inputs: HTMLInputElement[]): Document {
+    return {
+      documentElement: { outerHTML: '<form id="application_form"></form>' },
+      querySelector: (sel: string) => (sel.includes('#application_form') ? ({} as Element) : null),
+      querySelectorAll: (sel: string) => {
+        if (sel === '*' || sel.includes('iframe')) return [];
+        if (sel.includes('input')) return inputs;
+        return [];
+      },
+    } as unknown as Document;
+  }
+
+  const byId = (inputs: HTMLInputElement[], id: string): HTMLInputElement =>
+    inputs.find((el) => el.id === id)!;
+
+  it('#56 fills Location (City) but never the phone-group Country/dial-code box', () => {
+    // DOM 顺序复刻真机 Greenhouse Discord 页：电话分组 Country/区号框在 Phone、Location (City) 之前
+    const country = inputField('phone_country', 'job_application[phone_country_code]', 'Country');
+    const phone = inputField('phone', 'job_application[phone_number]', 'Phone number');
+    const city = inputField('location', 'job_application[location]', 'Location (City)');
+    const inputs = [country, phone, city];
+    const doc = docWithInputs(inputs);
+
+    const values = toFillValues(profile(), { phone: '+155501002026', location: 'Portland, OR' });
+    const written = greenhouseAdapter.fill(doc, values);
+
+    expect(byId(inputs, 'phone').value).toBe('+155501002026');
+    expect(byId(inputs, 'location').value).toBe('Portland, OR');
+    // 城市串绝不能落进电话区号框（#56 回归）
+    expect(byId(inputs, 'phone_country').value).toBe('');
+    expect(written).toBe(2);
+  });
+
+  it('#57 fills Website from personalWebsite without colliding with LinkedIn/GitHub', () => {
+    const linkedin = inputField('linkedin', 'job_application[linkedin]', 'LinkedIn profile');
+    const website = inputField('website', 'job_application[website]', 'Website');
+    const github = inputField('github', 'job_application[github]', 'GitHub profile');
+    const inputs = [linkedin, website, github];
+    const doc = docWithInputs(inputs);
+
+    const values = toFillValues(profile(), {
+      linkedinUrl: 'https://linkedin.com/in/demo',
+      personalWebsite: 'https://example.com/~demo',
+    });
+    const written = greenhouseAdapter.fill(doc, values);
+
+    expect(byId(inputs, 'linkedin').value).toBe('https://linkedin.com/in/demo');
+    expect(byId(inputs, 'website').value).toBe('https://example.com/~demo');
+    expect(byId(inputs, 'github').value).toBe('https://github.com/demo-dev');
+    expect(written).toBe(3);
+  });
+});
+
 describe('lever summary → questions[*] mapping', () => {
   const leverAdapter = listAdapters().find((a) => a.id === 'lever')!;
 

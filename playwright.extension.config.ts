@@ -18,7 +18,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
-  timeout: 30_000,
+  // headless=new 冷启动 + 解压加载 unpacked MV3 在前几个用例较重（机器繁忙时 setup 可超 30s），
+  // 给单测 60s 裕量；断言超时仍保持 7s 不变。
+  timeout: 60_000,
   expect: { timeout: 7_000 },
   use: {
     locale: 'en-US',
