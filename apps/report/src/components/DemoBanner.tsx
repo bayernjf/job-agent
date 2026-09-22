@@ -57,7 +57,7 @@ export default function DemoBanner({ apiBase, label, remainingLabel, exitLabel }
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/demo/me`, { credentials: 'same-origin' })
+    fetch(`${apiBase}/demo/me`, { credentials: 'include' })
       .then((r) => r.json())
       .then((data: DemoMe) => {
         if (!cancelled) setMe(data);
@@ -73,7 +73,7 @@ export default function DemoBanner({ apiBase, label, remainingLabel, exitLabel }
   const handleExit = async () => {
     setExiting(true);
     try {
-      await fetch(`${apiBase}/demo/exit`, { method: 'POST', credentials: 'same-origin' });
+      await fetch(`${apiBase}/demo/exit`, { method: 'POST', credentials: 'include' });
     } finally {
       window.location.reload();
     }
