@@ -554,6 +554,8 @@ export const LocalAtsFieldsSchema = z.object({
   phone: z.string().optional(),
   location: z.string().optional(),
   linkedinUrl: z.string().url().optional(),
+  // 个人网站/作品集槽位（canonical personalSite 的 ATS 投影），用于 Greenhouse/Lever 的 Website/Portfolio
+  personalWebsite: z.string().url().optional(),
   education: z.array(LocalAtsEducationSchema).optional(),
   experience: z.array(LocalAtsExperienceSchema).optional(),
 });
@@ -651,7 +653,7 @@ export function localProfileToResumeFields(c: LocalProfileFields): LocalResumeFi
   return out;
 }
 
-/** canonical → ATS 填充形状；只保留 ATS 有槽位的字段，role→title，丢弃 fullName/personalSite/detail */
+/** canonical → ATS 填充形状；只保留 ATS 有槽位的字段，role→title，丢弃 fullName/detail */
 export function localProfileToAtsFields(c: LocalProfileFields): LocalAtsFields {
   const clean = sanitizeLocalProfile(c);
   const out: LocalAtsFields = {};
@@ -659,6 +661,7 @@ export function localProfileToAtsFields(c: LocalProfileFields): LocalAtsFields {
   if (clean.phone) out.phone = clean.phone;
   if (clean.location) out.location = clean.location;
   if (clean.linkedinUrl) out.linkedinUrl = clean.linkedinUrl;
+  if (clean.personalSite) out.personalWebsite = clean.personalSite;
   const education = (clean.education ?? []).map((e) => ({
     school: e.school,
     degree: e.degree,
@@ -701,6 +704,7 @@ export function legacyAtsToLocalProfile(old: LocalAtsFields): LocalProfileFields
     phone: old.phone,
     location: old.location,
     linkedinUrl: old.linkedinUrl,
+    personalSite: old.personalWebsite,
     education: (old.education ?? []).map((e) => ({
       school: e.school,
       degree: e.degree,
