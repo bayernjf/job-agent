@@ -1,5 +1,5 @@
 /**
- * API 客户端单测：用注入的 fetchImpl 覆盖缓存命中 / 轮询 / 失败 / 契约校验。
+ * API 客户端单测：用注入的 fetchImpl 覆盖 by-subject 解析 / 回退分析 / 轮询 / 失败 / 契约校验。
  */
 import { describe, expect, it } from 'vitest';
 import { JobAgentApi, matchJobs } from './api.js';
@@ -39,10 +39,36 @@ function seqFetch(handlers: Array<(url: string, init?: RequestInit) => Response>
 }
 
 describe('JobAgentApi.fetchProfile', () => {
-  it('returns profile directly when cache hits (profileId present)', async () => {
+  const subjectUrl = (u: string) => u.includes('/profiles/by-subject/');
+  const exportableUrl = (u: string) => u.includes('/exportable');
+  const analyzeUrl = (u: string) => u.endsWith('/analyze');
+  const subjectFound = () =>
+    jsonResponse(200, { profileId: 'prof-1', status: 'complete', cached: true });
+  const subjectMissing = () =>
+    jsonResponse(404, { error: 'no complete profile for subject', code: 'PROFILE_NOT_FOUND' });
+
+  it('loads an existing snapshot via by-subject without calling POST /analyze', async () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => {
+      const u = String(url);
+      calls.push(u);
+      if (analyzeUrl(u)) throw new Error('POST /analyze must not be called for an existing snapshot');
+      if (subjectUrl(u)) return subjectFound();
+      if (exportableUrl(u)) return jsonResponse(200, VALID_PROFILE);
+      return jsonResponse(404, {});
+    }) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl });
+    const p = await api.fetchProfile('demo-dev');
+    expect(p.subject.login).toBe('demo-dev');
+    expect(calls.some(subjectUrl)).toBe(true);
+    expect(calls.some(analyzeUrl)).toBe(false);
+  });
+
+  it('falls back to POST /analyze when by-subject returns 404 (cached profileId)', async () => {
     const api = new JobAgentApi({
       baseUrl: 'http://api.test',
       fetchImpl: seqFetch([
+        subjectMissing,
         () => jsonResponse(200, { profileId: 'prof-1', status: 'succeeded', cached: true }),
         () => jsonResponse(200, VALID_PROFILE),
       ]),
@@ -51,28 +77,35 @@ describe('JobAgentApi.fetchProfile', () => {
     expect(p.subject.login).toBe('demo-dev');
   });
 
-  it('forwards platform=all in the analyze request', async () => {
+  it('forwards platform=all straight to analyze (no by-subject lookup)', async () => {
     let receivedBody: unknown;
-    const api = new JobAgentApi({
-      baseUrl: 'http://api.test',
-      fetchImpl: seqFetch([
-        (_url, init) => {
-          receivedBody = init?.body;
-          return jsonResponse(200, { profileId: 'prof-1', status: 'succeeded', cached: true });
-        },
-        () => jsonResponse(200, VALID_PROFILE),
-      ]),
-    });
+    let sawSubjectLookup = false;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = String(url);
+      if (subjectUrl(u)) {
+        sawSubjectLookup = true;
+        return subjectMissing();
+      }
+      if (analyzeUrl(u)) {
+        receivedBody = init?.body;
+        return jsonResponse(200, { profileId: 'prof-1', status: 'succeeded', cached: true });
+      }
+      if (exportableUrl(u)) return jsonResponse(200, VALID_PROFILE);
+      return jsonResponse(404, {});
+    }) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl });
     await api.fetchProfile('demo-dev', 'all');
     expect(JSON.parse(String(receivedBody))).toMatchObject({ username: 'demo-dev', platform: 'all' });
+    expect(sawSubjectLookup).toBe(false);
   });
 
-  it('polls the job until succeeded then fetches the profile', async () => {
+  it('polls the job until succeeded then fetches the profile (after by-subject 404)', async () => {
     const api = new JobAgentApi({
       baseUrl: 'http://api.test',
       pollMs: 1,
       timeoutMs: 1000,
       fetchImpl: seqFetch([
+        subjectMissing,
         () => jsonResponse(201, { jobId: 'job-1', status: 'queued' }),
         () => jsonResponse(200, { id: 'job-1', status: 'running' }),
         () => jsonResponse(200, { id: 'job-1', status: 'succeeded', profileId: 'prof-1' }),
@@ -83,12 +116,13 @@ describe('JobAgentApi.fetchProfile', () => {
     expect(p.authenticity.status).toBe('likely_authentic');
   });
 
-  it('throws when the job fails', async () => {
+  it('throws when the job fails (after by-subject 404)', async () => {
     const api = new JobAgentApi({
       baseUrl: 'http://api.test',
       pollMs: 1,
       timeoutMs: 500,
       fetchImpl: seqFetch([
+        subjectMissing,
         () => jsonResponse(201, { jobId: 'job-1', status: 'queued' }),
         () => jsonResponse(200, { id: 'job-1', status: 'failed', error: 'rate limited' }),
       ]),
@@ -96,7 +130,23 @@ describe('JobAgentApi.fetchProfile', () => {
     await expect(api.fetchProfile('demo-dev')).rejects.toThrow(/rate limited/);
   });
 
-  it('throws on validation failure (400)', async () => {
+  it('throws on a non-404 by-subject error without falling back to analyze', async () => {
+    let posted = false;
+    const fetchImpl = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (subjectUrl(u)) return jsonResponse(500, { error: 'boom' });
+      if (analyzeUrl(u)) {
+        posted = true;
+        return jsonResponse(200, {});
+      }
+      return jsonResponse(404, {});
+    }) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl });
+    await expect(api.fetchProfile('demo-dev')).rejects.toThrow(/profile lookup failed \(HTTP 500\)/);
+    expect(posted).toBe(false);
+  });
+
+  it('throws on validation failure (400 from the lookup)', async () => {
     const api = new JobAgentApi({
       baseUrl: 'http://api.test',
       fetchImpl: seqFetch([() => jsonResponse(400, { error: 'validation failed' })]),
@@ -104,11 +154,11 @@ describe('JobAgentApi.fetchProfile', () => {
     await expect(api.fetchProfile('!!bad!!')).rejects.toThrow(/HTTP 400/);
   });
 
-  it('throws when the profile payload violates the exportable schema', async () => {
+  it('throws when the exportable payload violates the schema (snapshot resolved by-subject)', async () => {
     const api = new JobAgentApi({
       baseUrl: 'http://api.test',
       fetchImpl: seqFetch([
-        () => jsonResponse(200, { profileId: 'prof-1', status: 'succeeded' }),
+        subjectFound,
         () => jsonResponse(200, { ...VALID_PROFILE, subject: { platform: 'github' } }), // 缺 login/profileUrl
       ]),
     });

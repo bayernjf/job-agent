@@ -81,6 +81,15 @@ export const test = base.extend<ExtensionFixtures>({
       }
       return route.fulfill({ json: { profileId: FIXTURE_PROFILE_ID } });
     });
+    // 单源加载默认“无已有快照”：by-subject 404 → 扩展回退 POST /analyze（缓存短路）。
+    // by-subject 命中（200，只回 profileId 指针）路径由 match-panel.spec 的专用用例在用例级路由覆盖。
+    await context.route('**/profiles/by-subject/**', (route) =>
+      route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'no complete profile for subject', code: 'PROFILE_NOT_FOUND' }),
+      }),
+    );
     await context.route('**/profiles/*/exportable', (route) =>
       route.fulfill({ json: toExportableProfile(buildFixtureProfile()) }),
     );

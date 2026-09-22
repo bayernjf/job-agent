@@ -1,8 +1,10 @@
 /**
  * 扩展侧 API 客户端：复用公开 API（docs/API.md）拿可信画像。
  *
- * 流程：POST /analyze {username} → 拿 jobId（缓存命中直接 profileId）
- *   → 轮询 GET /jobs/:id → succeeded 后 GET /profiles/:id → parseExportableProfile。
+ * 流程（单源 github/gitee）：GET /profiles/by-subject/:platform/:login 解析已有 complete 快照
+ *   （公开只读、无 TTL、不扣配额、匿名可用）→ 命中直接 GET /profiles/:id/exportable；
+ *   未命中（404）才 POST /analyze 触发新分析 → 轮询 GET /jobs/:id → succeeded 后 exportable。
+ * platform=all 无单一主体快照，直接 POST /analyze。
  *
  * 只读：仅调分析/查询接口，不写任何数据（决策 #15 边界：不存密码、不做后台投递）。
  */
@@ -46,29 +48,58 @@ export class JobAgentApi {
 
   /**
    * 输入用户名（可选平台），返回可信画像（ExportableProfile）。
+   * 单源（github/gitee）先公开只读解析已有 complete 快照（无 TTL、不扣配额、匿名可用）：
+   * 画像快照永久可分享，"加载已有画像来一键填充"不应被 POST /analyze 的 24h 缓存 TTL 与演示闸挡住；
+   * 只有确实没有快照时才触发新分析（受演示模式配额约束）。platform=all 无单一主体快照，直接走分析。
    * 未生成完的画像会轮询等待；校验失败/分析失败/超时抛错。
    */
   async fetchProfile(username: string, platform: AnalyzePlatform = 'github'): Promise<ExportableProfile> {
     const { baseUrl, pollMs = 2000, timeoutMs = 60_000 } = this.opts;
     const fetchImpl = this.opts.fetchImpl ?? fetch;
 
-    const created = await this.postAnalyze(fetchImpl, baseUrl, username, platform);
-    let profileId: string | undefined = created.profileId;
+    let profileId: string | undefined;
+    if (platform === 'github' || platform === 'gitee') {
+      profileId = await this.resolveBySubject(fetchImpl, baseUrl, username, platform);
+    }
 
     if (!profileId) {
-      const deadline = Date.now() + timeoutMs;
-      while (!profileId && Date.now() < deadline) {
-        await sleep(pollMs);
-        const job = await this.getJob(fetchImpl, baseUrl, created.jobId!);
-        if (job.status === 'succeeded') profileId = job.profileId;
-        else if (job.status === 'failed') throw apiError(`analysis failed: ${job.error ?? 'unknown error'}`);
-        // queued/running → 继续轮询
+      const created = await this.postAnalyze(fetchImpl, baseUrl, username, platform);
+      profileId = created.profileId;
+
+      if (!profileId) {
+        const deadline = Date.now() + timeoutMs;
+        while (!profileId && Date.now() < deadline) {
+          await sleep(pollMs);
+          const job = await this.getJob(fetchImpl, baseUrl, created.jobId!);
+          if (job.status === 'succeeded') profileId = job.profileId;
+          else if (job.status === 'failed') throw apiError(`analysis failed: ${job.error ?? 'unknown error'}`);
+          // queued/running → 继续轮询
+        }
+        if (!profileId) throw apiError('analysis timed out; please retry later');
       }
-      if (!profileId) throw apiError('analysis timed out; please retry later');
     }
 
     const profile = await this.getProfile(fetchImpl, baseUrl, profileId);
     return profile;
+  }
+
+  /**
+   * 公开只读解析某主体最新 complete 快照，返回 profileId；无快照（404）返回 undefined，
+   * 由调用方回退到 POST /analyze。其他非 2xx（服务器/网络错误）直接抛错，不静默回退。
+   */
+  private async resolveBySubject(
+    fetchImpl: typeof fetch,
+    baseUrl: string,
+    username: string,
+    platform: 'github' | 'gitee',
+  ): Promise<string | undefined> {
+    const res = await fetchImpl(
+      `${baseUrl}/profiles/by-subject/${platform}/${encodeURIComponent(username)}`,
+    );
+    if (res.status === 404) return undefined;
+    if (!res.ok) throw apiError(`profile lookup failed (HTTP ${res.status})`, res.status);
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    return typeof body.profileId === 'string' ? body.profileId : undefined;
   }
 
   private async postAnalyze(

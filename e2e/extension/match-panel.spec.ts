@@ -1,5 +1,6 @@
 import { test, expect } from './extension-test.js';
 import { THREE_TIER_MATCHES, EMPTY_MATCHES } from './fixtures.js';
+import { FIXTURE_PROFILE_ID } from '../fixtures/sample-profile.js';
 import type { Page } from '@playwright/test';
 
 /**
@@ -206,5 +207,39 @@ test.describe('extension platform switcher', () => {
 
     await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
     expect((lastAnalyzeBody() as { platform?: string }).platform).toBe('all');
+  });
+});
+
+test.describe('cached snapshot resolution by subject (#55)', () => {
+  test('loads an existing complete snapshot via by-subject without POST /analyze', async ({
+    extPage,
+    openPanel,
+    lastAnalyzeBody,
+  }) => {
+    // 在用例级覆盖 fixture 的 by-subject 404：已有 complete 快照，只回 profileId 指针。
+    // Playwright 后注册的路由先匹配并 fulfill，不会落到 fixture 的 404。
+    await extPage.context().route('**/profiles/by-subject/**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          profileId: FIXTURE_PROFILE_ID,
+          status: 'complete',
+          cached: true,
+        }),
+      }),
+    );
+
+    await openPanel();
+    await extPage.getByPlaceholder('e.g. sindresorhus').fill('cached-user');
+    await extPage.getByRole('button', { name: 'Load verified profile' }).click();
+
+    await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
+
+    // 命中已有快照：不得触发 POST /analyze（不扣演示配额、不受画像 24h 缓存 TTL 限制）。
+    expect(lastAnalyzeBody()).toBeNull();
+
+    // exportable 画像与岗位匹配链路仍正常加载。
+    await expect(extPage.locator('.ja-match-list .ja-match-item')).toHaveCount(3);
   });
 });
