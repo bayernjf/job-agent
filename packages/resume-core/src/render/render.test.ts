@@ -101,6 +101,8 @@ describe('renderHtml', () => {
     expect(html).toContain('@media print');
     expect(html).toContain('var(--ja-color-neutral-900)');
     expect(html).toContain('var(--ja-font-sans)');
+    expect(html).toContain('@page');
+    expect(html).toContain('print-color-adjust: exact');
   });
 
   it('links evidence and shows tier', () => {
