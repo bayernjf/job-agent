@@ -117,7 +117,7 @@ function saveLocal(fields: LocalProfileFields): void {
 }
 
 function loadApiBase(): string {
-  return localStorage.getItem(API_BASE_KEY) ?? DEFAULT_BASE;
+  return localStorage.getItem(API_BASE_KEY) || DEFAULT_BASE;
 }
 
 function loadReportBaseOverride(): string {
@@ -175,12 +175,13 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     setMatchEvidence(undefined);
     setMatchError(null);
     localStorage.setItem(API_BASE_KEY, apiBase);
+    const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
     try {
-      const api = new JobAgentApi({ baseUrl: apiBase.replace(/\/$/, ''), fetchImpl: swFetch });
+      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch });
       const p = await api.fetchProfile(username.trim(), platform);
       setProfile(p);
       // 异步触发匹配，不阻塞画像展示与一键填充
-      void loadMatches(p.profileId);
+      void loadMatches(p.profileId, baseUrl);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -188,11 +189,12 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     }
   }
 
-  async function loadMatches(profileId: string): Promise<void> {
+  async function loadMatches(profileId: string, baseUrl?: string): Promise<void> {
     setMatchState('loading');
     setMatchError(null);
     try {
-      const resp = await matchJobs(apiBase.replace(/\/$/, ''), profileId, {
+      const resolvedBase = ((baseUrl ?? apiBase.trim()) || DEFAULT_BASE).replace(/\/$/, '');
+      const resp = await matchJobs(resolvedBase, profileId, {
         limit: 5,
         fetchImpl: swFetch,
       });
@@ -232,7 +234,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
       {/* 网页端演示入口：普通外链新标签打开，扩展不携带/共享演示 Cookie（设计 §10） */}
       <a
         className="ja-web-demo"
-        href={`${apiBase.replace(/\/$/, '')}/${locale}/`}
+        href={`${(apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '')}/${locale}/`}
         target="_blank"
         rel="noopener noreferrer"
       >
@@ -392,7 +394,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
                           <a
                             className="ja-match-resume"
                             href={resumeDeepLink(
-                              resolveReportBase(apiBase, reportBaseOverride),
+                              resolveReportBase(apiBase.trim() || DEFAULT_BASE, reportBaseOverride),
                               locale,
                               profile.profileId,
                               m.posting.id,
