@@ -32,6 +32,7 @@ import {
 } from '../lib/api.js';
 import { matchTier, resolveEvidenceLinks, resolveReportBase, resumeDeepLink } from './match-utils.js';
 import { readStoredLocalProfile, writeStoredLocalProfile } from '../lib/local-profile-storage.js';
+import { swFetch } from '../lib/sw-fetch.js';
 import {
   LOCALE_STORAGE_KEY,
   createTranslator,
@@ -175,7 +176,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     setMatchError(null);
     localStorage.setItem(API_BASE_KEY, apiBase);
     try {
-      const api = new JobAgentApi({ baseUrl: apiBase.replace(/\/$/, '') });
+      const api = new JobAgentApi({ baseUrl: apiBase.replace(/\/$/, ''), fetchImpl: swFetch });
       const p = await api.fetchProfile(username.trim(), platform);
       setProfile(p);
       // 异步触发匹配，不阻塞画像展示与一键填充
@@ -191,7 +192,10 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     setMatchState('loading');
     setMatchError(null);
     try {
-      const resp = await matchJobs(apiBase.replace(/\/$/, ''), profileId, { limit: 5 });
+      const resp = await matchJobs(apiBase.replace(/\/$/, ''), profileId, {
+        limit: 5,
+        fetchImpl: swFetch,
+      });
       setMatches(resp.matches);
       setMatchEvidence(resp.evidence);
       setMatchState(resp.matches.length > 0 ? 'list' : 'empty');

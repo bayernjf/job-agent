@@ -169,6 +169,7 @@ test.describe('extension platform switcher', () => {
   test('shows GitHub, Gitee and fused buttons and sends platform in analyze request', async ({
     extPage,
     openPanel,
+    lastAnalyzeBody,
   }) => {
     await openPanel();
 
@@ -177,14 +178,6 @@ test.describe('extension platform switcher', () => {
     await expect(extPage.getByRole('button', { name: 'Gitee' })).toBeVisible();
     await expect(extPage.getByRole('button', { name: 'Fused' })).toBeVisible();
 
-    // 捕获 POST /analyze body
-    let postedPlatform = '';
-    await extPage.route('**/analyze', async (route) => {
-      const body = JSON.parse(route.request().postData() ?? '{}');
-      postedPlatform = body.platform;
-      await route.fulfill({ json: { profileId: 'prof-test' } });
-    });
-
     // 切换到 Gitee
     await extPage.getByRole('button', { name: 'Gitee' }).click();
     await expect(extPage.getByRole('button', { name: 'Gitee' })).toHaveClass(/ja-platform-btn--active/);
@@ -192,20 +185,17 @@ test.describe('extension platform switcher', () => {
     await extPage.getByPlaceholder('e.g. sindresorhus').fill('gitee-user');
     await extPage.getByRole('button', { name: 'Load verified profile' }).click();
 
-    // 等画像区出现
+    // 等画像区出现（/analyze 经 service worker 代发，由 context 级路由捕获请求体）
     await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
-    expect(postedPlatform).toBe('gitee');
+    expect((lastAnalyzeBody() as { platform?: string }).platform).toBe('gitee');
   });
 
-  test('sends platform=all when the fused option is selected', async ({ extPage, openPanel }) => {
+  test('sends platform=all when the fused option is selected', async ({
+    extPage,
+    openPanel,
+    lastAnalyzeBody,
+  }) => {
     await openPanel();
-
-    let postedPlatform = '';
-    await extPage.route('**/analyze', async (route) => {
-      const body = JSON.parse(route.request().postData() ?? '{}');
-      postedPlatform = body.platform;
-      await route.fulfill({ json: { profileId: 'prof-test' } });
-    });
 
     // 切换到 GitHub + Gitee 融合
     await extPage.getByRole('button', { name: 'Fused' }).click();
@@ -215,6 +205,6 @@ test.describe('extension platform switcher', () => {
     await extPage.getByRole('button', { name: 'Load verified profile' }).click();
 
     await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
-    expect(postedPlatform).toBe('all');
+    expect((lastAnalyzeBody() as { platform?: string }).platform).toBe('all');
   });
 });
