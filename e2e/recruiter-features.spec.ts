@@ -130,6 +130,18 @@ test.describe('application tracker', () => {
 });
 
 test.describe('candidate search page', () => {
+  test('is noindex and blocks crawlers via robots.txt', async ({ page }) => {
+    await page.goto('/en/recruit');
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
+      'content',
+      'noindex,nofollow',
+    );
+
+    const robots = await page.goto('/robots.txt');
+    expect(await robots!.text()).toContain('Disallow: /*/recruit');
+    expect(await robots!.text()).toContain('Disallow: /api/');
+  });
+
   test('renders fixture candidates from SSR data with a fused badge and a Gitee-only card', async ({
     page,
   }) => {

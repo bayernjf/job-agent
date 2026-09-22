@@ -23,7 +23,7 @@ const reportBasePath = `/${locale}/report`;
 const initial = await loadInitialCandidates({ limit: 12 });
 ---
 
-<Layout locale={locale} titleKey="recruit.title">
+<Layout locale={locale} titleKey="recruit.title" robots="noindex,nofollow">
   <div class="recruit-page">
     <header class="recruit-header">
       <h1>{t('recruit.title')}</h1>

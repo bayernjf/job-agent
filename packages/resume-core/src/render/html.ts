@@ -106,10 +106,13 @@ export function renderHtml(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN')
   .suggestions li { font-size: .92rem; }
   footer { margin-top: var(--ja-space-5); padding-top: var(--ja-space-2); border-top: 1px solid var(--ja-color-neutral-200);
            color: var(--ja-color-neutral-500); font-size: .82rem; }
+  @page { size: A4; margin: 14mm; }
   @media print {
     body { margin: 0; max-width: none; }
-    a { color: var(--ja-color-neutral-900); }
+    a { color: var(--ja-color-neutral-900); text-decoration: none; }
+    code, .target { background: transparent; border: none; padding: 0; }
     h2 { break-after: avoid; } li { break-inside: avoid; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style>
 </head>
