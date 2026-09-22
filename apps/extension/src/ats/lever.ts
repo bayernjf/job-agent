@@ -25,9 +25,9 @@ export const leverAdapter: AtsAdapter = {
 
   fill(doc: Document, values: FillValue[]): number {
     let written = 0;
-    const set = (keywords: string[], value: string | undefined): void => {
+    const set = (keywords: string[], value: string | undefined, exclude: string[] = []): void => {
       if (!value) return;
-      const el = findFields(doc, keywords)[0];
+      const el = findFields(doc, keywords, exclude)[0];
       if (el) {
         el.value = value;
         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -38,9 +38,15 @@ export const leverAdapter: AtsAdapter = {
     set(['name'], valueFor(values, 'full_name'));
     set(['email'], valueFor(values, 'email'));
     set(['phone'], valueFor(values, 'phone'));
-    set(['location'], valueFor(values, 'location'));
+    set(['location'], valueFor(values, 'location'), ['country', 'dial', 'area']);
     set(['linkedin'], valueFor(values, 'linkedin_url'));
-    set(['github'], valueFor(values, 'github_url'));
+    set(['github'], valueFor(values, 'github_url'), ['linkedin', 'website', 'portfolio']);
+    // Lever 常见 "Portfolio / personal website / blog" URL 槽；排除已被 LinkedIn/GitHub 占用的字段
+    set(
+      ['website', 'portfolio', 'blog', 'personal site'],
+      valueFor(values, 'personal_website_url'),
+      ['linkedin', 'github'],
+    );
     // summary：先试 how_did_you_hear/cover_letter 关键词字段，未命中则写入动机/自我介绍类自定义问题
     const summary = valueFor(values, 'summary');
     if (summary) {

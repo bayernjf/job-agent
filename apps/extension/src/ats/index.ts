@@ -31,6 +31,7 @@ export interface FillValue {
     | 'summary'
     | 'github_url'
     | 'linkedin_url'
+    | 'personal_website_url'
     | 'skills'
     | 'education'
     | 'experience';
@@ -82,6 +83,7 @@ export function toFillValues(
   if (local.phone) values.push({ key: 'phone', value: local.phone });
   if (local.location) values.push({ key: 'location', value: local.location });
   if (local.linkedinUrl) values.push({ key: 'linkedin_url', value: local.linkedinUrl });
+  if (local.personalWebsite) values.push({ key: 'personal_website_url', value: local.personalWebsite });
   if (local.education?.length) {
     values.push({
       key: 'education',
@@ -169,9 +171,18 @@ export const SUMMARY_HINTS = [
   'in your own words',
 ];
 
-/** 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder 关键字匹配（含 iframe 与 shadow DOM） */
-export function findFields(doc: Document, keywords: string[]): HTMLInputElement[] {
+/**
+ * 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder 关键字匹配（含 iframe 与 shadow DOM）。
+ * exclude（可选）为排除关键字：归一化后命中任一排除词的字段直接跳过，用于区分同名近邻字段
+ * （例如 Greenhouse 电话分组里的 Country/区号框 name 含 country，不能与 Location (City) 混淆）。
+ */
+export function findFields(
+  doc: Document,
+  keywords: string[],
+  exclude: string[] = [],
+): HTMLInputElement[] {
   const hit = new Set<HTMLInputElement | HTMLTextAreaElement>();
+  const normExclude = exclude.map(norm);
   for (const d of allDocuments(doc)) {
     for (const el of collectFields(d)) {
       const hay = [
@@ -180,7 +191,9 @@ export function findFields(doc: Document, keywords: string[]): HTMLInputElement[
         norm(el.getAttribute('aria-label') ?? ''),
         norm(el.placeholder),
       ].join(' ');
-      if (keywords.some((k) => hay.includes(norm(k)))) {
+      const includesKeyword = keywords.some((k) => hay.includes(norm(k)));
+      const includesExcluded = normExclude.some((x) => hay.includes(x));
+      if (includesKeyword && !includesExcluded) {
         hit.add(el);
       }
     }

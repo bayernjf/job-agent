@@ -134,6 +134,7 @@ describe('local profile canonical (item19 ①)', () => {
       });
       expect(ats).toEqual({
         linkedinUrl: 'https://linkedin.com/in/al',
+        personalWebsite: 'https://al.dev',
         education: [{ school: 'ZJU', degree: 'BS', start: '2018', end: '2022' }],
         experience: [{ company: 'ACME', title: 'SDE', start: '2022', end: 'present' }],
       });
@@ -167,11 +168,13 @@ describe('local profile canonical (item19 ①)', () => {
     it('round-trips canonical → ATS → canonical without losing structured dates', () => {
       const original: LocalProfileFields = {
         linkedinUrl: 'https://linkedin.com/in/a',
+        personalSite: 'https://a.dev',
         education: [{ school: 'ZJU', degree: 'BS', start: '2018', end: '2022' }],
         workHistory: [{ company: 'ACME', role: 'SDE', start: '2022', end: 'present' }],
       };
       expect(legacyAtsToLocalProfile(localProfileToAtsFields(original))).toEqual({
         linkedinUrl: 'https://linkedin.com/in/a',
+        personalSite: 'https://a.dev',
         education: [{ school: 'ZJU', degree: 'BS', start: '2018', end: '2022' }],
         workHistory: [{ company: 'ACME', role: 'SDE', start: '2022', end: 'present' }],
       });
