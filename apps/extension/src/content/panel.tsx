@@ -486,6 +486,14 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
                 onChange={(e) => setLocal((p) => ({ ...p, linkedinUrl: e.target.value }))}
               />
             </label>
+            <label className="ja-label">
+              {t('panel.siteLabel')}
+              <input
+                className="ja-input"
+                value={local.personalSite ?? ''}
+                onChange={(e) => setLocal((p) => ({ ...p, personalSite: e.target.value }))}
+              />
+            </label>
           </details>
 
           <button className="ja-btn ja-btn-primary" type="button" onClick={handleFill}>

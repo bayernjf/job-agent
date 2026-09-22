@@ -23,6 +23,7 @@
   "panel.phoneLabel": "电话",
   "panel.locationLabel": "所在地",
   "panel.linkedinLabel": "LinkedIn",
+  "panel.siteLabel": "个人主页",
   "panel.fill": "填充到表单",
   "panel.filledNote": "已写入 {count} 个字段；未命中的字段请手动补充。",
   "auth.likely_authentic": "可信度较高",
