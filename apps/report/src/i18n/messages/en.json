@@ -133,6 +133,7 @@
   "report.resume.fieldPhone": "Phone",
   "report.resume.fieldLocation": "Location",
   "report.resume.fieldSite": "Personal site",
+  "report.resume.fieldLinkedIn": "LinkedIn",
   "report.resume.educationLabel": "Education",
   "report.resume.workLabel": "Work experience",
   "report.resume.addEducation": "+ Add education",
