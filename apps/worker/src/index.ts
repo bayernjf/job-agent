@@ -370,7 +370,6 @@ export async function claimAndProcessOne(deps: ClaimOneDeps = {}): Promise<Claim
     deps.demoMaxConcurrent ?? envPositiveInt(process.env.DEMO_MAX_CONCURRENT) ?? 1;
 
   const repos = deps.repos ?? (await createStorage());
-  const sources = deps.sources ?? makeSources(deps);
 
   // serverless cron 没有"启动回收"环节：每次触发先回收 >阈值仍 running 的僵尸任务
   // （函数超时/实例被回收会留下 running；常驻 Worker 在 runWorker 启动时只回收一次）。
@@ -395,6 +394,11 @@ export async function claimAndProcessOne(deps: ClaimOneDeps = {}): Promise<Claim
       return { kind: 'deferred', jobId: job.id };
     }
   }
+
+  // 延迟到确认确有任务要处理时才构造 source（含 GITHUB_TOKEN 校验）：空队列 idle 与
+  // demo 超闸 deferred 都不需要凭证，serverless cron 在无任务/未配 token 的空窗期也能
+  // 正常返回，而不是在认领前就因缺 token 抛 500。常驻 runWorker 仍在启动时 fail-fast。
+  const sources = deps.sources ?? makeSources(deps);
 
   try {
     const result = await processJob(job, repos, sources, logger);
