@@ -69,6 +69,16 @@ async function captureExtensionShots() {
   await context.route('**/analyze', (route) =>
     route.fulfill({ json: { profileId: PROFILE_ID } }),
   );
+  // The extension resolves an existing complete snapshot via by-subject before
+  // falling back to POST /analyze (see lib/api.ts); forward it to the real local
+  // API like exportable/match, otherwise the request hits the build-time
+  // localhost:3000 default base and the panel never reaches the match list.
+  await context.route('**/profiles/by-subject/**', async (route) => {
+    const url = new URL(route.request().url());
+    const pathSuffix = url.pathname.replace(/^\/api/, '');
+    const res = await fetch(`${API_BASE}${pathSuffix}`);
+    return route.fulfill({ status: res.status, contentType: 'application/json', body: await res.text() });
+  });
   await context.route('**/profiles/*/exportable', async (route) => {
     const res = await fetch(`${API_BASE}/profiles/${PROFILE_ID}/exportable`);
     return route.fulfill({ status: res.status, contentType: 'application/json', body: await res.text() });
@@ -98,12 +108,26 @@ async function captureExtensionShots() {
 
   await openPanel();
   await page.getByPlaceholder('e.g. sindresorhus').fill(LOGIN);
-  // Clear the build-time localhost API base so the advanced field shows its placeholder
-  // instead of a localhost URL (routing is intercepted, so this does not affect data).
-  await page.locator('.ja-panel input.ja-input').nth(1).fill('');
   await page.getByRole('button', { name: 'Load verified profile' }).click();
   await page.locator('.ja-match-list .ja-match-item').first().waitFor({ timeout: 15_000 });
   await page.waitForTimeout(800);
+  // The CWS listing must not show localhost anywhere. The advanced fields carry
+  // the dev build's localhost defaults as value/placeholder, so clear the value
+  // and swap placeholder attributes for production-style examples (display-only;
+  // routing is intercepted and unaffected). Then blur the field.
+  const advancedInputs = page.locator('.ja-panel input.ja-input');
+  const endpointInput = advancedInputs.nth(1);
+  const reportInput = advancedInputs.nth(2);
+  await endpointInput.fill('');
+  await endpointInput.evaluate((el) => el.setAttribute('placeholder', 'https://app.job-agent.bayjf.com/api'));
+  await reportInput.evaluate((el) => el.setAttribute('placeholder', 'Leave blank to use the API origin'));
+  await page.waitForTimeout(200);
+  if ((await endpointInput.inputValue()).includes('localhost')) {
+    throw new Error('API endpoint field still shows a localhost URL before capturing shot 01.');
+  }
+  // Remove focus rings (inside the shadow-DOM panel and on the ATS mock form).
+  await panelBox().evaluate((el) => el.querySelector(':focus')?.blur());
+  await page.evaluate(() => document.querySelector(':focus')?.blur());
   await panelBox().evaluate((el) => el.scrollTo({ top: 0 }));
   await page.waitForTimeout(400);
 
@@ -176,6 +200,9 @@ async function captureExtensionShots() {
 
 async function captureWebShots(browser) {
   const context = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
+  // The Astro dev server injects its fixed-position dev toolbar via a Vite-served
+  // entrypoint script; neutralise that script so CWS screenshots show product UI only.
+  await context.route('**/dev-toolbar/**', (route) => route.fulfill({ status: 204, body: '' }));
   const page = await context.newPage();
 
   await page.goto(`${REPORT_BASE}/en/report/${PROFILE_ID}`, { waitUntil: 'networkidle' });
