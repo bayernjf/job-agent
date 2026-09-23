@@ -158,7 +158,7 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
       setError(null);
       try {
         const url = `${apiBase}/profiles/${encodeURIComponent(profileId)}/job-recommendations?limit=${MAX_DISPLAY}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { credentials: 'include' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as JobRecommendationsResponse;
         if (!cancelled) {
