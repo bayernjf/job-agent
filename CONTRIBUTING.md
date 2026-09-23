@@ -27,7 +27,7 @@ pnpm --filter <pkg> test  # 只跑某个包的测试
 
 ## 3. workspace 布局
 
-`packages/*`（shared / github-source / analyzer-core / llm）与 `apps/*`（api / worker / cli / report）。规划细节见 [AGENTS.md](AGENTS.md) 与 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)。
+`packages/*`（shared / storage / github-source / gitee-source / analyzer-core / job-source / resume-core / llm / ui-tokens，共 9 个）与 `apps/*`（api / worker / cli / report / extension，共 5 个）。规划细节见 [AGENTS.md](AGENTS.md) 与 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)。
 
 ## 4. 测试约定
 
