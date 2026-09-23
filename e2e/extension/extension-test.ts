@@ -121,6 +121,17 @@ export const test = base.extend<ExtensionFixtures>({
     const fabTimeout = Number(process.env.EXT_FAB_TIMEOUT_MS ?? 30_000);
     await page.locator('.ja-fab').waitFor({ timeout: fabTimeout });
 
+    // Second-stage warmup: drive one real SW-origin API round trip (exportable is a
+    // read-only route that records no harness state). This both re-activates the worker
+    // right before the test interacts with the panel and validates the SW fetch path,
+    // avoiding the cold-worker race on the test's first relay request.
+    let activeSw = context.serviceWorkers()[0] ?? sw;
+    if (!activeSw) activeSw = await context.waitForEvent('serviceworker', { timeout: 15_000 });
+    await activeSw.evaluate(
+      async (url) => (await fetch(url)).status,
+      `http://ja-e2e.test/profiles/${FIXTURE_PROFILE_ID}/exportable`,
+    );
+
     const harness: Harness = {
       page,
       setMatchResponder(fn) {

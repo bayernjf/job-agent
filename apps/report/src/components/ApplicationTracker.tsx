@@ -100,7 +100,10 @@ export default function ApplicationTracker({ profileId, apiBase, locale, labels 
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${apiBase}/profiles/${encodeURIComponent(profileId)}/applications`);
+      const res = await fetch(
+        `${apiBase}/profiles/${encodeURIComponent(profileId)}/applications`,
+        { credentials: 'include' },
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { items: Application[] };
       setItems(body.items ?? []);
@@ -117,6 +120,7 @@ export default function ApplicationTracker({ profileId, apiBase, locale, labels 
       try {
         const res = await fetch(
           `${apiBase}/profiles/${encodeURIComponent(profileId)}/applications`,
+          { credentials: 'include' },
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as { items: Application[] };
@@ -163,6 +167,7 @@ export default function ApplicationTracker({ profileId, apiBase, locale, labels 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
+          credentials: 'include',
         },
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -188,6 +193,7 @@ export default function ApplicationTracker({ profileId, apiBase, locale, labels 
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
+        credentials: 'include',
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const updated = (await res.json()) as Application;

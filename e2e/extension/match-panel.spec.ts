@@ -9,12 +9,17 @@ import type { Page } from '@playwright/test';
  * API 全部由 fixture route 拦截，确定性、零网络。文案断言用英文（默认 locale）。
  */
 
+// 画像链路（by-subject → /analyze → exportable，均经冷启动 SW relay）在机器
+// 高负载下可能耗时数十秒；统一给 30s 裕量（可用 env EXT_RESULT_TIMEOUT_MS 覆盖），
+// 禁止各处写死短超时。
+const RESULT_TIMEOUT_MS = Number(process.env.EXT_RESULT_TIMEOUT_MS ?? 30_000);
+
 // 输入用户名并提交，等画像区出现。
 async function loadProfile(page: Page): Promise<void> {
   await page.getByPlaceholder('e.g. sindresorhus').fill('e2e-fixture-user');
   await page.getByRole('button', { name: 'Load verified profile' }).click();
   // The first request goes through the background relay; on a cold SW it can be slow.
-  await page.locator('.ja-result').waitFor({ timeout: 15_000 });
+  await page.locator('.ja-result').waitFor({ timeout: RESULT_TIMEOUT_MS });
 }
 
 test.describe('extension match panel', () => {
@@ -211,7 +216,7 @@ test.describe('extension platform switcher', () => {
     await extPage.getByRole('button', { name: 'Load verified profile' }).click();
 
     // 等画像区出现（/analyze 经 service worker 代发，由 context 级路由捕获请求体）
-    await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
+    await extPage.locator('.ja-result').waitFor({ timeout: RESULT_TIMEOUT_MS });
     expect((lastAnalyzeBody() as { platform?: string }).platform).toBe('gitee');
   });
 
@@ -229,7 +234,7 @@ test.describe('extension platform switcher', () => {
     await extPage.getByPlaceholder('e.g. sindresorhus').fill('fused-user');
     await extPage.getByRole('button', { name: 'Load verified profile' }).click();
 
-    await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
+    await extPage.locator('.ja-result').waitFor({ timeout: RESULT_TIMEOUT_MS });
     expect((lastAnalyzeBody() as { platform?: string }).platform).toBe('all');
   });
 });
@@ -258,7 +263,7 @@ test.describe('cached snapshot resolution by subject (#55)', () => {
     await extPage.getByPlaceholder('e.g. sindresorhus').fill('cached-user');
     await extPage.getByRole('button', { name: 'Load verified profile' }).click();
 
-    await extPage.locator('.ja-result').waitFor({ timeout: 5000 });
+    await extPage.locator('.ja-result').waitFor({ timeout: RESULT_TIMEOUT_MS });
 
     // 命中已有快照：不得触发 POST /analyze（不扣演示配额、不受画像 24h 缓存 TTL 限制）。
     expect(lastAnalyzeBody()).toBeNull();
