@@ -22,9 +22,9 @@ pnpm --filter @jobagent/cli dev analyze <你的GitHub用户名>
 1. 构建扩展产物：`cd apps/extension && pnpm build`（产物在 `apps/extension/dist`）。
 2. 打开 `chrome://extensions`，右上角开启「开发者模式」。
 3. 点「加载已解压的扩展程序」，选择 `apps/extension/dist` 目录。
-4. 工具栏出现扩展图标即安装成功（图标当前为占位图，正式图标上架前替换）。
+4. 工具栏出现扩展图标即安装成功（正式品牌图标已于 2026-09-18 替换占位图，16/48/128 三尺寸）。
 
-> 分发说明：当前以 CRX / unpacked 手动加载先行（零门槛、零成本、不暴露源码）；Chrome Web Store 待真实反馈后再上（需正式图标 + 商店物料 + 审核）。
+> 分发说明：当前以 CRX / unpacked 手动加载先行（零门槛、零成本、不暴露源码）；Chrome Web Store 上架素材（5 张 1280×800 截图 + 宣传图 + 中英 listing）已于 2026-09-21 备齐（见 [store-assets/README](store-assets/README.md)），发布包用 `EXTENSION_API_BASE=https://<生产域>/api EXTENSION_SITE_ORIGIN=https://<生产域> pnpm --filter @jobagent/extension release` 一键构建 zip；上架仍待形态 C 生产 API 上线后用生产构建重截截图。
 
 ## 使用
 
@@ -39,5 +39,5 @@ pnpm --filter @jobagent/cli dev analyze <你的GitHub用户名>
 ## 已知限制
 
 - **Workday**：求职端岗位详情页普遍外链官网或仅渲染导航壳（实测 NVIDIA/GM/Walmart/FMC 四家均无法取得可填表单），字段定位已支持 shadow DOM，待找到直接渲染表单的租户页再端到端验证。
-- **Greenhouse summary**：cover_letter 为 file input，适配器未填该字段（待 question_* 自定义字段映射）。
+- **Greenhouse/Lever 自定义问题**：summary→question_* 映射已落地（`findLabeledQuestion` + 关键词表，含动机类问题）；cover_letter 为 file input 时自动跳过、改走问题文本字段；真实公司问题措辞不在词表内、薪资/授权类字段刻意不填仍是预期边界。
 - 填充命中依赖画像与表单字段语义匹配；本地补填字段未配置时对应表单项留空，请手动补充。
