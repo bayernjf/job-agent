@@ -96,8 +96,17 @@ echo
 # 1. API health through the same-origin /api mount
 check_contains "GET /api/health" 200 '"status":"ok"' "$BASE_URL/api/health"
 
-# 2. Report SSR pages
-check "GET / (report home)" 200 "$BASE_URL/"
+# 2. Report SSR pages. Root / always 302-negotiates to /en/ or /zh-CN/ by
+#    Accept-Language (src/pages/index.astro), so assert the redirect itself;
+#    the localized landing page must then render 200.
+ROOT_REDIRECT="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code} %{redirect_url}' "$BASE_URL/")"
+if printf '%s' "$ROOT_REDIRECT" | grep -qE "^302 .*/(en|zh-CN)/?$"; then
+  echo "PASS  GET / negotiates locale (302 -> $(printf '%s' "$ROOT_REDIRECT" | cut -d' ' -f2-))"
+  PASS=$((PASS + 1))
+else
+  echo "FAIL  GET / locale negotiation (got '$ROOT_REDIRECT', want 302 to /en/ or /zh-CN/)"
+  FAIL=$((FAIL + 1))
+fi
 check "GET /en/ (English report home)" 200 "$BASE_URL/en/"
 
 # 3. Cron endpoint authorization
