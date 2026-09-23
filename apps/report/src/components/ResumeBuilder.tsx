@@ -195,6 +195,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
             local: toResumeRequest(fields),
             ...(wantPolish ? { polish: true } : {}),
           }),
+          credentials: 'include',
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as { draft: ResumeDraft; html: string; polish?: ResumePolishResult };
@@ -281,6 +282,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
             format: 'md',
             ...(polishOn ? { polish: true } : {}),
           }),
+          credentials: 'include',
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as { markdown: string };

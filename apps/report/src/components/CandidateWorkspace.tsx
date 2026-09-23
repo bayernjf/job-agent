@@ -173,7 +173,9 @@ export default function CandidateWorkspace({
         }
         params.set('limit', String(PAGE_SIZE));
         params.set('offset', String(offset));
-        const res = await fetch(`${apiBase}/candidates?${params.toString()}`);
+        const res = await fetch(`${apiBase}/candidates?${params.toString()}`, {
+          credentials: 'include',
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as { items: Candidate[]; total: number };
         if (!cancelled) {
