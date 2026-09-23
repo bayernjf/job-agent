@@ -54,19 +54,22 @@ without rebuilding native deps.
    the OS language. Verify every PNG with
    `sips -g pixelWidth -g pixelHeight <file>` before uploading.
 
-Before a **production** listing release, build the extension in release mode
-(strips every localhost grant, pins the production site origin, and refuses to
-build against a localhost API):
+Before a **production** listing release, build the CWS zip with the one-command
+release packaging (runs the release build, refuses localhost API/site origins,
+strips every localhost grant, asserts the baked manifest, and zips `dist/` with
+`manifest.json` at the archive root):
 
 ```sh
-EXTENSION_RELEASE=1 \
 EXTENSION_API_BASE=https://<app-origin>/api \
 EXTENSION_SITE_ORIGIN=https://<app-origin> \
-pnpm --filter @jobagent/extension build
+pnpm --filter @jobagent/extension release
+# -> apps/extension/release/jobagent-extension-v<version>.zip
 ```
 
-Then re-run the captures so the advanced "API endpoint" field and every panel
-link point at production rather than the `http://localhost:3000` placeholder.
+The plain `EXTENSION_RELEASE=1 ... pnpm build` flow still works if you only need
+`dist/` without the zip. Then re-run the captures so the advanced "API endpoint"
+field and every panel link point at production rather than the
+`http://localhost:3000` placeholder.
 
 ## Pre-submit checklist (CWS)
 
