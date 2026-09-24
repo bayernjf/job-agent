@@ -25,6 +25,7 @@ export type {
 } from './repositories/job-posting.js';
 export type { IDemoSessionsRepository } from './repositories/demo-sessions.js';
 export type { IApplicationsRepository } from './repositories/applications.js';
+export type { IInterviewsRepository, InterviewListFilter } from './repositories/interviews.js';
 export type { IAccountsRepository } from './repositories/accounts.js';
 export type { IAuthSessionsRepository } from './repositories/auth-sessions.js';
 
@@ -69,6 +70,13 @@ export type {
   ApplicationPatch,
 } from './entities/application.js';
 export type {
+  StoredInterview,
+  NewInterview,
+  InterviewFormat,
+  InterviewOutcome,
+  InterviewStatus,
+} from './entities/interview.js';
+export type {
   StoredAccount,
   ProviderIdentity,
   NewAccount,
@@ -109,6 +117,10 @@ export {
   APPLICATION_STATUSES,
   APPLICATION_ORIGINS,
   toStoredApplication,
+  INTERVIEW_FORMATS,
+  INTERVIEW_STATUSES,
+  INTERVIEW_OUTCOMES,
+  toStoredInterview,
   toCandidateSummary,
   searchCandidates,
 } from './entities/index.js';
