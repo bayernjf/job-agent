@@ -6,10 +6,10 @@
 # the latest migration is refused when it has no safe down script.
 #
 # Usage: ./scripts/migrate-down [--db <path>]
-# Default database: <repo>/data/job-agent.db
+# Default database: DB_PATH when set, else <repo>/data/job-agent.db
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-pnpm --filter @jobagent/storage exec node dist/cli.js migrate down "$@"
+pnpm --filter @jobagent/storage exec node dist/cli.js down "$@"
