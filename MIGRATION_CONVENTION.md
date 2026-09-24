@@ -44,7 +44,7 @@
 
 ## 5. 应用 / 回滚 / 校验（W1 已落地）
 
-- **向前应用**：迁移器按 `NNN` 顺序应用，记录已应用版本。
+- **向前应用**：迁移器按 `NNN` 顺序应用，记录已应用版本。CLI 与 `createStorage()` 共用同一条 SQLite 目标库规则：`--db <path>`（或位置参数）> 环境变量 `DB_PATH` > 仓库根 `data/job-agent.db`，且每次执行先打印 `[migrate] sqlite <path> (from <来源>)`，避免把迁移打到与运行时不同的库。
 - **回滚一步**：`scripts/migrate-down`（经持久化层的 `rollbackLatestMigration`；最新迁移无安全 down 时拒绝执行）。迁移文件末尾可携带 down 脚本段（放在 up 内容之后）：
 
   ```sql
