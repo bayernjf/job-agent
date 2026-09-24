@@ -147,6 +147,8 @@ export interface ApiRepos {
   applications: IApplicationsRepository;
   accounts: IAccountsRepository;
   authSessions: IAuthSessionsRepository;
+  /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
+  ping: () => Promise<void>;
 }
 
 export interface ApiDeps {
@@ -489,9 +491,35 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     return ip ? hashIp(ip, effectiveSalt) : null;
   };
 
-  // 健康检查
-  app.get('/health', (c) => {
-    return c.json({ status: 'ok', service: 'jobagent-api', time: new Date().toISOString() });
+  // 健康检查：浅检查（默认）不依赖 DB，恒定返回进程存活；
+  // ?deep=1（或 ?deep=true）额外执行一次持久化层 SELECT 1 往返，DB 不可达时返回 503，
+  // 供部署后 smoke / 监控探活区分"进程在但数据库挂了"。
+  app.get('/health', async (c) => {
+    const base = {
+      status: 'ok' as const,
+      service: 'jobagent-api',
+      time: new Date().toISOString(),
+    };
+    const deep = c.req.query('deep');
+    if (deep !== '1' && deep !== 'true') {
+      return c.json(base);
+    }
+    const started = Date.now();
+    try {
+      await repos.ping();
+      return c.json({ ...base, db: 'ok', dbLatencyMs: Date.now() - started });
+    } catch (err) {
+      return c.json(
+        {
+          status: 'error',
+          service: 'jobagent-api',
+          time: new Date().toISOString(),
+          db: 'unreachable',
+          error: (err as Error).message,
+        },
+        503,
+      );
+    }
   });
 
   // ── 内部定时任务（serverless 部署由 Vercel Cron 调用；常驻部署不用这两条）────────
