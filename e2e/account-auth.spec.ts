@@ -150,6 +150,20 @@ test.describe('ClaimProfile', () => {
     const badge = page.getByTestId('claimed-badge');
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('Verified owner');
+    // 决策 #1-A：认领成功后「未经本人认领」提示条必须收起，不能与徽章并存自相矛盾
+    await expect(page.getByTestId('unclaimed-notice')).toBeHidden();
+  });
+
+  test('labels an unclaimed profile as not owner-authorised in both locales', async ({ page }) => {
+    await mockAuthMe(page, { kind: 'anonymous' });
+    await mockAuthProviders(page);
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+    const notice = page.getByTestId('unclaimed-notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText('has not been authorised or claimed by its owner');
+
+    await page.goto(`/zh-CN/report/${FIXTURE_PROFILE_ID}`);
+    await expect(page.getByTestId('unclaimed-notice')).toContainText('尚未经本人授权或认领');
   });
 
   test('hides the claim CTA for a signed-in non-owner', async ({ page }) => {
