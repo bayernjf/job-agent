@@ -6,6 +6,10 @@
 #
 # It covers the automatable subset of Runbook section 10 (items 1 and 9-10):
 #   1. GET /api/health                         -> 200 {"status":"ok"}
+#      GET /api/health?deep=1                  -> 200 {"db":"ok"} (proves the
+#                                                API-to-database SELECT 1
+#                                                round-trip, not just a live
+#                                                process; 503 when DB is down)
 #   2. GET /  and  /en/  report pages          -> 200 HTML
 #   3. GET /api/internal/cron/process-job
 #        without token                        -> 401
@@ -95,6 +99,10 @@ echo
 
 # 1. API health through the same-origin /api mount
 check_contains "GET /api/health" 200 '"status":"ok"' "$BASE_URL/api/health"
+# 1b. Deep health: proves the API can reach the database (SELECT 1), not merely
+#     that the function process is alive. Returns 503 when the DB is unreachable.
+check_contains "GET /api/health?deep=1 (DB reachable)" 200 '"db":"ok"' \
+  "$BASE_URL/api/health?deep=1"
 
 # 2. Report SSR pages. Root / always 302-negotiates to /en/ or /zh-CN/ by
 #    Accept-Language (src/pages/index.astro), so assert the redirect itself;
