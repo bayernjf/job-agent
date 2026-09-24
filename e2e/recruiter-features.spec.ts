@@ -173,6 +173,12 @@ test.describe('candidate search page', () => {
       'href',
       new RegExp(`/en/report/${FIXTURE_GITEE_PROFILE_ID}\\?view=recruiter`),
     );
+
+    // 决策 #1-A：三张卡都是未认领画像，招聘方视图必须逐卡标出「未经本人认领」
+    await expect(cards.locator('[data-testid="candidate-unclaimed"]')).toHaveCount(3);
+    await expect(githubCard.locator('[data-testid="candidate-unclaimed"]')).toContainText(
+      'Not claimed by owner',
+    );
   });
 });
 

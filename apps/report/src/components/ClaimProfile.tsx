@@ -31,6 +31,8 @@ interface ClaimProfileProps {
   claimedBadge: string;
   errorLabel: string;
   hintLabel: string;
+  /** 认领成功后需要收起的 SSR 提示条 data-testid（决策 #1-A 的"未经本人认领"标注） */
+  unclaimedNoticeTestId?: string;
 }
 
 export default function ClaimProfile({
@@ -43,6 +45,7 @@ export default function ClaimProfile({
   claimedBadge,
   errorLabel,
   hintLabel,
+  unclaimedNoticeTestId,
 }: ClaimProfileProps) {
   const [status, setStatus] = useState<UiStatus>('loading');
 
@@ -70,6 +73,15 @@ export default function ClaimProfile({
       cancelled = true;
     };
   }, [apiBase, profileId, subjectPlatform, subjectLogin]);
+
+  // 认领成功后，服务端渲染的「未经本人认领」提示条即刻失效，收起以免自相矛盾。
+  useEffect(() => {
+    if (status !== 'claimed' || !unclaimedNoticeTestId) return;
+    const node = document.querySelector<HTMLElement>(
+      `[data-testid="${unclaimedNoticeTestId}"]`,
+    );
+    if (node) node.hidden = true;
+  }, [status, unclaimedNoticeTestId]);
 
   const handleClaim = async () => {
     setStatus('claiming');
