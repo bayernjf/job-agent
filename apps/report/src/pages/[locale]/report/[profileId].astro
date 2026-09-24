@@ -161,6 +161,7 @@ const applicationStatusLabels = {
               claimedBadge={t('report.claimedBadge')}
               errorLabel={t('report.claim.error')}
               hintLabel={t('report.claim.hint')}
+              unclaimedNoticeTestId="unclaimed-notice"
             />
           )
         }
@@ -187,6 +188,14 @@ const applicationStatusLabels = {
                 <strong>{s.n}</strong>&nbsp;{t(s.labelKey)}
               </span>
             ))}
+          </p>
+        )
+      }
+      {
+        /* 决策 #1-A：未授权画像必须显著标注来源与效力边界 */
+        !profile.subject.claimed && (
+          <p class="unclaimed-notice" data-testid="unclaimed-notice" role="note">
+            {t('report.unclaimedNotice')}
           </p>
         )
       }
@@ -720,6 +729,19 @@ const applicationStatusLabels = {
     margin-top: var(--ja-space-3);
     font-size: var(--ja-text-sm);
     color: var(--ja-color-fg-muted);
+  }
+
+  /* 决策 #1-A 的"显著标注"：琥珀色左边框提示条，正文用前景色保证可读性 */
+  .unclaimed-notice {
+    margin-top: var(--ja-space-3);
+    padding: var(--ja-space-2) var(--ja-space-3);
+    border: 1px solid var(--ja-color-border);
+    border-left: 3px solid var(--ja-color-warning);
+    border-radius: var(--ja-radius-sm);
+    background: var(--ja-color-amber-50);
+    color: var(--ja-color-fg);
+    font-size: var(--ja-text-sm);
+    line-height: var(--ja-leading-normal);
   }
 
   .view-toggle {
