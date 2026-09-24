@@ -891,6 +891,89 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 ---
 
+## 3.7 面试计划（招聘方侧，需登录）
+
+招聘方在「候选人画像 × 目标岗位」上安排面试、流转状态、登记结果，供报告页 `/recruit` 招聘方视图的「面试计划」island 使用。
+
+- **三个端点都要求登录**（携带 `jobagent_session` Cookie）；未登录一律 `401`（`code: AUTH_AUTH_REQUIRED`）。
+- **行级隔离**：只能读到/改到当前登录账号创建的面试；访问他人面试返回 `404`（不泄露资源是否存在）。
+- **不物理删除**：取消/爽约用状态 `cancelled` / `no_show` 表达。
+- `format` 取值：`onsite` / `phone` / `video`。
+- `status` 取值：`scheduled`（待面试，默认）/ `completed`（已完成）/ `cancelled`（已取消）/ `no_show`（爽约）/ `rescheduled`（已改期）。
+- `outcome` 取值（可空，通常完成后登记）：`strong_yes` / `yes` / `neutral` / `no`。
+
+### `POST /interviews`
+
+为候选人安排一场面试。可关联一条该候选人的投递记录；关联后若该投递仍处于 `saved`/`applied`/`viewed` 早期阶段，会被自动推进到 `interview`（`offer`/`rejected`/`withdrawn` 等终态不回退）。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `profileId` | string | 是 | 候选人画像 id |
+| `targetTitle` | string | 是 | 面试目标岗位名称（冗余自投递/岗位，列表直接展示） |
+| `scheduledStart` | string(ISO8601 datetime) | 是 | 开始时间（UTC） |
+| `scheduledEnd` | string(ISO8601 datetime) | 是 | 结束时间，必须晚于开始时间 |
+| `format` | enum | 是 | `onsite` / `phone` / `video` |
+| `roundLabel` | string | 是 | 轮次自由文本，如「一面 · 技术筛」 |
+| `targetCompany` | string | 否 | 目标公司，可空 |
+| `interviewerName` | string | 否 | 面试官姓名（自由文本，单条） |
+| `interviewerEmail` | string(email) | 否 | 面试官邮箱，可空 |
+| `applicationId` | string | 否 | 关联的投递记录 id；须属于同一 `profileId` |
+
+#### 响应
+
+- `201`：返回创建后的完整记录，`id` 形如 `int-<uuid>`，默认 `status=scheduled`，`outcome`/`rating`/`feedbackNote` 为 `null`。
+- `400`：非法 JSON、缺必填字段、`scheduledEnd <= scheduledStart`、邮箱格式非法、`applicationId` 不属于该画像。
+- `401`：未登录。
+- `404`：画像不存在，或 `applicationId` 指向的投递不存在。
+
+### `GET /interviews`
+
+列出当前登录账号创建的面试，按 `scheduledStart` 倒序，**只返回本人数据**。
+
+#### Query 参数（均可选）
+
+| 参数 | 说明 |
+| --- | --- |
+| `profileId` | 仅返回该候选人的面试 |
+| `status` | 按状态过滤，取值同 `status` 枚举；非法值 `400` |
+
+#### 响应（200）
+
+```json
+{ "items": [ { "id": "int-<uuid>", "profileId": "prof...", "status": "scheduled" } ] }
+```
+
+未登录返回 `401`。
+
+### `PATCH /interviews/:id`
+
+改期、状态流转或登记结果。
+
+#### 请求体（至少一个字段）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `status` | enum | 状态流转 |
+| `scheduledStart` / `scheduledEnd` | string(ISO8601 datetime) | 改期；与现有值合并后仍须满足 end > start |
+| `format` | enum | 调整面试形式 |
+| `roundLabel` | string | 轮次说明 |
+| `targetTitle` / `targetCompany` | string / string \| null | 岗位信息，公司传 `null` 清空 |
+| `interviewerName` / `interviewerEmail` | string \| null | 面试官信息，传 `null` 清空 |
+| `outcome` | enum \| null | 面试结论，传 `null` 清空 |
+| `rating` | integer 1–5 \| null | 招聘方内部评分，传 `null` 清空 |
+| `feedbackNote` | string \| null | 反馈备注，传 `null` 清空 |
+
+#### 响应
+
+- `200`：返回更新后的完整记录。
+- `400`：非法 JSON、请求体为空、枚举非法、`rating` 越界、邮箱非法、合并后 `scheduledEnd <= scheduledStart`。
+- `401`：未登录。
+- `404`：面试不存在，或不属于当前登录账号。
+
+---
+
 ## 4. 健康检查
 
 ### `GET /health`
