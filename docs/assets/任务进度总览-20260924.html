@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>JobAgent 任务进度总览（截至 2026-09-24）</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: #f5f7f6;
+    color: #1f2d27;
+    padding: 40px 44px 36px;
+    width: 1560px;
+  }
+  h1 { font-size: 34px; font-weight: 800; color: #143a2a; letter-spacing: .5px; }
+  .subtitle { margin-top: 12px; font-size: 17px; color: #5a6b63; }
+  .subtitle code { font-family: "SF Mono", Menlo, Consolas, monospace; background: #e9f0ec; padding: 2px 7px; border-radius: 5px; font-size: 15px; color: #2a5a42; }
+
+  .timeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 26px; }
+  .day-card {
+    background: #ffffff;
+    border: 1.5px solid #46a06d;
+    border-radius: 12px;
+    padding: 15px 17px 16px;
+    min-height: 132px;
+  }
+  .day-card .date { font-size: 17px; font-weight: 800; color: #1c7a4b; letter-spacing: .3px; }
+  .day-card .desc { margin-top: 9px; font-size: 15px; line-height: 1.5; color: #24382f; font-weight: 600; }
+  .day-card .mark { margin-top: 11px; font-size: 15px; font-weight: 700; color: #1c7a4b; }
+  .day-card .mark.current { color: #b25c00; }
+
+  .panel {
+    margin-top: 24px;
+    border-radius: 14px;
+    padding: 22px 26px 24px;
+  }
+  .panel.done { background: #ffffff; border: 1.5px solid #46a06d; }
+  .panel.rest  { background: #fffaf0; border: 1.5px solid #e0a94a; }
+  .panel h2 { font-size: 21px; font-weight: 800; }
+  .panel.done h2 { color: #143a2a; }
+  .panel.rest  h2 { color: #8a5a10; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 11px; margin-top: 16px; }
+  .chip {
+    background: #e7f4ec;
+    border: 1px solid #bfe0cd;
+    color: #23513b;
+    border-radius: 20px;
+    padding: 7px 15px;
+    font-size: 14.5px;
+    font-weight: 600;
+  }
+
+  .baseline { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .b-item {
+    background: #143a2a; color: #eaf5ee;
+    border-radius: 8px; padding: 9px 15px; font-size: 14.5px; font-weight: 700;
+  }
+  .b-item b { color: #8fd6ab; font-size: 16px; }
+
+  .rest-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 18px; }
+  .rest-card {
+    background: #fff6e6;
+    border: 1px solid #ecc98a;
+    border-radius: 11px;
+    padding: 16px 19px 18px;
+  }
+  .rest-card h3 { font-size: 16.5px; color: #8a5a10; font-weight: 800; }
+  .rest-card ul { margin: 10px 0 0 18px; }
+  .rest-card li { font-size: 14px; line-height: 1.62; color: #4a3c24; }
+  .rest-card li code { font-family: "SF Mono", Menlo, monospace; background: #f3e6cc; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+
+  .source { margin-top: 22px; font-size: 13.5px; color: #8a958f; }
+</style>
+</head>
+<body>
+
+<h1>JobAgent 任务进度总览（截至 2026-09-24）</h1>
+<div class="subtitle">
+  代码侧 item 1–51 全部闭环（<code>origin/main = 519d6fb</code>＝Merge PR #79）；唯一硬阻塞为 P0-3 形态 C 生产部署（外部控制台人工操作）
+</div>
+
+<div class="timeline">
+  <div class="day-card">
+    <div class="date">09-10</div>
+    <div class="desc">脚手架 · 契约 · 工程约定</div>
+    <div class="mark">✅ M1 启动</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-11</div>
+    <div class="desc">W1–W4 · 去风险三轮校准 · 端到端联调</div>
+    <div class="mark">✅ M1 完成</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-12</div>
+    <div class="desc">扩展真实冒烟（GH/Lever） · 工程化 10 项</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-13</div>
+    <div class="desc">P2 五源岗位聚合 · matchJobs 匹配</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-14</div>
+    <div class="desc">匹配端到端接线 · Gitee 双源 · CI Node24</div>
+    <div class="mark">✅</div>
+  </div>
+
+  <div class="day-card">
+    <div class="date">09-15</div>
+    <div class="desc">技能提取 · 双源融合 · 演示模式 · 简历 P-R1</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-16</div>
+    <div class="desc">简历在线/润色 · 在线融合 · 痛点批次 1+2</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-17~18</div>
+    <div class="desc">跨端同步 · 规则 0.3 双源回归 · 配额权重</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-19</div>
+    <div class="desc">账号授权主脊 GitHub/Gitee OAuth · 授权分级闸</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-20</div>
+    <div class="desc">形态 C 部署代码就绪 · 岗位同步 Actions</div>
+    <div class="mark">✅</div>
+  </div>
+
+  <div class="day-card">
+    <div class="date">09-21</div>
+    <div class="desc">P0-1/P0-2 修复 · #14 合规拍板 · 部署执行包</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-22</div>
+    <div class="desc">claim 模板英文化 · actionlint · 真机验证批次</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-23</div>
+    <div class="desc">release 一键打包 · CWS 素材重截 · E2E flaky 加固</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-24</div>
+    <div class="desc">最后一公里门禁 · 中英隐私政策 · 就绪确认单</div>
+    <div class="mark current">✅ 当前</div>
+  </div>
+</div>
+
+<div class="panel done">
+  <h2>已完成 · 代码侧闭环（51/51）</h2>
+  <div class="chips">
+    <span class="chip">item1–8 M1 全链路</span>
+    <span class="chip">item9 P1 扩展一键填充</span>
+    <span class="chip">item10 P2 岗位聚合</span>
+    <span class="chip">item11/13 工程化补全</span>
+    <span class="chip">item12 功能闭环接线</span>
+    <span class="chip">item14–16 Gitee 双源与融合</span>
+    <span class="chip">item17 演示模式</span>
+    <span class="chip">item18/19 定向简历</span>
+    <span class="chip">item20 在线多源融合</span>
+    <span class="chip">item21 痛点方案批次</span>
+    <span class="chip">item22/23 融合收尾与持久化</span>
+    <span class="chip">item24 跨端自动同步</span>
+    <span class="chip">item25–27 规则 0.3 与配额</span>
+    <span class="chip">item28–30 账号授权主脊</span>
+    <span class="chip">item31/32 return_to + 授权闸</span>
+    <span class="chip">item33 Gitee OAuth</span>
+    <span class="chip">item34 部署加固</span>
+    <span class="chip">item35/36 形态 C + Actions</span>
+    <span class="chip">item37–40 P0 修复 + 执行包</span>
+    <span class="chip">item41 claim 英文化</span>
+    <span class="chip">item42–44 actionlint/Node24/归档</span>
+    <span class="chip">item46/47 真机验证批次</span>
+    <span class="chip">item48/49 E2E 加固与回归</span>
+    <span class="chip">item50 release 打包 + CWS 重截</span>
+    <span class="chip">item51 最后一公里 + CWS 准备</span>
+  </div>
+  <div class="baseline">
+    <span class="b-item">单测 <b>835</b> 全绿</span>
+    <span class="b-item">报告 E2E <b>57/57</b></span>
+    <span class="b-item">扩展 E2E <b>11/11</b></span>
+    <span class="b-item">check-migrations <b>11 对 / 0 warning</b></span>
+    <span class="b-item">Docker PG <b>11 迁移 + 9 行为</b></span>
+    <span class="b-item">smoke <b>7/7</b></span>
+    <span class="b-item">audit / gitleaks <b>0 / 0</b></span>
+  </div>
+</div>
+
+<div class="panel rest">
+  <h2>剩余 · 需外部条件 / 拍板（非纯代码可完成）</h2>
+  <div class="rest-grid">
+    <div class="rest-card">
+      <h3>生产部署 · 形态 C（代码就绪，P0-3 唯一硬阻塞）</h3>
+      <ul>
+        <li>Supabase 建库 + 首次走 <code>5432</code> 迁移；函数连 <code>6543</code> pgbouncer</li>
+        <li>Vercel 建项目填 env（Root Directory <code>apps/report</code>、hnd1、<code>API_MOUNT_PREFIX=/api</code>）</li>
+        <li>升级 Vercel Pro（每分钟 cron 硬前提，Hobby 仅每日）</li>
+        <li>生产域名 + Cloudflare DNS（建议 DNS-only）、<code>TRUST_PROXY=true</code></li>
+        <li>生产 GitHub/Gitee OAuth App（回调含 <code>/api/auth/*</code>）+ 三组随机密钥</li>
+        <li>Actions secret <code>DATABASE_URL</code>，部署后跑 smoke</li>
+      </ul>
+    </div>
+    <div class="rest-card">
+      <h3>CWS 上架与扩展试用</h3>
+      <ul>
+        <li>CWS 开发者账号提交（素材/listing/隐私政策均已备齐）</li>
+        <li>生产 API 上线后用 release 构建 + 生产域重截 5 张素材</li>
+        <li>定域后重打 zip，更新 <code>externally_connectable</code> 白名单</li>
+        <li>扩展真人试用（CRX/unpacked 加载）</li>
+        <li>Workday 直渲染租户端到端（被动等待真实租户）</li>
+      </ul>
+    </div>
+    <div class="rest-card">
+      <h3>待拍板决策</h3>
+      <ul>
+        <li>B1 域名（建议 <code>app.job-agent.bayjf.com</code>）</li>
+        <li>B2 Vercel Pro $20/月、B3 启动部署、B4 上架时机</li>
+        <li>item45 面试计划表是否立项（提案建议上线后第一迭代）</li>
+        <li>#9 商业模式与收费节奏</li>
+        <li>真实 LLM：简历 polish 自配 <code>LLM_*</code> 即启用，默认关闭</li>
+      </ul>
+    </div>
+    <div class="rest-card">
+      <h3>外部验证项</h3>
+      <ul>
+        <li>真人试用 / 招聘方盲看实验</li>
+        <li>真实 Gitee OAuth App 凭证配置与首次冒烟</li>
+        <li>外部法务专业意见（#14 产品姿态已拍板）</li>
+        <li>招聘方/应聘者真实反馈回收</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="source">事实来源：handoff.md（2026-09-24）、docs/部署前就绪确认单-20260924.md、docs/deferred-items.md、docs/部署执行单-形态C-20260921.md</div>
+
+</body>
+</html>
