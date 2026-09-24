@@ -66,7 +66,7 @@ pnpm -r test                 # 全部就近单测（Vitest）
 pnpm -r build                # 构建各 workspace
 pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm --filter <pkg> exec vitest run path/to/file.test.ts  # 跑单个测试文件
-pnpm migrate:up / migrate:down / migrate:status          # SQLite 应用/回滚一步/查看状态（默认 data/job-agent.db）；migrate:pg:* 走 Postgres（读 DATABASE_URL）
+pnpm migrate:up / migrate:down / migrate:status          # SQLite 应用/回滚一步/查看状态；目标库优先级 `--db <path>` > `DB_PATH` > 仓库根 data/job-agent.db，每次执行先打印选中的路径与来源；migrate:pg:* 走 Postgres（读 DATABASE_URL，不接受库路径参数）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号/文件头 + 文件名集合对齐（可传单目录参数）
 bash tools/preflight.sh          # 上线前一键本地预检（typecheck/迁移/单测/build/audit，首败即停；--e2e 追加两套 Playwright；--deploy 追加形态 C 产物闸：ASTRO_ADAPTER=vercel 构建 + 一次性 Docker PG 迁移幂等与 storage 实跑〔无 docker 则 SKIP〕+ 扩展 CWS release 打包）
 pnpm e2e                         # report 页 Playwright E2E（拉起 Astro，mock API）
