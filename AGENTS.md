@@ -68,7 +68,7 @@ pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm --filter <pkg> exec vitest run path/to/file.test.ts  # 跑单个测试文件
 pnpm migrate:up / migrate:down / migrate:status          # SQLite 应用/回滚一步/查看状态（默认 data/job-agent.db）；migrate:pg:* 走 Postgres（读 DATABASE_URL）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号/文件头 + 文件名集合对齐（可传单目录参数）
-bash tools/preflight.sh          # 上线前一键本地预检（typecheck/迁移/单测/build/audit，首败即停；--e2e 追加两套 Playwright）
+bash tools/preflight.sh          # 上线前一键本地预检（typecheck/迁移/单测/build/audit，首败即停；--e2e 追加两套 Playwright；--deploy 追加形态 C 产物闸：ASTRO_ADAPTER=vercel 构建 + 一次性 Docker PG 迁移幂等与 storage 实跑〔无 docker 则 SKIP〕+ 扩展 CWS release 打包）
 pnpm e2e                         # report 页 Playwright E2E（拉起 Astro，mock API）
 pnpm e2e:extension               # 扩展 E2E：--headless=new 加载 unpacked MV3、零网络（先 build dist；设计见 docs/design-extension-e2e-20260914.md）
 # 岗位定向简历：库模式 --profile <profileId> --job <jobId>；离线模式 --profile <画像.json> --job-file <岗位.json> [--evidence e.json] [--local-fields l.json] [--format md|html|json] [--locale zh-CN|en] [-o out]
