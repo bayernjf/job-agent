@@ -82,6 +82,9 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     <footer class="footer">
       <div class="ja-container">
         <p class="ja-muted">{t('app.name')} · {t('app.tagline')}</p>
+        <p class="footer-links">
+          <a href={`/${locale}/privacy`}>{t('nav.privacy')}</a>
+        </p>
       </div>
     </footer>
   </body>
@@ -146,5 +149,18 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     padding: var(--ja-space-5) 0;
     margin-top: var(--ja-space-8);
     text-align: center;
+  }
+
+  .footer-links {
+    margin-top: var(--ja-space-2);
+  }
+
+  .footer-links a {
+    font-size: var(--ja-text-sm);
+    color: var(--ja-color-fg-muted);
+  }
+
+  .footer-links a:hover {
+    color: var(--ja-color-accent);
   }
 </style>

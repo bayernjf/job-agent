@@ -1,0 +1,463 @@
+---
+/**
+ * 隐私政策页 /[locale]/privacy（CWS 上架要求可公开访问的隐私政策 URL）。
+ *
+ * i18n 约定例外说明：短 UI 串（标题/导航/更新日期）走 t()；法律正文是长篇结构化
+ * 内容，作为本文件内的内容数据（content as data）按 locale 选取，与"报告内容来自
+ * 数据"同理，不塞进扁平 i18n JSON。权威源同步 docs/privacy-policy-20260924.md，
+ * 两处内容变更必须一起改。
+ */
+import Layout from '../../layouts/Layout.astro';
+import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
+
+const { locale: rawLocale } = Astro.params;
+if (!isLocale(rawLocale)) {
+  return Astro.redirect('/en/privacy');
+}
+const locale: Locale = rawLocale;
+const t = createTranslator(locale);
+
+const disputeEmail =
+  (import.meta.env.PUBLIC_DISPUTE_EMAIL as string | undefined) ??
+  'dispute@job-agent.bayjf.com';
+
+type Block =
+  | { kind: 'p'; text: string }
+  | { kind: 'sub'; text: string }
+  | { kind: 'list'; items: string[] }
+  | { kind: 'table'; head: [string, string, string]; rows: [string, string, string][] };
+
+interface PrivacySection {
+  heading: string;
+  blocks: Block[];
+}
+
+const lastUpdated = '2026-09-24';
+
+const en: PrivacySection[] = [
+  {
+    heading: '1. Information we process',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'This policy covers the JobAgent web service (the ability-report site and its API) and the JobAgent Autofill browser extension. JobAgent analyzes public developer activity on GitHub and Gitee to produce evidence-backed ability profiles, matches profiles to job postings, and helps fill out application forms on supported applicant tracking systems (ATS). We design JobAgent to collect as little personal data as possible.',
+      },
+      { kind: 'sub', text: '1.1 Public code-platform data (core feature)' },
+      {
+        kind: 'p',
+        text: 'When you submit a GitHub or Gitee username, we call the platform official API to read public information only: the public profile, public repositories, and public commits, pull requests and issues. We never clone repositories, never request access to private repositories, and never ask for your code-platform password. Every profile conclusion links back to the public evidence.',
+      },
+      { kind: 'sub', text: '1.2 Sign-in data (only if you choose to log in)' },
+      {
+        kind: 'p',
+        text: 'You can use the core report without an account. If you sign in with GitHub or Gitee OAuth to claim a profile, we receive your public username/display name and, where provided, an email address (GitHub user:email, which may be empty; Gitee user_info). Your email is never returned by the who-am-I API endpoint and is never shown to other users.',
+      },
+      { kind: 'sub', text: '1.3 Technical data for anonymous demo rate limiting' },
+      {
+        kind: 'p',
+        text: 'Anonymous demo usage is rate limited. Without storing your IP address, we store only a salted SHA-256 hash of your IP together with an opaque session identifier and timestamps; we cannot reconstruct your IP from the hash. Demo sessions expire after 24 hours.',
+      },
+      { kind: 'sub', text: '1.4 Contact details you enter — kept on your device, never uploaded' },
+      {
+        kind: 'p',
+        text: 'The name, email, phone number, LinkedIn URL, location and personal website you type into the extension panel or the resume form are stored only in your browser local storage. They are not transmitted to or persisted on our servers, and are written only into the application form you are viewing, only when you click the fill/apply action yourself. You can erase them at any time by clearing the extension local data.',
+      },
+      { kind: 'sub', text: '1.5 Resumes you generate' },
+      {
+        kind: 'p',
+        text: 'Targeted resumes are assembled in your browser / on your own machine from your profile and the job posting. We do not store resume documents or local profile fields on the server. Optional AI polish is off by default; when an operator-configured OpenAI-compatible endpoint is set, only the resume text you choose to polish is sent there, and the feature falls back to rule-based output otherwise.',
+      },
+      { kind: 'sub', text: '1.6 Strictly necessary cookies and client storage' },
+      {
+        kind: 'p',
+        text: 'After OAuth sign-in we set an HTTP-only session cookie. The extension uses the Chrome storage permission for on-device contact details (1.4). We do not use advertising or cross-site tracking cookies.',
+      },
+    ],
+  },
+  {
+    heading: '2. Information we do NOT collect',
+    blocks: [
+      {
+        kind: 'list',
+        items: [
+          'Your GitHub, Gitee or ATS passwords — the extension never sees or types a password field, and OAuth never asks for one.',
+          'Private repositories, private issues, or any non-public code-platform data.',
+          'Payment or billing information.',
+          'Browsing history outside supported career/job pages; the extension activates only on Greenhouse, Lever, Workday and URLs containing careers or jobs.',
+          'Salary, demographic (EEO), visa-authorization or similar sensitive ATS fields — autofill deliberately leaves these blank for you.',
+        ],
+      },
+    ],
+  },
+  {
+    heading: '3. How we use information',
+    blocks: [
+      {
+        kind: 'list',
+        items: [
+          'To generate, store and display evidence-backed profiles and shareable report pages.',
+          'To match profiles with aggregated public job postings and prefill supported application forms.',
+          'To authenticate sign-in and profile claims.',
+          'To prevent abuse of the anonymous demo quota.',
+          'To operate, secure and debug the service (hosting-platform server logs).',
+        ],
+      },
+      { kind: 'p', text: 'We do not sell personal data, and we do not use it for advertising.' },
+    ],
+  },
+  {
+    heading: '4. Sharing and subprocessors',
+    blocks: [
+      {
+        kind: 'table',
+        head: ['Subprocessor', 'Purpose', 'Data potentially exposed'],
+        rows: [
+          ['Vercel (hosting, Tokyo)', 'Web service, API and scheduled functions', 'Request metadata, IP (for the salted hash), service data'],
+          ['Supabase / PostgreSQL (Tokyo)', 'Primary database', 'Profiles, evidence, accounts, sessions, rate-limit hashes'],
+          ['GitHub / Gitee official APIs', 'Source of public developer data', 'The username you submit; public data returned'],
+          ['Operator-configured LLM endpoint (optional, off by default)', 'Resume text polishing', 'Resume text you choose to polish'],
+        ],
+      },
+      {
+        kind: 'p',
+        text: 'When you click through to a job posting or submit an application, you leave JobAgent and interact directly with that third-party ATS, whose own privacy policy applies.',
+      },
+    ],
+  },
+  {
+    heading: '5. Data retention and deletion',
+    blocks: [
+      {
+        kind: 'list',
+        items: [
+          'Ability profiles and evidence are retained long-term so shared report links stay stable and verifiable.',
+          'Share links do not expire automatically.',
+          'On request we delete a profile/evidence and revoke a share link via the contact email below.',
+          'Demo sessions expire after 24 hours; expired sign-in sessions and unclaimed accounts are purged by a scheduled cleanup job.',
+          'On-device contact details and resumes remain until you clear them locally.',
+        ],
+      },
+    ],
+  },
+  {
+    heading: '6. International data transfers',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'The production service is hosted in the Tokyo region (Vercel hnd1, Supabase Northeast Asia). GitHub/Gitee public data is read from their respective APIs. The product is designed for both Chinese and international users.',
+      },
+    ],
+  },
+  {
+    heading: '7. Your rights',
+    blocks: [
+      {
+        kind: 'list',
+        items:
+          [
+            'View everything we hold about a username by opening its report page.',
+            'Request deletion and share-link revocation by email.',
+            'Clear all locally stored contact details yourself (extension / browser site data).',
+            'Sign out, which ends your session cookie.',
+          ],
+      },
+      { kind: 'p', text: 'We respond to verifiable requests within a reasonable period.' },
+    ],
+  },
+  {
+    heading: '8. Children',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'JobAgent is a professional developer tool not directed at children; we do not knowingly collect data from anyone under 16 (or the minimum age in your jurisdiction).',
+      },
+    ],
+  },
+  {
+    heading: '9. Security',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'Credentials and secrets are held only in server-side environment variables. The extension talks to the API through its background service worker, never touches password fields, and sends on-device contact details only into the form you explicitly submit. Profiles are stored as immutable snapshots so evidence cannot silently change after a report is shared.',
+      },
+    ],
+  },
+  {
+    heading: '10. Changes and contact',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'We may update this policy; material changes update the last-updated date and this page. Questions, correction/deletion requests and objections:',
+      },
+      { kind: 'p', text: disputeEmail },
+    ],
+  },
+];
+
+const zhCN: PrivacySection[] = [
+  {
+    heading: '1. 我们处理哪些信息',
+    blocks: [
+      {
+        kind: 'p',
+        text: '本政策适用于 JobAgent 网络服务（能力报告站及其 API）与 JobAgent 自动填充浏览器扩展。JobAgent 只分析开发者在 GitHub、Gitee 上的公开活动，产出有证据背书的能力画像，将画像与岗位匹配，并帮助你在受支持的招聘系统（ATS）上填写申请表。我们按"尽可能少收集个人数据"的原则设计 JobAgent。',
+      },
+      { kind: 'sub', text: '1.1 公开代码平台数据（核心功能）' },
+      {
+        kind: 'p',
+        text: '当你提交一个 GitHub 或 Gitee 用户名时，我们通过平台官方 API 只读取公开信息：公开主页、公开仓库，以及公开的 commit、Pull Request 与 Issue。我们绝不 clone 仓库、绝不申请私有仓库权限、绝不索要你在代码平台的密码。画像中的每条结论都链接回可公开核验的证据。',
+      },
+      { kind: 'sub', text: '1.2 登录数据（仅在你主动登录时）' },
+      {
+        kind: 'p',
+        text: '不登录也能使用核心报告。如果你用 GitHub/Gitee OAuth 登录以认领本人画像，我们会收到你的公开用户名/昵称，以及平台在授权后返回的邮箱（GitHub 为 user:email 授权，可能为空；Gitee 为 user_info 授权）。你的邮箱不会通过"当前登录身份"接口返回，也不会对其他用户展示。',
+      },
+      { kind: 'sub', text: '1.3 匿名演示限流所用的技术数据' },
+      {
+        kind: 'p',
+        text: '匿名"试用演示"受配额限制。为在不保存你 IP 地址的前提下实现限流，我们只保存 IP 地址的加盐 SHA-256 哈希值，以及不透明的会话标识与时间戳；我们无法从哈希反推你的 IP。演示会话 24 小时后自动过期。',
+      },
+      { kind: 'sub', text: '1.4 你填写的联系方式——只存在你的设备上，绝不上传' },
+      {
+        kind: 'p',
+        text: '你在扩展面板或简历表单中填写的姓名、邮箱、电话、LinkedIn、所在地与个人网站，只保存在你浏览器的本地存储中，不会传输到或持久化在我们的服务器上；它们只会在你本人点击填充/投递动作时，写入你正在查看的申请表。你随时可以通过清除扩展本地数据把它们删除。',
+      },
+      { kind: 'sub', text: '1.5 你生成的简历' },
+      {
+        kind: 'p',
+        text: '岗位定向简历在你的浏览器/本机上，根据你的画像与岗位信息装配完成。我们不在服务器上保存简历文档或本地档案字段。AI 润色默认关闭；仅当运营方配置了 OpenAI 兼容接口、且你主动选择润色时，才会把相应简历文本发往该接口，未配置时功能回退到规则版输出。',
+      },
+      { kind: 'sub', text: '1.6 严格必要的 Cookie 与客户端存储' },
+      {
+        kind: 'p',
+        text: 'OAuth 登录后我们设置 HttpOnly 会话 Cookie 以保持登录态。扩展使用 Chrome 的 storage 权限保存 1.4 所述的本机联系方式。我们不使用广告或跨站追踪 Cookie。',
+      },
+    ],
+  },
+  {
+    heading: '2. 我们不收集哪些信息',
+    blocks: [
+      {
+        kind: 'list',
+        items: [
+          '你的 GitHub、Gitee 或 ATS 密码——扩展永不接触、也不填写密码字段，OAuth 也不索要密码。',
+          '私有仓库、私有 Issue 或任何非公开的代码平台数据。',
+          '支付或账单信息。',
+          '受支持招聘/岗位页面之外的浏览历史；扩展只在 Greenhouse、Lever、Workday 以及 URL 含 careers 或 jobs 的页面上激活。',
+          '薪资、人口统计（EEO）、签证授权等敏感 ATS 字段——一键填充刻意留空，由你本人填写。',
+        ],
+      },
+    ],
+  },
+  {
+    heading: '3. 我们如何使用信息',
+    blocks: [
+      {
+        kind: 'list',
+        items: [
+          '生成、保存并展示有证据背书的能力画像与可分享报告页；',
+          '将画像与聚合的公开岗位匹配，并预填受支持的申请表；',
+          '完成登录认证与本人画像认领；',
+          '防止匿名演示配额被滥用；',
+          '运行、保障与排查服务（托管平台的服务器日志）。',
+        ],
+      },
+      { kind: 'p', text: '我们不出售个人数据，也不将其用于广告。' },
+    ],
+  },
+  {
+    heading: '4. 共享与受托处理方',
+    blocks: [
+      {
+        kind: 'table',
+        head: ['受托方', '用途', '可能接触的数据'],
+        rows: [
+          ['Vercel（托管，东京）', '网站、API 与定时函数', '请求元数据、IP（用于加盐哈希）、业务数据'],
+          ['Supabase / PostgreSQL（东京）', '主数据库', '画像、证据、账号、会话、限流哈希'],
+          ['GitHub / Gitee 官方 API', '公开开发者数据来源', '你提交的用户名、平台返回的公开数据'],
+          ['运营方配置的 LLM 接口（可选，默认关闭）', '简历文本润色', '你主动选择润色的简历文本'],
+        ],
+      },
+      {
+        kind: 'p',
+        text: '当你点击岗位链接或提交申请时，你已离开 JobAgent、直接与第三方 ATS 交互，其隐私政策另行适用。',
+      },
+    ],
+  },
+  {
+    heading: '5. 数据留存与删除',
+    blocks: [
+      {
+        kind: 'list',
+        items: [
+          '能力画像及其证据长期留存，以保证已分享的报告链接稳定、可核验。',
+          '分享链接不自动过期。',
+          '应你的请求，我们会通过下方联系邮箱删除画像/证据并撤销分享链接。',
+          '演示会话 24 小时后过期；过期登录会话与未认领账号由定时清理任务清除。',
+          '本机联系方式与简历由你保留，直至你在本地清除。',
+        ],
+      },
+    ],
+  },
+  {
+    heading: '6. 国际数据传输',
+    blocks: [
+      {
+        kind: 'p',
+        text: '生产服务托管于东京区域（Vercel hnd1、Supabase 东北亚）。GitHub/Gitee 公开数据从其官方 API 读取。本产品面向中国与海外用户同步设计。',
+      },
+    ],
+  },
+  {
+    heading: '7. 你的权利',
+    blocks: [
+      {
+        kind: 'list',
+        items: [
+          '打开某用户名的报告页，查看我们持有的全部相关内容；',
+          '通过邮件请求删除与撤销分享链接；',
+          '自行清除全部本机联系方式（扩展/浏览器站点数据）；',
+          '退出登录以结束会话 Cookie。',
+        ],
+      },
+      { kind: 'p', text: '对可核验的请求，我们会在合理期限内回复。' },
+    ],
+  },
+  {
+    heading: '8. 未成年人',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'JobAgent 是面向专业开发者的工具，不面向儿童；我们不会在知情情况下收集 16 岁以下（或你所在司法辖区最低年龄以下）任何人的数据。',
+      },
+    ],
+  },
+  {
+    heading: '9. 安全',
+    blocks: [
+      {
+        kind: 'p',
+        text: '凭证与密钥只保存在服务端环境变量中。扩展通过后台 service worker 与 API 通信，永不接触密码字段，且仅把本机联系方式写入你明确提交的表单。画像以不可变快照保存，报告分享后证据不会被悄悄改动。',
+      },
+    ],
+  },
+  {
+    heading: '10. 变更与联系',
+    blocks: [
+      { kind: 'p', text: '我们可能更新本政策；重大变更会更新"最后更新"日期与本页面。咨询、更正/删除请求与异议请联系：' },
+      { kind: 'p', text: disputeEmail },
+    ],
+  },
+];
+
+const sections = locale === 'zh-CN' ? zhCN : en;
+---
+
+<Layout locale={locale} titleKey="privacy.title" robots="index,follow">
+  <article class="ja-container privacy-page">
+    <h1>{t('privacy.title')}</h1>
+    <p class="ja-muted privacy-updated">{t('privacy.lastUpdated', { date: lastUpdated })}</p>
+    {sections.map((section) => (
+      <section>
+        <h2>{section.heading}</h2>
+        {section.blocks.map((block) => (
+          <>
+            {block.kind === 'p' && <p>{block.text}</p>}
+            {block.kind === 'sub' && <h3>{block.text}</h3>}
+            {block.kind === 'list' && (
+              <ul>
+                {block.items.map((item) => <li>{item}</li>)}
+              </ul>
+            )}
+            {block.kind === 'table' && (
+              <div class="privacy-table-wrap">
+                <table>
+                  <thead>
+                    <tr>{block.head.map((cell) => <th>{cell}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {block.rows.map((row) => (
+                      <tr>{row.map((cell) => <td>{cell}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ))}
+      </section>
+    ))}
+  </article>
+</Layout>
+
+<style>
+  .privacy-page {
+    max-width: 800px;
+    padding: var(--ja-space-6) var(--ja-space-5);
+  }
+
+  .privacy-updated {
+    margin-bottom: var(--ja-space-6);
+  }
+
+  .privacy-page h1 {
+    font-size: var(--ja-text-2xl);
+    margin-bottom: var(--ja-space-2);
+  }
+
+  .privacy-page h2 {
+    font-size: var(--ja-text-lg);
+    margin-top: var(--ja-space-6);
+    margin-bottom: var(--ja-space-3);
+  }
+
+  .privacy-page h3 {
+    font-size: var(--ja-text-base);
+    margin-top: var(--ja-space-4);
+    margin-bottom: var(--ja-space-2);
+  }
+
+  .privacy-page p,
+  .privacy-page li,
+  .privacy-page td,
+  .privacy-page th {
+    font-size: var(--ja-text-sm);
+    line-height: 1.7;
+    color: var(--ja-color-fg-muted);
+  }
+
+  .privacy-page ul {
+    padding-left: var(--ja-space-5);
+    margin: var(--ja-space-2) 0;
+    list-style: disc;
+  }
+
+  .privacy-page li {
+    margin-bottom: var(--ja-space-2);
+  }
+
+  .privacy-table-wrap {
+    overflow-x: auto;
+    margin: var(--ja-space-3) 0;
+  }
+
+  .privacy-page table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--ja-color-border);
+    border-radius: var(--ja-radius-md);
+  }
+
+  .privacy-page th,
+  .privacy-page td {
+    text-align: left;
+    padding: var(--ja-space-2) var(--ja-space-3);
+    border-bottom: 1px solid var(--ja-color-border);
+    vertical-align: top;
+  }
+
+  .privacy-page th {
+    color: var(--ja-color-fg);
+    background: var(--ja-color-surface);
+  }
+</style>

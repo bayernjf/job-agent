@@ -30,9 +30,10 @@ in `../src/icons/`, not here. There is **no** 920×680 tile in the current spec.
 
 The extension panel talks to the **real local API** (real exportable profile and
 real job matches); only the ATS host page is a local mock (`ats-job.html`),
-routed in exactly like the extension E2E. Use Node 22 for capture (the local
-`better-sqlite3` build matches its ABI); do not switch to the `.nvmrc` Node 24
-without rebuilding native deps.
+routed in exactly like the extension E2E. Use the repo's pinned Node version
+(`.nvmrc`, Node 24) for capture — the current captures (2026-09-23) were produced
+on Node 24. The capture driver itself only uses Playwright and `fetch`; native
+SQLite deps belong to the separately started API process.
 
 1. Prepare a local SQLite database and run migrations, then start the API, worker
    and report app against the same DB (see the root `AGENTS.md` / deployment
@@ -86,31 +87,35 @@ cannot be closed by code alone.
    `EXTENSION_API_BASE`/`EXTENSION_SITE_ORIGIN`; confirm `dist/manifest.json`
    contains no `localhost`/`127.0.0.1` entry and the API base is the same-origin
    `/api` URL (the panel calls the API through the background service worker).
-3. **Screenshots recaptured with current code + production build** (see
-   [Known capture-time caveats](#known-capture-time-caveats)): the tracked
-   screenshots date from 2026-09-21 and screenshot 02 still shows pre-item41
-   **Chinese evidence claims**; recapture requires a profile regenerated after
-   the English-claim change (item41, commit `3ddd18c`). Re-run the captures with
-   the release build so no `localhost` UI is visible.
+3. **Screenshots current** — done 2026-09-23 (item50): all five screenshots were
+   recaptured on Node 24 against the English profile snapshot `32d41707`, so
+   screenshot 02 shows English evidence claims and no `localhost` UI is visible.
+   A production listing release must re-run the captures with the release build
+   so the advanced "API endpoint" field and panel links point at production.
 4. **Fixed extension ID preserved**: `src/manifest.json` ships a `key`
    (derived ID `dgbnkdljapgglpdcmncbleioocbjfmmc`) so the CWS listing, the
    report page's `externally_connectable` calls and existing unpacked users keep
    one identity. `key.pem` must stay out of git/public bundles; after the first
    CWS publish, dev unpacked copies with the same key upgrade in place, older
    copies without it should be removed to avoid double-install confusion.
-5. **Image sizes verified**: 5× 1280×800 screenshots, 440×280 small tile
-   (required), 1400×560 marquee (required for featuring), 128×128 in-package
-   icon — check with `sips -g pixelWidth -g pixelHeight <file>`.
+5. **Image sizes verified** — done 2026-09-24 with `sips`: 5× 1280×800
+   screenshots (188229/211561/137423/97996/101309 bytes), 440×280 small tile
+   (82212 bytes, required), 1400×560 marquee (333504 bytes, required for
+   featuring), 128×128 in-package icon — all conform.
 6. **Listing copy pasted** from [Store listing copy](#store-listing-copy) below
    (en + zh-CN); confirm the detailed-description length against the live CWS
    dashboard input.
 7. **CWS metadata prepared**: category Productivity; single-purpose statement
    (one-click ATS autofill from a verified profile); permission justifications
-   for `storage` and the host patterns (the broad `*/*careers*`、`*/*jobs*`
-   globs exist to catch customer-hosted ATS pages — expect a review question);
-   privacy practices (no collection of personal data by the extension; email/
-   phone/LinkedIn stay local; passwords never touched) and a privacy-policy URL
-   on the deployed site.
+   for `storage` and the host patterns — copy-ready text in
+   [Permission justifications](#permission-justifications) below (the broad
+   `*/*careers*`、`*/*jobs*` globs exist to catch customer-hosted ATS pages —
+   expect a review question); privacy practices (no collection of personal data
+   by the extension; email/phone/LinkedIn stay local; passwords never touched)
+   and the privacy-policy URL. The hosted policy page ships in the report app at
+   `/en/privacy` and `/zh-CN/privacy` (canonical source
+   `docs/privacy-policy-20260924.md`); after Form C deployment the URL to enter is
+   `https://<app-origin>/en/privacy`.
 8. **Production API live** before submission review: presets and
    `GET /profiles/by-subject/:platform/:login` must answer on the production
    origin, otherwise the panel shows empty states during review.
@@ -134,9 +139,9 @@ cannot be closed by code alone.
 > 1. Generate your free JobAgent profile. We analyze public commits, pull
 >    requests and issues — no repository cloning, no private data — and rank
 >    every skill with a confidence level and a link back to the public evidence.
-> 2. Open a supported application page (Greenhouse or Lever). The extension
->    lists openings ranked by skill match and explains each score with a
->    title/tags/description breakdown and the exact skills and repositories
+> 2. Open a supported application page (Greenhouse, Lever or Workday). The
+>    extension lists openings ranked by skill match and explains each score with
+>    a title/tags/description breakdown and the exact skills and repositories
 >    behind it.
 > 3. Enter your name, email and contact details locally, then click once to
 >    populate the application form, including a tailored self-statement for
@@ -171,8 +176,9 @@ cannot be closed by code alone.
 > 1. 免费生成你的 JobAgent 画像：我们只分析公开的 commit、Pull Request 与
 >    Issue（不 clone 仓库、不触碰私有数据），每项技能都给出置信度，并链接回
 >    可公开核验的证据。
-> 2. 打开受支持的招聘页面（Greenhouse 或 Lever）：扩展会按技能匹配度为岗位
->    排序，并通过标题/标签/描述的打分拆解，说明每个分数背后的确切技能与仓库。
+> 2. 打开受支持的招聘页面（Greenhouse、Lever 或 Workday）：扩展会按技能匹配度
+>    为岗位排序，并通过标题/标签/描述的打分拆解，说明每个分数背后的确切技能与
+>    仓库。
 > 3. 在本地填写姓名、邮箱与联系方式，点击一次即可填充申请表，并为动机类问题
 >    生成贴合岗位的自我陈述。
 >
@@ -188,16 +194,67 @@ cannot be closed by code alone.
 > The detailed description field has no documented fixed character limit; confirm
 > against the live CWS dashboard input when pasting.
 
+## Permission justifications
+
+Copy-ready text for the CWS "Permissions" justification fields (en + zh-CN). The
+extension requests **no** `tabs`, `history`, `cookies`, `scripting` or
+`webNavigation` permission; the MV3 background service worker is the only
+component that talks to the JobAgent API.
+
+**`storage` permission**
+
+- EN: Stores your contact details (name, email, phone, LinkedIn URL, personal
+  site, location) and panel preferences locally in the browser so they can be
+  filled into application forms. This data never leaves your device and is never
+  uploaded; you can clear it at any time from the extension's local data.
+- 中文：在浏览器本地保存你的联系方式（姓名、邮箱、电话、LinkedIn、个人主页、
+  所在地）与面板偏好，用于填写申请表。这些数据不会离开你的设备、绝不上传，
+  你可随时清除扩展本地数据。
+
+**Host permissions / content scripts — Greenhouse, Lever, Workday and
+`*/*careers*`、`*/*jobs*` patterns**
+
+- EN: Required to (1) detect supported application pages, (2) read the job
+  description on that page for skill matching, and (3) fill the form only when
+  you click the autofill button. Greenhouse, Lever and Workday are hosted on
+  each company's own subdomain (for example `boards.greenhouse.io/<company>`,
+  `jobs.lever.co/<company>`, `<tenant>.myworkdayjobs.com`, plus company-hosted
+  `careers.`/`jobs.` pages), so the domains cannot be enumerated in advance; the
+  URL patterns are the narrowest practical way to match them. The extension
+  activates only on career/job pages, reads no other browsing activity, and
+  never reads password, payment, salary or demographic fields.
+- 中文：用于（1）识别受支持的招聘申请页，（2）读取该页岗位描述以做技能匹配，
+  （3）仅在你点击一键填充时填写表单。Greenhouse、Lever、Workday 托管在各公司
+  自有子域（如 `boards.greenhouse.io/<公司>`、`jobs.lever.co/<公司>`、
+  `<租户>.myworkdayjobs.com`，以及企业自建的 `careers.`/`jobs.` 页面），无法
+  预先枚举域名，URL 模式是实践中最小的匹配方式。扩展只在招聘/岗位页激活，
+  不读取任何其他浏览活动，也绝不读取密码、支付、薪资或人口统计字段。
+
+**`externally_connectable` / network access to the JobAgent service**
+
+- EN: Lets the extension panel call the JobAgent web API (through the background
+  service worker) to fetch your verified profile and ranked job matches. Only
+  the configured JobAgent origin is allowed; no other network requests are made.
+- 中文：让扩展面板（通过后台 service worker）调用 JobAgent 网络 API，获取你的
+  可信画像与岗位匹配排序。仅允许访问已配置的 JobAgent 源，不发起其他网络请求。
+
+**Single-purpose statement**
+
+- EN: JobAgent Autofill has one purpose: fill out technical job application forms
+  on supported applicant tracking systems in one click, using the user's own
+  evidence-verified JobAgent profile and locally stored contact details.
+- 中文：JobAgent 自动填充只有一个用途：基于用户本人经证据核验的 JobAgent 画像
+  与本机保存的联系方式，在受支持的招聘系统上一键填写技术岗位申请表。
+
 ## Known capture-time caveats
 
-- Screenshot 02 surfaces repository evidence lines. The collection-layer claim
-  templates were localized to English in item41 (commit `3ddd18c`, 2026-09-22),
-  but the **tracked screenshots were captured 2026-09-21 against a profile
-  snapshotted before that change**, so 02 still shows Chinese evidence claims
-  (`仓库 … 1 star / 0 fork，最近推送 …`). Recapture after regenerating the
-  demo profile with current code (the evidence text is stored on the snapshot
-  and is not re-translated at render time). The score breakdown itself is
-  language-neutral.
+- Resolved 2026-09-23 (item50): screenshot 02 previously showed Chinese evidence
+  claims because it was captured against a profile snapshotted before the
+  English-claim change (item41, commit `3ddd18c`). All five screenshots were
+  recaptured on Node 24 against the English snapshot `32d41707`; the current
+  tracked images show English claims. Note evidence text is stored on the
+  snapshot and is not re-translated at render time, so a future localization
+  change requires regenerating the demo profile before recapturing.
 - The demo report uses the public demo preset logins (including well-known public
   accounts). All displayed data is public behavioural information with no private
   contact fields; swap the preset accounts before publishing if desired.

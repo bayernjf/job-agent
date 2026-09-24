@@ -722,6 +722,19 @@ describe('claimAndProcessOne (serverless cron entry)', () => {
     expect(source.collect).not.toHaveBeenCalled();
   });
 
+  it('returns idle on an empty queue even without GITHUB_TOKEN or injected sources', async () => {
+    // 守护 lazy source 构造：serverless cron 空窗期无任务、未配 token 时也必须 idle，
+    // 而不是在认领前构造 source 触发 "GITHUB_TOKEN is not set"（smoke 预演发现的顺序问题）。
+    vi.stubEnv('GITHUB_TOKEN', '');
+    vi.stubEnv('GITEE_TOKEN', '');
+    const repos = await freshRepos();
+
+    const outcome = await claimAndProcessOne({ repos, workerId: 'cron', reclaimStaleMs: null });
+
+    expect(outcome).toEqual({ kind: 'idle' });
+    vi.unstubAllEnvs();
+  });
+
   it('processes exactly one queued job and reports its profileId', async () => {
     const repos = await freshRepos();
     const jobId = await createQueuedJob(repos, 'one-shot');
