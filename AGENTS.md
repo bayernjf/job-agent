@@ -187,7 +187,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 - `main` 例外：**永远不在 `main` 上直接提交**，只能由 `dev → main` 的真实 PR 合入。
 - 需要临时分支时，从最新 `dev` 切出；合并后删除本地与远端临时分支（squash 合并后需 `git branch -D`）。
 - 操作任何分支前先 `fetch` 并 `pull --rebase`；工作区不干净时先保护现有改动，不丢弃用户修改。
-- **写任何「已 push / 未 push / 已合入 main」的结论前必须先 `git fetch` 再实查**（`git rev-parse origin/dev`、`git rev-list --count origin/main..dev`、`gh pr list`）：用户会在 agent 作业期间并行 push 与合并 PR，同一批工作内该声明可在几十分钟内失效三次。handoff 的同步态段只写实查时刻的 hash 与 PR 号，不写「本提交」之外的推测。
+- **写任何「已 push / 未 push / 已合入 main」的结论前必须先 `git fetch` 再实查**（`git rev-parse origin/dev`、`git rev-list --count origin/main..dev`、`gh pr list`）：用户会在 agent 作业期间并行 push 与合并 PR，同一批工作内该声明可在几十分钟内失效三次。**handoff 里不再写 push/合并态断言**——`pr-helper-by-bayernjf` 自动化会在 push 后约 5 分钟内自动建并合 `dev → main` PR，断言写完即过期；只写 **hash、PR 号与查询命令**，让下一位实查。
 - rebase/merge/pull 冲突时**立即停止并列出冲突文件，不自动解决**；不对共享分支 force push。
 - 不擅自提交/push/PR/合并，只有用户明确要求时才执行。
 
