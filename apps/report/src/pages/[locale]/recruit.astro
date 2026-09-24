@@ -6,6 +6,7 @@
  */
 import Layout from '../../layouts/Layout.astro';
 import CandidateWorkspace from '../../components/CandidateWorkspace.tsx';
+import InterviewPlanner from '../../components/InterviewPlanner.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
 import { loadInitialCandidates } from '../../lib/db.js';
 import { browserApiBase } from '../../lib/api-base.js';
@@ -19,6 +20,8 @@ const t = createTranslator(locale);
 
 const apiBase = browserApiBase();
 const reportBasePath = `/${locale}/report`;
+// 面试计划 island 的 GitHub 登录回跳：登录后回到本页
+const interviewLoginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(`/${locale}/recruit`)}`;
 // SSR 首屏候选人（只读 storage）；岛屿后续过滤/分页走同源 GET /candidates
 const initial = await loadInitialCandidates({ limit: 12 });
 ---
@@ -81,6 +84,68 @@ const initial = await loadInitialCandidates({ limit: 12 });
           mixed_signals: t('report.authenticity.mixed_signals'),
           suspicious: t('report.authenticity.suspicious'),
           insufficient_data: t('report.authenticity.insufficient_data'),
+        },
+      }}
+    />
+
+    <InterviewPlanner
+      client:load
+      apiBase={apiBase}
+      locale={locale}
+      loginHref={interviewLoginHref}
+      labels={{
+        title: t('interviews.title'),
+        hint: t('interviews.hint'),
+        loading: t('interviews.loading'),
+        error: t('interviews.error'),
+        empty: t('interviews.empty'),
+        add: t('interviews.add'),
+        save: t('interviews.save'),
+        cancel: t('interviews.cancel'),
+        required: t('interviews.required'),
+        loginRequiredTitle: t('interviews.loginRequiredTitle'),
+        loginRequiredBody: t('interviews.loginRequiredBody'),
+        loginButton: t('interviews.loginButton'),
+        candidate: t('interviews.candidate'),
+        candidatePlaceholder: t('interviews.candidatePlaceholder'),
+        role: t('interviews.role'),
+        rolePlaceholder: t('interviews.rolePlaceholder'),
+        company: t('interviews.company'),
+        companyPlaceholder: t('interviews.companyPlaceholder'),
+        start: t('interviews.start'),
+        end: t('interviews.end'),
+        format: t('interviews.format'),
+        round: t('interviews.round'),
+        roundPlaceholder: t('interviews.roundPlaceholder'),
+        interviewer: t('interviews.interviewer'),
+        interviewerPlaceholder: t('interviews.interviewerPlaceholder'),
+        interviewerEmail: t('interviews.interviewerEmail'),
+        interviewerEmailPlaceholder: t('interviews.interviewerEmailPlaceholder'),
+        status: t('interviews.status'),
+        outcome: t('interviews.outcome'),
+        outcomeUnset: t('interviews.outcomeUnset'),
+        rating: t('interviews.rating'),
+        ratingUnset: t('interviews.ratingUnset'),
+        feedback: t('interviews.feedback'),
+        feedbackPlaceholder: t('interviews.feedbackPlaceholder'),
+        saveResult: t('interviews.saveResult'),
+        statusLabels: {
+          scheduled: t('interviews.status.scheduled'),
+          completed: t('interviews.status.completed'),
+          cancelled: t('interviews.status.cancelled'),
+          no_show: t('interviews.status.no_show'),
+          rescheduled: t('interviews.status.rescheduled'),
+        },
+        formatLabels: {
+          onsite: t('interviews.format.onsite'),
+          phone: t('interviews.format.phone'),
+          video: t('interviews.format.video'),
+        },
+        outcomeLabels: {
+          strong_yes: t('interviews.outcome.strong_yes'),
+          yes: t('interviews.outcome.yes'),
+          neutral: t('interviews.outcome.neutral'),
+          no: t('interviews.outcome.no'),
         },
       }}
     />

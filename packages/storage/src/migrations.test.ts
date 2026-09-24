@@ -229,6 +229,38 @@ describe('migrations', () => {
     expect(authSessionIndexes.map((i) => i.name)).toContain('idx_auth_sessions_account');
     expect(authSessionIndexes.map((i) => i.name)).toContain('idx_auth_sessions_expires');
 
+    const interviewColumns = db
+      .prepare('PRAGMA table_info(interviews)')
+      .all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'profile_id',
+      'application_id',
+      'target_title',
+      'target_company',
+      'scheduled_start',
+      'scheduled_end',
+      'format',
+      'round_label',
+      'interviewer_name',
+      'interviewer_email',
+      'status',
+      'outcome',
+      'feedback_note',
+      'rating',
+      'created_by_account_id',
+      'created_at',
+      'updated_at',
+    ]) {
+      expect(interviewColumns.map((c) => c.name)).toContain(expected);
+    }
+    const interviewIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='interviews'")
+      .all() as Array<{ name: string }>;
+    expect(interviewIndexes.map((i) => i.name)).toContain('idx_interviews_owner_status');
+    expect(interviewIndexes.map((i) => i.name)).toContain('idx_interviews_profile_start');
+    expect(interviewIndexes.map((i) => i.name)).toContain('idx_interviews_application');
+
     db.close();
   });
 
@@ -244,6 +276,15 @@ describe('migrations', () => {
   it('rolls back migrations in reverse order with their down scripts', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
+
+    // 回滚 012（interviews）
+    const result12 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result12.version).toBe('012');
+    const ivTables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(ivTables.map((t) => t.name)).not.toContain('interviews');
+    expect(ivTables.map((t) => t.name)).toContain('auth_sessions'); // 011 还在
 
     // 回滚 011（auth_sessions）
     const result11 = rollbackLatestMigration(db, MIGRATIONS_DIR);

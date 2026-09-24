@@ -1,7 +1,7 @@
 # 提案：面试计划表（安排面试 + 追踪面试结果）
 
 - 日期：2026-09-22
-- 状态：**待拍板**（本文是 item45 的范围与数据模型决策草案，拍板前不写产品代码）
+- 状态：**已拍板并落地（2026-09-24，handoff item45）**——按本文推荐默认值实施，已随 4 个英文原子提交落地（本地未 push）；落地决策与对数据模型草案的修正见文末 §7，完整实现明细见 [handoff-archive-2026-09-24](handoff-archive-2026-09-24.md) §4。§1–§6 保留为当时决策草案。
 - 登记来源：handoff item45「面试计划表：可以安排面试和追踪面试结果」
 
 ## 1. 定位
@@ -79,3 +79,23 @@ interviews
 3. API：interviews CRUD + 状态/结果端点（登录闸，复用现有 user 身份）
 4. 报告页招聘方视图加 React island（排期表单 + 列表 + 结果录入）
 5. 单测 + 登录态 E2E
+
+
+## 7. 落地记录（2026-09-24）
+
+用户「一口气搞了」即拍板。§5 五个待拍板问题按推荐默认值落地：
+
+1. **现在做**（不等上线后）；
+2. **角色＝个人效率工具最小做法**：不引入 recruiter 角色 / 组织实体，任何登录用户管理自己创建的面试，以 `created_by_account_id` 行级归属；
+3. **范围＝§2 MVP 最小版**，面试官单条自由文本姓名 + 可选邮箱（不支持多选）；
+4. **结果单一字段**（不做每位面试官一份评分表）；
+5. **入口在报告页 `/recruit` 招聘方视图内**（不建独立页面）。
+
+对 §3 数据模型草案的修正：
+
+- `application_id` 由 `NOT NULL` 改为**可空**：`applications` 是无账号归属的求职者侧公开数据，强制招聘方先写 application 会污染求职者公开漏斗；面试可直接从候选人画像创建。从投递创建时才关联，并仅在该投递处于 `saved/applied/viewed` 早期阶段时把其状态推进为既有枚举 `interview`（终态不回退）。
+- 冗余 `target_title NOT NULL`、`target_company` 可空，列表不依赖 join applications。
+- 补齐 §3 表草案漏列但 §4 已要求的 `created_by_account_id TEXT NOT NULL`。
+- 不做物理删除：`cancelled/no_show` 用状态表达（对齐 applications 的 withdrawn 哲学）。
+
+落地物：shared 契约 → 双方言迁移 012（18 列 3 索引）+ `IInterviewsRepository` 双实现 → `POST/GET/PATCH /interviews`（登录闸）→ 报告页 `InterviewPlanner` island + 47 个中英 i18n key + 3 个零网络 E2E；提交链 `43cadbe` shared → `5725c5c` db → `e919556` api → `4ca82c4` report。验证：全仓 typecheck/build 全 Done、单测 862 全绿、报告 E2E 60/60、check-migrations 12 对 0 warning。实现明细、踩坑与缓做项见 [handoff-archive-2026-09-24](handoff-archive-2026-09-24.md) §4。

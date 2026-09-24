@@ -31,6 +31,9 @@
  *   GET  /profiles/:id/applications — 列出某画像的投递记录
  *   POST /profiles/:id/applications — 新增投递记录
  *   PATCH /applications/:id         — 更新投递状态/备注
+ *   POST /interviews                — 招聘方为候选人安排面试（要求登录，行级归属；可关联投递并推进其状态）
+ *   GET  /interviews                — 列出当前登录账号创建的面试（?profileId=&status=，仅本人数据）
+ *   PATCH /interviews/:id           — 改期/状态流转/结果录入（非本人资源 404）
  *   GET  /internal/cron/process-job — serverless 定时消费一个分析任务（CRON_SECRET/x-vercel-cron 鉴权）
  *   GET  /internal/cron/cleanup     — serverless 定时清理 demo/auth 数据（?task=demo|auth|all）
  *   GET  /health         — 健康检查
@@ -63,6 +66,9 @@ import {
   AUTH_SESSION_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_RETURN_COOKIE,
+  InterviewCreateSchema,
+  InterviewPatchSchema,
+  InterviewListQuerySchema,
   type AbilityProfile,
   type AuthMe,
   type AuthenticityStatus,
@@ -83,6 +89,7 @@ import {
   type IAccountsRepository,
   type IAnalysisJobsRepository,
   type IApplicationsRepository,
+  type IInterviewsRepository,
   type IAuthSessionsRepository,
   type IDemoSessionsRepository,
   type IProfilesRepository,
@@ -145,8 +152,11 @@ export interface ApiRepos {
   evidence: IEvidenceRepository;
   demoSessions: IDemoSessionsRepository;
   applications: IApplicationsRepository;
+  interviews: IInterviewsRepository;
   accounts: IAccountsRepository;
   authSessions: IAuthSessionsRepository;
+  /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
+  ping: () => Promise<void>;
 }
 
 export interface ApiDeps {
@@ -489,9 +499,35 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     return ip ? hashIp(ip, effectiveSalt) : null;
   };
 
-  // 健康检查
-  app.get('/health', (c) => {
-    return c.json({ status: 'ok', service: 'jobagent-api', time: new Date().toISOString() });
+  // 健康检查：浅检查（默认）不依赖 DB，恒定返回进程存活；
+  // ?deep=1（或 ?deep=true）额外执行一次持久化层 SELECT 1 往返，DB 不可达时返回 503，
+  // 供部署后 smoke / 监控探活区分"进程在但数据库挂了"。
+  app.get('/health', async (c) => {
+    const base = {
+      status: 'ok' as const,
+      service: 'jobagent-api',
+      time: new Date().toISOString(),
+    };
+    const deep = c.req.query('deep');
+    if (deep !== '1' && deep !== 'true') {
+      return c.json(base);
+    }
+    const started = Date.now();
+    try {
+      await repos.ping();
+      return c.json({ ...base, db: 'ok', dbLatencyMs: Date.now() - started });
+    } catch (err) {
+      return c.json(
+        {
+          status: 'error',
+          service: 'jobagent-api',
+          time: new Date().toISOString(),
+          db: 'unreachable',
+          error: (err as Error).message,
+        },
+        503,
+      );
+    }
   });
 
   // ── 内部定时任务（serverless 部署由 Vercel Cron 调用；常驻部署不用这两条）────────
@@ -1442,6 +1478,108 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     return c.json(updated);
   });
 
+  // ── 面试计划（interviews，handoff item45）：招聘方排期/流转/结果，全部要求登录、行级归属 ──
+
+  // POST /interviews：为候选人安排面试（可关联一条投递；关联后把早期阶段投递推进到 interview）
+  app.post('/interviews', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json(
+        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
+        401,
+      );
+    }
+    const parsed = InterviewCreateSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid interview', details: parsed.error.flatten() }, 400);
+    }
+    const data = parsed.data;
+
+    const profile = await repos.profiles.getById(data.profileId);
+    if (!profile) return c.json({ error: 'profile not found' }, 404);
+
+    if (data.applicationId) {
+      const application = await repos.applications.getById(data.applicationId);
+      if (!application) return c.json({ error: 'application not found' }, 404);
+      if (application.profileId !== data.profileId) {
+        return c.json({ error: 'application does not belong to the given profile' }, 400);
+      }
+      // 仅在投递尚处早期阶段时推进到 interview；offer/rejected/withdrawn 等终态不回退
+      const earlyStages: ApplicationStatus[] = ['saved', 'applied', 'viewed'];
+      if (earlyStages.includes(application.status)) {
+        await repos.applications.update(application.id, { status: 'interview' });
+      }
+    }
+
+    const id = `int-${randomUUID()}`;
+    await repos.interviews.insert({
+      id,
+      profileId: data.profileId,
+      applicationId: data.applicationId ?? null,
+      targetTitle: data.targetTitle,
+      targetCompany: data.targetCompany ?? null,
+      scheduledStart: data.scheduledStart,
+      scheduledEnd: data.scheduledEnd,
+      format: data.format,
+      roundLabel: data.roundLabel,
+      interviewerName: data.interviewerName ?? null,
+      interviewerEmail: data.interviewerEmail ?? null,
+      createdByAccountId: principal.accountId,
+    });
+    const stored = await repos.interviews.getById(id);
+    return c.json(stored, 201);
+  });
+
+  // GET /interviews：列出当前登录账号创建的面试（可按 profileId/status 过滤，强制本人作用域）
+  app.get('/interviews', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json(
+        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
+        401,
+      );
+    }
+    const parsed = InterviewListQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+      return c.json({ error: 'invalid query', details: parsed.error.flatten() }, 400);
+    }
+    const items = await repos.interviews.listByOwner(principal.accountId, {
+      ...(parsed.data.profileId ? { profileId: parsed.data.profileId } : {}),
+      ...(parsed.data.status ? { status: parsed.data.status } : {}),
+    });
+    return c.json({ items });
+  });
+
+  // PATCH /interviews/:id：改期/状态流转/结果录入；非本人资源一律 404（不泄露存在），不物理删除
+  app.patch('/interviews/:id', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json(
+        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
+        401,
+      );
+    }
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'invalid interview id' }, 400);
+    const parsed = InterviewPatchSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid patch', details: parsed.error.flatten() }, 400);
+    }
+    const existing = await repos.interviews.getById(id);
+    if (!existing || existing.createdByAccountId !== principal.accountId) {
+      return c.json({ error: 'interview not found' }, 404);
+    }
+    // 单边改期也要保证合并后的时间窗 end > start
+    const nextStart = parsed.data.scheduledStart ?? existing.scheduledStart;
+    const nextEnd = parsed.data.scheduledEnd ?? existing.scheduledEnd;
+    if (nextEnd <= nextStart) {
+      return c.json({ error: 'scheduledEnd must be after scheduledStart' }, 400);
+    }
+    const updated = await repos.interviews.update(id, parsed.data);
+    if (!updated) return c.json({ error: 'interview not found' }, 404);
+    return c.json(updated);
+  });
+
   // 404 兜底
   app.notFound((c) => {
     return c.json({ error: 'not found', path: c.req.path }, 404);
@@ -1469,7 +1607,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, GET /auth/gitee/login, GET /auth/gitee/callback, GET /auth/providers, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, GET /jobs/:id, GET /profiles/by-subject/:platform/:login, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, GET /auth/gitee/login, GET /auth/gitee/callback, GET /auth/providers, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, GET /jobs/:id, GET /profiles/by-subject/:platform/:login, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, POST|GET /interviews, PATCH /interviews/:id, GET /health`);
   });
 }
 
