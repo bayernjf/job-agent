@@ -262,6 +262,7 @@ services:
 8. （启用 LLM 时）简历「AI 润色」返回 `polish.applied=true`；未配置时优雅回退规则版。
 9. **形态 C 附加**：`https://<域名>/api/health` 返回 `{status:"ok"}`（验证同域 /api 转发）；未带 token 访问 `/api/internal/cron/process-job` 返回 401；带正确 `?token=` 返回 `{ok:true,...}`（无任务时 outcome.idle）。
 10. **形态 C 附加**：浏览器走一次 `/api/auth/github/login` 真实登录，确认跳转的 redirect_uri 与 GitHub App 登记一致、回调后 Cookie 种下（验证 `API_MOUNT_PREFIX=/api` 生效）；Vercel 部署日志确认 cron 每分钟触发且未出现 FUNCTION_INVOCATION_TIMEOUT。
+11. **招聘方面试计划表（item45）**：未登录访问 `/zh-CN/recruit`（或 `/en/recruit`）时面试计划表显示登录墙；匿名 `GET`/`POST /api/interviews` 返回 401（`tools/smoke-deploy.sh` 已自动断言这两条与 `/api/auth/providers`）；登录后在候选人×岗位上排一场面试、把状态从 `scheduled` 流转到 `completed`、登记结论/评分/反馈，刷新后数据仍在（验证 012 迁移已在 5432 预迁移到位）。
 
 ## 11. 仍未决 / 本手册不替你决定的事
 
