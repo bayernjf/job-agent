@@ -1,7 +1,7 @@
 # Handoff 归档 — 2026-09-24
 
-> 本文件冻结只读、不再追加。记录从 handoff 主文件裁出的 item50、item51 明细。
-> 归档时 item50 已随 PR #77 并入 `main`；item51 为本地提交、尚未 push。
+> 跨天冻结、不再追加；同一天（2026-09-24）的后续批次按 § 续记。记录从 handoff 主文件裁出的 item50、item51、item45 明细。
+> 归档时 item50 已随 PR #77 并入 `main`；item51、item45 为本地提交、尚未 push。
 
 ## 1. item50：部署前收尾批次 T1–T8（2026-09-23 晚）
 
@@ -47,3 +47,34 @@
 ## 3. 归档时 Git 同步态
 
 归档动作发生在 2026-09-24 文档收尾批次；当时 `origin/dev` = `e823516`、`origin/main` = `50421c7`（Merge PR #77），本地含 item51 六提交 + 本 docs 归档提交（均未 push）。最终实况以 handoff 主文件「Git 状态」为准。
+
+
+## 4. item45：面试计划表 Interviews（2026-09-24）
+
+**拍板与默认决策**：用户「好的，你一口气搞了」即对 handoff item45 拍板，按提案 `docs/proposal-interview-planner-20260922.md` §6 顺序一口气落地。提案 §5 五个待拍板问题未逐条答复，按推荐默认值实施：
+
+1. 现在做（不等到上线后）；
+2. 角色采「个人效率工具」最小做法——不引入 recruiter 角色 / 组织实体，任何登录用户管理自己创建的面试，行级归属 `created_by_account_id`；
+3. 范围＝提案 §2 MVP 最小版，面试官单条自由文本姓名 + 可选邮箱（不支持多选）；
+4. 结果单一字段（不做每位面试官一份评分表）；
+5. 入口放报告页 `/recruit` 招聘方视图内（不建独立页面）。
+
+**对提案 §3 数据模型草案的务实修正（设计偏差）**：
+
+- `application_id` 改为**可空**。提案写 `NOT NULL`，但 `applications` 是无账号归属的求职者侧公开数据（`GET /profiles/:id/applications` 公开），强制招聘方先写一条 application 才能排面试会污染求职者公开漏斗；面试可直接从候选人画像创建。若从投递创建则关联，并仅在该 application 处于早期阶段（`saved/applied/viewed`）时把状态推进为既有枚举 `interview`（`offer/rejected/withdrawn` 终态不回退）。
+- 冗余 `target_title NOT NULL`、`target_company` 可空，使面试列表不依赖 join applications。
+- 补齐提案 §3 表草案漏列但 §4 已要求的 `created_by_account_id TEXT NOT NULL`。
+- 不做物理删除端点：`cancelled/no_show` 用状态表达，对齐 applications 的 `withdrawn` 哲学。
+
+**落地（4 个英文原子提交，本地未 push）**：
+
+- `43cadbe` feat(shared)：`INTERVIEW_FORMATS/STATUSES/OUTCOMES` 枚举 + `InterviewCreateSchema`（end>start 的 refine、email 校验、可空字段 nullish）/ `InterviewPatchSchema`（全 optional、rating 1..5、非空对象 refine）/ `InterviewListQuerySchema` + 同名类型。
+- `5725c5c` feat(db)：双方言迁移 012（`interviews` 18 列 3 索引：`idx_interviews_owner_status(created_by_account_id,status,scheduled_start)`、`idx_interviews_profile_start(profile_id,scheduled_start)`、`idx_interviews_application(application_id)`）+ `IInterviewsRepository`（insert/getById/listByOwner/update）sqlite+postgres 双实现，注册进两个 context 工厂与 `StorageContext`，schema-parity / migrations / postgres-behavior 测试同步。
+- `e919556` feat(api)：`POST/GET/PATCH /interviews` 三端点（user 登录闸，非 user 401；profile/application 存在性与归属校验；非本人资源统一 404 不泄露存在；PATCH 合并后 end>start 校验；关联投递仅早期阶段推进 interview）+ `interviews.test.ts` 5 用例 + `docs/API.md` §3.7（api-doc-consistency 测试双向守护路由文档化）。
+- `4ca82c4` feat(report)：`InterviewPlanner.tsx` client:load island（登录墙带同源 `return_to`、排期表单、本人面试列表、状态 select 乐观更新失败回滚、completed 展开结果录入）挂 `/recruit`；47 个 `interviews.*` i18n key 中英对齐；global.css `ivp-*` 全 `--ja-*` token 样式；`e2e/interview-planner.spec.ts` 3 用例零网络（匿名登录墙 / 登录创建 / 状态流转 + 结果 PATCH 断言）。
+
+**验证（Node v24.0.0 / fnm 实测）**：全仓 typecheck/build 全 Done；单测 **862** 全绿（storage **129** 含本机 embedded Postgres 本次真实跑通 10 例、api **171** 含 interviews 5、report **58**）；报告 Playwright E2E **60/60**（新增面试 3 例）；check-migrations **12 对 0 warning**；`git diff --check` 干净。
+
+**踩坑**：API 测试 harness 一度把 `createStorage()` 返回值 `as unknown as ApiRepos`，致 `insertProfile/loginUser` 形参 `StorageContext` 被收窄、报 5 处 TS2345（vitest 运行时全绿但 tsc 门禁红）；对齐 `candidates-applications.test.ts` 保留完整 `StorageContext` 句柄（超集可赋 `ApiRepos` 子集）后修复。
+
+**剩余外部 / 缓做**（提案 §2 已明确不做，触发条件到再立项）：多面试官协作与各自评分表、日历双向集成 / 邮件邀请提醒、候选人自助约面、与 ATS 双向回写、`interview_events` append-only 改期历史。
