@@ -140,6 +140,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 - **`analyzer-core` 测试优先级最高**：基于 `tests/fixtures` 脱敏夹具覆盖每条真实性信号，以及"证据不足→`insufficient_data`"分支。
 - **默认确定性**：测试不打真实 GitHub、不调真实 LLM，外部响应一律用录制夹具/fake；API/Worker 对夹具做集成测试；Playwright 覆盖"输入用户名→生成→报告→分享"主链路。扩展另有独立 E2E（`pnpm e2e:extension`，配置 `playwright.extension.config.ts`、用例在 `e2e/extension/`）：`launchPersistentContext` + `--headless=new` 加载 unpacked MV3，route 拦截 ATS 页与全部 API，覆盖 content script 注入/Shadow DOM 面板/岗位匹配区块，不连真实 ATS、不打网络。
 - **storage 的 7 例真实 Postgres 行为测试**（`packages/storage/src/postgres-behavior.test.ts`）：CI 与有 Docker 的机器用 `DATABASE_TEST_URL` 指向真实 PG 实跑（CI 已配 `postgres:16-alpine` service）；无该变量时自动起 embedded-postgres，起不来则 7 例 skip（不是失败）。**已知 macOS 兼容问题**：embedded-postgres 18.1.0-beta.15 内置 PG 二进制在部分 macOS（2026-09 在 macOS 26 实测）启动即 FATAL `postmaster became multithreaded during startup`，与 LC_ALL/Node 无关，属系统级问题；本机要让 7 例转绿，用 Docker PG 并设 `DATABASE_TEST_URL=postgres://...`（`docker compose --profile with-pg up -d`）。测试已对该失败路径做健壮性处理（非 Error reject 防御、teardown 限时不挂 hook），排查时看 `[postgres-behavior] ... tests skip:` 警告里的真实原因。
+- **文档即被测面**：三条仓库级守护随 `pnpm -r test` 在 CI 实跑（与既有约定同放 `apps/api/src`）——`api-doc-consistency.test.ts` 钉 docs/API.md 路由双向对齐、`env-doc-consistency.test.ts` 钉「代码读取的 env ↔ `.env.example` ↔ docs/API.md ↔ 部署执行单 E3 总表」与演示模式默认值、`doc-links.test.ts` 钉全仓 Markdown 相对链接可达（归档/评审文档写于文件还在仓库根时，搬进 docs/ 后偏一层的断链就是它抓的）。新增/改名文档或 env 变量时以这三条的报错为准，不要靠人眼对齐。
 - 交付前：`pnpm -r typecheck` + 相关测试 + `pnpm -r build` + `git diff --check`，并在汇报中说明验证覆盖与未覆盖项。
 
 ## 工程化门禁
@@ -186,6 +187,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 - `main` 例外：**永远不在 `main` 上直接提交**，只能由 `dev → main` 的真实 PR 合入。
 - 需要临时分支时，从最新 `dev` 切出；合并后删除本地与远端临时分支（squash 合并后需 `git branch -D`）。
 - 操作任何分支前先 `fetch` 并 `pull --rebase`；工作区不干净时先保护现有改动，不丢弃用户修改。
+- **写任何「已 push / 未 push / 已合入 main」的结论前必须先 `git fetch` 再实查**（`git rev-parse origin/dev`、`git rev-list --count origin/main..dev`、`gh pr list`）：用户会在 agent 作业期间并行 push 与合并 PR，同一批工作内该声明可在几十分钟内失效三次。handoff 的同步态段只写实查时刻的 hash 与 PR 号，不写「本提交」之外的推测。
 - rebase/merge/pull 冲突时**立即停止并列出冲突文件，不自动解决**；不对共享分支 force push。
 - 不擅自提交/push/PR/合并，只有用户明确要求时才执行。
 
