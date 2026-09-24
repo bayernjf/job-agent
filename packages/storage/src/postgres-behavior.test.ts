@@ -355,7 +355,7 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       try {
         const versions =
           await verify.client<Array<{ version: string }>>`SELECT version FROM schema_migrations ORDER BY version`;
-        expect(versions).toHaveLength(11);
+        expect(versions).toHaveLength(12);
         const rows =
           await verify.client<Array<{ table_name: string }>>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`;
         const names = rows.map((r) => r.table_name);
@@ -368,6 +368,7 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
           'demo_sessions',
           'demo_rate_events',
           'applications',
+          'interviews',
           'accounts',
           'auth_sessions',
         ]) {

@@ -40,6 +40,7 @@ const TABLES = [
   'demoSessions',
   'demoRateEvents',
   'applications',
+  'interviews',
   'accounts',
   'authSessions',
 ] as const;

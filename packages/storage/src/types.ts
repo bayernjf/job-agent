@@ -5,6 +5,7 @@ import type {
   IAuthSessionsRepository,
   IDemoSessionsRepository,
   IEvidenceRepository,
+  IInterviewsRepository,
   IJobPostingsRepository,
   IProfilesRepository,
   IWaitlistRepository,
@@ -37,6 +38,8 @@ export interface StorageContext {
   jobPostings: IJobPostingsRepository;
   demoSessions: IDemoSessionsRepository;
   applications: IApplicationsRepository;
+  /** 招聘方面试计划（handoff item45，迁移 012，行级归属创建账号） */
+  interviews: IInterviewsRepository;
   /** OAuth 登录账号（决策 #1-A/#6-A，迁移 010） */
   accounts: IAccountsRepository;
   /** 登录用户不透明会话（迁移 011） */

@@ -350,3 +350,48 @@ export const authSessions = sqliteTable(
 
 export type AuthSessionInsert = typeof authSessions.$inferInsert;
 export type AuthSessionSelect = typeof authSessions.$inferSelect;
+
+/**
+ * interviews 表——招聘方侧面试计划（handoff item45，迁移 012）。
+ * 行级归属 created_by_account_id（个人效率工具，不引入 recruiter 角色/组织）；
+ * application_id 可空（可直接从候选人画像创建）；target_* 冗余，无投递记录也可读。
+ */
+export const interviews = sqliteTable(
+  'interviews',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    applicationId: text('application_id'),
+    targetTitle: text('target_title').notNull(),
+    targetCompany: text('target_company'),
+    scheduledStart: text('scheduled_start').notNull(),
+    scheduledEnd: text('scheduled_end').notNull(),
+    format: text('format').notNull(),
+    roundLabel: text('round_label').notNull(),
+    interviewerName: text('interviewer_name'),
+    interviewerEmail: text('interviewer_email'),
+    status: text('status').notNull().default('scheduled'),
+    outcome: text('outcome'),
+    feedbackNote: text('feedback_note'),
+    rating: integer('rating'),
+    createdByAccountId: text('created_by_account_id').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_interviews_owner_status').on(
+      table.createdByAccountId,
+      table.status,
+      table.scheduledStart,
+    ),
+    index('idx_interviews_profile_start').on(table.profileId, table.scheduledStart),
+    index('idx_interviews_application').on(table.applicationId),
+  ],
+);
+
+export type InterviewInsert = typeof interviews.$inferInsert;
+export type InterviewSelect = typeof interviews.$inferSelect;
