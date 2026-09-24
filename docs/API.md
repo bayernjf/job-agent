@@ -52,8 +52,12 @@
 | `API_MOUNT_PREFIX` | 空 | API 在同源下的挂载前缀，形态 C 设 `/api`；影响 OAuth `redirect_uri` 拼接与 state/return Cookie 的 `Path`（变为 `/api/auth`）。Hono 内部路由本身不带前缀，由转发层剥前缀 |
 | `CRON_SECRET` | 空 | `/internal/cron/*` 鉴权密钥；配置后请求必须带 `?token=<值>`（常量时间比较），未配置时仅认 `x-vercel-cron: 1` 头。生产必填，生成：`openssl rand -hex 32` |
 | `PROFILE_CACHE_TTL_MS` | `86400000`（24h） | 完整画像缓存有效期 |
-| `DEMO_SESSION_TTL_MS` | `604800000`（7d） | 演示会话有效期 / Cookie Max-Age |
+| `GITHUB_TOKEN` | 空 | 采集凭证（PAT / GitHub App installation token），只在服务端读取；未配置时分析作业会在采集阶段失败 |
+| `GITEE_TOKEN` | 空 | 可选，仅用于提高 Gitee 匿名约 60 次/分的限额；匿名即可读公开数据 |
+| `JOB_HTTP_PROXY` | 空 | 出站 HTTP(S) 代理；API 启动时按此值安装 undici 全局 ProxyAgent（`src/proxy-bootstrap.ts`），用于 OAuth token 交换与拉用户资料。未设时回退标准 `HTTPS_PROXY`/`HTTP_PROXY` |
+| `DEMO_SESSION_TTL_MS` | `86400000`（24h，2026-09-21 拍板） | 演示会话有效期 / Cookie Max-Age |
 | `DEMO_ANALYZE_QUOTA` | `3` | 单会话可触发的新分析次数 |
+| `DEMO_FUSION_QUOTA_COST` | `2` | `platform=all` 双源融合作业一次扣减的会话配额（单源扣 1，最小 1；剩余不足整单拒绝，不部分扣减） |
 | `DEMO_SESSION_RATE_PER_HOUR` | `5` | 单 IP 每小时建会话上限 |
 | `DEMO_ANALYZE_RATE_PER_HOUR` | `10` | 单 IP 每小时触发分析上限 |
 | `DEMO_MATCH_RATE_PER_HOUR` | `60` | match 计算 IP 兜底窗口（仅观测/防刷） |
