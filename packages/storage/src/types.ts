@@ -43,6 +43,12 @@ export interface StorageContext {
   authSessions: IAuthSessionsRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
+  /**
+   * 深健康检查：对底层数据库执行一次轻量往返（SELECT 1）。
+   * 连接可用时 resolve；不可达/查询失败时 reject（错误信息供 /health?deep=1 返回 503）。
+   * 方言差异只允许出现在持久化层内部，业务模块只调用本方法、不写裸 SQL。
+   */
+  ping(): Promise<void>;
   /** 关闭底层连接/连接池 */
   close(): Promise<void>;
 }

@@ -2,7 +2,7 @@
  * 存储工厂环境开关测试（形态 C：serverless 下用 DB_AUTO_MIGRATE=false 禁止冷启动迁移）。
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { envAutoMigrate } from './storage.js';
+import { createStorage, envAutoMigrate } from './storage.js';
 
 describe('envAutoMigrate (DB_AUTO_MIGRATE)', () => {
   const original = process.env.DB_AUTO_MIGRATE;
@@ -28,5 +28,19 @@ describe('envAutoMigrate (DB_AUTO_MIGRATE)', () => {
     expect(envAutoMigrate()).toBeUndefined();
     process.env.DB_AUTO_MIGRATE = 'yes';
     expect(envAutoMigrate()).toBeUndefined();
+  });
+});
+
+describe('StorageContext.ping (deep health check)', () => {
+  it('resolves on a live in-memory SQLite connection', async () => {
+    const ctx = await createStorage({ sqlitePath: ':memory:' });
+    await expect(ctx.ping()).resolves.toBeUndefined();
+    await ctx.close();
+  });
+
+  it('rejects after the SQLite connection is closed', async () => {
+    const ctx = await createStorage({ sqlitePath: ':memory:' });
+    await ctx.close();
+    await expect(ctx.ping()).rejects.toThrow();
   });
 });

@@ -72,6 +72,9 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       accounts: new PgAccountsRepository(db),
       authSessions: new PgAuthSessionsRepository(db),
       migrate: async () => runPgMigrations(client, migrationsDir),
+      ping: async () => {
+        await client.unsafe('SELECT 1');
+      },
       close: async () => {
         await client.end({ timeout: 5 });
       },
@@ -96,6 +99,9 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     accounts: new SqliteAccountsRepository(db),
     authSessions: new SqliteAuthSessionsRepository(db),
     migrate: async () => runMigrations(client, migrationsDir),
+    ping: async () => {
+      client.prepare('SELECT 1 AS ok').get();
+    },
     close: async () => {
       client.close();
     },
