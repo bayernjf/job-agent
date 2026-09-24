@@ -4,7 +4,7 @@
 # Form C deployment (Vercel same-origin app: Astro report site at / and the
 # Hono API mounted at /api/*).
 #
-# It covers the automatable subset of Runbook section 10 (items 1 and 9-10):
+# It covers the automatable subset of Runbook section 10 (items 1 and 9-11):
 #   1. GET /api/health                         -> 200 {"status":"ok"}
 #      GET /api/health?deep=1                  -> 200 {"db":"ok"} (proves the
 #                                                API-to-database SELECT 1
@@ -18,6 +18,13 @@
 #                                                claims at most one job)
 #   4. GET /api/jobs/<random>                 -> 404 (proves routing + DB)
 #   5. GET /api/demo/presets                  -> 200 (public read endpoint)
+#   6. GET /api/auth/providers                -> 200 with the per-platform
+#                                                "configured" flags the report
+#                                                login wall renders from
+#   7. GET|POST /api/interviews anonymously   -> 401 (recruiter data must never
+#                                                be readable without a session;
+#                                                a 200 here means the login gate
+#                                                is broken)
 #
 # Usage:
 #   ./tools/smoke-deploy.sh <base-url> [--cron-secret <secret>]
@@ -26,8 +33,8 @@
 #       --cron-secret "$CRON_SECRET"
 #
 # Items requiring a real browser / real OAuth consent (Runbook 10.2-10.8,
-# 10.10) cannot be automated here; they are printed as a manual checklist at
-# the end.
+# 10.10-10.11) cannot be automated here; they are printed as a manual
+# checklist at the end.
 #
 # Exit: 0 when every automated check passes, 1 otherwise.
 
@@ -41,7 +48,9 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || { echo "error: --cron-secret requires a value" >&2; exit 1; }
       CRON_SECRET="$2"; shift 2 ;;
     -h|--help)
-      sed -n '2,30p' "$0"; exit 0 ;;
+      # Print the header comment block (stops at the first non-comment line so
+      # the range never goes stale when the header grows).
+      awk 'NR > 1 && !/^#/ { exit } NR > 1 { print }' "$0"; exit 0 ;;
     *)
       if [ -z "$BASE_URL" ]; then BASE_URL="$1"; shift; else
         echo "error: unexpected argument: $1" >&2; exit 1; fi ;;
@@ -134,6 +143,20 @@ check "GET /api/jobs/unknown -> 404" 404 \
 # 5. Public read endpoint
 check "GET /api/demo/presets -> 200" 200 "$BASE_URL/api/demo/presets"
 
+# 6. Public auth provider flags: the report login wall renders its GitHub /
+#    Gitee buttons from this payload. GitHub must be configured in production
+#    (the primary login path), so "configured":false here means the OAuth
+#    client id/secret are missing from the Vercel env.
+check_contains "GET /api/auth/providers -> 200 (GitHub OAuth configured)" 200 \
+  '"github":{"configured":true' "$BASE_URL/api/auth/providers"
+
+# 7. Recruiter interview data must stay behind the session gate. A 200 here
+#    means interviews (candidate, round, outcome, feedback) are publicly
+#    readable, which is the one thing this endpoint must never do.
+check "GET /api/interviews without login -> 401" 401 "$BASE_URL/api/interviews"
+check "POST /api/interviews without login -> 401" 401 \
+  -X POST -H 'content-type: application/json' -d '{}' "$BASE_URL/api/interviews"
+
 echo
 echo "Automated checks: $PASS passed, $FAIL failed"
 echo
@@ -153,6 +176,9 @@ echo "  [ ] 10.8 Resume AI polish when LLM_* is set; graceful rule-based"
 echo "          fallback otherwise"
 echo "  [ ] 10.10 Vercel logs show per-minute cron invocations without"
 echo "          FUNCTION_INVOCATION_TIMEOUT"
+echo "  [ ] 10.11 Recruiter /recruit interview planner: login wall when logged"
+echo "          out; after login schedule an interview, move it through the"
+echo "          statuses and record an outcome"
 
 if [ "$FAIL" -ne 0 ]; then
   exit 1
