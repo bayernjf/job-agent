@@ -85,6 +85,7 @@ pnpm -r build                # 构建各 workspace
 pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm migrate:up / migrate:down / migrate:status   # SQLite 迁移（migrate:pg:* 走 Postgres）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 迁移目录对齐
+bash tools/preflight.sh          # 上线前一键本地预检：typecheck/迁移/单测/build/audit（--e2e 追加两套 E2E）
 ```
 
 扩展 CWS 发布包（release 构建 + zip，需指定生产 API/站点域，详见 [store-assets README](apps/extension/store-assets/README.md)）：
