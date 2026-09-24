@@ -5,7 +5,7 @@
 - 内容类型：请求/响应均为 `application/json`（健康检查与 OAuth 302 跳转除外）
 - 路径前缀：Hono 内部路由即本文档所列路径（`/analyze`、`/auth/*`…），**不带 `/api` 前缀**。形态 C 同域部署时由报告站 `pages/api/[...slug].ts` 把外部 `/api/*` 剥前缀后转发，并设 `API_MOUNT_PREFIX=/api` 让 OAuth 回调 URI/Cookie Path 带上前缀；故浏览器实际访问的是 `https://<域名>/api/analyze` 等。
 - CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）；形态 C 同域不涉及 CORS。
-- 最后更新：2026-09-20
+- 最后更新：2026-09-24（新增 `GET /health?deep=1` 深健康检查）
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`，演示模式完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
 
@@ -895,11 +895,29 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 ### `GET /health`
 
-无需请求体，用于探活/负载均衡。
+无需请求体，用于探活/负载均衡。**浅检查不访问数据库**，只要函数进程存活即返回 `200`（部署平台/负载均衡探活用，避免因 DB 抖动误杀实例）：
 
 ```json
 { "status": "ok", "service": "jobagent-api", "time": "2026-09-11T08:00:00.000Z" }
 ```
+
+### `GET /health?deep=1`（或 `?deep=true`）
+
+**深检查**额外经持久化层执行一次 `SELECT 1` 往返（SQLite/Postgres 方言差异收敛在 storage 层），用于部署后 smoke 与监控区分"进程在但数据库不可达"。
+
+- `200`（DB 可达）：
+
+```json
+{ "status": "ok", "service": "jobagent-api", "time": "2026-09-24T08:00:00.000Z", "db": "ok", "dbLatencyMs": 2 }
+```
+
+- `503`（DB 不可达）：
+
+```json
+{ "status": "error", "service": "jobagent-api", "time": "2026-09-24T08:00:00.000Z", "db": "unreachable", "error": "..." }
+```
+
+`tools/smoke-deploy.sh` 同时断言浅检查 `200 {"status":"ok"}` 与深检查 `200 {"db":"ok"}`。
 
 ---
 
