@@ -882,3 +882,78 @@ export function parseResumeDraft(input: unknown): ResumeDraft | null {
   const result = ResumeDraftSchema.safeParse(input);
   return result.success ? result.data : null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// 面试计划表（Interviews，handoff item45，设计见 docs/proposal-interview-planner-20260922.md）
+//
+// 招聘方在一个候选人（profile）上安排面试、流转状态、登记结果。
+// 个人效率工具：不引入 recruiter 角色/组织实体，行级归属 createdByAccountId，
+// 全部端点要求登录 user，只返回创建者本人的数据。面试可直接从候选人画像创建
+// （applicationId 可空），也可关联一条求职者投递记录。
+// ─────────────────────────────────────────────────────────────────────────
+
+export const INTERVIEW_FORMATS = ['onsite', 'phone', 'video'] as const;
+export const InterviewFormatSchema = z.enum(INTERVIEW_FORMATS);
+export type InterviewFormat = z.infer<typeof InterviewFormatSchema>;
+
+export const INTERVIEW_STATUSES = [
+  'scheduled',
+  'completed',
+  'cancelled',
+  'no_show',
+  'rescheduled',
+] as const;
+export const InterviewStatusSchema = z.enum(INTERVIEW_STATUSES);
+export type InterviewStatus = z.infer<typeof InterviewStatusSchema>;
+
+export const INTERVIEW_OUTCOMES = ['strong_yes', 'yes', 'neutral', 'no'] as const;
+export const InterviewOutcomeSchema = z.enum(INTERVIEW_OUTCOMES);
+export type InterviewOutcome = z.infer<typeof InterviewOutcomeSchema>;
+
+/** POST /interviews 请求体（招聘方排期）。 */
+export const InterviewCreateSchema = z
+  .object({
+    profileId: z.string().min(1, 'profileId is required'),
+    applicationId: z.string().min(1).nullish(),
+    targetTitle: z.string().min(1, 'targetTitle is required'),
+    targetCompany: z.string().min(1).nullish(),
+    scheduledStart: z.string().datetime(),
+    scheduledEnd: z.string().datetime(),
+    format: InterviewFormatSchema,
+    roundLabel: z.string().min(1, 'roundLabel is required'),
+    interviewerName: z.string().min(1).nullish(),
+    interviewerEmail: z.string().email().nullish(),
+  })
+  .refine((d) => d.scheduledEnd > d.scheduledStart, {
+    message: 'scheduledEnd must be after scheduledStart',
+    path: ['scheduledEnd'],
+  });
+export type InterviewCreateInput = z.infer<typeof InterviewCreateSchema>;
+
+/** PATCH /interviews/:id 请求体（改期/流转/结果录入），至少一个字段。 */
+export const InterviewPatchSchema = z
+  .object({
+    targetTitle: z.string().min(1).optional(),
+    targetCompany: z.string().min(1).nullable().optional(),
+    scheduledStart: z.string().datetime().optional(),
+    scheduledEnd: z.string().datetime().optional(),
+    format: InterviewFormatSchema.optional(),
+    roundLabel: z.string().min(1).optional(),
+    interviewerName: z.string().min(1).nullable().optional(),
+    interviewerEmail: z.string().email().nullable().optional(),
+    status: InterviewStatusSchema.optional(),
+    outcome: InterviewOutcomeSchema.nullable().optional(),
+    feedbackNote: z.string().nullable().optional(),
+    rating: z.number().int().min(1).max(5).nullable().optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: 'at least one field to update is required',
+  });
+export type InterviewPatchInput = z.infer<typeof InterviewPatchSchema>;
+
+/** GET /interviews 查询串：仅允许按候选人/状态过滤（创建者由登录态强制）。 */
+export const InterviewListQuerySchema = z.object({
+  profileId: z.string().min(1).optional(),
+  status: InterviewStatusSchema.optional(),
+});
+export type InterviewListQuery = z.infer<typeof InterviewListQuerySchema>;
