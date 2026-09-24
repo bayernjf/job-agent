@@ -67,6 +67,21 @@ export type {
 export { APPLICATION_STATUSES, APPLICATION_ORIGINS, toStoredApplication } from './application.js';
 
 export type {
+  StoredInterview,
+  NewInterview,
+  RawInterviewRow,
+  InterviewFormat,
+  InterviewOutcome,
+  InterviewStatus,
+} from './interview.js';
+export {
+  INTERVIEW_FORMATS,
+  INTERVIEW_OUTCOMES,
+  INTERVIEW_STATUSES,
+  toStoredInterview,
+} from './interview.js';
+
+export type {
   CandidateSkill,
   CandidateSummary,
   CandidateSortBy,

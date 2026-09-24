@@ -170,6 +170,10 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     }
   }, TEARDOWN_TIMEOUT_MS * 3);
 
+  pgIt('ping() resolves on a live Postgres connection (deep health check)', async (s) => {
+    await expect(s.ping()).resolves.toBeUndefined();
+  });
+
   // 真实竞态：多个并发请求同时走条件 UPDATE ... RETURNING 扣减配额，
   // 行锁必须串行化更新——放行数恰好等于配额，绝不超发。
   pgIt('never over-issues analyze slots under concurrent requests', async (s) => {
@@ -351,7 +355,7 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       try {
         const versions =
           await verify.client<Array<{ version: string }>>`SELECT version FROM schema_migrations ORDER BY version`;
-        expect(versions).toHaveLength(11);
+        expect(versions).toHaveLength(12);
         const rows =
           await verify.client<Array<{ table_name: string }>>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`;
         const names = rows.map((r) => r.table_name);
@@ -364,6 +368,7 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
           'demo_sessions',
           'demo_rate_events',
           'applications',
+          'interviews',
           'accounts',
           'auth_sessions',
         ]) {

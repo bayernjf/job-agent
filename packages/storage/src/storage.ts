@@ -9,6 +9,7 @@ import { SqliteWaitlistRepository } from './sqlite/waitlist-repo.js';
 import { SqliteJobPostingsRepository } from './sqlite/job-postings-repo.js';
 import { SqliteDemoSessionsRepository } from './sqlite/demo-sessions-repo.js';
 import { SqliteApplicationsRepository } from './sqlite/applications-repo.js';
+import { SqliteInterviewsRepository } from './sqlite/interviews-repo.js';
 import { SqliteAccountsRepository } from './sqlite/accounts-repo.js';
 import { SqliteAuthSessionsRepository } from './sqlite/auth-sessions-repo.js';
 import { openPostgres } from './postgres/connection.js';
@@ -20,6 +21,7 @@ import { PgWaitlistRepository } from './postgres/waitlist-repo.js';
 import { PgJobPostingsRepository } from './postgres/job-postings-repo.js';
 import { PgDemoSessionsRepository } from './postgres/demo-sessions-repo.js';
 import { PgApplicationsRepository } from './postgres/applications-repo.js';
+import { PgInterviewsRepository } from './postgres/interviews-repo.js';
 import { PgAccountsRepository } from './postgres/accounts-repo.js';
 import { PgAuthSessionsRepository } from './postgres/auth-sessions-repo.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
@@ -69,9 +71,13 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       jobPostings: new PgJobPostingsRepository(db),
       demoSessions: new PgDemoSessionsRepository(db),
       applications: new PgApplicationsRepository(db),
+      interviews: new PgInterviewsRepository(db),
       accounts: new PgAccountsRepository(db),
       authSessions: new PgAuthSessionsRepository(db),
       migrate: async () => runPgMigrations(client, migrationsDir),
+      ping: async () => {
+        await client.unsafe('SELECT 1');
+      },
       close: async () => {
         await client.end({ timeout: 5 });
       },
@@ -93,9 +99,13 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     jobPostings: new SqliteJobPostingsRepository(db),
     demoSessions: new SqliteDemoSessionsRepository(db),
     applications: new SqliteApplicationsRepository(db),
+    interviews: new SqliteInterviewsRepository(db),
     accounts: new SqliteAccountsRepository(db),
     authSessions: new SqliteAuthSessionsRepository(db),
     migrate: async () => runMigrations(client, migrationsDir),
+    ping: async () => {
+      client.prepare('SELECT 1 AS ok').get();
+    },
     close: async () => {
       client.close();
     },

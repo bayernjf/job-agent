@@ -71,6 +71,40 @@ describe('GET /health', () => {
     expect(body.status).toBe('ok');
     expect(body.service).toBe('jobagent-api');
   });
+
+  it('shallow check does not touch the database (no db field)', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/health');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.db).toBeUndefined();
+    expect(body.dbLatencyMs).toBeUndefined();
+  });
+
+  it('deep check reports db ok when the database round-trip succeeds', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    for (const qs of ['?deep=1', '?deep=true']) {
+      const res = await app.request(`/health${qs}`);
+      expect(res.status, qs).toBe(200);
+      const body = await res.json() as any;
+      expect(body.status, qs).toBe('ok');
+      expect(body.db, qs).toBe('ok');
+      expect(body.dbLatencyMs, qs).toEqual(expect.any(Number));
+    }
+  });
+
+  it('deep check returns 503 with db unreachable when the database ping fails', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({
+      repos: { ...repos, ping: async () => { throw new Error('connection refused'); } },
+    });
+    const res = await app.request('/health?deep=1');
+    expect(res.status).toBe(503);
+    const body = await res.json() as any;
+    expect(body.status).toBe('error');
+    expect(body.db).toBe('unreachable');
+    expect(body.error).toContain('connection refused');
+  });
 });
 
 describe('POST /analyze', () => {

@@ -50,7 +50,7 @@ job-agent/
 │  └─ extension/      # P1 浏览器扩展（MV3 + content script + Shadow DOM 面板 + 三 ATS 适配器 + esbuild；试用指南见其 README）
 ├─ db/migrations/sqlite/   # SQLite 编号迁移（NNN_verb_snake_case.sql）
 ├─ db/migrations/postgres/ # Postgres 编号迁移（与 sqlite 编号/文件名一一对应），规范见 MIGRATION_CONVENTION.md
-├─ tools/             # check-migrations.sh 等只读工程脚本
+├─ tools/             # check-migrations.sh / preflight.sh / smoke-deploy.sh 等工程脚本
 ├─ tests/fixtures/    # 录制并脱敏的 GitHub 响应夹具
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
 ```
@@ -68,6 +68,7 @@ pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm --filter <pkg> exec vitest run path/to/file.test.ts  # 跑单个测试文件
 pnpm migrate:up / migrate:down / migrate:status          # SQLite 应用/回滚一步/查看状态（默认 data/job-agent.db）；migrate:pg:* 走 Postgres（读 DATABASE_URL）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号/文件头 + 文件名集合对齐（可传单目录参数）
+bash tools/preflight.sh          # 上线前一键本地预检（typecheck/迁移/单测/build/audit，首败即停；--e2e 追加两套 Playwright）
 pnpm e2e                         # report 页 Playwright E2E（拉起 Astro，mock API）
 pnpm e2e:extension               # 扩展 E2E：--headless=new 加载 unpacked MV3、零网络（先 build dist；设计见 docs/design-extension-e2e-20260914.md）
 # 岗位定向简历：库模式 --profile <profileId> --job <jobId>；离线模式 --profile <画像.json> --job-file <岗位.json> [--evidence e.json] [--local-fields l.json] [--format md|html|json] [--locale zh-CN|en] [-o out]
