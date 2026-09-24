@@ -5,9 +5,13 @@
  * 用法：
  *   SQLite（默认）：
  *     tsx src/cli.ts up|down|status [dbPath] [migrationsDir]
+ *     tsx src/cli.ts up --db <path>        # 等价于位置参数，便于脚本里显式表态
  *   Postgres（连接串取 DATABASE_URL）：
  *     tsx src/cli.ts up|down|status --driver postgres
  *     或 DB_DRIVER=postgres tsx src/cli.ts up
+ *
+ * SQLite 目标库优先级：`--db`/位置参数 > `DB_PATH` > 仓库根 `data/job-agent.db`，
+ * 与 createStorage() 读 `DB_PATH` 的行为一致；每次执行都会先打印选中的路径与来源。
  *
  * 默认目录：sqlite → db/migrations/sqlite；postgres → db/migrations/postgres。
  */
@@ -22,28 +26,35 @@ import {
 } from './sqlite/migrator.js';
 import { openPostgres } from './postgres/connection.js';
 import { rollbackPgMigration, runPgMigrations } from './postgres/migrator.js';
+import { resolveSqliteDbPath } from './cli-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SQLITE_DEFAULT_DB = path.resolve(__dirname, '../../../data/job-agent.db');
 const SQLITE_DIR = path.resolve(__dirname, '../../../db/migrations/sqlite');
 const POSTGRES_DIR = path.resolve(__dirname, '../../../db/migrations/postgres');
 
-// 解析 --driver（--driver=postgres 或 --driver postgres），其余作为位置参数
+// 解析 --driver 与 --db，其余作为位置参数
 const rawArgs = process.argv.slice(2);
 let driver = process.env.DB_DRIVER ?? 'sqlite';
+let dbFlag: string | undefined;
 const positional: string[] = [];
 for (let i = 0; i < rawArgs.length; i += 1) {
   const arg = rawArgs[i]!;
   if (arg.startsWith('--driver=')) driver = arg.slice('--driver='.length);
   else if (arg === '--driver') driver = rawArgs[(i += 1)]!;
+  else if (arg.startsWith('--db=')) dbFlag = arg.slice('--db='.length);
+  else if (arg === '--db') dbFlag = rawArgs[(i += 1)]!;
   else positional.push(arg);
 }
 
 const command = positional[0] ?? 'status';
+const explicitPath = dbFlag ?? positional[1];
 
 async function runSqlite(): Promise<void> {
-  const dbPath = positional[1] ?? SQLITE_DEFAULT_DB;
+  const resolved = resolveSqliteDbPath({ argument: explicitPath, defaultPath: SQLITE_DEFAULT_DB });
+  const dbPath = resolved.path;
   const migrationsDir = positional[2] ?? SQLITE_DIR;
+  console.log(`[migrate] sqlite ${dbPath} (from ${resolved.source})`);
   const db = new Database(dbPath);
   try {
     if (command === 'up') {
@@ -84,6 +95,11 @@ async function runSqlite(): Promise<void> {
 }
 
 async function runPostgres(): Promise<void> {
+  // --db / 位置参数只对 SQLite 有意义；postgres 模式下静默忽略会让操作者以为
+  // 自己在操作另一个库，故直接拒绝。
+  if (explicitPath !== undefined) {
+    throw new Error('The migration CLI takes no database path for postgres; set DATABASE_URL instead.');
+  }
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DB_DRIVER=postgres requires DATABASE_URL for the migration CLI.');
   const { client } = openPostgres(url);
