@@ -56,6 +56,9 @@ interface WorkspaceLabels {
   platformFused: string;
   fusedBadge: string;
   fusedBadgeTitle: string;
+  claimedBadge: string;
+  unclaimedBadge: string;
+  unclaimedBadgeTitle: string;
   sortBy: string;
   sortConfidence: string;
   sortSkills: string;
@@ -412,6 +415,23 @@ export default function CandidateWorkspace({
                         ) : (
                           c.platform
                         )}
+                        {' · '}
+                        {
+                          /* 决策 #1-A：招聘方列表里也要一眼分清"本人认领过"与"仅公开数据" */
+                          c.claimed ? (
+                            <span className="ja-badge ja-badge--owner" data-testid="candidate-claimed">
+                              {labels.claimedBadge}
+                            </span>
+                          ) : (
+                            <span
+                              className="ja-badge ja-badge--unclaimed"
+                              title={labels.unclaimedBadgeTitle}
+                              data-testid="candidate-unclaimed"
+                            >
+                              {labels.unclaimedBadge}
+                            </span>
+                          )
+                        }
                       </span>
                     </div>
                     <button

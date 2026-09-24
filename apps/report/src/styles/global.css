@@ -126,6 +126,12 @@ h4 { font-size: var(--ja-text-lg); }
   border: 1px solid var(--ja-color-success);
 }
 
+.ja-badge--unclaimed {
+  background: var(--ja-color-amber-50);
+  color: var(--ja-color-warning);
+  border: 1px solid var(--ja-color-warning);
+}
+
 /* ─── AccountMenu / ClaimProfile 认证 islands ─────────────────────── */
 
 .account-menu {
