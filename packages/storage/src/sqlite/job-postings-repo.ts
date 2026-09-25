@@ -160,6 +160,18 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
     return result;
   }
 
+  async countActiveFresh(cutoffIso: string): Promise<Record<string, number>> {
+    const rows = this.db
+      .select({ source: t.source, count: sql<number>`count(*)` })
+      .from(t)
+      .where(and(eq(t.status, 'active'), gte(t.lastSeenAt, cutoffIso)))
+      .groupBy(t.source)
+      .all();
+    const result: Record<string, number> = {};
+    for (const row of rows) result[row.source] = Number(row.count);
+    return result;
+  }
+
   async markStale(cutoffIso: string): Promise<number> {
     const info = this.db
       .update(t)

@@ -14,4 +14,6 @@ export interface IEvidenceRepository {
     limit?: number,
   ): Promise<StoredEvidence[]>;
   countByProfile(profileId: string): Promise<number>;
+  /** 物理删除某画像的全部证据（T25 L0→L1 升级替换 / T26 删除画像）；行不存在时静默 */
+  deleteByProfile(profileId: string): Promise<void>;
 }

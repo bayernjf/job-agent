@@ -43,6 +43,8 @@ export interface IJobPostingsRepository {
   search(query: JobPostingQuery): Promise<StoredJobPosting[]>;
   /** 按源统计在招岗位数量（可指定状态，默认 active） */
   countBySource(status?: JobPostingStatus): Promise<Record<string, number>>;
+  /** T24：只统计 last_seen_at >= cutoffIso 的 active 岗位（过期行不再冒充 active，即使未跑 markStale） */
+  countActiveFresh(cutoffIso: string): Promise<Record<string, number>>;
   /** last_seen_at < cutoffIso 的 active 岗位置 inactive，返回受影响行数 */
   markStale(cutoffIso: string): Promise<number>;
   getById(id: string): Promise<StoredJobPosting | undefined>;
