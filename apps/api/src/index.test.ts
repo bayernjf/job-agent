@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AbilityProfile } from '@jobagent/shared';
-import { createStorage, type StorageContext } from '@jobagent/storage';
+import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
 
 async function freshRepos(): Promise<StorageContext> {
@@ -640,15 +640,16 @@ describe('GET /profiles/by-subject/:platform/:login', () => {
     expect(body.code).toBe('PROFILE_NOT_FOUND');
   });
 
-  it('returns 404 when the latest profile is only partial (not complete)', async () => {
+  it('returns 200 with status=partial for a partial (L0-only) profile (T25)', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
     await seedProfile(repos, 'prof-partial', 'partial-user', 'github', 'partial');
 
     const res = await app.request('/profiles/by-subject/github/partial-user');
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
     const body = await res.json() as any;
-    expect(body.code).toBe('PROFILE_NOT_FOUND');
+    expect(body.profileId).toBe('prof-partial');
+    expect(body.status).toBe('partial');
   });
 
   it('rejects platform=all (no single-subject snapshot for fused jobs)', async () => {
@@ -671,5 +672,190 @@ describe('404 fallback', () => {
     expect(res.status).toBe(404);
     const body = await res.json() as any;
     expect(body.error).toBe('not found');
+  });
+});
+
+describe('T24：自选岗位直传简历 + 岗位库统计新鲜度', () => {
+  async function insertProfile(repos: StorageContext, profileId: string, login: string): Promise<void> {
+    const snapshot = sampleProfile(profileId, login);
+    await repos.profiles.insert({
+      id: profileId,
+      analyzerVersion: snapshot.analyzerVersion,
+      subjectLogin: login,
+      subjectClaimed: false,
+      dataWindowSince: snapshot.dataWindow.since,
+      dataWindowUntil: snapshot.dataWindow.until,
+      status: 'complete',
+      snapshot,
+    });
+  }
+
+  it('builds a targeted resume from a pasted JD without touching the job pool', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    await insertProfile(repos, 'prof-manual-1', 'manual-user');
+
+    const res = await app.request('/resumes/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profileId: 'prof-manual-1',
+        posting: {
+          title: 'AI Agent 后端工程师',
+          company: 'Acme Inc.',
+          description: '负责 AI Agent 平台后端，熟悉 TypeScript、SQLite、PostgreSQL 与分布式任务队列。',
+        },
+        format: 'md',
+        locale: 'zh-CN',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { markdown: string };
+    expect(body.markdown).toContain('AI Agent 后端工程师');
+    expect(body.markdown).toContain('Acme Inc.');
+    // 直传不入池：岗位库仍为空
+    const pool = await repos.jobPostings.countBySource();
+    expect(pool.remoteok ?? 0).toBe(0);
+  });
+
+  it('omits "@ company" from the rendered target line when company is empty (T24)', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    await insertProfile(repos, 'prof-manual-2', 'manual-user2');
+
+    const res = await app.request('/resumes/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profileId: 'prof-manual-2',
+        posting: { title: 'SRE Engineer', description: '运维与可观测性，Kubernetes、Prometheus。' },
+        format: 'md',
+        locale: 'en',
+      }),
+    });
+    if (res.status !== 200) console.error('DEBUG 500 body:', await res.text());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { markdown: string };
+    expect(body.markdown).toContain('SRE Engineer');
+    expect(body.markdown).not.toContain('SRE Engineer @');
+  });
+
+  it('rejects jobId and posting provided together', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    const res = await app.request('/resumes/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profileId: 'x',
+        jobId: 'j1',
+        posting: { title: 't', description: 'd' },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('job-posting stats only count fresh active rows (T24①)', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    const now = new Date().toISOString();
+    const base = (id: string, srcUrl: string, seenAt: string): NewJobPosting => ({
+      jobId: id,
+      source: 'remoteok',
+      sourceUrl: srcUrl,
+      title: 'Test Role',
+      company: 'Acme',
+      description: 'd',
+      location: null,
+      remote: false,
+      salaryMin: null,
+      salaryMax: null,
+      salaryCurrency: null,
+      tags: [],
+      postedAt: seenAt,
+      fetchedAt: seenAt,
+      normalizedKey: `nk-${id}`,
+    });
+    await repos.jobPostings.upsertBatch([base('stats-fresh', 'https://e.com/fresh', now)], now);
+    await repos.jobPostings.upsertBatch(
+      [base('stats-stale', 'https://e.com/stale', '2026-01-01T00:00:00.000Z')],
+      '2026-01-01T00:00:00.000Z',
+    );
+
+    const res = await app.request('/job-postings/stats');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { active: number; inactive: number; staleAfterDays: number };
+    expect(body.active).toBe(1); // 只有窗口内的行算 active，stale 行不再冒充
+    expect(body.inactive).toBe(0);
+    expect(body.staleAfterDays).toBe(7);
+  });
+});
+
+// ── T27 fail-open 收口：三条"摘掉闸必红"用例 ──────────────────────────────
+import { loadDemoConfig } from './demo-config.js';
+import { hashIp } from './principal.js';
+
+describe('T27 fail-open 收口', () => {
+  it('enforces matchRatePerHour for demo callers via IP sliding window (429)', async () => {
+    const repos = await freshRepos();
+    const cfg = { ...loadDemoConfig(), matchRatePerHour: 1, trustProxy: true, ipSalt: 'test-salt' };
+    const app = await createApp({ repos, demoConfig: cfg });
+    const cookie = await demoSessionCookie(repos);
+    const ip = '1.2.3.4';
+    const ipHash = hashIp(ip, 'test-salt');
+    // 窗口内已有一条 match 事件（刚刚发生）→ 请求触发 429
+    await repos.demoSessions.insertRateEvent(ipHash, 'match', new Date().toISOString());
+
+    const res = await app.request('/job-postings/match', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: cookie,
+        'x-forwarded-for': ip,
+      },
+      body: JSON.stringify({ skills: ['typescript'] }),
+    });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as { bucket?: string };
+    expect(body.bucket).toBe('match');
+  });
+
+  it('rejects polish=true on /resumes/build for anonymous callers (403)', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/resumes/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        profileId: 'does-not-matter',
+        posting: { title: 'Engineer', description: 'JD' },
+        polish: true,
+      }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code?: string };
+    expect(body.code).toBe('AUTH_REQUIRED');
+  });
+
+  it('fails fast at startup in production when CRON_SECRET or TRUST_PROXY is missing', async () => {
+    const savedSecret = process.env.CRON_SECRET;
+    const savedTrust = process.env.TRUST_PROXY;
+    delete process.env.CRON_SECRET;
+    delete process.env.TRUST_PROXY;
+    try {
+      const cfg = { ...loadDemoConfig(), isProduction: true };
+      await expect(createApp({ repos: await freshRepos(), demoConfig: cfg })).rejects.toThrow(
+        /CRON_SECRET/,
+      );
+      // 补上 CRON_SECRET 后仍要求 TRUST_PROXY 显式设置
+      process.env.CRON_SECRET = 'test-secret';
+      await expect(createApp({ repos: await freshRepos(), demoConfig: cfg })).rejects.toThrow(
+        /TRUST_PROXY/,
+      );
+    } finally {
+      if (savedSecret !== undefined) process.env.CRON_SECRET = savedSecret;
+      else delete process.env.CRON_SECRET;
+      if (savedTrust !== undefined) process.env.TRUST_PROXY = savedTrust;
+      else delete process.env.TRUST_PROXY;
+    }
   });
 });

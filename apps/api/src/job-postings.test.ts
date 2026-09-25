@@ -11,7 +11,8 @@ import type { AbilityProfile, JobPosting, JobSource } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
 
-const NOW = '2026-09-13T00:00:00.000Z';
+// 动态当前时间：upsert 以它为 last_seen_at，T24① stats 只数 7 天窗口内的行，静态日期会随测试腐烂
+const NOW = new Date().toISOString();
 let seq = 0;
 
 function job(overrides: Partial<JobPosting> & { title: string }): NewJobPosting {
@@ -147,9 +148,11 @@ describe('GET /job-postings/stats and /:id', () => {
     ]);
     const res = await app.request('/job-postings/stats');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { active: Record<string, number> };
-    expect(body.active.remoteok).toBe(1);
-    expect(body.active.lever).toBe(2);
+    // T24①：stats 只统计新鲜窗口内的 active 行（harness 插入的行 last_seen_at=now，全部新鲜）
+    const body = (await res.json()) as { active: number; inactive: number; staleAfterDays: number };
+    expect(body.active).toBe(3);
+    expect(body.inactive).toBe(0);
+    expect(body.staleAfterDays).toBe(7);
   });
 
   it('fetches one posting by id and 404s otherwise', async () => {
