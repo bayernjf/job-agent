@@ -45,7 +45,11 @@ export function renderMarkdown(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-
   if (contactParts.length > 0) lines.push(contactParts.map(escapeMd).join(' · '));
   lines.push('');
   lines.push(
-    `**${copy.targetLabel}:** ${escapeMd(draft.targetJob.title)} @ ${escapeMd(draft.targetJob.company)}  `,
+    `**${copy.targetLabel}:** ${
+      draft.targetJob.company
+        ? `${escapeMd(draft.targetJob.title)} @ ${escapeMd(draft.targetJob.company)}`
+        : escapeMd(draft.targetJob.title)
+    }  `,
   );
   lines.push(
     `**${copy.matchLabel}:** ${draft.targetJob.tier} (${draft.targetJob.matchScore}; title ${draft.targetJob.fieldScores.title}/tags ${draft.targetJob.fieldScores.tags}/desc ${draft.targetJob.fieldScores.description})`,
