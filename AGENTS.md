@@ -87,7 +87,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 
 1. 接口收到用户名 → Zod 校验 → 命中未过期画像快照则直接返回。
 2. 否则创建 `analysis_jobs(queued)`，API 立即返回 `jobId`。
-3. Worker 认领：`github-source` 一次采集 **L0 + L1**（`jobs.stage` 只是进度显示），分析完成后**一次性**写入画像。⚠️ **不存在"L0 先出一版 `partial` 轻画像"的早返回**（2026-09-25 评审实查：`profiles.insert` 全仓仅 `apps/worker/src/index.ts:246` 一处，且在流程末尾、`status` 硬编 `complete`），PRD:179 的限频降级验收因此仍未实现——补它属于 [评审-MVP-20260925](docs/评审-MVP-20260925.md) 的 P0-2。
+3. Worker 认领：**两段式采集**（2026-09-25 批次 6 落地，`20af4d8`）——`collectStagedL0` 先出轻输入 → analyze(L0) → 落 `status:'partial'` 画像并导入 L0 证据（限频/慢源时用户先看到 L0 版而非干等）；同任务内继续 L1（失败不抛、降级为仅 L0 并记 `l1_failed`）→ `updateSnapshot` 升级为 `partial`/`complete`（按 `missing.length`）并重导证据。
    - **错误重试策略**：`not_found`（账号/仓库不存在）直接失败不重试；`api_error`/`budget_exhausted` 等瞬时错误重试至多 3 次。
    - **僵尸任务回收**：Worker 启动时将 >5 分钟仍 `running` 的任务重置为 `queued`（崩溃恢复）。
 4. `analyzer-core`（**纯函数、带版本、无 I/O**）计算真实性信号、能力标签、规则化面试题，产出完整 `AbilityProfile`。
