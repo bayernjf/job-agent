@@ -174,11 +174,11 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | ✅ T03 | api：POST 登录时写本人 id；PATCH 非主返回 **404**（不泄露存在，对齐 `/interviews`） | 植入"换身份改他人行"探针必红；`docs/API.md` §3.6 同步 | `apps/api/src/index.ts:1439/1469` |
 | ✅ T03b | 投递表**只对本人出现**：报告页当前是"非招聘方视角就挂载 tracker"（`[profileId].astro:522-525` 的条件是 `!isRecruiter`），等于任何拿到报告链接的匿名访客都能读能写这份求职管道。改成"仅登录且为该画像本人（或画像无主）才挂载"，API 的 `GET /profiles/:id/applications` 同步按身份过滤 | 未登录访问他人报告时投递区块完全不出现（不是隐藏按钮）；本人访问仍正常；`pnpm e2e` 两种身份各一条。**⚠️ 采纳本条会推翻 PRD F11 验收 4**（"投递追踪的既有匿名 E2E 不回归为需要登录"），二者只能留一个：建议改 PRD 那句为"未登录可浏览报告，但投递区块需登录才出现"——对真实求职者，"链接泄露＝求职管道泄露"比匿名可用性重要。**此处需用户明确点头，不由实现者自行取舍** | T03 |
 
-### 批次 1 · C-A 说得清我（决定"产品能不能替你说话"）
+### 批次 1 · C-A 说得清我（决定"产品能不能替你说话"）——**T04 ✅ 已落地 2026-09-25，T05–T08 进行中**
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
-| T04 | 技能目录补 AI/Agent 层：framework 条目 + 别名 + 词边界（`agent`、`llm-agent`、`rag`、`prompt`、`eval`、`mcp`、`vector-search`、`model-serving` 等） | 每条新词各有正向 + **反例**测试（防 `user agent` / `agency` 误命中）；analyzer 套件绿 | — |
+| ✅ T04 | 技能目录补 AI/Agent 层：framework 条目 + 别名 + 词边界（`agent`、`llm-agent`、`rag`、`prompt`、`eval`、`mcp`、`vector-search`、`model-serving` 等） | 每条新词各有正向 + **反例**测试（防 `user agent` / `agency` 误命中）；analyzer 套件绿 | — |
 | T05 | GitHub topics 直取归一兜底生产者（Q1-B） | 目录未收录但 topics 明确的能力能出标签且挂真证据；未知 topics 被噪声表挡住 | T04 |
 | T06 | PR diff 规模入证据（`additions`/`deletions`/`changedFiles` 已在 `AnalyzerInput` 却从未使用） | 产出"在 X 合了 N 行 / M 文件的 PR"这类可复核量化证据 | — |
 | T07 | headline 平台化：去掉硬编码英文与写死的 "GitHub developer"（`summary.ts:19-24`） | Gitee 主体不再被写成 GitHub；中英各一套；旧快照仍可解析 | — |
@@ -195,7 +195,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
-| T11 | 修简历 md 下载丢 `local`（`ResumeBuilder.tsx:275-285` 与 `:188-198` 对齐） | E2E 断言下载的 md 含姓名/邮箱 —— **修完这条才有"能直接投"的简历** | — |
+| ✅ T11 | 修简历 md 下载丢 `local`（`ResumeBuilder.tsx:275-285` 与 `:188-198` 对齐） | E2E 断言下载的 md 含姓名/邮箱 —— **修完这条才有"能直接投"的简历** | — |
 | T12 | 交付物卫生：内部批注（`markdown.ts:91-95`、`html.ts:159-165`）、匹配分、provenance 脚注移出交付物，只留产品界面 | 导出的 md/html 里不含 `[missing_skill]`、"缺少联系方式"、分数框 | — |
 | T13 | "项目条目"抽象：主体 + 动作 + 规模 + 结果 + 证据链接（吃 T06 的 diff 数据） | 仍受 no-fabrication 闸约束（`shared/src/index.ts:806-815`），空证据必抛 | T06, T12 |
 | T14 | 量化行进简历与面试包（`activity.metrics` 今天只在报告页渲染，进不了任何交付物） | 简历出现由画像直取的合并 PR 数 / 跨仓广度 / 持续月数，每个数字可回溯 | T13 |
@@ -217,6 +217,13 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | --- | --- | --- |
 | T21 | 🔒 形态 C 控制台部署（Runbook §4-C / 执行单 A–J）→ 配 Actions secret `DATABASE_URL` → 手动跑一次 daily | **在此之前的岗位池是死的**：日更整条 gated 在未配置的 secret 上（`.github/workflows/jobs-sync.yml:66-86`） |
 | T22 | 扩岗位种子清单：现成 Greenhouse/Lever 适配器再加 30–50 家真在招 AI 公司（**纯配置**） | 语料从"17 家自选"变成能代表市场；不动一行匹配逻辑 |
+
+### 实测纠正（2026-09-25，T04 落地时）
+
+1. **topics 是采集的**，我此前推测"L0 没取 repositoryTopics"是错的（`packages/github-source/src/graphql.ts:82/127` 就在取并映射）。真正的坑是 **topics 走小写精确相等**，所以 GitHub 的真实 topic 拼写（`agentic-workflows`、`mcp-servers`、`modelcontextprotocol`、`ai-agents`）必须逐字进别名表，带空格形态匹配不到。已按此补录并加守护用例。
+2. **第一次"没有 AI 标签"的实测是假象**：`pnpm --filter @jobagent/cli build` 不会重建 `analyzer-core` 的 dist，CLI 跑的是旧产物（61 条目录）。**任何用 CLI 做的真账号实测之前必须先 `pnpm -r build`**，否则测的是上一个版本。
+3. 全量重建后实测 `bayernjf`（GitHub 源、规则 0.1-0.3）：`ai agents` = **proficient / 置信度 0.85 / 5 条证据**，是该画像里置信度最高的框架标签，压过 react/postgresql/redis。T04 的"说得清我"这一条对用户本人成立。
+4. **框架标签上限是 8**（`skills.ts:172-175`，按 confidence 排序截断）——新词进了目录就挤掉了 `vue`。目前可接受，但等 T05/T14 让 AI 标签变多变密时，这个上限要先重估，否则会静默丢标签。
 
 ### 建议执行顺序
 
