@@ -324,6 +324,29 @@ describe('processJob', () => {
     expect((await repos.jobs.getById(jobId))!.status).toBe('succeeded');
   });
 
+  it('T31: analysing the same login twice succeeds end to end (evidence ids are per profile)', async () => {
+    const repos = await freshRepos();
+    const source = makeFakeSource();
+
+    const firstId = await createQueuedJob(repos);
+    const first = await processJob((await repos.jobs.claimNext('w1'))!, repos, asSources(source));
+
+    const secondId = await createQueuedJob(repos);
+    const secondJob = await repos.jobs.claimNext('w2');
+    expect(secondJob).not.toBeNull();
+    // 修复前这一步在 evidence 导入处抛 UNIQUE 冲突，任务被判失败并重试到死
+    const second = await processJob(secondJob!, repos, asSources(source));
+
+    expect(second.profileId).not.toBe(first.profileId);
+    for (const [jobId, profileId] of [
+      [firstId, first.profileId],
+      [secondId, second.profileId],
+    ] as const) {
+      expect((await repos.jobs.getById(jobId))!.status).toBe('succeeded');
+      expect((await repos.evidence.listByProfile(profileId)).length).toBeGreaterThan(0);
+    }
+  });
+
   it('routes to gitee source and passes platform when job.subjectPlatform=gitee', async () => {
     const repos = await freshRepos();
     const jobId = `job-${randomUUID().slice(0, 8)}`;

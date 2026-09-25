@@ -33,11 +33,11 @@ function sampleEvidence(id: string, profileId = 'prof-001'): NewEvidence {
 }
 
 describe('SqliteEvidenceRepository', () => {
-  it('inserts and retrieves evidence by id', async () => {
+  it('inserts and retrieves evidence by (profile, id)', async () => {
     const repo = freshRepo();
     await repo.insert(sampleEvidence('ev-001'));
 
-    const ev = await repo.getById('ev-001');
+    const ev = await repo.getById('prof-001', 'ev-001');
     expect(ev).toBeDefined();
     expect(ev!.id).toBe('ev-001');
     expect(ev!.profileId).toBe('prof-001');
@@ -48,9 +48,57 @@ describe('SqliteEvidenceRepository', () => {
     expect(ev!.rawRef).toBe('ev-001');
   });
 
-  it('returns undefined for non-existent id', async () => {
+  it('returns undefined for a non-existent id and for another profile\'s id', async () => {
     const repo = freshRepo();
-    expect(await repo.getById('nonexistent')).toBeUndefined();
+    await repo.insert(sampleEvidence('ev-001'));
+    expect(await repo.getById('prof-001', 'nonexistent')).toBeUndefined();
+    // 同一 evidenceId 属于另一个画像时不得被取到（014 的复合主键语义）
+    expect(await repo.getById('prof-002', 'ev-001')).toBeUndefined();
+  });
+
+  it('T31: the same evidenceId may exist under two profiles', async () => {
+    const repo = freshRepo();
+    const shared = 'pr:owner/repo#12';
+    await repo.insertBatch([
+      sampleEvidence(shared, 'prof-001'),
+      sampleEvidence(shared, 'prof-002'),
+    ]);
+    expect(await repo.getById('prof-001', shared)).toBeDefined();
+    expect(await repo.getById('prof-002', shared)).toBeDefined();
+    expect(await repo.countByProfile('prof-001')).toBe(1);
+    expect(await repo.countByProfile('prof-002')).toBe(1);
+  });
+
+  it('T31: importFromProfile may run twice with overlapping evidenceIds (re-analysis)', async () => {
+    const repo = freshRepo();
+    const items = [
+      {
+        evidenceId: 'repo:owner/name',
+        sourcePlatform: 'github',
+        sourceType: 'repo',
+        url: 'https://github.com/owner/name',
+        layer: 'L0',
+        claim: 'Repository owner/name',
+        rawRef: 'owner/name',
+      },
+      {
+        evidenceId: 'pr:owner/name#1',
+        sourcePlatform: 'github',
+        sourceType: 'pr',
+        url: 'https://github.com/other/repo/pull/1',
+        layer: 'L1',
+        claim: 'PR merged',
+        rawRef: 'owner/name#1',
+      },
+    ] as EvidenceItem[];
+
+    // 修复前：第二次导入直接 SQLITE_CONSTRAINT_PRIMARYKEY，整个分析任务失败
+    await repo.importFromProfile('prof-001', items);
+    await repo.importFromProfile('prof-002', items);
+    expect(await repo.countByProfile('prof-002')).toBe(2);
+
+    // 收窄只到画像粒度：同一画像内重复导入同一 evidenceId 仍然被拒（不是去重写入）
+    await expect(repo.importFromProfile('prof-001', items)).rejects.toThrow();
   });
 
   it('batch inserts evidence in a transaction', async () => {
@@ -61,9 +109,9 @@ describe('SqliteEvidenceRepository', () => {
       sampleEvidence('ev-003'),
     ]);
 
-    expect(await repo.getById('ev-001')).toBeDefined();
-    expect(await repo.getById('ev-002')).toBeDefined();
-    expect(await repo.getById('ev-003')).toBeDefined();
+    expect(await repo.getById('prof-001', 'ev-001')).toBeDefined();
+    expect(await repo.getById('prof-001', 'ev-002')).toBeDefined();
+    expect(await repo.getById('prof-001', 'ev-003')).toBeDefined();
     expect(await repo.countByProfile('prof-001')).toBe(3);
   });
 
@@ -123,12 +171,12 @@ describe('SqliteEvidenceRepository', () => {
     await repo.importFromProfile('prof-import', items);
     expect(await repo.countByProfile('prof-import')).toBe(2);
 
-    const commitEv = await repo.getById('commit:owner/repo:abc123');
+    const commitEv = await repo.getById('prof-import', 'commit:owner/repo:abc123');
     expect(commitEv).toBeDefined();
     expect(commitEv!.sourceType).toBe('commit');
     expect(commitEv!.layer).toBe('L1');
 
-    const repoEv = await repo.getById('repo:owner/repo');
+    const repoEv = await repo.getById('prof-import', 'repo:owner/repo');
     expect(repoEv).toBeDefined();
     expect(repoEv!.sourceType).toBe('repo');
     expect(repoEv!.occurredAt).toBeNull();

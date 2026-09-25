@@ -6,7 +6,8 @@ export interface IEvidenceRepository {
   insert(ev: NewEvidence): Promise<void>;
   insertBatch(evidence: NewEvidence[]): Promise<void>;
   importFromProfile(profileId: string, items: EvidenceItem[]): Promise<void>;
-  getById(id: string): Promise<StoredEvidence | undefined>;
+  /** 按 (画像, evidenceId) 取单条：014 起 evidenceId 只在画像内唯一，故必须带 profileId */
+  getById(profileId: string, id: string): Promise<StoredEvidence | undefined>;
   listByProfile(profileId: string): Promise<StoredEvidence[]>;
   listBySource(
     sourcePlatform: string,
@@ -14,6 +15,6 @@ export interface IEvidenceRepository {
     limit?: number,
   ): Promise<StoredEvidence[]>;
   countByProfile(profileId: string): Promise<number>;
-  /** 物理删除某画像的全部证据（T25 L0→L1 升级替换 / T26 删除画像）；行不存在时静默 */
+  /** 物理删除某画像的全部证据（T26 删除画像/解绑时随画像一起清）；行不存在时静默 */
   deleteByProfile(profileId: string): Promise<void>;
 }
