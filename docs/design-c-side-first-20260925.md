@@ -163,14 +163,16 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 粒度按"一个原子提交一件事"切（AGENTS 提交规范），每条带**完成判据**与**依赖**。标 🔒 的是需用户本人操作的外部/控制台动作。
 
-### 批次 0 · 隐私（#18-Q3 提前，与批次 1 并行，无相互依赖）
+### 批次 0 · 隐私（#18-Q3 提前，与批次 1 并行，无相互依赖）——**✅ 已落地 2026-09-25（handoff item61）**
+
+**落地时对规则做了一处收紧**：投递隐私的判据取**画像认领状态**（"认领即隐私开关"），而不是"调用者是否登录"。未认领画像没有可授权的主体、其报告按决策 #1-A 本就公开，因此匿名求职链路（PRD F11 验收 4）逐字保留；一旦本人认领，读与写都只认那个 platform+login。这样 §7 原来标记的"T03b 与 PRD F11 验收 4 冲突"被消解——两条同时成立，不需要谁推翻谁。
 
 | # | 任务 | 完成判据 | 落点 |
 | --- | --- | --- | --- |
-| T01 | 迁移 013：`applications.created_by_account_id`（两侧对齐） | `bash tools/check-migrations.sh` 13 对 0 warning；`./scripts/migrate-down` 能真回滚该列 | `db/migrations/{sqlite,postgres}` |
-| T02 | storage：insert 落归属、update 加"要求归属匹配"能力（双实现，裸 SQL 不出仓储层） | 就近单测含"他人改不动、无主行仍可改"两分支 | `packages/storage/src/{sqlite,postgres}/applications-repo.ts` |
-| T03 | api：POST 登录时写本人 id；PATCH 非主返回 **404**（不泄露存在，对齐 `/interviews`） | 植入"换身份改他人行"探针必红；`docs/API.md` §3.6 同步 | `apps/api/src/index.ts:1439/1469` |
-| T03b | 投递表**只对本人出现**：报告页当前是"非招聘方视角就挂载 tracker"（`[profileId].astro:522-525` 的条件是 `!isRecruiter`），等于任何拿到报告链接的匿名访客都能读能写这份求职管道。改成"仅登录且为该画像本人（或画像无主）才挂载"，API 的 `GET /profiles/:id/applications` 同步按身份过滤 | 未登录访问他人报告时投递区块完全不出现（不是隐藏按钮）；本人访问仍正常；`pnpm e2e` 两种身份各一条。**⚠️ 采纳本条会推翻 PRD F11 验收 4**（"投递追踪的既有匿名 E2E 不回归为需要登录"），二者只能留一个：建议改 PRD 那句为"未登录可浏览报告，但投递区块需登录才出现"——对真实求职者，"链接泄露＝求职管道泄露"比匿名可用性重要。**此处需用户明确点头，不由实现者自行取舍** | T03 |
+| ✅ T01 | 迁移 013：`applications.created_by_account_id`（两侧对齐） | `bash tools/check-migrations.sh` 13 对 0 warning；`./scripts/migrate-down` 能真回滚该列 | `db/migrations/{sqlite,postgres}` |
+| ✅ T02 | storage：insert 落归属、update 加"要求归属匹配"能力（双实现，裸 SQL 不出仓储层） | 就近单测含"他人改不动、无主行仍可改"两分支 | `packages/storage/src/{sqlite,postgres}/applications-repo.ts` |
+| ✅ T03 | api：POST 登录时写本人 id；PATCH 非主返回 **404**（不泄露存在，对齐 `/interviews`） | 植入"换身份改他人行"探针必红；`docs/API.md` §3.6 同步 | `apps/api/src/index.ts:1439/1469` |
+| ✅ T03b | 投递表**只对本人出现**：报告页当前是"非招聘方视角就挂载 tracker"（`[profileId].astro:522-525` 的条件是 `!isRecruiter`），等于任何拿到报告链接的匿名访客都能读能写这份求职管道。改成"仅登录且为该画像本人（或画像无主）才挂载"，API 的 `GET /profiles/:id/applications` 同步按身份过滤 | 未登录访问他人报告时投递区块完全不出现（不是隐藏按钮）；本人访问仍正常；`pnpm e2e` 两种身份各一条。**⚠️ 采纳本条会推翻 PRD F11 验收 4**（"投递追踪的既有匿名 E2E 不回归为需要登录"），二者只能留一个：建议改 PRD 那句为"未登录可浏览报告，但投递区块需登录才出现"——对真实求职者，"链接泄露＝求职管道泄露"比匿名可用性重要。**此处需用户明确点头，不由实现者自行取舍** | T03 |
 
 ### 批次 1 · C-A 说得清我（决定"产品能不能替你说话"）
 
