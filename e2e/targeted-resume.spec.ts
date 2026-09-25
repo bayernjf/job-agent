@@ -166,6 +166,34 @@ test.describe('targeted resume builder', () => {
     expect(stored).toContain('linkedin.com/in/alice');
   });
 
+  test('Download Markdown re-requests with the local fields so the file keeps its contact block', async ({
+    page,
+  }) => {
+    const requests: unknown[] = [];
+    await mockRecommendations(page);
+    await mockBuild(page, requests);
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+
+    await page.locator('.job-recs .rec-resume-button').first().click();
+    await expect.poll(() => requests.length).toBe(1);
+
+    const builder = page.locator('.resume-builder');
+    await builder.getByRole('button', { name: /Add local details/ }).click();
+    await builder.locator('.resume-local-grid input').first().fill('Alice Zhang');
+    await builder.locator('.resume-local-grid input[type=email]').fill('alice@example.com');
+    await builder.getByRole('button', { name: 'Apply & regenerate' }).click();
+    await expect.poll(() => requests.length).toBe(2);
+
+    // 下载会补发一次 format=md 请求。
+    // 回归钉：这条请求体曾漏带 local，而姓名/邮箱/教育/工作经历只有用户手填、
+    // 画像里根本没有，于是"下载下来的简历"比预览件少了全部联系方式（T11）。
+    await builder.getByRole('button', { name: 'Download Markdown' }).click();
+    await expect.poll(() => requests.length).toBe(3);
+    const md = requests[2] as Record<string, unknown>;
+    expect(md.format).toBe('md');
+    expect(md.local).toMatchObject({ fullName: 'Alice Zhang', email: 'alice@example.com' });
+  });
+
   test('migrates the legacy resume localStorage key to canonical once, splitting free-text period', async ({
     page,
   }) => {
