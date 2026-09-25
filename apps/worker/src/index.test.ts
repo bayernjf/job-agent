@@ -256,11 +256,12 @@ describe('processJob', () => {
     };
   }
 
-  it('T25: staged source writes partial:L0 early, then upgrades to complete on the same profile', async () => {
+  it('T28: staged source publishes exactly one complete profile, never a transient L0 snapshot', async () => {
     const repos = await freshRepos();
     const jobId = await createQueuedJob(repos);
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeStagedFakeSource();
+    const inserts = vi.spyOn(repos.profiles, 'insert');
 
     const result = await processJob(job, repos, asSources(source));
 
@@ -268,7 +269,11 @@ describe('processJob', () => {
     expect(source.collectStagedL0).toHaveBeenCalledWith('test-user');
     expect(source.collectStagedL1).toHaveBeenCalledWith('test-user', { login: 'test-user' });
 
-    // 最终画像 complete、双层、证据落库（替换后的 L1 全量）
+    // 核心不变量：**一次分析只发布一份可分享结论**（批次 6 曾先落 partial:L0 再升级同一 id）
+    expect(inserts).toHaveBeenCalledTimes(1);
+    expect(inserts.mock.calls[0]?.[0]).toMatchObject({ status: 'complete' });
+
+    // 最终画像 complete、双层、证据落库（L1 全量）
     const profile = await repos.profiles.getById(result.profileId);
     expect(profile).toBeDefined();
     expect(profile!.status).toBe('complete');
@@ -289,23 +294,29 @@ describe('processJob', () => {
     const jobId = await createQueuedJob(repos);
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeStagedFakeSource({ l1Missing: ['l1_failed'] });
+    const inserts = vi.spyOn(repos.profiles, 'insert');
 
     const result = await processJob(job, repos, asSources(source));
 
     expect(result.missing).toEqual(['l1_failed']);
+    // 降级是**终态**：仍然只发布一次，之后不再被改写
+    expect(inserts).toHaveBeenCalledTimes(1);
     const profile = await repos.profiles.getById(result.profileId);
     expect(profile!.status).toBe('partial');
+    expect(profile!.analysisLayers).toEqual(['L0']);
     expect((await repos.jobs.getById(jobId))!.missing).toEqual(['l1_failed']);
   });
 
-  it('T25: unexpected L1 throw keeps the partial:L0 profile and still succeeds the job', async () => {
+  it('T28: unexpected L1 throw degrades to a single L0-only partial instead of failing the job', async () => {
     const repos = await freshRepos();
     const jobId = await createQueuedJob(repos);
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeStagedFakeSource({ l1Throws: true });
+    const inserts = vi.spyOn(repos.profiles, 'insert');
 
     const result = await processJob(job, repos, asSources(source));
 
+    expect(inserts).toHaveBeenCalledTimes(1);
     expect(result.missing).toEqual(['l1_failed']);
     const profile = await repos.profiles.getById(result.profileId);
     expect(profile!.status).toBe('partial');
