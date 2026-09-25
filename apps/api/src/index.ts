@@ -98,6 +98,7 @@ import {
   type ApplicationOrigin,
   type ApplicationStatus,
   type StoredAnalysisJob,
+  type StoredApplication,
   type StoredEvidence,
   type StoredProfile,
 } from '@jobagent/storage';
@@ -400,6 +401,39 @@ function oauthBaseOrigin(c: Context, cfg: AuthConfig): string {
   if (cfg.callbackBaseUrl) return cfg.callbackBaseUrl;
   const url = new URL(c.req.url);
   return `${url.protocol}//${url.host}`;
+}
+
+/**
+ * 投递管道的隐私闸（#17-F11，handoff item60 T03）：**认领即隐私开关**。
+ *
+ * 画像未被本人认领时不设限——它没有可授权的主体，且报告本身按决策 #1-A 就是公开的；
+ * 一旦认领，投递列表与写入只对该 platform+login 的登录账号开放。复用既有两码，
+ * 不新增错误码族：未登录 401 `AUTH_REQUIRED`、登错人 403 `AUTH_NOT_PROFILE_OWNER`。
+ * 返回 undefined 表示放行。
+ */
+function requireProfileOwner(c: Context, profile: StoredProfile): Response | undefined {
+  if (!profile.subjectClaimed) return undefined;
+  const principal = c.get('principal');
+  if (principal.kind !== 'user') {
+    return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
+  }
+  if (principal.platform !== profile.subjectPlatform || principal.login !== profile.subjectLogin) {
+    return c.json({ error: 'not the profile owner', code: AUTH_ERROR_CODES.notProfileOwner }, 403);
+  }
+  return undefined;
+}
+
+/**
+ * 投递记录的对外投影：剥掉 `createdByAccountId`，只用在**列表**响应上。
+ *
+ * 归属列只用于服务端校验，不该成为对外可关联的标识——与"accounts.email 只留服务端、
+ * 绝不随对外响应出去"同一口径。列表是真正的泄露面：未认领画像的列表会把别人写的行
+ * 一起返回，带上它们的账号 id。单行响应（POST/PATCH）按归属校验后必然要么是调用者
+ * 自己写的、要么是无主行，因此不外泄第三方标识。
+ */
+function publicApplication(application: StoredApplication) {
+  const { createdByAccountId: _ownerOnly, ...rest } = application;
+  return rest;
 }
 
 function formatProfile(profile: StoredProfile) {
@@ -1426,13 +1460,18 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
   });
 
   // ── 投递记录：列出某画像的投递（按 applied_at 倒序）──
+  // 隐私边界（#17-F11 / handoff item60 T03）：**认领即隐私开关**——画像一旦经本人
+  // OAuth 认领，它的投递管道只对本人开放；未认领画像本身就没有可授权的主体，
+  // 其结论与报告按决策 #1-A 本就是公开的，投递列表沿用公开可读，不破坏匿名链路。
   app.get('/profiles/:id/applications', async (c) => {
     const param = ProfileIdParamSchema.safeParse(c.req.param());
     if (!param.success) return c.json({ error: 'invalid profile id' }, 400);
     const profile = await repos.profiles.getById(param.data.id);
     if (!profile) return c.json({ error: 'profile not found' }, 404);
+    const gate = requireProfileOwner(c, profile);
+    if (gate) return gate;
     const items = await repos.applications.listByProfile(param.data.id);
-    return c.json({ items });
+    return c.json({ items: items.map(publicApplication) });
   });
 
   // ── 投递记录：新增（求职者在报告页/扩展记录投递动作）──
@@ -1441,6 +1480,8 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     if (!param.success) return c.json({ error: 'invalid profile id' }, 400);
     const profile = await repos.profiles.getById(param.data.id);
     if (!profile) return c.json({ error: 'profile not found' }, 404);
+    const gate = requireProfileOwner(c, profile);
+    if (gate) return gate;
 
     const parsed = ApplicationCreateSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -1448,6 +1489,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     }
     const data = parsed.data;
     const id = `app-${randomUUID()}`;
+    const principal = c.get('principal');
     await repos.applications.insert({
       id,
       profileId: param.data.id,
@@ -1460,12 +1502,16 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       note: data.note ?? null,
       origin: data.origin ?? 'manual',
       appliedAt: data.appliedAt ?? new Date().toISOString(),
+      // 登录写入才落归属；匿名一律 null（不回改历史行，见迁移 013）
+      createdByAccountId: principal.kind === 'user' ? principal.accountId : null,
     });
     const stored = await repos.applications.getById(id);
     return c.json(stored, 201);
   });
 
   // ── 投递记录：局部更新状态/备注/投递时间/链接（撤回用 status=withdrawn，不物理删除）──
+  // 行级归属在仓储层校验：有主行只有主能改，非主返回 undefined，这里与"不存在"
+  // 同形回 404（对齐 PATCH /interviews/:id 的"不泄露存在"约定）。无主行沿用现状。
   app.patch('/applications/:id', async (c) => {
     const id = c.req.param('id');
     if (!id) return c.json({ error: 'invalid application id' }, 400);
@@ -1473,7 +1519,12 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     if (!parsed.success) {
       return c.json({ error: 'invalid patch', details: parsed.error.flatten() }, 400);
     }
-    const updated = await repos.applications.update(id, parsed.data);
+    const principal = c.get('principal');
+    const updated = await repos.applications.update(
+      id,
+      parsed.data,
+      principal.kind === 'user' ? principal.accountId : null,
+    );
     if (!updated) return c.json({ error: 'application not found' }, 404);
     return c.json(updated);
   });
