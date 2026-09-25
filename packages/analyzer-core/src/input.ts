@@ -63,9 +63,14 @@ export interface AnalyzerPullRequest {
   repoNameWithOwner: string;
   repoIsFork: boolean;
   repoOwnerIsSelf: boolean;
-  additions: number;
-  deletions: number;
-  changedFiles: number;
+  /**
+   * Diff 规模。**null = 该证据源不提供**，不是"改动为零"。
+   * GitHub GraphQL 给真实数字；Gitee v5 的 PR 列表接口不给，早期曾被硬编成 0，
+   * 那会让"改了 0 行"变成一个凭空捏造的结论（T06 改为 null）。
+   */
+  additions: number | null;
+  deletions: number | null;
+  changedFiles: number | null;
 }
 
 export interface AnalyzerIssue {
