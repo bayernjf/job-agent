@@ -205,6 +205,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | T14 | 量化行进简历与面试包（`activity.metrics` 今天只在报告页渲染，进不了任何交付物） | 简历出现由画像直取的合并 PR 数 / 跨仓广度 / 持续月数，每个数字可回溯 | T13 |
 | T15 | 薄画像降级：`buildResume` 读 `authenticity.status`，`insufficient_data`/`suspicious` 时显式标注缺口 | 不再对空画像出"看似完整"的简历（PRD NFR-6 与 AGENTS 铁律） | — |
 | T16 | 岗位定向面试准备单（岗位命中技能 + 对应证据 + 会被问到什么 + 该反问什么） | 纯规则、仍可回溯；替换今天"5 道通用题干"的 kit | T13, T14 |
+| T23 | **中文交付物里剩余的英文句子**（T07 只修了 headline，真账号实测中文简历又露出 `50 PR(s) opened, 38 merged`）：`collaboration.prSummary`、`activity.cadenceSummary`、真实性信号的 `label`/`detail` 都是分析内核写的英文散文 | 中文简历/面试包里由内核生成的散文全部随读者语言；做法照 T07——事实留快照，模板收进 `shared`；`caveats` 与证据 `claim`（T-批次 41 已定英文口径）**不在本条范围** | T14 |
 
 ### 批次 4 · C-D 我的求职（产品第一次有账号感）
 
