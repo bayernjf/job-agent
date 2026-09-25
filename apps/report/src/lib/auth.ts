@@ -79,3 +79,33 @@ export async function resolveViewer(
 export function canViewGatedContent(viewer: Viewer): boolean {
   return viewer.kind === 'user';
 }
+
+/** 投递管道可见性判定需要的画像存储行列 */
+export interface ApplicationScopeSubject {
+  subjectClaimed: boolean;
+  subjectPlatform: string;
+  subjectLogin: string;
+}
+
+/**
+ * 投递追踪区块是否挂载（决策 #17-F11，认领即隐私开关）。
+ *
+ * 与 API 侧 `requireProfileOwner` **同一判据**：画像未被本人认领时不设限（它没有可
+ * 授权的主体，报告本身按决策 #1-A 就是公开的，匿名求职链路因此不受影响）；一旦认领，
+ * 只有那个 platform+login 的登录账号看得到。两侧判据不一致就会出现"页面渲染了区块、
+ * island 每次请求都吃 401"的破页面，所以这里刻意复用同一组列值而不是看 snapshot。
+ *
+ * 融合画像（`subjectPlatform === 'all'`）永不等于任何登录账号的平台，也就永远走
+ * "未认领"分支——与它当前无法被认领的现状（`ClaimProfile` 隐藏）一致。
+ */
+export function canViewApplications(
+  viewer: Viewer,
+  profile: ApplicationScopeSubject,
+): boolean {
+  if (!profile.subjectClaimed) return true;
+  return (
+    viewer.kind === 'user' &&
+    viewer.platform === profile.subjectPlatform &&
+    viewer.login === profile.subjectLogin
+  );
+}

@@ -11,7 +11,7 @@ import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
 import ApplicationTracker from '../../../components/ApplicationTracker.tsx';
 import { loadProfileRecord, loadEvidence } from '../../../lib/db';
-import { resolveViewer, canViewGatedContent } from '../../../lib/auth';
+import { resolveViewer, canViewGatedContent, canViewApplications } from '../../../lib/auth';
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
 import { browserApiBase } from '../../../lib/api-base.js';
@@ -33,8 +33,8 @@ const disputeEmail =
 const profileRecord = profileId ? await loadProfileRecord(profileId) : null;
 const profile = profileRecord?.snapshot ?? null;
 
-// 画像不存在：渲染 404 状态页
-if (!profile) {
+// 画像不存在：渲染 404 状态页（profile 由 profileRecord 解出，两者同生同灭；一并判空以便下游收窄类型）
+if (!profile || !profileRecord) {
   return Astro.redirect(`/${locale}/?notfound=1`);
 }
 
@@ -62,6 +62,8 @@ const candidateUrl = pathname;
 // 完整证据外链与面试题/面试准备包折叠为登录墙；任何已登录 user（含招聘方）解锁。
 const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
 const canViewGated = canViewGatedContent(viewer);
+// 投递管道隐私（#17-F11）：画像一经认领即收归本人，判据与 API requireProfileOwner 一致
+const canUseApplications = canViewApplications(viewer, profileRecord);
 // 登录后回跳当前页（含 ?view=recruiter）；return_to 为同源相对路径，后端再做一次白名单校验。
 // 登录墙按画像主体平台选登录方式：Gitee 画像引导 Gitee 登录，其余（含双源融合，主源 GitHub）走 GitHub。
 const loginPlatform: 'github' | 'gitee' = profile.subject.platform === 'gitee' ? 'gitee' : 'github';
@@ -519,9 +521,9 @@ const applicationStatusLabels = {
         ))
     }
 
-    <!-- 投递追踪（仅求职者视角） -->
+    <!-- 投递追踪（仅求职者视角；已认领画像的管道只对本人出现，#17-F11） -->
     {
-      !isRecruiter && (
+      !isRecruiter && canUseApplications && (
         <ApplicationTracker
           client:load
           profileId={profileId!}
