@@ -27,10 +27,13 @@ interface ProvidersResponse {
 
 interface AccountMenuProps {
   apiBase: string;
+  locale: 'zh-CN' | 'en';
   signInLabel: string;
   signInGiteeLabel: string;
   signOutLabel: string;
   menuLabel: string;
+  myLabel: string;
+  claimedLabel: string;
 }
 
 /** providers 拉取失败时的保守默认：保留 GitHub 入口、隐藏 Gitee（避免跳到未配置的 501）。 */
@@ -41,10 +44,13 @@ const FALLBACK_PROVIDERS: ProvidersResponse = {
 
 export default function AccountMenu({
   apiBase,
+  locale,
   signInLabel,
   signInGiteeLabel,
   signOutLabel,
   menuLabel,
+  myLabel,
+  claimedLabel,
 }: AccountMenuProps) {
   const [me, setMe] = useState<AuthMe | null>(null);
   const [providers, setProviders] = useState<ProvidersResponse | null>(null);
@@ -146,6 +152,18 @@ export default function AccountMenu({
           <span>{displayName}</span>
         </span>
       )}
+      <a className="account-menu__mine" href={`/${locale}/my`}>
+        {myLabel}
+      </a>
+      {me.claimedProfileId ? (
+        <a
+          className="account-menu__claim"
+          href={`/${locale}/report/${me.claimedProfileId}`}
+          data-testid="my-claimed-profile"
+        >
+          {claimedLabel}
+        </a>
+      ) : null}
       <button type="button" className="account-menu__signout" onClick={handleLogout}>
         {signOutLabel}
       </button>

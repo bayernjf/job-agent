@@ -27,6 +27,7 @@ import type { JobSourceAdapter } from '@jobagent/job-source';
 import { runJobs } from './jobs-commands.js';
 import { runDemo } from './demo-commands.js';
 import { runAuth } from './auth-commands.js';
+import { runProfiles } from './profiles-commands.js';
 import { runResume } from './resume-commands.js';
 
 export interface CliDeps {
@@ -314,8 +315,12 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     return runResume(rest, deps);
   }
 
+  if (command === 'profiles') {
+    return runProfiles(rest, deps);
+  }
+
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | auth cleanup | resume build ... | resume batch ...',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | auth cleanup | resume build ... | resume batch ... | profiles delete --profile <id>',
   );
   return 2;
 }

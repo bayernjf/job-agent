@@ -231,6 +231,88 @@ describe('processJob', () => {
     expect((await repos.jobs.getById(job.id))!.missing).toEqual(['pull_requests', 'commits:some/repo']);
   });
 
+  /** T25 分阶段 fake 源：collectStagedL0/collectStagedL1 双方法（worker 新路径专用） */
+  function makeStagedFakeSource(opts?: { l1Missing?: string[]; l1Throws?: boolean }) {
+    const l0Input = fakeCollectedData('test-user').input;
+    const l1Input = fakeCollectedData('test-user').input;
+    return {
+      // collect 仅用于满足 SourceMap 类型（worker 探测到 staged 方法后走分阶段路径，不会调 collect）
+      collect: vi.fn(async (): Promise<GitHubCollectedData> => fakeCollectedData('test-user')),
+      collectStagedL0: vi.fn(async (login: string) => ({
+        handle: { login },
+        l0Input,
+        l0Evidence: l0Input.evidence as EvidenceItem[],
+        budgetUsed: { graphqlPoints: 5, restCalls: 1 },
+      })),
+      collectStagedL1: vi.fn(async (_login: string, _handle: unknown) => {
+        if (opts?.l1Throws) throw new Error('L1 exploded');
+        return {
+          fullInput: l1Input,
+          fullEvidence: l1Input.evidence as EvidenceItem[],
+          missing: opts?.l1Missing ?? [],
+          budgetUsed: { graphqlPoints: 10, restCalls: 2 },
+        };
+      }),
+    };
+  }
+
+  it('T25: staged source writes partial:L0 early, then upgrades to complete on the same profile', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+    const source = makeStagedFakeSource();
+
+    const result = await processJob(job, repos, asSources(source));
+
+    // 两阶段都被调用，handle 原样回传
+    expect(source.collectStagedL0).toHaveBeenCalledWith('test-user');
+    expect(source.collectStagedL1).toHaveBeenCalledWith('test-user', { login: 'test-user' });
+
+    // 最终画像 complete、双层、证据落库（替换后的 L1 全量）
+    const profile = await repos.profiles.getById(result.profileId);
+    expect(profile).toBeDefined();
+    expect(profile!.status).toBe('complete');
+    expect(profile!.analysisLayers).toEqual(['L0', 'L1']);
+    const storedEvidence = await repos.evidence.listByProfile(result.profileId);
+    expect(storedEvidence.length).toBeGreaterThan(0);
+
+    // 任务 succeeded 且 missing 为空
+    const updatedJob = (await repos.jobs.getById(jobId))!;
+    expect(updatedJob.status).toBe('succeeded');
+    expect(updatedJob.profileId).toBe(result.profileId);
+    expect(updatedJob.missing).toEqual([]);
+    expect(updatedJob.budgetUsed).toEqual({ graphqlPoints: 10, restCalls: 2 });
+  });
+
+  it('T25: staged source with L1 missing keeps profile partial and records missing on the job', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+    const source = makeStagedFakeSource({ l1Missing: ['l1_failed'] });
+
+    const result = await processJob(job, repos, asSources(source));
+
+    expect(result.missing).toEqual(['l1_failed']);
+    const profile = await repos.profiles.getById(result.profileId);
+    expect(profile!.status).toBe('partial');
+    expect((await repos.jobs.getById(jobId))!.missing).toEqual(['l1_failed']);
+  });
+
+  it('T25: unexpected L1 throw keeps the partial:L0 profile and still succeeds the job', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+    const source = makeStagedFakeSource({ l1Throws: true });
+
+    const result = await processJob(job, repos, asSources(source));
+
+    expect(result.missing).toEqual(['l1_failed']);
+    const profile = await repos.profiles.getById(result.profileId);
+    expect(profile!.status).toBe('partial');
+    expect(profile!.analysisLayers).toEqual(['L0']);
+    expect((await repos.jobs.getById(jobId))!.status).toBe('succeeded');
+  });
+
   it('routes to gitee source and passes platform when job.subjectPlatform=gitee', async () => {
     const repos = await freshRepos();
     const jobId = `job-${randomUUID().slice(0, 8)}`;

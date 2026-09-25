@@ -31,13 +31,29 @@ const apiBase = browserApiBase();
 const disputeEmail =
   (import.meta.env.PUBLIC_DISPUTE_EMAIL as string | undefined) ?? 'dispute@job-agent.bayjf.com';
 
-const profileRecord = profileId ? await loadProfileRecord(profileId) : null;
+// T25 失败显式化：DB 查询异常与"画像不存在"分开处理——
+// 拔掉数据库时报告页说"暂时不可用"而不是"画像不存在"（NFR-6 不向用户暴露原始报错）。
+let dbUnavailable = false;
+let profileRecord: import('@jobagent/storage').StoredProfile | null = null;
+if (profileId) {
+  try {
+    profileRecord = await loadProfileRecord(profileId);
+  } catch {
+    dbUnavailable = true;
+  }
+}
 const profile = profileRecord?.snapshot ?? null;
 
+if (dbUnavailable) {
+  return Astro.redirect(`/${locale}/?unavailable=1`);
+}
 // 画像不存在：渲染 404 状态页（profile 由 profileRecord 解出，两者同生同灭；一并判空以便下游收窄类型）
 if (!profile || !profileRecord) {
   return Astro.redirect(`/${locale}/?notfound=1`);
 }
+
+// 采集/分析有缺失时画像落库为 partial（T25）：页面顶部显示"部分数据"标注条
+const isPartialProfile = profileRecord.status === 'partial';
 
 // 融合画像标识只存在于存储行 subjectPlatform 列（snapshot.subject.platform 恒为主源 github）
 const isFusedProfile = profileRecord?.subjectPlatform === 'all';
@@ -125,6 +141,12 @@ const applicationStatusLabels = {
 
 <Layout locale={locale} title={profile.subject.login}>
   <div class="ja-container">
+    <!-- T25：采集/分析有缺失（partial）时顶部显式标注，不冒充完整画像（NFR-6） -->
+    {isPartialProfile && (
+      <div class="ja-alert ja-alert--partial" data-testid="partial-notice" role="status">
+        {t('report.partialNotice')}
+      </div>
+    )}
     <!-- 头部：账号信息 + 真实性徽章 + 分享 -->
     <section class="ja-card profile-header">
       <div class="profile-id">
@@ -407,6 +429,15 @@ const applicationStatusLabels = {
             polishReasonProviderError: t('report.resume.polishReasonProviderError'),
             polishReasonValidationFailed: t('report.resume.polishReasonValidationFailed'),
             polishReasonFabricationDetected: t('report.resume.polishReasonFabricationDetected'),
+            manualHint: t('report.resume.manualHint'),
+            manualTitle: t('report.resume.manualTitle'),
+            manualTitlePlaceholder: t('report.resume.manualTitlePlaceholder'),
+            manualCompany: t('report.resume.manualCompany'),
+            manualCompanyPlaceholder: t('report.resume.manualCompanyPlaceholder'),
+            manualJd: t('report.resume.manualJd'),
+            manualJdPlaceholder: t('report.resume.manualJdPlaceholder'),
+            manualGenerate: t('report.resume.manualGenerate'),
+            manualMissing: t('report.resume.manualMissing'),
           }}
         />
       )

@@ -132,6 +132,35 @@ h4 { font-size: var(--ja-text-lg); }
   border: 1px solid var(--ja-color-warning);
 }
 
+/* ─── 提示条（T25：notfound / unavailable / partial 显式反馈）────────── */
+.ja-alert {
+  padding: var(--ja-space-3) var(--ja-space-4);
+  border-radius: var(--ja-radius-sm);
+  border: 1px solid;
+  font-size: var(--ja-text-sm);
+  line-height: 1.5;
+  text-align: left;
+  max-width: 480px;
+  margin: 0 auto var(--ja-space-4);
+}
+.ja-alert--warn {
+  background: var(--ja-color-amber-50);
+  color: var(--ja-color-warning);
+  border-color: var(--ja-color-warning);
+}
+.ja-alert--error {
+  background: var(--ja-color-danger-bg);
+  color: var(--ja-color-danger-fg);
+  border-color: var(--ja-color-danger-border);
+}
+.ja-alert--partial {
+  background: var(--ja-color-amber-50);
+  color: var(--ja-color-warning);
+  border-color: var(--ja-color-warning);
+  max-width: none;
+  margin-bottom: var(--ja-space-4);
+}
+
 /* ─── AccountMenu / ClaimProfile 认证 islands ─────────────────────── */
 
 .account-menu {
@@ -652,6 +681,52 @@ h4 { font-size: var(--ja-text-lg); }
 .resume-idle,
 .resume-status {
   margin-top: var(--ja-space-3);
+}
+
+/* T24② 自选岗位（粘贴 JD 直传）入口 */
+.resume-manual {
+  margin-top: var(--ja-space-4);
+  padding: var(--ja-space-4);
+  border: 1px dashed var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+}
+.resume-manual-hint {
+  font-size: var(--ja-text-sm);
+}
+.resume-manual-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ja-space-3);
+}
+.resume-manual label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  font-size: var(--ja-text-sm);
+}
+.resume-manual input,
+.resume-manual textarea {
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  font: inherit;
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+}
+.resume-manual textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+.resume-manual .ja-btn {
+  align-self: flex-start;
+}
+@media (max-width: 640px) {
+  .resume-manual-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .resume-error {

@@ -221,4 +221,111 @@ export class GitHubSource {
       },
     };
   }
+
+  /**
+   * 分阶段采集 L0（T25 L0 早返回）：只采账号元数据 + 仓库列表，产出 L0 轻输入
+   * （commits/prs/issues 为空、missing=['l1_pending']），供 worker 先落 partial:L0
+   * 画像并让任务立即成功。返回 opaque handle 给 collectStagedL1 复用（避免重复查询）。
+   */
+  async collectStagedL0(login: string): Promise<{
+    handle: { l0: L0Data; email: string | null; l0Evidence: EvidenceItem[] };
+    l0Input: AnalyzerInput;
+    l0Evidence: EvidenceItem[];
+    budgetUsed: { graphqlPoints: number; restCalls: number };
+  }> {
+    const { l0, evidence: l0Evidence } = await this.collectL0(login);
+
+    // REST 补充 email（与 collect 一致；失败不阻塞，L0 轻画像的 subject 无 email 可接受）
+    let email: string | null = null;
+    try {
+      this.budget.recordRest();
+      email = await fetchUserEmailRest(this.octokit, login);
+    } catch {
+      // 账号 email 非公开时保持 null
+    }
+
+    const l0Input: AnalyzerInput = {
+      subject: { ...l0.subject, email },
+      dataWindow: l0.dataWindow,
+      repos: l0.repos,
+      commits: [],
+      pullRequests: [],
+      issues: [],
+      contributions: l0.contributions,
+      evidence: l0Evidence,
+      missing: ['l1_pending'],
+      collectedAt: new Date().toISOString(),
+    };
+    return { handle: { l0, email, l0Evidence }, l0Input, l0Evidence, budgetUsed: this.budget.used };
+  }
+
+  /**
+   * 分阶段采集 L1（T25）：行为时序补齐 → 与 collect() 一致的完整输入。
+   * L1 阶段任何失败（含 budget_exhausted）都不上抛——按 PRD F2 验收 3
+   * "触发限频时优雅降级（先返回 L0，L1 异步补齐）"，降级返回仅 L0 输入。
+   */
+  async collectStagedL1(
+    login: string,
+    handle: { l0: L0Data; email: string | null; l0Evidence: EvidenceItem[] },
+  ): Promise<{
+    fullInput: AnalyzerInput;
+    fullEvidence: EvidenceItem[];
+    missing: string[];
+    budgetUsed: { graphqlPoints: number; restCalls: number };
+    l1Error?: string;
+  }> {
+    const { l0, email, l0Evidence } = handle;
+    try {
+      const { l1, evidence: l1Evidence, missing } = await this.collectL1(login, l0);
+      let behaviorEvents: BehaviorEventSummary | undefined;
+      try {
+        this.budget.recordRest();
+        const eventRows = await fetchPublicEventsRest(this.octokit, login);
+        behaviorEvents = summarizeGhEvents(eventRows, login) ?? undefined;
+      } catch (err) {
+        missing.push('events');
+        this.log.warn(`[github-source] events failed for ${login}: ${(err as Error).message}`);
+      }
+      const fullInput: AnalyzerInput = {
+        subject: { ...l0.subject, email },
+        dataWindow: l0.dataWindow,
+        repos: l0.repos,
+        commits: l1.commits,
+        pullRequests: l1.pullRequests,
+        issues: l1.issues,
+        contributions: l0.contributions,
+        ...(behaviorEvents ? { behaviorEvents } : {}),
+        evidence: [...l0Evidence, ...l1Evidence],
+        missing,
+        collectedAt: new Date().toISOString(),
+      };
+      return {
+        fullInput,
+        fullEvidence: [...l0Evidence, ...l1Evidence],
+        missing,
+        budgetUsed: this.budget.used,
+      };
+    } catch (err) {
+      const message = (err as Error).message;
+      this.log.warn(`[github-source] L1 stage failed for ${login}, keeping L0-only: ${message}`);
+      return {
+        fullInput: {
+          subject: { ...l0.subject, email },
+          dataWindow: l0.dataWindow,
+          repos: l0.repos,
+          commits: [],
+          pullRequests: [],
+          issues: [],
+          contributions: l0.contributions,
+          evidence: l0Evidence,
+          missing: ['l1_failed'],
+          collectedAt: new Date().toISOString(),
+        },
+        fullEvidence: l0Evidence,
+        missing: ['l1_failed'],
+        budgetUsed: this.budget.used,
+        l1Error: message,
+      };
+    }
+  }
 }

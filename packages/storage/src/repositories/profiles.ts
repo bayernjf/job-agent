@@ -1,3 +1,4 @@
+import type { AbilityProfile } from '@jobagent/shared';
 import type {
   CandidateSearchQuery,
   CandidateSummary,
@@ -5,6 +6,16 @@ import type {
   ProfileStatus,
   StoredProfile,
 } from '../entities/index.js';
+
+/** L0 早返回升级（T25）：同一 profileId 从 partial:L0 快照升级为全量快照。 */
+export interface ProfileSnapshotPatch {
+  snapshot: AbilityProfile;
+  analyzerVersion: string;
+  analysisLayers: string[];
+  dataWindowSince: string;
+  dataWindowUntil: string;
+  status: ProfileStatus;
+}
 
 /**
  * profiles 仓储契约——业务模块只依赖此接口，不感知 SQLite/Postgres 方言。
@@ -23,6 +34,10 @@ export interface IProfilesRepository {
     subjectLogin: string,
   ): Promise<StoredProfile | undefined>;
   updateStatus(id: string, status: ProfileStatus): Promise<void>;
+  /** 升级已落库画像的快照（L0 partial → 全量 complete/partial，T25）；行不存在时静默无操作 */
+  updateSnapshot(id: string, patch: ProfileSnapshotPatch): Promise<void>;
+  /** 物理删除画像（T26 删除/解绑）；返回是否存在并被删除 */
+  deleteById(id: string): Promise<boolean>;
   /** 把画像标记为本人已认领（subject_claimed=true，幂等）；不存在时静默无操作 */
   markClaimed(id: string): Promise<void>;
   /**

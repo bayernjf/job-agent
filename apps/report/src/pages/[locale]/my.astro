@@ -1,0 +1,135 @@
+---
+/**
+ * "我的"页 /[locale]/my（T17，评审 P0-3「回访即失联」）：
+ * 登录后找回自己的全部画像——接上此前零调用的 profiles.listBySubject。
+ * SSR 直读只读 storage：身份用 resolveViewer 解析；未登录见登录墙（GateCard）。
+ */
+import Layout from '../../layouts/Layout.astro';
+import GateCard from '../../components/GateCard.astro';
+import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
+import { getStorage } from '../../lib/db.js';
+import { resolveViewer } from '../../lib/auth.js';
+import { browserApiBase } from '../../lib/api-base.js';
+
+const { locale: rawLocale } = Astro.params;
+if (!isLocale(rawLocale)) {
+  return Astro.redirect('/en/');
+}
+const locale: Locale = rawLocale;
+const t = createTranslator(locale);
+const apiBase = browserApiBase();
+
+const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
+const storage = await getStorage();
+const profiles =
+  viewer.kind === 'user'
+    ? await storage.profiles.listBySubject(viewer.platform, viewer.login)
+    : [];
+const loginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(`/${locale}/my`)}`;
+const dateFmt = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
+  dateStyle: 'medium',
+});
+---
+
+<Layout locale={locale} titleKey="my.title" robots="noindex,nofollow">
+  <div class="my-page ja-container">
+    <header class="my-header">
+      <h1>{t('my.title')}</h1>
+      <p class="ja-muted">{t('my.subtitle')}</p>
+    </header>
+
+    {viewer.kind !== 'user' ? (
+      <GateCard
+        title={t('my.gateTitle')}
+        body={t('my.gateBody')}
+        loginHref={loginHref}
+        loginLabel={t('my.gateLogin')}
+        testId="my-gate"
+      />
+    ) : profiles.length === 0 ? (
+      <div class="ja-card my-empty">
+        <p>{t('my.empty')}</p>
+        <a class="ja-btn" href={`/${locale}/`}>
+          {t('my.emptyCta')}
+        </a>
+      </div>
+    ) : (
+      <ul class="my-profile-list">
+        {profiles.map((p) => (
+          <li class="ja-card my-profile-item" key={p.id}>
+            <a class="my-profile-link" href={`/${locale}/report/${p.id}`}>
+              <span class="my-profile-title">
+                {p.snapshot?.summary?.headline ?? p.subjectLogin}
+              </span>
+              <span class="my-profile-meta">
+                <span class={`my-status my-status--${p.status}`}>{p.status}</span>
+                <span class="ja-muted">
+                  {t('my.updatedAt')}: {dateFmt.format(new Date(p.updatedAt))}
+                </span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .my-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-4);
+  }
+  .my-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-1);
+  }
+  .my-profile-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-3);
+  }
+  .my-profile-item {
+    margin: 0;
+  }
+  .my-profile-link {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-1);
+    text-decoration: none;
+    color: var(--ja-color-fg);
+  }
+  .my-profile-title {
+    font-weight: 600;
+  }
+  .my-profile-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--ja-space-3);
+    font-size: var(--ja-text-sm);
+  }
+  .my-status {
+    padding: 2px var(--ja-space-2);
+    border-radius: var(--ja-radius-sm);
+    font-size: var(--ja-text-xs);
+  }
+  .my-status--complete {
+    background: var(--ja-color-success-bg);
+    color: var(--ja-color-success-fg);
+  }
+  .my-status--partial {
+    background: var(--ja-color-accent-subtle);
+    color: var(--ja-color-accent);
+  }
+  .my-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--ja-space-2);
+  }
+</style>

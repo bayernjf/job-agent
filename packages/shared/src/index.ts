@@ -353,6 +353,8 @@ export const JobSourceSchema = z.enum([
   'lever',
   'hn_whoishiring',
   'weworkremotely',
+  // T24②：用户粘贴 JD 直传的临时来源（不入岗位库，仅本次简历渲染使用）
+  'manual',
 ]);
 export type JobSource = z.infer<typeof JobSourceSchema>;
 
@@ -906,7 +908,8 @@ export const ResumeDraftSchema = z.object({
   targetJob: z.object({
     jobId: z.string().min(1),
     title: z.string().min(1),
-    company: z.string().min(1),
+    // T24②：自选岗位直传时公司可空（渲染层省略 "@ company"）
+    company: z.string(),
     sourceUrl: z.string().url(),
     matchScore: z.number(),
     tier: z.enum(['high', 'mid', 'low']), // 与 shared MatchScoreTier 同值
