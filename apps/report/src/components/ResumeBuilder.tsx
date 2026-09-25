@@ -28,9 +28,11 @@ import { fetchExtensionLocalProfile, pushExtensionLocalProfile } from '../lib/ex
 export const BUILD_RESUME_EVENT = 'jobagent:build-resume';
 
 export interface BuildResumeDetail {
-  jobId: string;
+  jobId?: string;
   title: string;
   company: string;
+  /** T24② 自选岗位直传：粘贴 JD 生成简历（与 jobId 二选一，不入岗位库） */
+  posting?: { title: string; company?: string; description: string };
 }
 
 /** POST /resumes/build 回传的润色状态（仅请求 polish:true 时出现）。 */
@@ -87,6 +89,16 @@ export interface ResumeLabels {
   polishReasonProviderError: string;
   polishReasonValidationFailed: string;
   polishReasonFabricationDetected: string;
+  /** T24② 自选岗位入口 */
+  manualHint: string;
+  manualTitle: string;
+  manualTitlePlaceholder: string;
+  manualCompany: string;
+  manualCompanyPlaceholder: string;
+  manualJd: string;
+  manualJdPlaceholder: string;
+  manualGenerate: string;
+  manualMissing: string;
 }
 
 interface ResumeBuilderProps {
@@ -156,6 +168,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
   const [downloading, setDownloading] = useState(false);
   const [polishOn, setPolishOn] = useState(false);
   const [polishResult, setPolishResult] = useState<ResumePolishResult | null>(null);
+  const [manual, setManual] = useState({ title: '', company: '', description: '' });
 
   const sectionRef = useRef<HTMLElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -189,7 +202,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             profileId,
-            jobId: job.jobId,
+            ...(job.jobId ? { jobId: job.jobId } : { posting: job.posting }),
             locale,
             format: 'html',
             local: toResumeRequest(fields),
@@ -216,7 +229,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
   useEffect(() => {
     const handler = (e: Event): void => {
       const detail = (e as CustomEvent<BuildResumeDetail>).detail;
-      if (detail?.jobId) void build(detail, loadLocal());
+      if (detail?.jobId || detail?.posting) void build(detail, loadLocal());
     };
     window.addEventListener(BUILD_RESUME_EVENT, handler);
     return () => window.removeEventListener(BUILD_RESUME_EVENT, handler);
@@ -277,7 +290,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             profileId,
-            jobId: target.jobId,
+            ...(target.jobId ? { jobId: target.jobId } : { posting: target.posting }),
             locale,
             format: 'md',
             // 必须与上方 build() 的 html 请求带同一份 local，否则下载件会丢掉
@@ -349,6 +362,51 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
 
       {status === 'idle' && <p className="ja-muted resume-idle">{labels.idle}</p>}
 
+      {/* T24② 自选岗位入口：粘贴 JD 直传，不依赖岗位库（全新部署/空池也能走到简历） */}
+      <div className="resume-manual">
+        <p className="ja-muted resume-manual-hint">{labels.manualHint}</p>
+        <div className="resume-manual-row">
+          <label>
+            <span>{labels.manualTitle}</span>
+            <input
+              value={manual.title}
+              onChange={(e) => setManual((m) => ({ ...m, title: e.target.value }))}
+              placeholder={labels.manualTitlePlaceholder}
+            />
+          </label>
+          <label>
+            <span>{labels.manualCompany}</span>
+            <input
+              value={manual.company}
+              onChange={(e) => setManual((m) => ({ ...m, company: e.target.value }))}
+              placeholder={labels.manualCompanyPlaceholder}
+            />
+          </label>
+        </div>
+        <label>
+          <span>{labels.manualJd}</span>
+          <textarea
+            value={manual.description}
+            onChange={(e) => setManual((m) => ({ ...m, description: e.target.value }))}
+            rows={6}
+            placeholder={labels.manualJdPlaceholder}
+          />
+        </label>
+        <button
+          type="button"
+          className="ja-btn ja-btn--ghost"
+          disabled={!manual.title.trim() || !manual.description.trim()}
+          onClick={() =>
+            void build(
+              { jobId: undefined, title: manual.title, company: manual.company, posting: manual },
+              loadLocal(),
+            )
+          }
+        >
+          {labels.manualGenerate}
+        </button>
+      </div>
+
       {status === 'loading' && (
         <p className="ja-muted resume-status" role="status">
           <span className="spinner" aria-hidden="true" />
@@ -373,7 +431,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
             <div className="resume-target">
               <span className="ja-muted resume-target-label">{labels.targetLabel}</span>
               <strong>{draft.targetJob.title}</strong>
-              <span className="ja-muted"> · {draft.targetJob.company}</span>
+              {draft.targetJob.company && <span className="ja-muted"> · {draft.targetJob.company}</span>}
             </div>
             <span className={`rec-score rec-score--${draft.targetJob.tier}`} title={labels.scoreLabel}>
               {tierLabel(draft.targetJob.tier)} · {draft.targetJob.matchScore}

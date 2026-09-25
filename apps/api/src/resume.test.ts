@@ -11,6 +11,7 @@ import type { AbilityProfile, JobPosting, ResumeDraft, SkillTag } from '@jobagen
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
 import { FakeLlmClient, LlmResumePolishProvider } from '@jobagent/llm';
+import { AUTH_SESSION_COOKIE } from '@jobagent/shared';
 import { createApp } from './index.js';
 
 const NOW = '2026-09-15T00:00:00.000Z';
@@ -258,14 +259,38 @@ describe('POST /resumes/build optional LLM polish', () => {
     return new LlmResumePolishProvider(new FakeLlmClient(() => output));
   }
 
+  /** 仓储层直接造 alice 的登录会话（T27 后 polish 只对已登录 user 开放）。 */
+  async function loginCookie(repos: StorageContext): Promise<string> {
+    await repos.accounts.upsertFromProvider({
+      id: 'acc-alice',
+      identity: {
+        platform: 'github',
+        providerAccountId: 'alice-1',
+        login: 'alice',
+        name: 'Alice A',
+        email: null,
+        avatarUrl: null,
+      },
+    });
+    await repos.authSessions.create({
+      id: 'sess-alice',
+      accountId: 'acc-alice',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    return `${AUTH_SESSION_COOKIE}=sess-alice`;
+  }
+
   async function build(
     app: Awaited<ReturnType<typeof createApp>>,
     jobId: string,
     extra: Record<string, unknown> = {},
+    cookie?: string,
   ): Promise<BuildOkResponse> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (cookie) headers.Cookie = cookie;
     const res = await app.request('/resumes/build', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ profileId: 'p-resume', jobId, ...extra }),
     });
     expect(res.status).toBe(200);
@@ -282,11 +307,12 @@ describe('POST /resumes/build optional LLM polish', () => {
   it('applies provider wording edits and records provenance (html reflects them)', async () => {
     // 新概述不含任何数字 → 通过防臆造数字闸门
     const polishedSummary = 'A concise, evidence-backed professional profile.';
-    const { app, jobId } = await harness({
+    const { app, repos, jobId } = await harness({
       resumePolish: providerWith({ summary: polishedSummary }),
     });
 
-    const body = await build(app, jobId, { polish: true, format: 'html', locale: 'en' });
+    const cookie = await loginCookie(repos);
+    const body = await build(app, jobId, { polish: true, format: 'html', locale: 'en' }, cookie);
     expect(body.polish).toEqual({ requested: true, applied: true });
     expect(body.draft.summary).toBe(polishedSummary);
     expect(body.draft.provenance.polish).toMatchObject({
@@ -299,20 +325,22 @@ describe('POST /resumes/build optional LLM polish', () => {
   });
 
   it('reports not_configured and keeps the rule draft when no provider is wired', async () => {
-    const { app, jobId } = await harness({ resumePolish: null });
+    const { app, repos, jobId } = await harness({ resumePolish: null });
+    const cookie = await loginCookie(repos);
     const rule = await build(app, jobId);
-    const body = await build(app, jobId, { polish: true });
+    const body = await build(app, jobId, { polish: true }, cookie);
     expect(body.polish).toEqual({ requested: true, applied: false, reason: 'not_configured' });
     expect(body.draft.summary).toBe(rule.draft.summary);
     expect(body.draft.provenance.polish).toBeUndefined();
   });
 
   it('rejects polish that invents a new number and rolls back to the rule draft', async () => {
-    const { app, jobId } = await harness({
+    const { app, repos, jobId } = await harness({
       resumePolish: providerWith({ summary: 'Improved outcomes by 977 percent across teams' }),
     });
+    const cookie = await loginCookie(repos);
     const rule = await build(app, jobId, { locale: 'en' });
-    const body = await build(app, jobId, { polish: true, locale: 'en' });
+    const body = await build(app, jobId, { polish: true, locale: 'en' }, cookie);
     expect(body.polish).toEqual({
       requested: true,
       applied: false,
@@ -323,11 +351,12 @@ describe('POST /resumes/build optional LLM polish', () => {
   });
 
   it('falls back when the provider errors (non-JSON output) with provider_error', async () => {
-    const { app, jobId } = await harness({
+    const { app, repos, jobId } = await harness({
       resumePolish: providerWith('not-json-at-all'),
     });
+    const cookie = await loginCookie(repos);
     const rule = await build(app, jobId);
-    const body = await build(app, jobId, { polish: true });
+    const body = await build(app, jobId, { polish: true }, cookie);
     expect(body.polish).toEqual({ requested: true, applied: false, reason: 'provider_error' });
     expect(body.draft.summary).toBe(rule.draft.summary);
     expect(body.draft.provenance.polish).toBeUndefined();

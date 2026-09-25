@@ -16,6 +16,8 @@ interface AnalyzeFormProps {
   queuedLabel: string;
   runningLabel: string;
   failedLabel: string;
+  /** T25：轮询超时（worker 不可用/任务挂起）时的显式提示，替代永久转圈 */
+  timeoutLabel: string;
   stageL0Label: string;
   stageL1Label: string;
   pollingLabel: string;
@@ -43,6 +45,8 @@ const USERNAME_RES: Record<Platform, RegExp> = {
 };
 
 const POLL_INTERVAL_MS = 2000;
+/** T25：轮询总时长上限（5 分钟），超过即显式报"暂时不可用"（与 worker 无心跳解耦） */
+const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export default function AnalyzeForm(props: AnalyzeFormProps) {
   const {
@@ -55,6 +59,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     queuedLabel,
     runningLabel,
     failedLabel,
+    timeoutLabel,
     stageL0Label,
     stageL1Label,
     pollingLabel,
@@ -74,6 +79,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
   const [statusText, setStatusText] = useState('');
   const [errorText, setErrorText] = useState('');
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollStartedAtRef = useRef<number>(0);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -85,6 +91,12 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
   const pollJob = useCallback(
     (jobId: string) => {
       const timer = setTimeout(async () => {
+        // T25：轮询有界——无 worker / 任务长时间不前进时显式报"暂时不可用"，不再永久转圈
+        if (Date.now() - pollStartedAtRef.current > POLL_TIMEOUT_MS) {
+          setPhase('error');
+          setErrorText(timeoutLabel);
+          return;
+        }
         try {
           const res = await fetch(`${apiBase}/jobs/${jobId}`, {
             credentials: 'include',
@@ -132,13 +144,14 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
       }, POLL_INTERVAL_MS);
       pollTimerRef.current = timer;
     },
-    [apiBase, locale, pollingLabel, queuedLabel, runningLabel, stageL0Label, stageL1Label, attemptsLabel, failedLabel],
+    [apiBase, locale, pollingLabel, queuedLabel, runningLabel, stageL0Label, stageL1Label, attemptsLabel, failedLabel, timeoutLabel],
   );
 
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
       stopPolling();
+      pollStartedAtRef.current = Date.now();
       setErrorText('');
 
       const trimmed = username.trim();

@@ -105,4 +105,8 @@ export class SqliteEvidenceRepository implements IEvidenceRepository {
       .get();
     return result ? Number(result.count) : 0;
   }
+
+  async deleteByProfile(profileId: string): Promise<void> {
+    this.db.delete(evidenceTable).where(eq(evidenceTable.profileId, profileId)).run();
+  }
 }

@@ -155,6 +155,17 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     return result;
   }
 
+  async countActiveFresh(cutoffIso: string): Promise<Record<string, number>> {
+    const rows = await this.db
+      .select({ source: t.source, count: sql<string>`count(*)` })
+      .from(t)
+      .where(and(eq(t.status, 'active'), gte(t.lastSeenAt, cutoffIso)))
+      .groupBy(t.source);
+    const result: Record<string, number> = {};
+    for (const row of rows) result[row.source] = Number(row.count);
+    return result;
+  }
+
   async markStale(cutoffIso: string): Promise<number> {
     const changed = await this.db
       .update(t)

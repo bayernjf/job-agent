@@ -31,23 +31,25 @@ export function getStorage(): Promise<StorageContext> {
 
 /** 按 profileId 读取画像快照；不存在或解析失败返回 null */
 export async function loadProfile(profileId: string): Promise<AbilityProfile | null> {
-  const record = await loadProfileRecord(profileId);
-  return record?.snapshot ?? null;
+  try {
+    const record = await loadProfileRecord(profileId);
+    return record?.snapshot ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * 按 profileId 读取画像存储行（含 subjectPlatform 等列级元数据）。
  * 融合画像（platform=all）的 snapshot.subject.platform 恒为主源 'github'，
  * 只有存储行的 subjectPlatform 列能标识"双源融合"，供头部展示融合徽标。
- * 不存在或失败返回 null（降级为不展示页面）。
+ * 画像不存在返回 null；DB 查询异常（连接失败/表缺失）**上抛**——
+ * T25 失败显式化：调用方须区分"画像不存在"(404/notfound) 与"暂时不可用"(503)，
+ * 不再把数据库故障伪装成"这个画像不存在"。
  */
 export async function loadProfileRecord(profileId: string): Promise<StoredProfile | null> {
-  try {
-    const storage = await getStorage();
-    return (await storage.profiles.getById(profileId)) ?? null;
-  } catch {
-    return null;
-  }
+  const storage = await getStorage();
+  return (await storage.profiles.getById(profileId)) ?? null;
 }
 
 /**

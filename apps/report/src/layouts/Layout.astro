@@ -61,14 +61,18 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
         </a>
         <nav class="nav">
           <a href={`/${locale}/`}>{t('nav.home')}</a>
+          <a href={`/${locale}/my`}>{t('nav.my')}</a>
           <a href={`/${locale}/recruit`}>{t('nav.recruit')}</a>
           <AccountMenu
             client:load
             apiBase={apiBase}
+            locale={locale}
             signInLabel={t('account.signInGithub')}
             signInGiteeLabel={t('account.signInGitee')}
             signOutLabel={t('account.signOut')}
             menuLabel={t('account.menuLabel')}
+            myLabel={t('nav.my')}
+            claimedLabel={t('my.claimedLabel')}
           />
           <a href={langSwitchPath} class="lang-switch">{t('nav.language')}</a>
         </nav>

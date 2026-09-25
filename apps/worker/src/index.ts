@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { analyze, fuseInputs, type AnalyzerInput, type FusionReport } from '@jobagent/analyzer-core';
 import { GiteeSource, type GiteeCollectedData } from '@jobagent/gitee-source';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
-import type { AbilityProfile } from '@jobagent/shared';
+import type { AbilityProfile, EvidenceItem } from '@jobagent/shared';
 import {
   createStorage,
   type IAnalysisJobsRepository,
@@ -50,6 +50,30 @@ export interface WorkerRepos {
 /** 统一证据源接口：GitHubSource 与 GiteeSource 均满足此形态 */
 export interface EvidenceSource {
   collect(login: string): Promise<GitHubCollectedData | GiteeCollectedData>;
+}
+
+/**
+ * T25 L0 早返回：支持分阶段采集的证据源（GitHubSource/GiteeSource 均实现；
+ * 测试 fake 源可不实现——worker 探测到缺失时回退一次性 collect）。
+ * `handle` 为采集器内部句柄，worker 不透传解析，仅原样回传给 collectStagedL1。
+ */
+export interface StagedEvidenceSource {
+  collectStagedL0(login: string): Promise<{
+    handle: unknown;
+    l0Input: AnalyzerInput;
+    l0Evidence: EvidenceItem[];
+    budgetUsed: Record<string, number>;
+  }>;
+  collectStagedL1(
+    login: string,
+    handle: unknown,
+  ): Promise<{
+    fullInput: AnalyzerInput;
+    fullEvidence: EvidenceItem[];
+    missing: string[];
+    budgetUsed: Record<string, number>;
+    l1Error?: string;
+  }>;
 }
 
 export type SourceMap = Record<'github' | 'gitee', EvidenceSource>;
@@ -207,6 +231,96 @@ export async function processJob(
   } else {
     const platform = requestedPlatform === 'gitee' ? 'gitee' : 'github';
     const source = sources[platform];
+
+    // T25 L0 早返回：支持分阶段的源（GitHub/Gitee 采集器）先落 partial:L0 轻画像并提前
+    // succeed（限频/慢源时用户立即可见 L0 报告），再在同一任务内补 L1 升级为完整画像。
+    // 不支持的源（测试 fake）回退一次性 collect；PRD F2 验收 3"触发限频时优雅降级
+    // （先返回 L0，L1 异步补齐）"在两路径下都成立（L1 失败由采集器降级为 L0-only）。
+    const staged = source as unknown as Partial<StagedEvidenceSource>;
+    if (staged.collectStagedL0 && staged.collectStagedL1) {
+      const l0res = await staged.collectStagedL0(login);
+      const profileId = randomUUID();
+      const l0Profile = analyze(l0res.l0Input, {
+        profileId,
+        claimed: false,
+        platform,
+        layers: ['L0'],
+      });
+      await repos.profiles.insert({
+        id: profileId,
+        analyzerVersion: l0Profile.analyzerVersion,
+        subjectPlatform: platform,
+        subjectLogin: l0Profile.subject.login,
+        subjectClaimed: l0Profile.subject.claimed,
+        dataWindowSince: l0Profile.dataWindow.since,
+        dataWindowUntil: l0Profile.dataWindow.until,
+        analysisLayers: ['L0'],
+        status: 'partial',
+        snapshot: l0Profile,
+      });
+      await repos.evidence.importFromProfile(profileId, l0res.l0Evidence);
+      // 任务立即成功：用户轮询到 succeeded 即跳报告页，先看到 partial:L0 画像。
+      await repos.jobs.succeed(job.id, profileId, l0res.budgetUsed, ['l1_pending']);
+      logger.info(
+        `[worker] job ${job.id} L0 partial ready: profile ${profileId} (early return, L1 upgrading)`,
+      );
+
+      // L1 补齐：升级同一画像快照 + 替换证据 + 重写任务结果（succeed 幂等）。
+      let l1res: {
+        fullInput: AnalyzerInput;
+        fullEvidence: EvidenceItem[];
+        missing: string[];
+        budgetUsed: Record<string, number>;
+        l1Error?: string;
+      };
+      try {
+        l1res = await staged.collectStagedL1(login, l0res.handle);
+      } catch (err) {
+        // 兜底：L1 意外上抛（采集器已内部降级，正常不会到这）——画像保持 partial:L0。
+        logger.error(`[worker] job ${job.id} L1 upgrade failed unexpectedly: ${(err as Error).message}`);
+        return {
+          profileId,
+          profile: l0Profile,
+          budgetUsed: { ...l0res.budgetUsed },
+          missing: ['l1_failed'],
+        };
+      }
+      const fullProfile = analyze(l1res.fullInput, {
+        profileId,
+        claimed: false,
+        platform,
+        layers: ['L0', 'L1'],
+      });
+      const fullStatus = l1res.missing.length > 0 ? 'partial' : 'complete';
+      await repos.profiles.updateSnapshot(profileId, {
+        snapshot: fullProfile,
+        analyzerVersion: fullProfile.analyzerVersion,
+        analysisLayers: ['L0', 'L1'],
+        dataWindowSince: fullProfile.dataWindow.since,
+        dataWindowUntil: fullProfile.dataWindow.until,
+        status: fullStatus,
+      });
+      await repos.evidence.deleteByProfile(profileId);
+      await repos.evidence.importFromProfile(profileId, l1res.fullEvidence);
+      await repos.jobs.succeed(job.id, profileId, l1res.budgetUsed, l1res.missing);
+      const totalMs = Date.now() - t0;
+      const budgetSummary = Object.entries(l1res.budgetUsed)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(',');
+      logger.info(
+        `[worker] job ${job.id} upgraded to ${fullStatus} (${l1res.missing.length} missing): ` +
+          `profile ${profileId} timingMs total=${totalMs} budget[${budgetSummary}]` +
+          (l1res.l1Error ? ` l1Error=${l1res.l1Error}` : ''),
+      );
+      return {
+        profileId,
+        profile: fullProfile,
+        budgetUsed: { ...l1res.budgetUsed },
+        missing: l1res.missing,
+      };
+    }
+
+    // 回退路径：一次性 collect（无分阶段能力的源）。
     const collected = await source.collect(login);
     analyzerInput = collected.input as AnalyzerInput;
     budgetUsed = { ...collected.meta.budgetUsed };
@@ -252,7 +366,9 @@ export async function processJob(
     dataWindowSince: profile.dataWindow.since,
     dataWindowUntil: profile.dataWindow.until,
     analysisLayers: profile.analysisLayers,
-    status: 'complete',
+    // T25 失败显式化：有 missing 的画像落库为 partial（报告页标注"部分数据"），
+    // 不再硬编 complete——NFR-6 与 PRD F2 验收 3 的降级路径真实可达。
+    status: missing.length > 0 ? 'partial' : 'complete',
     snapshot: profile,
   });
 

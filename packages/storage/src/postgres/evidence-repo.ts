@@ -101,4 +101,8 @@ export class PgEvidenceRepository implements IEvidenceRepository {
       .where(eq(evidenceTable.profileId, profileId));
     return rows[0] ? Number(rows[0].count) : 0;
   }
+
+  async deleteByProfile(profileId: string): Promise<void> {
+    await this.db.delete(evidenceTable).where(eq(evidenceTable.profileId, profileId));
+  }
 }

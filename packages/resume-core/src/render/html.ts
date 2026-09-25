@@ -77,7 +77,7 @@ export function renderHtml(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN')
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(draft.header.name)} — ${escapeHtml(tj.title)} @ ${escapeHtml(tj.company)}</title>
+<title>${escapeHtml(draft.header.name)} — ${escapeHtml(tj.company ? `${tj.title} @ ${tj.company}` : tj.title)}</title>
 <style>
   /* token values synced from packages/ui-tokens/tokens.css (single source of truth) */
   :root {
@@ -122,7 +122,7 @@ export function renderHtml(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN')
 <p class="contact">${contactParts.join(' · ')}</p>
 
 <div class="target">
-  <strong>${copy.targetLabel}:</strong> ${escapeHtml(tj.title)} @ ${escapeHtml(tj.company)}
+  <strong>${copy.targetLabel}:</strong> ${escapeHtml(tj.company ? `${tj.title} @ ${tj.company}` : tj.title)}
   &nbsp;|&nbsp; <strong>${copy.matchLabel}:</strong> <span class="tier">${escapeHtml(tj.tier)}</span>
   (${tj.matchScore}; title ${tj.fieldScores.title} / tags ${tj.fieldScores.tags} / desc ${tj.fieldScores.description})
   &nbsp;·&nbsp; <a href="${escapeHtml(tj.sourceUrl)}" rel="noopener noreferrer">${copy.targetLabel}</a>
