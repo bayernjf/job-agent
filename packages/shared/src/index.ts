@@ -200,6 +200,68 @@ export function parseAbilityProfile(input: unknown): AbilityProfile | null {
 }
 
 /**
+ * headline 文案组装（T07，2026-09-25）。
+ *
+ * 快照里的 `summary.headline` 是**数据层英文原文**；面向读者的表面（报告页、简历、面试包）
+ * 按读者语言现拼。模板与取法放本文件，是为了让分析内核与渲染侧共用同一套事实取法——
+ * 分两处写迟早漂移成两种口径。
+ * 只组装不改口径：缺哪个事实就整段省略，绝不产出 "with 0 public repos" 这类空话。
+ * **不前缀 login**：本句是"身份之外的角色描述"，姓名/账号由各处标题行自己带；
+ * 带上就会和 `# {name} — {headline}` 这类模板拼成 "alice — alice — …"。
+ */
+export interface HeadlineFacts {
+  platform: SupportedPlatform;
+  /** 主力语言（最高置信度 language 标签）；缺省时退化为「{平台} 开发者」 */
+  language?: string | null;
+  /** 公开仓库数；缺省时省略该片段 */
+  repoCount?: number | null;
+  /** 持续活跃月数；缺省时省略该片段 */
+  months?: number | null;
+}
+
+const PLATFORM_DISPLAY: Record<SupportedPlatform, string> = { github: 'GitHub', gitee: 'Gitee' };
+
+/** 从画像快照取 headline 事实；与 analyze 内部写快照时用的是同一批字段 */
+export function headlineFactsFromProfile(
+  profile: Pick<AbilityProfile, 'subject' | 'skillTags' | 'activity'>,
+): HeadlineFacts {
+  return {
+    platform: profile.subject.platform,
+    language: profile.skillTags.find((tag) => tag.kind === 'language')?.name ?? null,
+    repoCount: profile.activity.metrics?.totalRepos ?? null,
+    months: profile.activity.longevityMonths ?? null,
+  };
+}
+
+/** 一句话定位：中英各一套模板，平台名按画像主体取（Gitee 主体不再被写成 GitHub） */
+export function composeHeadline(facts: HeadlineFacts, locale: ResumeLocale): string {
+  const platform = PLATFORM_DISPLAY[facts.platform];
+  const english = locale === 'en';
+  const language = facts.language?.trim();
+  const role = language
+    ? english ? `${language} developer` : `${language} 开发者`
+    : english ? `${platform} developer` : `${platform} 开发者`;
+
+  const clauses: string[] = [];
+  const repos = facts.repoCount;
+  if (typeof repos === 'number' && repos > 0) {
+    clauses.push(english ? `${repos} public repo${repos === 1 ? '' : 's'}` : `${repos} 个公开仓库`);
+  }
+  const months = facts.months;
+  if (typeof months === 'number' && months > 0) {
+    clauses.push(
+      english ? `${months} months of ${platform} activity` : `在 ${platform} 持续活跃 ${months} 个月`,
+    );
+  }
+
+  return english
+    ? clauses.length === 0
+      ? role
+      : `${role} with ${clauses.join(' and ')}`
+    : [role, ...clauses].join('，');
+}
+
+/**
  * 可导出画像投影（v0.1，对应决策 #15：Chrome 扩展一键填充的消费契约）。
  *
  * 设计原则：
