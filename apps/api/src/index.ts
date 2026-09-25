@@ -75,6 +75,7 @@ import {
   type ClaimResult,
   type DemoMe,
   type DemoPreset,
+  type JobPosting,
   type JobSource,
   type LocalResumeFields,
   type Principal,
@@ -253,18 +254,31 @@ const JobMatchRequestSchema = z.object({
 });
 
 // 岗位定向简历生成请求体（P-R2）：画像 + 岗位 + 可选本地补填；服务端不持久化、不记日志。
-const ResumeBuildRequestSchema = z.object({
-  profileId: z.string().min(1, 'profileId is required'),
-  jobId: z.string().min(1, 'jobId is required'),
-  // 画像不提供的教育/工作经历/联系方式；仅用于本次渲染，绝不入库或落日志（设计 §5.4）
-  local: LocalResumeFieldsSchema.optional(),
-  locale: ResumeLocaleSchema.optional(),
-  format: z.enum(['json', 'md', 'html']).optional(), // 默认 json（仅结构化草稿）
-  highlightLimit: z.number().int().positive().max(50).optional(),
-  // 是否请求 B 档 LLM 措辞润色（设计 §7）：默认 false 走纯规则版；true 且服务端未配置/润色被安全层拒绝时，
-  // 静默回退规则版，并在响应 polish.applied=false + reason 中如实标注，绝不臆造、绝不因润色失败而报错。
-  polish: z.boolean().optional(),
+/** T24② 自选岗位：用户粘贴 JD 直传（不入池、不落库），最小只需岗位名 + JD 文本 */
+const ManualPostingSchema = z.object({
+  title: z.string().trim().min(1, 'title is required').max(300),
+  description: z.string().trim().min(1, 'JD text is required').max(20000),
+  company: z.string().trim().max(200).optional(),
 });
+
+const ResumeBuildRequestSchema = z
+  .object({
+    profileId: z.string().min(1, 'profileId is required'),
+    // T24② 岗位来源二选一：池子里的 jobId，或用户粘贴 JD 直传（source=manual，复用既有匹配链路）
+    jobId: z.string().min(1).optional(),
+    posting: ManualPostingSchema.optional(),
+    // 画像不提供的教育/工作经历/联系方式；仅用于本次渲染，绝不入库或落日志（设计 §5.4）
+    local: LocalResumeFieldsSchema.optional(),
+    locale: ResumeLocaleSchema.optional(),
+    format: z.enum(['json', 'md', 'html']).optional(), // 默认 json（仅结构化草稿）
+    highlightLimit: z.number().int().positive().max(50).optional(),
+    // 是否请求 B 档 LLM 措辞润色（设计 §7）：默认 false 走纯规则版；true 且服务端未配置/润色被安全层拒绝时，
+    // 静默回退规则版，并在响应 polish.applied=false + reason 中如实标注，绝不臆造、绝不因润色失败而报错。
+    polish: z.boolean().optional(),
+  })
+  .refine((d) => Boolean(d.jobId) !== Boolean(d.posting), {
+    message: 'exactly one of jobId or posting is required',
+  });
 
 // ── 企业侧人才检索（筛选工作台 P-A/P-B）──────────────────────────────────
 // 全是 query string（字符串），枚举集合/数字在 handler 内逐项转换校验。
@@ -469,6 +483,17 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
   const repos: ApiRepos = deps.repos ?? ((await createStorage()) as unknown as ApiRepos);
   const now = deps.now ?? (() => new Date().toISOString());
   const cfg = deps.demoConfig ?? loadDemoConfig();
+  // T27 生产启动闸：上线开关必须显式配置，缺了启动即失败（而不是运行时静默降级成 fail-open）。
+  //  - CRON_SECRET 未配时 cron 端点会信任 x-vercel-cron 头（该端点能触发物理删除）；
+  //  - TRUST_PROXY 未显式设置时 IP 限流基于直连地址（反向代理后全站同 IP，滑窗形同虚设）。
+  if (cfg.isProduction) {
+    if (!process.env.CRON_SECRET) {
+      throw new Error('CRON_SECRET must be set in production (cron endpoints would otherwise trust spoofable x-vercel-cron headers)');
+    }
+    if (process.env.TRUST_PROXY === undefined) {
+      throw new Error('TRUST_PROXY must be explicitly set in production (either true behind a reverse proxy or false)');
+    }
+  }
   // 简历 LLM 润色：默认按服务端 LLM_* env 构造，未配置 LLM_API_KEY 时为 null（规则版兜底，零费用）。
   const polishProvider: ResumePolishProvider | null =
     deps.resumePolish === undefined ? createResumePolishProviderFromEnv() : deps.resumePolish;
@@ -1058,16 +1083,18 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     }
     const { platform, login } = parsed.data;
     const latest = await repos.profiles.latestBySubject(platform, login);
-    if (latest && latest.status === 'complete') {
+    // T25：partial 也视为可用（L1 失败/限频降级的 L0-only 画像仍可看报告页，
+    // 扩展一键填充依赖此解析；页面会标注"部分数据"）。只有 error/不存在才 404。
+    if (latest && (latest.status === 'complete' || latest.status === 'partial')) {
       return c.json({
         profileId: latest.id,
-        status: 'complete',
+        status: latest.status,
         cached: true,
         analyzerVersion: latest.analyzerVersion,
         updatedAt: latest.updatedAt,
       });
     }
-    return c.json({ error: 'no complete profile for subject', code: 'PROFILE_NOT_FOUND' }, 404);
+    return c.json({ error: 'no complete or partial profile for subject', code: 'PROFILE_NOT_FOUND' }, 404);
   });
 
   // GET /profiles/:id：查询画像快照
@@ -1246,9 +1273,18 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // GET /job-postings/stats：按源统计（须在 :id 路由之前注册，避免 stats 被当成 id）
   app.get('/job-postings/stats', async (c) => {
-    const active = await repos.jobPostings.countBySource('active');
-    const inactive = await repos.jobPostings.countBySource('inactive');
-    return c.json({ active, inactive });
+    // T24①：active 只统计 last_seen_at 在新鲜窗口内的岗位（JOB_STALE_DAYS 默认 7），
+    // 未跑 markStale 的过期行不再冒充 active——避免"active=2303/inactive=0"的假繁荣。
+    const staleDays = Number(process.env.JOB_STALE_DAYS ?? 7);
+    const cutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000).toISOString();
+    const activeBySource = await repos.jobPostings.countActiveFresh(cutoff);
+    // 保持 active 为数字（原契约形状）：只统计新鲜窗口内的 active 行
+    const active = Object.values(activeBySource).reduce((sum, n) => sum + n, 0);
+    const inactive = Object.values(await repos.jobPostings.countBySource('inactive')).reduce(
+      (sum, n) => sum + n,
+      0,
+    );
+    return c.json({ active, inactive, staleAfterDays: staleDays, cutoffIso: cutoff });
   });
 
   // GET /job-postings/:id：单条岗位
@@ -1318,9 +1354,30 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       return skillReasons ? { ...base, skillReasons } : base;
     });
     const allReasons = serialized.flatMap((x) => ('skillReasons' in x ? x.skillReasons : []));
-    // match 保持公开可用；demo 调用仅做会话观测计数（不设硬配额，设计 §7.4）
+    // match 保持公开可用；demo 调用做 IP 滑窗限流 + 会话观测计数（T27：接上 matchRatePerHour 死旋钮）
     const matchPrincipal = c.get('principal');
     if (matchPrincipal.kind === 'demo') {
+      const matchNow = now();
+      const matchIpHash = ipHashOf(c);
+      if (matchIpHash) {
+        const recentMatch = await repos.demoSessions.countRateEvents(
+          matchIpHash,
+          'match',
+          oneHourAgo(matchNow),
+        );
+        if (recentMatch >= cfg.matchRatePerHour) {
+          console.info(`[match] result=blocked reason=ip_rate_limited`);
+          return c.json(
+            {
+              error: 'demo match rate limit exceeded',
+              code: DEMO_ERROR_CODES.rateLimited,
+              bucket: 'match',
+              retryAfterSeconds: 3600,
+            },
+            429,
+          );
+        }
+      }
       await repos.demoSessions.incrementMatch(matchPrincipal.sessionId, now());
     }
     return c.json({
@@ -1333,7 +1390,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // ── 岗位定向简历（P-R2）：按需生成、不入库、不记日志（local 补填隐私最小化）──────
   // 纯计算只读端点：不触发新分析、不消耗平台采集配额，故与 GET 画像一样对所有身份公开。
+  // T27 例外：polish=true 会真实调用 LLM（付费额度），只对已登录 user 开放；匿名/demo 一律 403。
   app.post('/resumes/build', async (c) => {
+    const buildPrincipal = c.get('principal');
     let body: unknown;
     try {
       body = await c.req.json();
@@ -1345,19 +1404,44 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
     }
     const req = parsed.data;
+    if (req.polish === true && buildPrincipal.kind !== 'user') {
+      return c.json({ error: 'polish requires an authenticated user', code: 'AUTH_REQUIRED' }, 403);
+    }
 
     const storedProfile = await repos.profiles.getById(req.profileId);
     if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
     if (!storedProfile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
     const profile: AbilityProfile = storedProfile.snapshot;
 
-    const postingRow = await repos.jobPostings.getById(req.jobId);
-    if (!postingRow) return c.json({ error: 'job posting not found' }, 404);
-    const postingParse = JobPostingSchema.safeParse(postingRow);
-    if (!postingParse.success) {
-      return c.json({ error: 'stored job posting is invalid' }, 500);
+    // T24② 岗位来源：jobId（池子）或 posting（粘贴 JD 直传，不入池；jobId 分支保持原行为）
+    let posting: JobPosting;
+    if (req.posting) {
+      const nowIso = new Date().toISOString();
+      posting = {
+        jobId: `manual-${randomUUID()}`,
+        source: 'manual',
+        sourceUrl: `https://manual.local/${randomUUID()}`,
+        title: req.posting.title,
+        company: req.posting.company ?? '',
+        description: req.posting.description,
+        location: null,
+        remote: false,
+        salaryMin: null,
+        salaryMax: null,
+        salaryCurrency: null,
+        tags: [],
+        postedAt: nowIso,
+        fetchedAt: nowIso,
+      };
+    } else {
+      const postingRow = await repos.jobPostings.getById(req.jobId!);
+      if (!postingRow) return c.json({ error: 'job posting not found' }, 404);
+      const postingParse = JobPostingSchema.safeParse(postingRow);
+      if (!postingParse.success) {
+        return c.json({ error: 'stored job posting is invalid' }, 500);
+      }
+      posting = postingParse.data;
     }
-    const posting = postingParse.data;
 
     const evidenceRows = await repos.evidence.listByProfile(req.profileId);
     const evidence = toEvidenceItems(evidenceRows);

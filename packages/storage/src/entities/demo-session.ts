@@ -6,10 +6,10 @@ import type { SupportedPlatform } from '@jobagent/shared';
 import { parseJson } from './analysis-job.js';
 
 export type DemoSessionStatus = 'active' | 'exited';
-export type DemoRateKind = 'session' | 'analyze';
+export type DemoRateKind = 'session' | 'analyze' | 'match';
 
 export const DEMO_SESSION_STATUSES: readonly DemoSessionStatus[] = ['active', 'exited'];
-export const DEMO_RATE_KINDS: readonly DemoRateKind[] = ['session', 'analyze'];
+export const DEMO_RATE_KINDS: readonly DemoRateKind[] = ['session', 'analyze', 'match'];
 
 /** 本会话触发过新分析的公开平台账号（审计/UI 用，非用户自身 PII） */
 export interface AnalyzedLogin {
