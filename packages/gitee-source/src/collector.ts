@@ -4,7 +4,7 @@
  * 任一层失败只记 missing 并继续，账号不存在直接抛 not_found。
  */
 
-import type { AnalyzerCommit, AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest } from '@jobagent/analyzer-core';
+import type { AnalyzerCommit, AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest, BehaviorEventSummary } from '@jobagent/analyzer-core';
 import type { EvidenceItem } from '@jobagent/shared';
 import { GiteeClient, GiteeSourceError } from './client.js';
 import {
@@ -86,11 +86,24 @@ export class GiteeSource {
     };
   }
 
-  /** 完整采集：L0 + L1 → AnalyzerInput + 证据 + 元信息 */
-  async collect(login: string): Promise<GiteeCollectedData> {
+  /**
+   * L1：最近提交 / PR / Issue / events 行为流（T25 L0 早返回拆分）。
+   * 任一层失败只记 missing 并继续；budget_exhausted 上抛（由调用方决定降级或重试）。
+   */
+  async collectL1(
+    login: string,
+    subject: AnalyzerInput['subject'],
+    repos: AnalyzerInput['repos'],
+  ): Promise<{
+    commits: AnalyzerCommit[];
+    pullRequests: AnalyzerPullRequest[];
+    issues: AnalyzerIssue[];
+    behaviorEvents?: BehaviorEventSummary;
+    missing: string[];
+    eventsFetched: number;
+    eventCommitsAdded: number;
+  }> {
     const missing: string[] = [];
-    const { subject, repos } = await this.collectL0(login);
-
     const commits: AnalyzerCommit[] = [];
     const pullRequests: AnalyzerPullRequest[] = [];
     const issues: AnalyzerIssue[] = [];
@@ -164,24 +177,41 @@ export class GiteeSource {
     // Gitee PR 恒无增删行，只要采到 PR 就显式标注该维度缺失（设计 4.4）
     if (pullRequests.length > 0) missing.push('pr_code_stats');
 
-    const dataWindow = buildDataWindow(subject.createdAt, repos, allCommits);
+    return {
+      commits: allCommits,
+      pullRequests,
+      issues,
+      ...(behaviorEvents ? { behaviorEvents } : {}),
+      missing,
+      eventsFetched: events.length,
+      eventCommitsAdded,
+    };
+  }
+
+  /** 完整采集：L0 + L1 → AnalyzerInput + 证据 + 元信息 */
+  async collect(login: string): Promise<GiteeCollectedData> {
+    const { subject, repos } = await this.collectL0(login);
+    const l1 = await this.collectL1(login, subject, repos);
+    const missing = [...l1.missing];
+
+    const dataWindow = buildDataWindow(subject.createdAt, repos, l1.commits);
     const evidence: EvidenceItem[] = [
       buildGiteeSubjectEvidence(subject, dataWindow),
       ...repos.map(buildGiteeRepoEvidence),
-      ...pullRequests.map(buildGiteePullRequestEvidence),
-      ...issues.map(buildGiteeIssueEvidence),
-      ...allCommits.map(buildGiteeCommitEvidence),
+      ...l1.pullRequests.map(buildGiteePullRequestEvidence),
+      ...l1.issues.map(buildGiteeIssueEvidence),
+      ...l1.commits.map(buildGiteeCommitEvidence),
     ];
 
     const input: AnalyzerInput = {
       subject,
       dataWindow,
       repos,
-      commits: allCommits,
-      pullRequests,
-      issues,
-      contributions: buildContributions(allCommits, pullRequests, issues, repos),
-      ...(behaviorEvents ? { behaviorEvents } : {}),
+      commits: l1.commits,
+      pullRequests: l1.pullRequests,
+      issues: l1.issues,
+      contributions: buildContributions(l1.commits, l1.pullRequests, l1.issues, repos),
+      ...(l1.behaviorEvents ? { behaviorEvents: l1.behaviorEvents } : {}),
       evidence,
       missing,
       collectedAt: new Date().toISOString(),
@@ -193,10 +223,119 @@ export class GiteeSource {
       meta: {
         budgetUsed: { restCalls: this.client.restCalls },
         missing,
-        eventsFetched: events.length,
-        eventCommitsAdded,
+        eventsFetched: l1.eventsFetched,
+        eventCommitsAdded: l1.eventCommitsAdded,
       },
     };
+  }
+
+  /**
+   * 分阶段采集 L0（T25 L0 早返回）：只采账号元数据 + 仓库列表（Gitee L0 无行为时序），
+   * 产出 L0 轻输入（commits/prs/issues 为空、missing=['l1_pending']）。返回 opaque
+   * handle 给 collectStagedL1 复用（避免重复查询）。
+   */
+  async collectStagedL0(login: string): Promise<{
+    handle: {
+      subject: AnalyzerInput['subject'];
+      repos: AnalyzerInput['repos'];
+      l0Evidence: EvidenceItem[];
+    };
+    l0Input: AnalyzerInput;
+    l0Evidence: EvidenceItem[];
+    budgetUsed: { restCalls: number };
+  }> {
+    const { subject, repos } = await this.collectL0(login);
+    const l0Window = buildDataWindow(subject.createdAt, repos, []);
+    const l0Evidence: EvidenceItem[] = [
+      buildGiteeSubjectEvidence(subject, l0Window),
+      ...repos.map(buildGiteeRepoEvidence),
+    ];
+    const l0Input: AnalyzerInput = {
+      subject,
+      dataWindow: l0Window,
+      repos,
+      commits: [],
+      pullRequests: [],
+      issues: [],
+      contributions: buildContributions([], [], [], repos),
+      evidence: l0Evidence,
+      missing: ['l1_pending'],
+      collectedAt: new Date().toISOString(),
+    };
+    return { handle: { subject, repos, l0Evidence }, l0Input, l0Evidence, budgetUsed: { restCalls: this.client.restCalls } };
+  }
+
+  /**
+   * 分阶段采集 L1（T25）：行为时序补齐 → 与 collect() 一致的完整输入。
+   * L1 阶段任何失败（含 budget_exhausted）都不上抛——按 PRD F2 验收 3
+   * "触发限频时优雅降级（先返回 L0，L1 异步补齐）"，降级返回仅 L0 输入。
+   */
+  async collectStagedL1(
+    login: string,
+    handle: {
+      subject: AnalyzerInput['subject'];
+      repos: AnalyzerInput['repos'];
+      l0Evidence: EvidenceItem[];
+    },
+  ): Promise<{
+    fullInput: AnalyzerInput;
+    fullEvidence: EvidenceItem[];
+    missing: string[];
+    budgetUsed: { restCalls: number };
+    l1Error?: string;
+  }> {
+    const { subject, repos, l0Evidence } = handle;
+    try {
+      const l1 = await this.collectL1(login, subject, repos);
+      const dataWindow = buildDataWindow(subject.createdAt, repos, l1.commits);
+      const fullEvidence: EvidenceItem[] = [
+        buildGiteeSubjectEvidence(subject, dataWindow),
+        ...repos.map(buildGiteeRepoEvidence),
+        ...l1.pullRequests.map(buildGiteePullRequestEvidence),
+        ...l1.issues.map(buildGiteeIssueEvidence),
+        ...l1.commits.map(buildGiteeCommitEvidence),
+      ];
+      const fullInput: AnalyzerInput = {
+        subject,
+        dataWindow,
+        repos,
+        commits: l1.commits,
+        pullRequests: l1.pullRequests,
+        issues: l1.issues,
+        contributions: buildContributions(l1.commits, l1.pullRequests, l1.issues, repos),
+        ...(l1.behaviorEvents ? { behaviorEvents: l1.behaviorEvents } : {}),
+        evidence: fullEvidence,
+        missing: l1.missing,
+        collectedAt: new Date().toISOString(),
+      };
+      return {
+        fullInput,
+        fullEvidence,
+        missing: l1.missing,
+        budgetUsed: { restCalls: this.client.restCalls },
+      };
+    } catch (err) {
+      const message = (err as Error).message;
+      this.log.warn(`[gitee-source] L1 stage failed for ${login}, keeping L0-only: ${message}`);
+      return {
+        fullInput: {
+          subject,
+          dataWindow: buildDataWindow(subject.createdAt, repos, []),
+          repos,
+          commits: [],
+          pullRequests: [],
+          issues: [],
+          contributions: buildContributions([], [], [], repos),
+          evidence: l0Evidence,
+          missing: ['l1_failed'],
+          collectedAt: new Date().toISOString(),
+        },
+        fullEvidence: l0Evidence,
+        missing: ['l1_failed'],
+        budgetUsed: { restCalls: this.client.restCalls },
+        l1Error: message,
+      };
+    }
   }
 }
 
