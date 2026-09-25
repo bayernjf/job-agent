@@ -48,6 +48,14 @@ export function buildCommitEvidence(commit: AnalyzerInput['commits'][number]): E
   };
 }
 
+/** PR 证据：改动规模是招聘方真正关心的量化信息，Gitee 侧不提供时整段省略（T06）。 */
+function prClaim(pr: AnalyzerInput['pullRequests'][number]): string {
+  const base = `PR "${pr.title}" (${pr.repoNameWithOwner}#${pr.number})`;
+  const { additions, deletions, changedFiles } = pr;
+  if (additions === null || deletions === null || changedFiles === null) return base;
+  return `${base} · +${additions}/-${deletions} across ${changedFiles} files`;
+}
+
 export function buildPullRequestEvidence(pr: AnalyzerInput['pullRequests'][number]): EvidenceItem {
   return {
     evidenceId: `pr:${pr.repoNameWithOwner}:${pr.number}`,
@@ -56,7 +64,7 @@ export function buildPullRequestEvidence(pr: AnalyzerInput['pullRequests'][numbe
     url: pr.url,
     occurredAt: pr.createdAt,
     layer: 'L1',
-    claim: `PR "${pr.title}" (${pr.repoNameWithOwner}#${pr.number})`,
+    claim: prClaim(pr),
     rawRef: `${pr.repoNameWithOwner}#${pr.number}`,
   };
 }
