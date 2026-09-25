@@ -1,5 +1,13 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
 
 /**
  * Postgres Drizzle 表定义——必须与 `db/migrations/postgres/NNN_*.sql` 保持一致，
@@ -87,7 +95,8 @@ export type AnalysisJobSelect = typeof analysisJobs.$inferSelect;
 export const evidence = pgTable(
   'evidence',
   {
-    id: text('id').primaryKey(),
+    // 与 sqlite/schema.ts 同步：014 起主键为 (profile_id, id)。
+    id: text('id').notNull(),
     profileId: text('profile_id').notNull(),
     sourcePlatform: text('source_platform').notNull().default('github'),
     sourceType: text('source_type').notNull(),
@@ -101,6 +110,7 @@ export const evidence = pgTable(
       .default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [
+    primaryKey({ columns: [table.profileId, table.id], name: 'evidence_pkey' }),
     index('idx_evidence_profile_id').on(table.profileId),
     index('idx_evidence_source').on(table.sourcePlatform, table.sourceType),
   ],

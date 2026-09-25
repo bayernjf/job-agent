@@ -1,5 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 /**
  * Drizzle 表定义——必须与 `db/migrations/sqlite/001_create_profiles.sql` 保持一致
@@ -97,7 +104,9 @@ export type AnalysisJobSelect = typeof analysisJobs.$inferSelect;
 export const evidence = sqliteTable(
   'evidence',
   {
-    id: text('id').primaryKey(),
+    // 014 起 evidenceId 只在本画像内唯一（同一 PR/commit 可合法属于两个画像，
+    // 同一账号再次分析也会重出同一 id），所以主键是 (profile_id, id) 而非 id。
+    id: text('id').notNull(),
     profileId: text('profile_id').notNull(),
     sourcePlatform: text('source_platform').notNull().default('github'),
     sourceType: text('source_type').notNull(),
@@ -111,6 +120,7 @@ export const evidence = sqliteTable(
       .default(sql`(CURRENT_TIMESTAMP)`),
   },
   (table) => [
+    primaryKey({ columns: [table.profileId, table.id], name: 'evidence_pkey' }),
     index('idx_evidence_profile_id').on(table.profileId),
     index('idx_evidence_source').on(table.sourcePlatform, table.sourceType),
   ],
