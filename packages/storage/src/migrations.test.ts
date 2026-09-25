@@ -277,6 +277,18 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 013（applications 只去掉归属列，表本身仍在）
+    const colsBefore13 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
+    expect(colsBefore13.map((c) => c.name)).toContain('created_by_account_id');
+    const result13 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result13.version).toBe('013');
+    const colsAfter13 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
+    expect(colsAfter13.map((c) => c.name)).not.toContain('created_by_account_id');
+    let tablesAfter13 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(tablesAfter13.map((t) => t.name)).toContain('applications'); // 只丢列，不丢表
+
     // 回滚 012（interviews）
     const result12 = rollbackLatestMigration(db, MIGRATIONS_DIR);
     expect(result12.version).toBe('012');
