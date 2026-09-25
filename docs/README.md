@@ -13,7 +13,7 @@
 | 登录后回到原页面（return_to 深链）/ 未登录为何看到登录墙、哪些内容要登录（授权分级闸、证据外链/面试题/面试包 401） | [design-auth-gating-20260919.md](design-auth-gating-20260919.md) ★ + [API.md](API.md) §1.2 可见性矩阵（handoff item31/32） |
 | 理解产品初衷、要解决的根本问题 | [产品构想-以GitHub为桥梁的招聘系统.md](产品构想-以GitHub为桥梁的招聘系统.md) |
 | **问"这项目怎么分应聘者/招聘方、主力是哪边"** | **一句话答案**：没有 B/C 两套账号，只有**四条判据互不一致的机制**——`?view=recruiter`（纯 query）/ 内容分级闸（判据是"已登录"）/ `/[locale]/recruit`（SSR 直出）/ 端点闸（只有 `/interviews` 要登录，`/candidates`·`/applications` 不查身份）；**主力是应聘方**（招聘侧无独立身份线）。全文见 [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) §1.1，工程硬约束见 [../AGENTS.md](../AGENTS.md) 运行架构第 9 条 |
-| **问"C 端下一步做什么 / 为什么我的简历说不清我做 AI Agent"** | [design-c-side-first-20260925.md](design-c-side-first-20260925.md) ★（#18 已拍板 2026-09-25、未实施：六步求职判据 + 逐条 `file:line` 断点 + C-A~C-D 四期 + 与 #17 的改序 + "岗位池今天是死的"这个非代码阻塞） |
+| **问"C 端下一步做什么 / 为什么我的简历说不清我做 AI Agent"** | [design-c-side-first-20260925.md](design-c-side-first-20260925.md) ★（#18 已拍板 2026-09-25、批次 0 已落地＝handoff item61：六步求职判据 + 逐条 `file:line` 断点 + C-A~C-D 四期 + 与 #17 的改序 + "岗位池今天是死的"这个非代码阻塞） |
 | 看产品范围、功能 F1–F11、画像契约、指标与风险 | [PRD.md](PRD.md) ★ |
 | 搞清楚"项目怎么分应聘者/招聘方"、B 端要不要角色与组织、为什么 `/candidates` 今天匿名可读、F10/F11 与决策 #17 的范围 | [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) ★（#17 已拍板 2026-09-25、未实施：两侧共用账号无角色的现状表、声明式角色立场、迁移 013 草案、A/D/U/R 权限矩阵、`auth cleanup` 会删掉招聘方账号这条坑、5 个待勾子问题） |
 | 回看"为什么从分析 GitHub 切入、MVP 如何收敛"的讨论过程 | [讨论记录-01-切入口与MVP收敛-20260910.md](讨论记录-01-切入口与MVP收敛-20260910.md) |

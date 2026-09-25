@@ -105,7 +105,8 @@ ALTER TABLE accounts     ADD COLUMN recruiter_declared_at TEXT;  -- NULL=未声�
 | `/[locale]/recruit` 页面 | SSR 渲染声明墙 | 同左 | 同左 | 200（页面 `noindex`；机器可读入口是上面的端点，墙挡不住爬虫这个假设不成立——它靠的是 `noindex` + 端点闸） |
 | `POST /interviews`、`GET /interviews`、`PATCH /interviews/:id` | 401 | 401 | **403** | 200（现状 U 可写，收紧为 R） |
 | `POST /profiles/:id/applications` | 200（`created_by_account_id` 记 NULL） | 200（同左） | 200（记本人 id） | 200（记本人 id） |
-| `PATCH /applications/:id` | 行归属为 NULL → 200；否则 **404** | 同左 | 同主键归属 | 同主键归属 |
+| `GET /profiles/:id/applications` | **未认领画像 200；已认领画像 401**（F11 落地时补的口径：认领即隐私开关） | 同 anonymous | 未认领 200 / 已认领但非本人 **403** | 200 |
+| `PATCH /applications/:id` | 行归属为 NULL → 200；有主行 **404** | 同左 | 同主键归属（无主行仍可改） | 同主键归属（无主行仍可改） |
 | `PUT` / `DELETE /auth/recruiter` | 401 | 401 | 200/204 | 200/204（幂等） |
 
 **硬约束（改这块时不许动）**：① `analyzer-core` 不感知身份与角色；② `/analyze` 的"画像缓存命中先于权限检查、命中不扣配额"顺序不变；③ 既有 `DEMO_REQUIRED` / `QUOTA_EXCEEDED` / `RATE_LIMITED` 语义与触发点不变，新码只加不改。
