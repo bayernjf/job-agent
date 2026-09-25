@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE_PROFILE_ID, FIXTURE_FUSED_PROFILE_ID, FIXTURE_LOGIN } from './fixtures/sample-profile.js';
+import {
+  FIXTURE_GITEE_PROFILE_ID,
+  FIXTURE_PROFILE_ID,
+  FIXTURE_FUSED_PROFILE_ID,
+  FIXTURE_LOGIN,
+} from './fixtures/sample-profile.js';
 
 /**
  * 报告页 SSR E2E（#1）：fixture 画像由 globalSetup 写入临时 SQLite，
@@ -14,8 +19,10 @@ test.describe('report page SSR render', () => {
     await expect(page.locator('h1.login')).toContainText('E2E Fixture User');
     await expect(page.getByText(`@${FIXTURE_LOGIN}`)).toBeVisible();
 
-    // 概述 headline（画像数据，与语言无关）
-    await expect(page.locator('.headline')).toContainText('reliable full-stack developer');
+    // 概述 headline 按读者语言现拼（T07），不再是快照里的英文原文
+    await expect(page.locator('.headline')).toHaveText(
+      'TypeScript developer with 24 months of GitHub activity',
+    );
 
     // 能力标签（.skill-tag 内还含深度子标签，故用 hasText 而非精确文本）
     await expect(page.locator('.skill-tag', { hasText: 'TypeScript' })).toBeVisible();
@@ -45,6 +52,17 @@ test.describe('report page SSR render', () => {
     await expect(page).toHaveURL(new RegExp(`/zh-CN/report/${FIXTURE_PROFILE_ID}`));
     await expect(page.locator('h1.login')).toContainText('E2E Fixture User');
     await expect(page.locator('.skill-tag', { hasText: 'TypeScript' })).toBeVisible();
+    // 同一份快照，中文读者看到中文一句话定位（T07）
+    await expect(page.locator('.headline')).toHaveText(
+      'TypeScript 开发者，在 GitHub 持续活跃 24 个月',
+    );
+  });
+
+  test('names Gitee, never GitHub, on a Gitee-subject profile (T07)', async ({ page }) => {
+    await page.goto(`/en/report/${FIXTURE_GITEE_PROFILE_ID}`);
+    await expect(page.locator('.headline')).toHaveText(
+      'TypeScript developer with 24 months of Gitee activity',
+    );
   });
 
   test('redirects to home with notfound for an unknown profile', async ({ page }) => {
