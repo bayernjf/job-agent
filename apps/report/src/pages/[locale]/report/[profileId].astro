@@ -15,6 +15,7 @@ import { resolveViewer, canViewGatedContent, canViewApplications } from '../../.
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
 import { browserApiBase } from '../../../lib/api-base.js';
+import { composeHeadline, headlineFactsFromProfile } from '@jobagent/shared';
 import type { EvidenceItem, SkillTagKind } from '@jobagent/shared';
 
 const { locale: rawLocale, profileId } = Astro.params;
@@ -40,6 +41,10 @@ if (!profile || !profileRecord) {
 
 // 融合画像标识只存在于存储行 subjectPlatform 列（snapshot.subject.platform 恒为主源 github）
 const isFusedProfile = profileRecord?.subjectPlatform === 'all';
+
+// headline 按读者语言现拼（T07）：快照里的 summary.headline 是数据层英文原文，
+// 中文报告页不该露一句英文；组装只读快照已有事实，不新增结论。
+const headline = composeHeadline(headlineFactsFromProfile(profile), locale);
 
 // 双源融合去重统计：仅当快照带 fusion 报告且确有镜像合并/去重时展示，全 0 则不渲染
 const fusion = profile.fusion;
@@ -230,7 +235,7 @@ const applicationStatusLabels = {
     <!-- 概述 -->
     <section class="ja-card">
       <h2>{t('report.summary.title')}</h2>
-      <p class="headline">{profile.summary.headline}</p>
+      <p class="headline">{headline}</p>
     </section>
 
     <!-- 真实性评估 -->

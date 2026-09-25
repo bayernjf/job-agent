@@ -61,6 +61,8 @@ describe('renderInterviewKit', () => {
     const md = renderInterviewKit(profile(), [evidence('e1', 'perf PR', 'https://github.test/pr/1')], 'zh-CN');
     expect(md).toContain('# 面试准备包 · Alice');
     expect(md).toContain('@alice');
+    // headline 随文档语言（T07）：中文准备包里不留英文原句
+    expect(md).toContain('TypeScript 开发者，在 GitHub 持续活跃 24 个月');
     expect(md).toContain('### 编程语言');
     expect(md).toContain('**TypeScript**');
     expect(md).toContain('### 框架 / 工具');
@@ -78,6 +80,7 @@ describe('renderInterviewKit', () => {
   it('renders English kit', () => {
     const md = renderInterviewKit(profile(), [evidence('e1', 'perf PR', 'https://github.test/pr/1')], 'en');
     expect(md).toContain('# Interview Prep Kit · Alice');
+    expect(md).toContain('TypeScript developer with 24 months of GitHub activity');
     expect(md).toContain('## Interview questions grounded in real projects');
     expect(md).toContain('[perf PR](https://github.test/pr/1)');
   });
