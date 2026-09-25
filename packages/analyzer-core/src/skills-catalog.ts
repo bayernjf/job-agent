@@ -76,6 +76,63 @@ const FRAMEWORK_CATALOG: SkillEntry[] = [
   { name: 'android', aliases: ['android'], kind: 'framework' },
   { name: 'ios', aliases: ['ios'], kind: 'framework' },
   { name: 'electron', aliases: ['electron'], kind: 'framework' },
+  // ── AI / Agent 层（T04，2026-09-25；判断依据见 docs/design-c-side-first-20260925.md §1.1）──
+  // 只收歧义足够低的写法。裸 agent / agents / prompt / prompts / eval / gpt / lora / chroma
+  // 一律**不做别名**，因为 compileEntryRegex 是词边界匹配、会稳定误伤：
+  //   \bagent\b 命中 "user-agent"（前端/HTTP 仓库满地都是），
+  //   \beval\b  命中每一次调用 eval() 的 JS/Python 仓库，
+  //   \bgpt\b   在基础设施代码里是 GUID Partition Table，
+  //   \blora\b  在 IoT 代码里是 LoRaWAN，\bchroma\b 是配色库。
+  // 方向与内核一致：宁可漏报（少一个标签），不可误报（画像失去可信度）。
+  // topics 走精确相等，故连 hyphen 形态一起列（GitHub 实际 topic 多用 hyphen）。
+  {
+    name: 'ai agents',
+    aliases: [
+      'ai agent', 'ai agents', 'ai-agents', 'ai-agent', 'llm agent', 'llm agents', 'llm-agents', 'llms',
+      'agent framework', 'agent frameworks', 'agent-development-kit',
+      'multi-agent', 'multi agent', 'agentic', 'agentic workflow', 'agentic workflows', 'agentic-workflows',
+      'genai', 'generative ai', 'generative-ai',
+    ],
+    kind: 'framework',
+  },
+  {
+    name: 'rag',
+    aliases: ['rag', 'retrieval augmented generation', 'retrieval-augmented-generation', 'rag pipeline', 'rag pipelines'],
+    kind: 'framework',
+  },
+  {
+    name: 'prompt engineering',
+    aliases: ['prompt engineering', 'prompt-engineering', 'system prompt', 'system prompts', 'prompt template', 'prompt templates', 'prompt injection'],
+    kind: 'framework',
+  },
+  {
+    name: 'llm evaluation',
+    aliases: ['llm evaluation', 'llm-evaluation', 'llm eval', 'eval harness', 'evaluation harness', 'llm-as-judge', 'llm as a judge', 'evals'],
+    kind: 'framework',
+  },
+  {
+    name: 'model context protocol',
+    aliases: ['model context protocol', 'mcp', 'mcp server', 'mcp servers', 'mcp-servers', 'mcp client', 'mcp-client', 'mcp-tools', 'modelcontextprotocol'],
+    kind: 'framework',
+  },
+  { name: 'openai', aliases: ['openai', 'openai api', 'openai-api', 'chatgpt', 'gpt-4', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'azure openai'], kind: 'framework' },
+  { name: 'anthropic claude', aliases: ['anthropic', 'claude api', 'claude code', 'claude-code', 'anthropic-sdk'], kind: 'framework' },
+  { name: 'langchain', aliases: ['langchain', 'langchainjs', 'langchain-js'], kind: 'framework' },
+  { name: 'langgraph', aliases: ['langgraph'], kind: 'framework' },
+  { name: 'llamaindex', aliases: ['llamaindex', 'llama-index'], kind: 'framework' },
+  { name: 'autogen', aliases: ['autogen', 'pyautogen', 'autogen-studio'], kind: 'framework' },
+  { name: 'crewai', aliases: ['crewai', 'crew-ai'], kind: 'framework' },
+  { name: 'ai sdk', aliases: ['vercel ai sdk', 'ai-sdk', 'pydantic-ai', 'semantic kernel'], kind: 'framework' },
+  {
+    name: 'vector database',
+    aliases: ['vector database', 'vector-database', 'vector search', 'vector-search', 'vector store', 'pgvector', 'pinecone', 'weaviate', 'qdrant', 'milvus', 'chromadb'],
+    kind: 'framework',
+  },
+  { name: 'embeddings', aliases: ['embeddings', 'embedding model', 'embedding models', 'semantic search', 'sentence-transformers', 'sentence transformers'], kind: 'framework' },
+  { name: 'fine-tuning', aliases: ['fine-tuning', 'fine tuning', 'finetuning', 'fine-tune', 'finetune', 'qlora', 'peft'], kind: 'framework' },
+  { name: 'hugging face', aliases: ['hugging face', 'huggingface', 'hugging-face', 'hf transformers', 'huggingface transformers', 'diffusers'], kind: 'framework' },
+  { name: 'llm serving', aliases: ['vllm', 'llama.cpp', 'llama-cpp', 'llamacpp', 'ollama', 'llm serving', 'model serving'], kind: 'framework' },
+  { name: 'function calling', aliases: ['function calling', 'function-calling', 'tool calling', 'tool-calling', 'tool-use', 'tool use llm'], kind: 'framework' },
 ];
 
 /** 领域大类（粗粒度，置信度上限更保守） */
