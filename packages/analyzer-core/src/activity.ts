@@ -33,10 +33,24 @@ export function computeActivity(
 
   const burstPattern = signals.find((s) => s.code === SIGNAL_CODES.COMMIT_BURST);
 
+  // T06：合并 PR 的改动规模。只有提供 diff 统计的证据源参与；一个都没有时整个键
+  // 缺席而不是写 0——"不知道"必须能被读成"不知道"，否则 Gitee-only 画像会被
+  // 误读成"合并了 0 行代码"。
+  const mergedDiffLines = input.pullRequests
+    .filter((p) => p.state === 'MERGED')
+    .map((p) => (p.additions !== null && p.deletions !== null ? p.additions + p.deletions : null))
+    .filter((n): n is number => n !== null);
+
   const metrics: Record<string, number> = {
     totalCommits: input.commits.length,
     totalPullRequests: input.pullRequests.length,
     mergedPullRequests: input.pullRequests.filter((p) => p.state === 'MERGED').length,
+    ...(mergedDiffLines.length > 0
+      ? {
+          mergedDiffLines: mergedDiffLines.reduce((a, b) => a + b, 0),
+          largestMergedPrDiff: Math.max(...mergedDiffLines),
+        }
+      : {}),
     totalIssues: input.issues.length,
     totalRepos: input.repos.length,
     totalStars: input.repos.reduce((sum, r) => sum + r.stargazerCount, 0),
