@@ -74,7 +74,7 @@ item45 落地面试计划表时**明确选择**了"个人效率工具最小做�
 ```sql
 -- 013_add_application_ownership.sql · 两侧各一份（**随 C 端 C-A 同期落地**，#18 已拍板把 F11 提前）
 ALTER TABLE applications ADD COLUMN created_by_account_id TEXT;  -- 存量行为 NULL，语义见 §5
--- 014_add_recruiter_declaration.sql · 两侧各一份（F10，维持"上线后第一迭代"原序）
+-- 015_add_recruiter_declaration.sql（014 已被 2026-09-25 晚的证据主键修复占用） · 两侧各一份（F10，维持"上线后第一迭代"原序）
 ALTER TABLE accounts     ADD COLUMN recruiter_declared_at TEXT;  -- NULL=未声明；UTC ISO8601=声明时刻
 ```
 

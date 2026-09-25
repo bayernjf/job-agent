@@ -246,7 +246,8 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 > **T09 只完成了一半**：生产者已接进画像，但 `improvementSuggestions` 在 `apps/report`/`apps/extension` **零消费者**（grep 0 命中）——第 2 步"指得清路"对用户仍不可见，可见性就是 **T10**，别再把它当已完成项。
 
-| T31 | **回访即崩（P0，同日 T28 验证时用真 GitHub 撞出来的既存缺陷）**：`evidence` 表主键是裸 `id`（`sqlite/schema.ts:99`），而 `importFromProfile` 把 `id` 设成 `item.evidenceId`（不含 profileId，形如 `pr:owner/repo#12`）⇒ **同一账号第二次分析必撞 `UNIQUE constraint failed: evidence.id`**；缓存命中又要求 `complete` + 24h 内（`api/index.ts:875-881`），所以画像过期后、或 T28 之后的 `partial` 终态用户，每次重试都崩。跨账号同一条外部 PR 也撞。缺陷自证据入库起就存在（`59678c8` 前即如此），只因单测每例新建内存库、CLI 不落库而从未被跑到 | 主键改复合 `(profile_id, id)`（两侧各一份迁移、`check-migrations` 对齐）+ **一条真进程回归**：同账号连跑两次，第二次必须成功且新 profileId 证据行数正确。⚠️ 迁移号 014 已由 item61 预留给 #17-F10，需先定顺序（本条用 015 或与之对调），不由实现方默认吞掉 | T28 |
+| ✅ T31 | **回访即崩（P0，同日 T28 验证时用真 GitHub 撞出来的既存缺陷）**：`evidence` 表主键是裸 `id`（`sqlite/schema.ts:99`），而 `importFromProfile` 把 `id` 设成 `item.evidenceId`（不含 profileId，形如 `pr:owner/repo#12`）⇒ **同一账号第二次分析必撞 `UNIQUE constraint failed: evidence.id`**；缓存命中又要求 `complete` + 24h 内（`api/index.ts:875-881`），所以画像过期后、或 T28 之后的 `partial` 终态用户，每次重试都崩。跨账号同一条外部 PR 也撞。缺陷自证据入库起就存在（`59678c8` 前即如此），只因单测每例新建内存库、CLI 不落库而从未被跑到 | **2026-09-26 已落地**（`94d161b`/`fab1598`）：迁移 `014_alter_evidence_primary_key` 两侧各一份改复合主键 `(profile_id, id)`；`getById` 收窄为 `(profileId, id)`；worker 加"同账号连跑两次都成功"回归；**真 Postgres 16 容器实测**：有跨画像重复 id 时回滚拒绝（exit 1）、清掉后重试成功、重新 up 恢复复合主键。F10 预留号顺延为 **015**（编号必须连续，`migrations.test.ts:29-33` 守护） | T28 |
+| T32 | **迁移器逐语句无事务**（P1，验证 T31 时实测撞到）：`postgres/migrator.ts` 按 `;` 拆句逐条 `sql.unsafe()` 执行且不包事务，某条中途失败时前面的 DDL 已生效、`schema_migrations` 却不变 ⇒ **表留在半破状态**（实测：`evidence` 丢了主键而 014 仍记 applied）。副作用：`DO $$ ... $$;` 这类合法 PG 写法在本迁移器里不可用（会被从块中间切断） | 每个迁移文件在一条事务里执行（PG DDL 可事务），失败时把"已执行到哪条"一起报出来；补一条"半途失败的 DOWN 可重试"用例（014 已按此写成 `DROP CONSTRAINT IF EXISTS`） | — |
 
 ### 实测纠正（2026-09-25，T04 落地时）
 
