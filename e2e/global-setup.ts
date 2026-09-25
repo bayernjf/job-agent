@@ -8,9 +8,11 @@ import { execSync } from 'node:child_process';
 import { createStorage } from '@jobagent/storage';
 import {
   buildFixtureProfile,
+  buildClaimedFixtureProfile,
   buildFusedFixtureProfile,
   buildGiteeFixtureProfile,
   FIXTURE_PROFILE_ID,
+  FIXTURE_CLAIMED_PROFILE_ID,
   FIXTURE_FUSED_PROFILE_ID,
   FIXTURE_GITEE_PROFILE_ID,
   FIXTURE_LOGIN,
@@ -40,6 +42,21 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     dataWindowUntil: profile.dataWindow.until,
     status: 'complete',
     snapshot: profile,
+  });
+
+  // 已认领画像（决策 #17-F11）：主体与下面种下的本人账号一致且 subject_claimed=true，
+  // 供 application-privacy spec 断言"投递管道只对本人挂载"。
+  const claimedProfile = buildClaimedFixtureProfile();
+  await storage.profiles.insert({
+    id: FIXTURE_CLAIMED_PROFILE_ID,
+    analyzerVersion: claimedProfile.analyzerVersion,
+    subjectPlatform: claimedProfile.subject.platform,
+    subjectLogin: claimedProfile.subject.login,
+    subjectClaimed: true,
+    dataWindowSince: claimedProfile.dataWindow.since,
+    dataWindowUntil: claimedProfile.dataWindow.until,
+    status: 'complete',
+    snapshot: claimedProfile,
   });
 
   // 融合画像：snapshot 与普通画像同形（subject.platform 仍 github），仅存储行 subject_platform=all
