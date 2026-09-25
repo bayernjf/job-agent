@@ -401,7 +401,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 `snapshot` 为完整 `AbilityProfile`，字段契约以 `packages/shared` 为准，主要包含：
 
-- `summary.headline` / `summary.seniorityHint`
+- `summary.headline` / `summary.seniorityHint`（headline 是**数据层英文原句**：规则版本 0.4 起为"平台正确的角色句"、**不含 login**（如 `TypeScript developer with 14 months of Gitee activity`）；报告页/简历/面试包按读者语言用 `packages/shared` 的 `composeHeadline` 现拼，接口本身不返回中文句）
 - `skillTags[]`（name/kind/depth/confidence/evidenceRefs）
 - `activity`（longevityMonths、cadenceSummary、metrics）
 - `collaboration`（prSummary、externalMergedContributions）

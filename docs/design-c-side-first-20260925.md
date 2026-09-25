@@ -37,9 +37,9 @@
 
 | 缺陷 | 证据 | 后果 |
 | --- | --- | --- |
-| 下载 `.md` 丢用户填的一切 | `ResumeBuilder.tsx:275-285` 的 md 请求体**不带 `local`**，而同一组件的 html 请求带（`:188-198`） | 投出去的简历没有姓名/邮箱/教育/工作经历 —— 直接不可用 |
+| ~~下载 `.md` 丢用户填的一切~~ ✅ T11 已修 | `ResumeBuilder.tsx:275-285` 的 md 请求体**不带 `local`**，而同一组件的 html 请求带（`:188-198`） | 投出去的简历没有姓名/邮箱/教育/工作经历 —— 直接不可用 |
 | 内部批注印进交付物 | `render/markdown.ts:91-95`、`html.ts:159-165`：`draft.suggestions` 被渲染成交付简历里的一节 notes（每条 `- [missing_skill] …`、"缺少联系方式（邮箱）"） | 招聘方看到的是"这人简历里带自我诊断" |
-| 中文简历混英文、且主体口径写死 | headline 在 `packages/analyzer-core/src/summary.ts:19-24` 硬编码英文，**无 platform 分支**（Gitee 画像也写 "GitHub developer"），`tailor.ts:85` 原样贴入 | 双语产品口径破口 + 事实性错误 |
+| ~~中文简历混英文、且主体口径写死~~ ✅ T07 已修 | headline 原在 `packages/analyzer-core/src/summary.ts` 硬编码英文，**无 platform 分支**（Gitee 画像也写 "GitHub developer"），`tailor.ts:85` 原样贴入 | 双语产品口径破口 + 事实性错误 |
 | 没有"项目"概念 | 一条经历 = `EvidenceItem.claim` 原文（如 `Repository o/n (TypeScript): 3 stars / 1 forks, last pushed …`，`packages/github-source/src/evidence.ts:33,46`） | 简历是关键词 + 仓库元数据，没有所有权/规模/结果 |
 | 数字全被丢掉 | `activity.metrics`/`cadenceSummary` 在报告页渲染（`report/[profileId].astro:412-441`）却**不进任何简历或面试包**；`PR.additions/deletions/changedFiles`（`analyzer-core/src/input.ts:66-68`）采集后从不使用 | 招聘方 30 秒扫描看的就是量化行，我们一个字都不给 |
 | 薄画像也出"完整"简历 | `buildResume`/`/resumes/build` 从不读 `authenticity.status`，`insufficient_data` 不拦 | 违反 AGENTS 与 PRD NFR-6"禁止输出看似完整的报告" |
@@ -78,7 +78,7 @@
 1. **技能目录补 AI/Agent 层**：新增 framework 级条目（agent / llm-agent / rag / prompt-engineering / eval-harness / vector-db / model-serving / mcp / langchain / llamaindex / instructor 等），沿用既有词边界与别名归一机制（`skills-catalog.ts` 结构 + `skills.ts` 编译正则），并**为每个新条目定义可核验证据来源**（repo topics 优先，仓名/描述次之，commit/PR 标题再次），避免把口号当技能。
 2. **给目录加"语言无关"的兜底生产者**（讨论项 §7-Q1）：仅靠目录 = 一个词没收录就永远表达不出；候选方案是"topics 直取 + 归一化"，但必须保留可核验性。
 3. **PR diff 规模进证据**：`additions/deletions/changedFiles` 已在 `AnalyzerInput`（`input.ts:66-68`）却从不使用 → 产出"我在 X 仓库合了 N 行、跨 M 个文件的 PR"这类可复核量化行。
-4. **修双语 headline**（`summary.ts:19-24` 去硬编码英文；不改分析口径、只改文案生成）。
+4. **修双语 headline** ✅ 已落地（T07）：模板移到 `packages/shared` 的 `composeHeadline`，平台名按画像主体取，读者语言现拼；不改分析口径、只改文案生成。
 
 **完成定义**：用户本人账号跑一次分析，`skillTags` 里出现与其真实仓库/PR 对得上的 Agent/RAG/eval 类标签且每条挂可点开的证据；26 个标注账号双向回归零误伤（既有校准惯例，`likely_authentic` 不被降级）。
 
@@ -174,15 +174,19 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | ✅ T03 | api：POST 登录时写本人 id；PATCH 非主返回 **404**（不泄露存在，对齐 `/interviews`） | 植入"换身份改他人行"探针必红；`docs/API.md` §3.6 同步 | `apps/api/src/index.ts:1439/1469` |
 | ✅ T03b | 投递表**只对本人出现**：报告页当前是"非招聘方视角就挂载 tracker"（`[profileId].astro:522-525` 的条件是 `!isRecruiter`），等于任何拿到报告链接的匿名访客都能读能写这份求职管道。改成"仅登录且为该画像本人（或画像无主）才挂载"，API 的 `GET /profiles/:id/applications` 同步按身份过滤 | 未登录访问他人报告时投递区块完全不出现（不是隐藏按钮）；本人访问仍正常；`pnpm e2e` 两种身份各一条。**⚠️ 采纳本条会推翻 PRD F11 验收 4**（"投递追踪的既有匿名 E2E 不回归为需要登录"），二者只能留一个：建议改 PRD 那句为"未登录可浏览报告，但投递区块需登录才出现"——对真实求职者，"链接泄露＝求职管道泄露"比匿名可用性重要。**此处需用户明确点头，不由实现者自行取舍** | T03 |
 
-### 批次 1 · C-A 说得清我（决定"产品能不能替你说话"）——**T04/T05/T06 ✅ 已落地 2026-09-25，T08 版本号已发、回归未跑，T07 未开工**
+### 批次 1 · C-A 说得清我（决定"产品能不能替你说话"）——**T04/T05/T06/T07 ✅ 已落地 2026-09-25，T08 版本号已发、回归未跑**
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
 | ✅ T04 | 技能目录补 AI/Agent 层：framework 条目 + 别名 + 词边界（`agent`、`llm-agent`、`rag`、`prompt`、`eval`、`mcp`、`vector-search`、`model-serving` 等） | 每条新词各有正向 + **反例**测试（防 `user agent` / `agency` 误命中）；analyzer 套件绿 | — |
 | ✅ T05 | GitHub topics 直取归一兜底生产者（Q1-B） | 目录未收录但 topics 明确的能力能出标签且挂真证据；未知 topics 被噪声表挡住 | T04 |
 | ✅ T06 | PR diff 规模入证据（`additions`/`deletions`/`changedFiles` 已在 `AnalyzerInput` 却从未使用） | 产出"在 X 合了 N 行 / M 文件的 PR"这类可复核量化证据 | — |
-| T07 | headline 平台化：去掉硬编码英文与写死的 "GitHub developer"（`summary.ts:19-24`） | Gitee 主体不再被写成 GitHub；中英各一套；旧快照仍可解析 | — |
+| ✅ T07 | headline 平台化 + 双语：模板与取法收敛到 `shared` 的 `composeHeadline(facts, locale)`／`headlineFactsFromProfile(profile)`，报告页、简历 header、面试包三处按读者语言现拼；分析内核只把**平台正确**的英文原句写进快照 | Gitee 主体不再被写成 GitHub（单测 + E2E 各钉一条）；中英同一套事实同一句模板；不加字段、不加迁移，旧快照照旧解析 | — |
 | 🔄 T08 | 规则版本 0.3 → **0.4**（版本号已发，`rules.ts`）+ 双向零误伤回归（未跑） | 26 GitHub + 9 Gitee 标注账号：正样本 0 误报、负样本 0 漏报（item5/26 基线不得倒退） | T04–T07 |
+
+> T07 落地时顺手拆掉两颗连带雷：① headline 原自带 `${login} — ` 前缀，与简历 `# {name} — {headline}` 模板相加会渲染成 **"alice — alice — …"**，故 `HeadlineFacts` 不含 login（姓名/账号由各处标题自己带）；② 快照原取 `input.repos[0].primaryLanguage`（＝**采集顺序第一个仓**的语言，不是主力语言），现与渲染侧统一取 `skillTags` 里第一个 language 标签。
+>
+> **刻意仍留数据层英文的表面**：`packages/storage/src/entities/candidate.ts:80`（人才库检索索引，该层无读者语言）、`toExportableProfile` 的 `headline` 与扩展填充（ATS 的 headline 字段本就常填英文）。要中英随扩展界面语言，得给 `ExportableProfile` 或填充层加语言入参——本批不做（半成品只会多一套要维护的契约），需要时按 T 编号新开一条。
 
 ### 批次 2 · C-B 指得清路
 
