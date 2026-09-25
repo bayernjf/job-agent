@@ -280,6 +280,9 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
             jobId: target.jobId,
             locale,
             format: 'md',
+            // 必须与上方 build() 的 html 请求带同一份 local，否则下载件会丢掉
+            // 姓名/邮箱/教育/工作经历——那些只有用户手填，画像里没有。
+            local: toResumeRequest(loadLocal()),
             ...(polishOn ? { polish: true } : {}),
           }),
           credentials: 'include',
