@@ -246,6 +246,8 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 > **T09 只完成了一半**：生产者已接进画像，但 `improvementSuggestions` 在 `apps/report`/`apps/extension` **零消费者**（grep 0 命中）——第 2 步"指得清路"对用户仍不可见，可见性就是 **T10**，别再把它当已完成项。
 
+| T31 | **回访即崩（P0，同日 T28 验证时用真 GitHub 撞出来的既存缺陷）**：`evidence` 表主键是裸 `id`（`sqlite/schema.ts:99`），而 `importFromProfile` 把 `id` 设成 `item.evidenceId`（不含 profileId，形如 `pr:owner/repo#12`）⇒ **同一账号第二次分析必撞 `UNIQUE constraint failed: evidence.id`**；缓存命中又要求 `complete` + 24h 内（`api/index.ts:875-881`），所以画像过期后、或 T28 之后的 `partial` 终态用户，每次重试都崩。跨账号同一条外部 PR 也撞。缺陷自证据入库起就存在（`59678c8` 前即如此），只因单测每例新建内存库、CLI 不落库而从未被跑到 | 主键改复合 `(profile_id, id)`（两侧各一份迁移、`check-migrations` 对齐）+ **一条真进程回归**：同账号连跑两次，第二次必须成功且新 profileId 证据行数正确。⚠️ 迁移号 014 已由 item61 预留给 #17-F10，需先定顺序（本条用 015 或与之对调），不由实现方默认吞掉 | T28 |
+
 ### 实测纠正（2026-09-25，T04 落地时）
 
 1. **topics 是采集的**，我此前推测"L0 没取 repositoryTopics"是错的（`packages/github-source/src/graphql.ts:82/127` 就在取并映射）。真正的坑是 **topics 走小写精确相等**，所以 GitHub 的真实 topic 拼写（`agentic-workflows`、`mcp-servers`、`modelcontextprotocol`、`ai-agents`）必须逐字进别名表，带空格形态匹配不到。已按此补录并加守护用例。
