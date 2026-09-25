@@ -5,6 +5,10 @@
 
 /**
  * 分析引擎规则版本（analyzerVersion = `${SCHEMA_VERSION}-${ruleVersion}`）。
+ * 0.5（2026-09-25，#18 批次 6）：新增 `improvementSuggestions` 生产者（T09，
+ * `suggestions.ts` 两条保守规则、每条必挂真实证据）——画像输出新增可选字段。
+ * **分级不受影响的结构性证明**：`signals.ts` 自 0.3 代码态 `be07ab6` 起仍逐字节未变，
+ * T09 只新增文件与 `profile.ts` 装配一行，分级路径读不到它；0.4 的实跑校准结论由此继承。
  * 0.4（2026-09-25，#18 批次 1）：**画像输出实际已变**——技能目录新增 19 条 AI/Agent
  * framework 词条、framework 上限 8→10、新增 topics 兜底标签生产者（T04/T05）、
  * headline 改为平台正确且不带 login（T07）。
