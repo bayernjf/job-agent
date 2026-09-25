@@ -19,11 +19,30 @@ const t = createTranslator(locale);
 
 // API 地址：显式 PUBLIC_API_BASE 优先；Vercel 同域为 /api；本地默认同源
 const apiBase = browserApiBase();
+
+// T25：报告页 404 / DB 不可用跳回首页时带提示参数，首页如实说明而不是静默无反馈。
+//   ?notfound=1    —— 画像不存在（404）
+//   ?unavailable=1 —— 数据库/服务暂时不可用（503 语义）
+const notice = Astro.url.searchParams.get('notfound')
+  ? 'notfound'
+  : Astro.url.searchParams.get('unavailable')
+    ? 'unavailable'
+    : null;
 ---
 
 <Layout locale={locale} titleKey="home.title">
   <div class="ja-container">
     <section class="hero">
+      {notice === 'notfound' && (
+        <div class="ja-alert ja-alert--warn" role="status" data-testid="notfound-notice">
+          {t('home.notFoundNotice')}
+        </div>
+      )}
+      {notice === 'unavailable' && (
+        <div class="ja-alert ja-alert--error" role="status" data-testid="unavailable-notice">
+          {t('home.unavailableNotice')}
+        </div>
+      )}
       <h1>{t('home.title')}</h1>
       <p class="ja-muted subtitle">{t('home.subtitle')}</p>
 
@@ -39,6 +58,7 @@ const apiBase = browserApiBase();
           queuedLabel={t('job.queued')}
           runningLabel={t('job.running')}
           failedLabel={t('job.failed')}
+          timeoutLabel={t('home.unavailableNotice')}
           stageL0Label={t('job.stage.L0')}
           stageL1Label={t('job.stage.L1')}
           pollingLabel={t('job.polling')}
