@@ -236,6 +236,16 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 > **P0-3（回访即失联）不另立工单**：它已由 **T17「我的」页**承载（`profiles.listBySubject` 至今在 `apps/` 零调用），但优先级要改——评审判据是"关掉浏览器找不回自己的画像＝产品没有账号感"，故 T17 从批次 4 提到上线前。
 
+### 批次 7 · 复评新增阻断（2026-09-25 晚，来源＝[评审 §9](评审-MVP-20260925.md)）
+
+| # | 任务 | 完成判据 | 依赖 |
+| --- | --- | --- | --- |
+| T28 | **把 L0 早返回收回 PRD 原意**（P0）：批次 6 把它做成了每次分析的无条件主路径，于是同一 profileId 先后给出两份结论（实测 L0-only `mixed_signals/0.6/1 题` vs L0+L1 `likely_authentic/0.77/2 题`），违背 AGENTS 第 5 条不可变快照原则；且 `by-subject` 现接受 `partial`，扩展可能抓走临时态 | 正常路径 `jobs.succeed` 回到 L1 之后（进度走 `jobs.stage`），**只有 L1 真失败/预算耗尽**才发布 L0-only partial；报告页若展示 partial 则有明确升级路径（自动或提示重进）；`by-subject` 只在明确条件下返回 partial；一条用例钉住"一次分析只发布一份可分享结论" | — |
+| T29 | **给批次 6 的三个新前端表面补浏览器级验证**（P1）：`/my`（登录态 + 空态）、自选岗位表单（填→提交→简历预览）、partial 提示条与 `?unavailable=1` 分流；另修两件事——简历岛不再让零技能画像彻底没有出路（与 T15 同族），`apps/api` 显式 testTimeout 或给 `interviews`/`resume` 两条撞线用例留余量 | 报告 E2E 用例数从 **66** 上升且新增用例真覆盖上述三表面；`pnpm -r test` 在负载下不再出现 5s 超时假红 | — |
+| T30 | **岗位池口径对齐**（P2）：`GET /job-postings/stats` 已如实报 `active:0`（7 天新鲜窗口），CLI `jobs stats` 仍报 `active=2303`（状态列），同一件事两个表面讲两个故事 | CLI 增列"新鲜窗口内 N 条"，或两处输出都带 cutoff 语义；产品界面不得出现"看起来有 2303 条在招"的错觉 | T24 |
+
+> **T09 只完成了一半**：生产者已接进画像，但 `improvementSuggestions` 在 `apps/report`/`apps/extension` **零消费者**（grep 0 命中）——第 2 步"指得清路"对用户仍不可见，可见性就是 **T10**，别再把它当已完成项。
+
 ### 实测纠正（2026-09-25，T04 落地时）
 
 1. **topics 是采集的**，我此前推测"L0 没取 repositoryTopics"是错的（`packages/github-source/src/graphql.ts:82/127` 就在取并映射）。真正的坑是 **topics 走小写精确相等**，所以 GitHub 的真实 topic 拼写（`agentic-workflows`、`mcp-servers`、`modelcontextprotocol`、`ai-agents`）必须逐字进别名表，带空格形态匹配不到。已按此补录并加守护用例。
