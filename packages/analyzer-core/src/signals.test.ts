@@ -327,6 +327,62 @@ describe('activity metrics behavior-event fields (plan B-1)', () => {
   });
 });
 
+describe('activity diff-scale metrics (T06)', () => {
+  const prWith = (
+    number: number,
+    stats: { additions: number | null; deletions: number | null; changedFiles: number | null },
+    state: 'MERGED' | 'OPEN' = 'MERGED',
+  ) => ({
+    number,
+    title: `PR ${number}`,
+    url: `https://github.com/dev-strong/svc/pull/${number}`,
+    state,
+    createdAt: '2026-07-02T10:00:00Z',
+    mergedAt: state === 'MERGED' ? '2026-07-03T10:00:00Z' : null,
+    repoNameWithOwner: 'dev-strong/svc',
+    repoIsFork: false,
+    repoOwnerIsSelf: true,
+    ...stats,
+  });
+
+  it('sums merged PR diff size and reports the largest single one', () => {
+    const input = buildInput({
+      pullRequests: [
+        prWith(1, { additions: 100, deletions: 40, changedFiles: 9 }),
+        prWith(2, { additions: 5, deletions: 1, changedFiles: 2 }),
+        prWith(3, { additions: 900, deletions: 900, changedFiles: 50 }, 'OPEN'),
+      ],
+    });
+    const activity = computeActivity(input, computeAuthenticitySignals(input));
+    // 140 + 6 = 146；OPEN 的那条 1800 行不参与
+    expect(activity.metrics!.mergedDiffLines).toBe(146);
+    expect(activity.metrics!.largestMergedPrDiff).toBe(140);
+  });
+
+  it('omits the diff keys entirely when no source provided stats', () => {
+    // 关键不是"算出 0"，而是**没有这个键**：0 会被读成"合并了 0 行代码"，
+    // 而 Gitee v5 根本不给 diff 统计。
+    const input = buildInput({
+      pullRequests: [prWith(1, { additions: null, deletions: null, changedFiles: null })],
+    });
+    const activity = computeActivity(input, computeAuthenticitySignals(input));
+    expect(activity.metrics!.mergedPullRequests).toBe(1);
+    expect(activity.metrics).not.toHaveProperty('mergedDiffLines');
+    expect(activity.metrics).not.toHaveProperty('largestMergedPrDiff');
+  });
+
+  it('skips unknown-stat PRs instead of poisoning the sum with zero', () => {
+    const input = buildInput({
+      pullRequests: [
+        prWith(1, { additions: 60, deletions: 20, changedFiles: 4 }),
+        prWith(2, { additions: null, deletions: null, changedFiles: null }),
+      ],
+    });
+    const activity = computeActivity(input, computeAuthenticitySignals(input));
+    expect(activity.metrics!.mergedDiffLines).toBe(80);
+  });
+});
+
 describe('computeAuthenticity (status & confidence)', () => {
   it('strong account → likely_authentic with confidence >= 0.8', () => {
     const { status, confidence } = computeAuthenticity(buildInput());
