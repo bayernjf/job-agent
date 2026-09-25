@@ -7,6 +7,8 @@
  *  3. 输出经 ResumeDraftSchema 校验并带 provenance。
  */
 import {
+  composeHeadline,
+  headlineFactsFromProfile,
   matchScoreTier,
   RESUME_RULE_VERSION,
   ResumeDraftSchema,
@@ -81,7 +83,7 @@ function buildSummary(
   const { profile, posting } = input;
 
   // 首句：headline 为干，seniority 以括号紧随（不另起碎句）
-  const headline = profile.summary.headline.trim();
+  const headline = composeHeadline(headlineFactsFromProfile(profile), locale);
   const seniority = profile.summary.seniorityHint?.band?.trim();
   const lead = seniority
     ? `${headline}${locale === 'en' ? ` (${seniority})` : `（${seniority}）`}`
@@ -221,7 +223,7 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
       matchedSkills: [...match.matchedSkills],
       fieldScores: { ...match.fieldScores },
     },
-    header: { name, headline: profile.summary.headline, contact },
+    header: { name, headline: composeHeadline(headlineFactsFromProfile(profile), locale), contact },
     summary,
     matchedSkills: matchedEntries,
     otherSkills: otherEntries,
