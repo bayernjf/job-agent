@@ -245,6 +245,7 @@ export const applications = pgTable(
     note: text('note'),
     origin: text('origin').notNull().default('manual'),
     appliedAt: text('applied_at').notNull(),
+    createdByAccountId: text('created_by_account_id'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
