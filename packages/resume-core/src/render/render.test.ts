@@ -62,7 +62,8 @@ function baseInput(claim = 'Refactored service'): BuildResumeInput {
 describe('renderMarkdown', () => {
   it('renders ATS-friendly sections with evidence link and provenance', () => {
     const md = renderMarkdown(buildResume(baseInput()), 'zh-CN');
-    expect(md).toContain('# alice — Backend developer');
+    // 姓名行只出现一次：headline 是角色描述，不再自带 login（T07）
+    expect(md).toContain('# alice — typescript 开发者');
     expect(md).toContain('岗位匹配技能');
     expect(md).toContain('typescript');
     expect(md).toContain('[Refactored service](https://github.com/acme/repo/pull/1)');

@@ -141,7 +141,7 @@ describe('buildResume', () => {
 
   it('assembles summary only from profile/job slots', () => {
     const draft = buildResume(makeInput());
-    expect(draft.summary).toContain('Backend developer focused on reliable systems');
+    expect(draft.summary).toContain('typescript 开发者');
     expect(draft.summary).toContain('Backend Engineer');
     expect(draft.summary).toContain('Acme');
     expect(draft.summary).toContain('typescript');
@@ -237,5 +237,30 @@ describe('buildResume', () => {
     const draft = buildResume(input);
     expect(draft.summary).toContain('Targeting');
     expect(draft.summary).toContain('typescript'); // 事实不翻译
+  });
+
+  it('localizes and platform-tags the header headline (T07)', () => {
+    expect(buildResume(makeInput()).header.headline).toBe('typescript 开发者');
+    expect(
+      buildResume(makeInput({ options: { now: '2026-09-15T08:00:00.000Z', locale: 'en' } })).header.headline,
+    ).toBe('typescript developer');
+
+    // 平台名只出现在活跃时长片段里：Gitee 主体的简历不能写 GitHub
+    const base = makeInput();
+    const giteeProfile = {
+      ...base.profile,
+      subject: { ...base.profile.subject, platform: 'gitee' as const },
+      activity: { longevityMonths: 8 },
+    };
+    expect(
+      buildResume({ ...base, profile: giteeProfile }).header.headline,
+    ).toBe('typescript 开发者，在 Gitee 持续活跃 8 个月');
+    expect(
+      buildResume({
+        ...base,
+        profile: giteeProfile,
+        options: { now: '2026-09-15T08:00:00.000Z', locale: 'en' },
+      }).header.headline,
+    ).toBe('typescript developer with 8 months of Gitee activity');
   });
 });

@@ -137,7 +137,7 @@ describe('jobagent resume build', () => {
     );
     expect(code).toBe(0);
     const md = out();
-    expect(md).toContain('# alice — Backend developer');
+    expect(md).toContain('# alice — typescript developer');
     expect(md).toContain('typescript');
     expect(md).toContain('TypeScript PR');
   });
