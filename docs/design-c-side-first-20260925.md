@@ -192,7 +192,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
-| T09 | `improvementSuggestions` **生产者**（契约已在 `shared/src/index.ts:179-187`，全仓零生产者） | 纯函数、规则版本化；每条挂 `evidenceRefs`；任取 5 份真实画像出 3–5 条**可执行可核验**建议（禁"多参与开源"这类无证据套话） | T08 |
+| ✅ T09 | `improvementSuggestions` **生产者**（2026-09-25 落地，规则 0.5）（契约已在 `shared/src/index.ts:179-187`，全仓零生产者） | 纯函数、规则版本化；每条挂 `evidenceRefs`；任取 5 份真实画像出 3–5 条**可执行可核验**建议（禁"多参与开源"这类无证据套话） | T08 |
 | T10 | 报告页"下一步动作"区块 | 中英 key 同构、全用 `--ja-*` token、证据可点开；`pnpm e2e` 补用例 | T09 |
 
 ### 批次 3 · C-C 交得出东西
@@ -211,7 +211,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
-| T17 | "我的"页：接上**今天无人调用**的 `profiles.listBySubject`；让 `AccountMenu` 真正渲染它已收到的 `claimedProfileId`（`AccountMenu.tsx:19` 收了不用）；导航加入口 | 登录后有一页能找回自己的全部画像，关掉浏览器也不丢 | T03 |
+| ✅ T17 | "我的"页（2026-09-25 落地）：接上**今天无人调用**的 `profiles.listBySubject`；让 `AccountMenu` 真正渲染它已收到的 `claimedProfileId`（`AccountMenu.tsx:19` 收了不用）；导航加入口 | 登录后有一页能找回自己的全部画像，关掉浏览器也不丢 | T03 |
 | T18 | 求职者面试管道：复用 012 `interviews` 与行级归属，**换挂载点与文案**（从 `/recruit` 挪进"我的"），并把 `applicationId` 真接上（API 已支持推进投递状态、UI 从不传） | "我投了哪些 → 哪场面试 → 结果如何"一条链走通；不再要求"进前 100 候选人"才能建行 | T17, T03 |
 | T19 | 融合画像可认领（Q2：任一源命中即可，记录实走平台） | `platform=all` 画像能出"本人已验证"，与 item58 的"未经本人认领"提示条互斥正确 | T17 |
 | T20 | 推荐去重与翻页：剔除已保存/已投、加 offset 与关键词、跨源同岗位合并（今天只标记不合并） | 同一岗位不在推荐里出现两次；已投的不再推 | T17 |
@@ -229,10 +229,10 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
-| T24 | **让岗位池在生产里真的有人写，并给简历一条不依赖池子的入口**（P0-1）：① Vercel cron 今天只有 process-job/cleanup（`apps/report/vercel.json:8-18`），Actions sync 缺 `DATABASE_URL` 就 `::warning` 静默跳过；② `markStale` 只在 sync 里跑，所以本机 `jobs stats` 是 active=2303/**inactive=0** 而 `last_seen_at` 停在 09-14——**过期岗位永远冒充 active**；③ 简历唯一入口是推荐卡与 `?resumeJob=` 深链（`[profileId].astro:108,327`），空池时文案仍写"在上方选择一个岗位"（`zh-CN.json:119`） | 在全新部署里**从报告页能走到一份岗位定向简历**（自选岗位粘贴 JD → 复用既有匹配链路）；`jobs stats` 里 `last_seen_at` 超过 N 天的行不再算 active；空池文案改为如实说明岗位库状态 | T21 |
-| T25 | **失败必须显式**（P0-2，自家 NFR-6 目前不可能触发）：`apps/worker/src/index.ts:246` 是全仓唯一一次 `profiles.insert` 且 `status` 硬编 `complete` ⇒ 三处 `=== 'complete'` 消费者里的 `partial` 分支生产不可达；DB 异常一律重定向 `?notfound=1`（`[profileId].astro:39`）而**全仓没有页面读 `notfound`**；顺带补 PRD:179 与 AGENTS 第 3 条承诺、但从未实现的 **L0 早返回**（`AnalyzeForm.pollJob` 递归无截止时间，无 worker 时永久转圈） | 拔掉数据库后报告页说"暂时不可用"而不是"画像不存在"；采集有 `missing` 时画像落库为 `partial` 且页面标注；限频/慢源场景先出 L0 轻画像再升级 | — |
-| T26 | **删除与解绑从口头变成能执行**（P0-4）：`apps/api/src/*.ts` 里 `app.delete(` **0 命中**，而 PRD:230 验收含"可解绑"、隐私页 `privacy.astro:131-135` 承诺 on-request 删除画像/证据并撤链；`auth cleanup` 只清会话与未认领账号，从不碰 `profiles`/`evidence` | 先兑现承诺再谈自助：内部运维子命令按 profileId 删除或匿名化画像+证据并撤分享链，**跑一次命令后该 profileId 的页面与 API 都取不到内容**；随后补自助解绑端点 | — |
-| T27 | **三处 fail-open 收口**（评审 §4，成本低且都是上线开关）：`matchRatePerHour` 在 `demo-config.ts:27,50,126` 定义、可读 env、有解析测试，**却零 handler 消费**（全仓 7 命中全在 config/test）＝"看着有限流其实没有"；`POST /resumes/build` 无身份闸（`index.ts:1336`）且 `polish:true` 会真打 LLM ⇒ 匿名可烧付费额度；`TRUST_PROXY` 默认 false（`:137`）与 `CRON_SECRET` 未配时退化为信任 `x-vercel-cron: 1`（该端点能触发物理删除） | 死旋钮要么接上要么删掉；`/resumes/build` 有配额或身份闸；生产环境缺 `TRUST_PROXY`/`CRON_SECRET` **启动即失败**而非运行时静默降级；每条都有"摘掉闸必红"的用例 | — |
+| ✅ T24 | **让岗位池在生产里真的有人写，并给简历一条不依赖池子的入口**（P0-1）：① Vercel cron 今天只有 process-job/cleanup（`apps/report/vercel.json:8-18`），Actions sync 缺 `DATABASE_URL` 就 `::warning` 静默跳过；② `markStale` 只在 sync 里跑，所以本机 `jobs stats` 是 active=2303/**inactive=0** 而 `last_seen_at` 停在 09-14——**过期岗位永远冒充 active**；③ 简历唯一入口是推荐卡与 `?resumeJob=` 深链（`[profileId].astro:108,327`），空池时文案仍写"在上方选择一个岗位"（`zh-CN.json:119`） | 在全新部署里**从报告页能走到一份岗位定向简历**（自选岗位粘贴 JD → 复用既有匹配链路）；`jobs stats` 里 `last_seen_at` 超过 N 天的行不再算 active；空池文案改为如实说明岗位库状态 | T21 |
+| ✅ T25 | **失败必须显式**（2026-09-25 落地）（P0-2，自家 NFR-6 目前不可能触发）：`apps/worker/src/index.ts:246` 是全仓唯一一次 `profiles.insert` 且 `status` 硬编 `complete` ⇒ 三处 `=== 'complete'` 消费者里的 `partial` 分支生产不可达；DB 异常一律重定向 `?notfound=1`（`[profileId].astro:39`）而**全仓没有页面读 `notfound`**；顺带补 PRD:179 与 AGENTS 第 3 条承诺、但从未实现的 **L0 早返回**（`AnalyzeForm.pollJob` 递归无截止时间，无 worker 时永久转圈） | 拔掉数据库后报告页说"暂时不可用"而不是"画像不存在"；采集有 `missing` 时画像落库为 `partial` 且页面标注；限频/慢源场景先出 L0 轻画像再升级 | — |
+| ✅ T26 | **删除与解绑从口头变成能执行**（2026-09-25 落地）（P0-4）：`apps/api/src/*.ts` 里 `app.delete(` **0 命中**，而 PRD:230 验收含"可解绑"、隐私页 `privacy.astro:131-135` 承诺 on-request 删除画像/证据并撤链；`auth cleanup` 只清会话与未认领账号，从不碰 `profiles`/`evidence` | 先兑现承诺再谈自助：内部运维子命令按 profileId 删除或匿名化画像+证据并撤分享链，**跑一次命令后该 profileId 的页面与 API 都取不到内容**；随后补自助解绑端点 | — |
+| ✅ T27 | **三处 fail-open 收口**（2026-09-25 落地）（评审 §4，成本低且都是上线开关）：`matchRatePerHour` 在 `demo-config.ts:27,50,126` 定义、可读 env、有解析测试，**却零 handler 消费**（全仓 7 命中全在 config/test）＝"看着有限流其实没有"；`POST /resumes/build` 无身份闸（`index.ts:1336`）且 `polish:true` 会真打 LLM ⇒ 匿名可烧付费额度；`TRUST_PROXY` 默认 false（`:137`）与 `CRON_SECRET` 未配时退化为信任 `x-vercel-cron: 1`（该端点能触发物理删除） | 死旋钮要么接上要么删掉；`/resumes/build` 有配额或身份闸；生产环境缺 `TRUST_PROXY`/`CRON_SECRET` **启动即失败**而非运行时静默降级；每条都有"摘掉闸必红"的用例 | — |
 
 > **P0-3（回访即失联）不另立工单**：它已由 **T17「我的」页**承载（`profiles.listBySubject` 至今在 `apps/` 零调用），但优先级要改——评审判据是"关掉浏览器找不回自己的画像＝产品没有账号感"，故 T17 从批次 4 提到上线前。
 
@@ -249,7 +249,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 ### 建议执行顺序
 
-**T01–T03 与 T04–T08 并行开**（隐私与表达力无耦合，**均已于 2026-09-25 落地**）→ **T11**（一条小修复，立刻让简历能投出去）→ **批次 6（T24–T27 + T17 提前）**：09-25 评审判定这四条是"核心完全可用"的真阻断，排在批次 2–4 之前 → T09/T10 → T12–T16 → T18–T20；**T21/T22 越早越好**，否则批次 4 做完仍是"对着空岗位池挑"。
+**T01–T03 与 T04–T08 并行开**（隐私与表达力无耦合，**均已于 2026-09-25 落地**）→ **T11**（一条小修复，立刻让简历能投出去）→ **批次 6（T24–T27 + T17 提前）**：09-25 评审判定这四条是"核心完全可用"的真阻断，排在批次 2–4 之前，**已于 2026-09-25 全部落地** → T09/T10 → T12–T16 → T18–T20；**T21/T22 越早越好**，否则批次 4 做完仍是"对着空岗位池挑"。
 
 ## 10. 一句话结论
 
