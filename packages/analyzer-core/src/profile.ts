@@ -30,8 +30,8 @@ export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): 
   const platform = options.platform ?? 'github';
   const { status, confidence, signals } = computeAuthenticity(input);
   const activity = computeActivity(input, signals);
-  const summary = computeSummary(input, activity);
   const skillTags = computeSkillTags(input);
+  const summary = computeSummary(input, activity, { platform, skillTags });
   const interviewQuestions = generateInterviewQuestions(input);
 
   const mergedExternal = input.pullRequests.filter(
