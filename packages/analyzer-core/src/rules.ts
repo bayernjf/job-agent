@@ -6,10 +6,19 @@
 /**
  * 分析引擎规则版本（analyzerVersion = `${SCHEMA_VERSION}-${ruleVersion}`）。
  * 0.4（2026-09-25，#18 批次 1）：**画像输出实际已变**——技能目录新增 19 条 AI/Agent
- * framework 词条、framework 上限 8→10、并新增 topics 兜底标签生产者（T04/T05）。
+ * framework 词条、framework 上限 8→10、新增 topics 兜底标签生产者（T04/T05）、
+ * headline 改为平台正确且不带 login（T07）。
  * 版本必须与行为一致，否则同一 analyzerVersion 会对应两套输出、缓存与分享链接失去可复现性；
  * 信号码是字面量常量、不由本版本派生，故旧快照不受影响。
- * ⚠️ 本版本尚未过 T08 的双向零误伤回归（26 GitHub + 9 Gitee），**回归通过前不得上线**。
+ * ✅ T08 双向零误伤回归已通过（2026-09-25 实跑，26/26 采集成功）：22 个正样本无一被降为
+ * suspicious、4 个负样本无一升为 likely_authentic；Gitee 可解析的 9 个账号状态与 0.3 基线逐条一致。
+ * 另有 3 处状态漂移（kentcdodds、wycats 因 `external_contributions` 随采样窗口来回出现/消失，
+ * MSNightmare 转为 `empty_activity`→insufficient_data）。**归因是证明而非推测**：相对 0.3 代码态
+ * 提交 `be07ab6`，分级器 `signals.ts` 与喂它的 `github-source` collector/graphql/rest **逐字节未变**，
+ * 本批改动的只有技能标签/目录、activity 计数、headline 文案、PR 证据 claim 文本与三个 diff 字段的
+ * 类型放宽；而 `signals.ts` 对这些表面零引用（`.claim`/`skillTag`/`metrics.`/`additions`/`headline`
+ * 全部 0 命中）。代码不能让分级变化，剩下只能是线上数据变了。
+ * 结论：0.4 可上线。
  */
 export const RULE_VERSION = '0.4';
 
