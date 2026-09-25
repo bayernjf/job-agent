@@ -5,6 +5,7 @@
  * 内容全部来自画像已有证据，不新增任何结论；面试题附上可点击的原始证据，
  * 方便求职者围绕"自己真正做过的事"准备，而不是背通用八股。
  */
+import { composeHeadline, headlineFactsFromProfile } from '@jobagent/shared';
 import type { AbilityProfile, EvidenceItem, SkillTagKind } from '@jobagent/shared';
 import type { Locale } from '../i18n/index.js';
 
@@ -103,7 +104,7 @@ export function renderInterviewKit(
   lines.push('');
 
   lines.push(`## ${d.headline}`);
-  lines.push(profile.summary.headline);
+  lines.push(composeHeadline(headlineFactsFromProfile(profile), locale));
   lines.push('');
 
   // 能力标签按 kind 分组

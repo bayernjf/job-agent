@@ -3,8 +3,15 @@
  * 规则版本化保证同一输入 → 同一输出（可复现）；信号码带版本前缀。
  */
 
-/** 分析引擎规则版本（analyzerVersion = `${SCHEMA_VERSION}-${ruleVersion}`） */
-export const RULE_VERSION = '0.3';
+/**
+ * 分析引擎规则版本（analyzerVersion = `${SCHEMA_VERSION}-${ruleVersion}`）。
+ * 0.4（2026-09-25，#18 批次 1）：**画像输出实际已变**——技能目录新增 19 条 AI/Agent
+ * framework 词条、framework 上限 8→10、并新增 topics 兜底标签生产者（T04/T05）。
+ * 版本必须与行为一致，否则同一 analyzerVersion 会对应两套输出、缓存与分享链接失去可复现性；
+ * 信号码是字面量常量、不由本版本派生，故旧快照不受影响。
+ * ⚠️ 本版本尚未过 T08 的双向零误伤回归（26 GitHub + 9 Gitee），**回归通过前不得上线**。
+ */
+export const RULE_VERSION = '0.4';
 
 /**
  * 真实性信号码。规则 0.1 遗留信号在 0.2/0.3 中逻辑未变，保留 r0.1 前缀以避免快照漂移；
