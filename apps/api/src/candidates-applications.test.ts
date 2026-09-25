@@ -10,6 +10,9 @@ import { describe, expect, it } from 'vitest';
 import type { AbilityProfile, AuthenticityStatus, SkillTag } from '@jobagent/shared';
 import { createStorage, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
+import { FakeAuthProvider } from './fake-auth.js';
+import type { OAuthProfile } from './auth-provider.js';
+import { loadAuthConfig } from './auth-config.js';
 
 interface CandidateItem {
   profileId: string;
@@ -30,6 +33,8 @@ interface ApplicationResponse {
   targetTitle: string;
   targetCompany: string;
   note: string | null;
+  /** 013 起的行级归属；单行响应回显，列表响应刻意剥掉（见 api 的 publicApplication） */
+  createdByAccountId?: string | null;
 }
 interface ApplicationListResponse {
   items: ApplicationResponse[];
@@ -283,5 +288,162 @@ describe('applications endpoints', () => {
     expect(empty.status).toBe(200);
     const emptyBody = (await empty.json()) as ApplicationListResponse;
     expect(emptyBody.items).toEqual([]);
+  });
+});
+
+// ── 投递数据隐私（决策 #17-F11，handoff item60 T01–T03）───────────────────────
+// 认领即隐私开关：未认领画像没有可授权的主体、报告本身按 #1-A 就是公开的，因此
+// 匿名读写链路保持原样；一旦本人认领，读与写都收归该账号。有主行只有主能改，
+// 非主一律 404（不泄露存在），无主历史行沿用现状。
+
+const ALICE: OAuthProfile = {
+  platform: 'github',
+  providerAccountId: '101',
+  login: 'alice',
+  name: 'Alice',
+  email: 'alice@example.com',
+  avatarUrl: null,
+};
+const BOB: OAuthProfile = {
+  platform: 'github',
+  providerAccountId: '202',
+  login: 'bob',
+  name: 'Bob',
+  email: 'bob@example.com',
+  avatarUrl: null,
+};
+
+function cookieHeader(res: Response, name: string): string | undefined {
+  const raws =
+    typeof res.headers.getSetCookie === 'function'
+      ? res.headers.getSetCookie()
+      : [res.headers.get('set-cookie') ?? ''];
+  for (const raw of raws) {
+    const pair = raw.split(';')[0] ?? '';
+    const eq = pair.indexOf('=');
+    if (eq > 0 && pair.slice(0, eq).trim() === name) return decodeURIComponent(pair.slice(eq + 1));
+  }
+  return undefined;
+}
+
+/** 在共享内存库上走完一次 GitHub 登录，返回可复用的会话 Cookie 头。 */
+async function loginUser(repos: StorageContext, identity: OAuthProfile): Promise<Record<string, string>> {
+  const app = await createApp({
+    repos,
+    authConfig: loadAuthConfig({}),
+    githubAuthProvider: new FakeAuthProvider(identity),
+  });
+  const state = cookieHeader(await app.request('/auth/github/login'), 'jobagent_oauth_state');
+  const cb = await app.request(
+    `/auth/github/callback?state=${encodeURIComponent(state!)}&code=fake-code`,
+    { headers: { Cookie: `jobagent_oauth_state=${state!}` } },
+  );
+  const session = cookieHeader(cb, 'jobagent_session');
+  expect(session).toBeTruthy();
+  return { Cookie: `jobagent_session=${session!}` };
+}
+
+async function createAppWith(repos: StorageContext) {
+  return createApp({ repos });
+}
+
+describe('application privacy (#17-F11)', () => {
+  it('leaves the anonymous journey on an unclaimed profile intact and hides ownership in lists', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const app = await createAppWith(repos);
+
+    const created = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ targetTitle: 'Engineer', targetCompany: 'Acme' }),
+    });
+    expect(created.status).toBe(201);
+    const row = (await created.json()) as ApplicationResponse;
+    // 匿名写入不回改归属，历史语义不变
+    expect(row.createdByAccountId).toBeNull();
+
+    const list = await app.request('/profiles/p1/applications');
+    expect(list.status).toBe(200);
+    const body = (await list.json()) as ApplicationListResponse;
+    expect(body.items).toHaveLength(1);
+    // 列表不外发账号 id（可与他人身份关联的标识）
+    expect(body.items[0]).not.toHaveProperty('createdByAccountId');
+
+    // 无主行仍可被改（存量兼容，PRD F11 验收 1/4）
+    const patched = await app.request(`/applications/${row.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'viewed' }),
+    });
+    expect(patched.status).toBe(200);
+  });
+
+  it('stamps the creator on a logged-in write and lets only that creator patch it', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const alice = await loginUser(repos, ALICE);
+    const app = await createAppWith(repos);
+
+    const created = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...alice },
+      body: JSON.stringify({ targetTitle: 'Engineer', targetCompany: 'Acme' }),
+    });
+    expect(created.status).toBe(201);
+    const row = (await created.json()) as ApplicationResponse & { createdByAccountId?: string | null };
+    expect(row.createdByAccountId).toMatch(/^acc-/);
+
+    // 换一个登录身份改：404（与"不存在"同形），且行内容不动
+    const bob = await loginUser(repos, BOB);
+    const stolen = await app.request(`/applications/${row.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', ...bob },
+      body: JSON.stringify({ status: 'offer' }),
+    });
+    expect(stolen.status).toBe(404);
+    const after = (await (await app.request('/profiles/p1/applications', { headers: alice })).json()) as
+      | ApplicationListResponse
+      | { items?: ApplicationResponse[] };
+    expect((after as ApplicationListResponse).items?.[0]?.status).toBe('applied');
+
+    // 本人改得动
+    const own = await app.request(`/applications/${row.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', ...alice },
+      body: JSON.stringify({ status: 'interview' }),
+    });
+    expect(own.status).toBe(200);
+  });
+
+  it('locks a claimed profile\'s application pipeline to its owner', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const alice = await loginUser(repos, ALICE);
+    const app = await createAppWith(repos);
+
+    const claim = await app.request('/profiles/p1/claim', { method: 'POST', headers: alice });
+    expect(claim.status).toBe(200);
+
+    // 匿名：未登录 → 401，且不回任何画像/投递内容
+    const anonGet = await app.request('/profiles/p1/applications');
+    expect(anonGet.status).toBe(401);
+    expect(((await anonGet.json()) as { items?: unknown }).items).toBeUndefined();
+    const anonPost = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ targetTitle: 'X', targetCompany: 'Y' }),
+    });
+    expect(anonPost.status).toBe(401);
+
+    // 别人登录：认不是他 → 403
+    const bob = await loginUser(repos, BOB);
+    const otherGet = await app.request('/profiles/p1/applications', { headers: bob });
+    expect(otherGet.status).toBe(403);
+
+    // 本人：正常
+    const ownGet = await app.request('/profiles/p1/applications', { headers: alice });
+    expect(ownGet.status).toBe(200);
+    expect(((await ownGet.json()) as ApplicationListResponse).items).toEqual([]);
   });
 });
