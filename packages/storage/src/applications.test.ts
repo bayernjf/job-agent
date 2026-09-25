@@ -40,6 +40,30 @@ describe('SqliteApplicationsRepository', () => {
     close();
   });
 
+  it('records creator ownership and enforces it row-locally on update (#17-F11)', async () => {
+    const { repo, close } = freshRepo();
+    await repo.insert(app({ id: 'app-owned', profileId: 'prof-1', createdByAccountId: 'acc-a' }));
+    await repo.insert(app({ id: 'app-anon', profileId: 'prof-1' }));
+
+    expect((await repo.getById('app-owned'))!.createdByAccountId).toBe('acc-a');
+    // 匿名/013 之前的历史行一律 null，不被回改成猜测值
+    expect((await repo.getById('app-anon'))!.createdByAccountId).toBeNull();
+
+    // 非主调用者：与"不存在"同形（undefined），且行内容不动
+    expect(await repo.update('app-owned', { status: 'offer' }, 'acc-b')).toBeUndefined();
+    expect((await repo.getById('app-owned'))!.status).toBe('applied');
+    // 匿名调用者同样改不动有主行
+    expect(await repo.update('app-owned', { status: 'offer' }, null)).toBeUndefined();
+    // 本人改得动
+    expect((await repo.update('app-owned', { status: 'offer' }, 'acc-a'))!.status).toBe('offer');
+    // 无主行沿用现状：任何人可改（存量兼容，PRD F11 验收 1）
+    expect((await repo.update('app-anon', { status: 'viewed' }, 'acc-b'))!.status).toBe('viewed');
+
+    // 不传 scope = 不校验（仅内部推进路径可用，如 interviews 关联投递）
+    expect((await repo.update('app-owned', { status: 'interview' }))!.status).toBe('interview');
+    close();
+  });
+
   it('lists applications for a profile ordered by applied_at desc, scoped to the profile', async () => {
     const { repo, close } = freshRepo();
     await repo.insert(
