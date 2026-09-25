@@ -26,6 +26,7 @@ export class PgApplicationsRepository implements IApplicationsRepository {
       note: application.note ?? null,
       origin: application.origin ?? 'manual',
       appliedAt: application.appliedAt,
+      createdByAccountId: application.createdByAccountId ?? null,
     });
   }
 
@@ -43,7 +44,22 @@ export class PgApplicationsRepository implements IApplicationsRepository {
     return rows.map(toStoredApplication);
   }
 
-  async update(id: string, patch: ApplicationPatch): Promise<StoredApplication | undefined> {
+  async update(
+    id: string,
+    patch: ApplicationPatch,
+    ownerAccountId?: string | null,
+  ): Promise<StoredApplication | undefined> {
+    if (ownerAccountId !== undefined) {
+      const current = await this.getById(id);
+      // 有主且主不是调用者 → 与"不存在"同形返回，不泄露他人记录的存在性
+      if (
+        current &&
+        current.createdByAccountId !== null &&
+        current.createdByAccountId !== ownerAccountId
+      ) {
+        return undefined;
+      }
+    }
     const set: Partial<ApplicationInsert> & { updatedAt: string } = {
       updatedAt: new Date().toISOString(),
     };

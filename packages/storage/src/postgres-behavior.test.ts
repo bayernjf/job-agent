@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vitest';
 import type { AbilityProfile } from '@jobagent/shared';
 import EmbeddedPostgres from 'embedded-postgres';
 import { createStorage } from './storage.js';
 import type { StorageContext } from './types.js';
 import { openPostgres } from './postgres/connection.js';
+import { listMigrationFiles } from './migrations-fs.js';
 
 /**
  * Postgres 仓储行为测试——在真实 Postgres 上验证同一 I*Repository 契约
@@ -20,6 +22,11 @@ import { openPostgres } from './postgres/connection.js';
  */
 
 const EMBEDDED_DIR = resolve(process.cwd(), 'data', 'pg-test-embedded');
+/** postgres 迁移目录：首迁移用例据此推导应应用的迁移条数，不写死数字 */
+const POSTGRES_MIGRATIONS_DIR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../db/migrations/postgres',
+);
 const EMBEDDED_PORT = 5433;
 // initdb cold start (initialise()) can take tens of seconds and varies with
 // disk/CPU load, especially when `pnpm -r test` runs packages concurrently.
@@ -172,6 +179,47 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
 
   pgIt('ping() resolves on a live Postgres connection (deep health check)', async (s) => {
     await expect(s.ping()).resolves.toBeUndefined();
+  });
+
+  // 行级归属在**真实 PG** 上跑一遍：sqlite 侧的同名用例不能替 Postgres 实现背书
+  // （两方言是各自一份 repo 代码，#17-F11 的 ownerAccountId 分支必须逐方言验证）。
+  pgIt('enforces application row ownership against real Postgres', async (s) => {
+    const appliedAt = '2026-09-25T00:00:00.000Z';
+    await s.applications.insert({
+      id: `app-${randomUUID()}`,
+      profileId: 'prof-pg-owner',
+      targetTitle: 'Engineer',
+      targetCompany: 'Acme',
+      appliedAt,
+      createdByAccountId: 'acc-owner',
+    });
+    await s.applications.insert({
+      id: `app-${randomUUID()}`,
+      profileId: 'prof-pg-owner',
+      targetTitle: 'Engineer',
+      targetCompany: 'Beta',
+      appliedAt,
+    });
+
+    const rows = await s.applications.listByProfile('prof-pg-owner');
+    expect(rows).toHaveLength(2);
+    const owned = rows.find((r) => r.createdByAccountId === 'acc-owner');
+    const unowned = rows.find((r) => r.createdByAccountId === null);
+    expect(owned).toBeDefined();
+    expect(unowned).toBeDefined();
+
+    // 非主改不动，且行内容不变
+    expect(await s.applications.update(owned!.id, { status: 'offer' }, 'acc-intruder')).toBeUndefined();
+    expect((await s.applications.getById(owned!.id))!.status).toBe('applied');
+    // 匿名也改不动有主行
+    expect(await s.applications.update(owned!.id, { status: 'offer' }, null)).toBeUndefined();
+    // 主改得动；无主行沿用现状
+    expect((await s.applications.update(owned!.id, { status: 'interview' }, 'acc-owner'))!.status).toBe(
+      'interview',
+    );
+    expect((await s.applications.update(unowned!.id, { status: 'viewed' }, 'acc-intruder'))!.status).toBe(
+      'viewed',
+    );
   });
 
   // 真实竞态：多个并发请求同时走条件 UPDATE ... RETURNING 扣减配额，
@@ -355,7 +403,13 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       try {
         const versions =
           await verify.client<Array<{ version: string }>>`SELECT version FROM schema_migrations ORDER BY version`;
-        expect(versions).toHaveLength(12);
+        // 期望条数从迁移目录推导，不写死数字：加一条迁移就会让这里红一次假警报。
+        expect(versions).toHaveLength(
+          listMigrationFiles(POSTGRES_MIGRATIONS_DIR).length,
+        );
+        expect(versions.map((v) => v.version)).toEqual(
+          listMigrationFiles(POSTGRES_MIGRATIONS_DIR).map((f) => f.slice(0, 3)),
+        );
         const rows =
           await verify.client<Array<{ table_name: string }>>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`;
         const names = rows.map((r) => r.table_name);

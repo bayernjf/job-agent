@@ -29,6 +29,14 @@ export const FIXTURE_GITEE_PROFILE_ID = 'profe2efixture00000000000002';
 export const FIXTURE_GITEE_LOGIN = 'e2e-gitee-user';
 
 /**
+ * 已认领画像 fixture（#4，决策 #17-F11 投递管道隐私）：存储行 subject_claimed=true，
+ * 主体平台/登录名与 FIXTURE_SESSION_TOKEN 所属账号一致（github / FIXTURE_LOGIN）。
+ * 刻意用**独立 id**，不动 FIXTURE_PROFILE_ID——那里"未认领 → 显示认领 CTA 与
+ * 未经本人授权提示条"的断言仍依赖它是无主的。
+ */
+export const FIXTURE_CLAIMED_PROFILE_ID = 'profe2efixture00000000000003';
+
+/**
  * 授权分级闸 E2E：一个本人账号（login 与 FIXTURE_LOGIN 一致）+ 固定未过期会话 token。
  * spec 用 context.addCookies 种 jobagent_session 模拟"已登录 user"。
  */
@@ -143,8 +151,13 @@ export function buildGiteeFixtureProfile(): AbilityProfile {
   });
 }
 
-/** 融合画像 fixture：snapshot 形状与普通画像一致（platform 仍 github），融合身份只在存储行列。 */
-export function buildFusedFixtureProfile(): AbilityProfile {
+/** 已认领画像 fixture：与标准 fixture 同形，只把快照的 claimed 置真（存储行由 global-setup 置真）。 */
+export function buildClaimedFixtureProfile(): AbilityProfile {
+  const base = buildFixtureProfile({ id: FIXTURE_CLAIMED_PROFILE_ID });
+  return AbilityProfileSchema.parse({ ...base, subject: { ...base.subject, claimed: true } });
+}
+
+/** 融合画像 fixture：snapshot 形状与普通画像一致（platform 仍 github），融合身份只在存储行列。 */export function buildFusedFixtureProfile(): AbilityProfile {
   const base = buildFixtureProfile({
     id: FIXTURE_FUSED_PROFILE_ID,
     login: FIXTURE_FUSED_LOGIN,

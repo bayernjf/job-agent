@@ -12,12 +12,15 @@
 | 接 GitHub / Gitee 登录 / 本人认领 / 会话与认领规则，或清理过期会话、闲置账号 | [API.md](API.md) §1.2（/auth/*、/auth/providers、claim 端点与错误码）+ Gitee 协议差异见 [design-gitee-oauth-20260919.md](design-gitee-oauth-20260919.md) + handoff item28/item29/item33；CLI `jobagent auth cleanup` 见 [../AGENTS.md](../AGENTS.md) 常用命令 |
 | 登录后回到原页面（return_to 深链）/ 未登录为何看到登录墙、哪些内容要登录（授权分级闸、证据外链/面试题/面试包 401） | [design-auth-gating-20260919.md](design-auth-gating-20260919.md) ★ + [API.md](API.md) §1.2 可见性矩阵（handoff item31/32） |
 | 理解产品初衷、要解决的根本问题 | [产品构想-以GitHub为桥梁的招聘系统.md](产品构想-以GitHub为桥梁的招聘系统.md) |
-| 看产品范围、功能 F1–F9、画像契约、指标与风险 | [PRD.md](PRD.md) ★ |
+| **问"这项目怎么分应聘者/招聘方、主力是哪边"** | **一句话答案**：没有 B/C 两套账号，只有**四条判据互不一致的机制**——`?view=recruiter`（纯 query）/ 内容分级闸（判据是"已登录"）/ `/[locale]/recruit`（SSR 直出）/ 端点闸（只有 `/interviews` 要登录，`/candidates`·`/applications` 不查身份）；**主力是应聘方**（招聘侧无独立身份线）。全文见 [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) §1.1，工程硬约束见 [../AGENTS.md](../AGENTS.md) 运行架构第 9 条 |
+| **问"C 端下一步做什么 / 为什么我的简历说不清我做 AI Agent"** | [design-c-side-first-20260925.md](design-c-side-first-20260925.md) ★（#18 已拍板 2026-09-25、批次 0 已落地＝handoff item61：六步求职判据 + 逐条 `file:line` 断点 + C-A~C-D 四期 + 与 #17 的改序 + "岗位池今天是死的"这个非代码阻塞） |
+| 看产品范围、功能 F1–F11、画像契约、指标与风险 | [PRD.md](PRD.md) ★ |
+| 搞清楚"项目怎么分应聘者/招聘方"、B 端要不要角色与组织、为什么 `/candidates` 今天匿名可读、F10/F11 与决策 #17 的范围 | [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) ★（#17 已拍板 2026-09-25、未实施：两侧共用账号无角色的现状表、声明式角色立场、迁移 013 草案、A/D/U/R 权限矩阵、`auth cleanup` 会删掉招聘方账号这条坑、5 个待勾子问题） |
 | 回看"为什么从分析 GitHub 切入、MVP 如何收敛"的讨论过程 | [讨论记录-01-切入口与MVP收敛-20260910.md](讨论记录-01-切入口与MVP收敛-20260910.md) |
 | 了解投递功能方向、Jobright 竞品深度分析、四种技术路径对比 | [讨论记录-02-投递功能与竞品分析-20260911.md](讨论记录-02-投递功能与竞品分析-20260911.md) |
 | 看技术栈选型、运行架构、目录规划、M1 排期与 Spike | [技术选型-MVP-20260910.md](技术选型-MVP-20260910.md) |
 | 一页看懂当前技术栈分层（客户端/服务/内核/采集/持久化五层 + 各包职责 + 数据流） | [技术栈总览-分层架构-20260916.md](技术栈总览-分层架构-20260916.md) |
-| 逐条看待拍板事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已拍板，#9–#13 延后，#14 2026-09-21 已拍板，#15/#16 2026-09-11 已拍板：扩展一键填充 P1 做、职位聚合按 P2 启动） |
+| 逐条看待拍板事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已拍板，#9–#13 延后，#14 2026-09-21 已拍板，#15/#16 2026-09-11 已拍板：扩展一键填充 P1 做、职位聚合按 P2 启动；**#17 B 端角色、#18 C 端优先重排 均已于 2026-09-25 拍板（选 A + 采纳子问建议）**） |
 | 看哪些事被刻意缓做、什么条件下重启 | [deferred-items.md](deferred-items.md) |
 | 接手写代码 / 了解工程硬约束 | [../AGENTS.md](../AGENTS.md) + [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |

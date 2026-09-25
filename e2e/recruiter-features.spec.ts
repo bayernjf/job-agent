@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
   FIXTURE_PROFILE_ID,
+  FIXTURE_CLAIMED_PROFILE_ID,
   FIXTURE_GITEE_PROFILE_ID,
   FIXTURE_GITEE_LOGIN,
   FIXTURE_SESSION_TOKEN,
@@ -147,10 +148,11 @@ test.describe('candidate search page', () => {
   }) => {
     await page.goto('/en/recruit');
     const cards = page.locator('.recruit-grid .recruit-card');
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(4);
 
-    // 普通 GitHub 画像卡：裸显平台 github，核验链接指向其 profileId
-    const githubCard = cards.filter({ hasText: 'e2e-fixture-user' });
+    // 普通 GitHub 画像卡：裸显平台 github，核验链接指向其 profileId。
+    // 按链接定位而非按登录名——已认领的那张卡与它同名（同一个人的两份画像快照）。
+    const githubCard = cards.filter({ has: page.locator(`a[href*="${FIXTURE_PROFILE_ID}"]`) });
     await expect(githubCard).toHaveCount(1);
     await expect(githubCard.locator('.recruit-login')).toContainText('github');
     await expect(githubCard.locator('.recruit-view')).toHaveAttribute(
@@ -174,11 +176,14 @@ test.describe('candidate search page', () => {
       new RegExp(`/en/report/${FIXTURE_GITEE_PROFILE_ID}\\?view=recruiter`),
     );
 
-    // 决策 #1-A：三张卡都是未认领画像，招聘方视图必须逐卡标出「未经本人认领」
+    // 决策 #1-A：三张未认领卡逐卡标「未经本人认领」；已认领那张标「本人已验证」
     await expect(cards.locator('[data-testid="candidate-unclaimed"]')).toHaveCount(3);
     await expect(githubCard.locator('[data-testid="candidate-unclaimed"]')).toContainText(
       'Not claimed by owner',
     );
+    const claimedCard = cards.filter({ has: page.locator(`a[href*="${FIXTURE_CLAIMED_PROFILE_ID}"]`) });
+    await expect(claimedCard.locator('[data-testid="candidate-claimed"]')).toHaveCount(1);
+    await expect(claimedCard.locator('[data-testid="candidate-unclaimed"]')).toHaveCount(0);
   });
 });
 
