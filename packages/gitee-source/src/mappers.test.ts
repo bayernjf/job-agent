@@ -162,9 +162,10 @@ describe('mapPullRequests', () => {
       state: 'MERGED',
       mergedAt: '2026-03-03T02:00:00.000Z',
       repoOwnerIsSelf: true,
-      additions: 0,
-      deletions: 0,
-      changedFiles: 0,
+      // v5 不给 diff 统计 → 未知，而不是 0（0 会被下游读成"没改代码"）
+      additions: null,
+      deletions: null,
+      changedFiles: null,
     });
   });
 

@@ -139,9 +139,11 @@ export function mapPullRequests(
       repoNameWithOwner,
       repoIsFork: false,
       repoOwnerIsSelf: owner.toLowerCase() === login.toLowerCase(),
-      additions: 0,
-      deletions: 0,
-      changedFiles: 0,
+      // Gitee v5 的 PR 列表不提供 diff 统计。这里必须是 null 而不是 0：
+      // 填 0 会让"这位候选人改动 0 行"成为一个看起来有据的假结论（T06）。
+      additions: null,
+      deletions: null,
+      changedFiles: null,
     });
   }
   return out;

@@ -1,27 +1,41 @@
 /**
- * 画像摘要：headline（数据层英文，报告页按结构化字段 i18n 双语渲染）与
+ * 画像摘要：headline（数据层英文，文案模板与渲染侧共用 shared 的 composeHeadline）与
  * seniorityHint（保守估计：年限 + 贡献量双门槛，置信度上限 0.6，证据不足则省略）。
  */
 
-import type { AbilityProfile } from '@jobagent/shared';
+import {
+  composeHeadline,
+  type AbilityProfile,
+  type SkillTag,
+  type SupportedPlatform,
+} from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
+
+export interface SummaryOptions {
+  /** 画像主体平台；headline 按它取平台名，Gitee 主体不能写成 GitHub */
+  platform: SupportedPlatform;
+  /** 已算好的能力标签：主力语言取其中置信度最高的 language 标签 */
+  skillTags: SkillTag[];
+}
 
 export function computeSummary(
   input: AnalyzerInput,
   activity: NonNullable<AbilityProfile['activity']>,
+  options: SummaryOptions,
 ): AbilityProfile['summary'] {
-  const topLang = input.repos[0]?.primaryLanguage ?? null;
   const repoCount = input.repos.length;
   const months = activity.longevityMonths;
   const known = new Set(input.evidence.map((e) => e.evidenceId));
 
-  const headline = topLang
-    ? `${input.subject.login} — ${topLang} developer with ${repoCount} public repo${repoCount === 1 ? '' : 's'}${
-        months ? ` and ${months} months of GitHub activity` : ''
-      }`
-    : `${input.subject.login} — GitHub developer with ${repoCount} public repo${repoCount === 1 ? '' : 's'}${
-        months ? ` and ${months} months of GitHub activity` : ''
-      }`;
+  const headline = composeHeadline(
+    {
+      platform: options.platform,
+      language: options.skillTags.find((tag) => tag.kind === 'language')?.name ?? null,
+      repoCount,
+      months,
+    },
+    'en',
+  );
 
   const totalCommits = input.commits.length + input.contributions.totalCommitContributions;
   const refs = [`user:${input.subject.login}`].filter((r) => known.has(r));

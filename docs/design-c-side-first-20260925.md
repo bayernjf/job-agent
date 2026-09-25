@@ -37,9 +37,9 @@
 
 | 缺陷 | 证据 | 后果 |
 | --- | --- | --- |
-| 下载 `.md` 丢用户填的一切 | `ResumeBuilder.tsx:275-285` 的 md 请求体**不带 `local`**，而同一组件的 html 请求带（`:188-198`） | 投出去的简历没有姓名/邮箱/教育/工作经历 —— 直接不可用 |
+| ~~下载 `.md` 丢用户填的一切~~ ✅ T11 已修 | `ResumeBuilder.tsx:275-285` 的 md 请求体**不带 `local`**，而同一组件的 html 请求带（`:188-198`） | 投出去的简历没有姓名/邮箱/教育/工作经历 —— 直接不可用 |
 | 内部批注印进交付物 | `render/markdown.ts:91-95`、`html.ts:159-165`：`draft.suggestions` 被渲染成交付简历里的一节 notes（每条 `- [missing_skill] …`、"缺少联系方式（邮箱）"） | 招聘方看到的是"这人简历里带自我诊断" |
-| 中文简历混英文、且主体口径写死 | headline 在 `packages/analyzer-core/src/summary.ts:19-24` 硬编码英文，**无 platform 分支**（Gitee 画像也写 "GitHub developer"），`tailor.ts:85` 原样贴入 | 双语产品口径破口 + 事实性错误 |
+| ~~中文简历混英文、且主体口径写死~~ ✅ T07 已修 | headline 原在 `packages/analyzer-core/src/summary.ts` 硬编码英文，**无 platform 分支**（Gitee 画像也写 "GitHub developer"），`tailor.ts:85` 原样贴入 | 双语产品口径破口 + 事实性错误 |
 | 没有"项目"概念 | 一条经历 = `EvidenceItem.claim` 原文（如 `Repository o/n (TypeScript): 3 stars / 1 forks, last pushed …`，`packages/github-source/src/evidence.ts:33,46`） | 简历是关键词 + 仓库元数据，没有所有权/规模/结果 |
 | 数字全被丢掉 | `activity.metrics`/`cadenceSummary` 在报告页渲染（`report/[profileId].astro:412-441`）却**不进任何简历或面试包**；`PR.additions/deletions/changedFiles`（`analyzer-core/src/input.ts:66-68`）采集后从不使用 | 招聘方 30 秒扫描看的就是量化行，我们一个字都不给 |
 | 薄画像也出"完整"简历 | `buildResume`/`/resumes/build` 从不读 `authenticity.status`，`insufficient_data` 不拦 | 违反 AGENTS 与 PRD NFR-6"禁止输出看似完整的报告" |
@@ -78,7 +78,7 @@
 1. **技能目录补 AI/Agent 层**：新增 framework 级条目（agent / llm-agent / rag / prompt-engineering / eval-harness / vector-db / model-serving / mcp / langchain / llamaindex / instructor 等），沿用既有词边界与别名归一机制（`skills-catalog.ts` 结构 + `skills.ts` 编译正则），并**为每个新条目定义可核验证据来源**（repo topics 优先，仓名/描述次之，commit/PR 标题再次），避免把口号当技能。
 2. **给目录加"语言无关"的兜底生产者**（讨论项 §7-Q1）：仅靠目录 = 一个词没收录就永远表达不出；候选方案是"topics 直取 + 归一化"，但必须保留可核验性。
 3. **PR diff 规模进证据**：`additions/deletions/changedFiles` 已在 `AnalyzerInput`（`input.ts:66-68`）却从不使用 → 产出"我在 X 仓库合了 N 行、跨 M 个文件的 PR"这类可复核量化行。
-4. **修双语 headline**（`summary.ts:19-24` 去硬编码英文；不改分析口径、只改文案生成）。
+4. **修双语 headline** ✅ 已落地（T07）：模板移到 `packages/shared` 的 `composeHeadline`，平台名按画像主体取，读者语言现拼；不改分析口径、只改文案生成。
 
 **完成定义**：用户本人账号跑一次分析，`skillTags` 里出现与其真实仓库/PR 对得上的 Agent/RAG/eval 类标签且每条挂可点开的证据；26 个标注账号双向回归零误伤（既有校准惯例，`likely_authentic` 不被降级）。
 
@@ -174,15 +174,19 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | ✅ T03 | api：POST 登录时写本人 id；PATCH 非主返回 **404**（不泄露存在，对齐 `/interviews`） | 植入"换身份改他人行"探针必红；`docs/API.md` §3.6 同步 | `apps/api/src/index.ts:1439/1469` |
 | ✅ T03b | 投递表**只对本人出现**：报告页当前是"非招聘方视角就挂载 tracker"（`[profileId].astro:522-525` 的条件是 `!isRecruiter`），等于任何拿到报告链接的匿名访客都能读能写这份求职管道。改成"仅登录且为该画像本人（或画像无主）才挂载"，API 的 `GET /profiles/:id/applications` 同步按身份过滤 | 未登录访问他人报告时投递区块完全不出现（不是隐藏按钮）；本人访问仍正常；`pnpm e2e` 两种身份各一条。**⚠️ 采纳本条会推翻 PRD F11 验收 4**（"投递追踪的既有匿名 E2E 不回归为需要登录"），二者只能留一个：建议改 PRD 那句为"未登录可浏览报告，但投递区块需登录才出现"——对真实求职者，"链接泄露＝求职管道泄露"比匿名可用性重要。**此处需用户明确点头，不由实现者自行取舍** | T03 |
 
-### 批次 1 · C-A 说得清我（决定"产品能不能替你说话"）
+### 批次 1 · C-A 说得清我（决定"产品能不能替你说话"）——**T04/T05/T06/T07 ✅ 已落地 2026-09-25，T08 版本号已发、回归未跑**
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
-| T04 | 技能目录补 AI/Agent 层：framework 条目 + 别名 + 词边界（`agent`、`llm-agent`、`rag`、`prompt`、`eval`、`mcp`、`vector-search`、`model-serving` 等） | 每条新词各有正向 + **反例**测试（防 `user agent` / `agency` 误命中）；analyzer 套件绿 | — |
-| T05 | GitHub topics 直取归一兜底生产者（Q1-B） | 目录未收录但 topics 明确的能力能出标签且挂真证据；未知 topics 被噪声表挡住 | T04 |
-| T06 | PR diff 规模入证据（`additions`/`deletions`/`changedFiles` 已在 `AnalyzerInput` 却从未使用） | 产出"在 X 合了 N 行 / M 文件的 PR"这类可复核量化证据 | — |
-| T07 | headline 平台化：去掉硬编码英文与写死的 "GitHub developer"（`summary.ts:19-24`） | Gitee 主体不再被写成 GitHub；中英各一套；旧快照仍可解析 | — |
-| T08 | 规则版本 0.3 → **0.4** + 双向零误伤回归 | 26 GitHub + 9 Gitee 标注账号：正样本 0 误报、负样本 0 漏报（item5/26 基线不得倒退） | T04–T07 |
+| ✅ T04 | 技能目录补 AI/Agent 层：framework 条目 + 别名 + 词边界（`agent`、`llm-agent`、`rag`、`prompt`、`eval`、`mcp`、`vector-search`、`model-serving` 等） | 每条新词各有正向 + **反例**测试（防 `user agent` / `agency` 误命中）；analyzer 套件绿 | — |
+| ✅ T05 | GitHub topics 直取归一兜底生产者（Q1-B） | 目录未收录但 topics 明确的能力能出标签且挂真证据；未知 topics 被噪声表挡住 | T04 |
+| ✅ T06 | PR diff 规模入证据（`additions`/`deletions`/`changedFiles` 已在 `AnalyzerInput` 却从未使用） | 产出"在 X 合了 N 行 / M 文件的 PR"这类可复核量化证据 | — |
+| ✅ T07 | headline 平台化 + 双语：模板与取法收敛到 `shared` 的 `composeHeadline(facts, locale)`／`headlineFactsFromProfile(profile)`，报告页、简历 header、面试包三处按读者语言现拼；分析内核只把**平台正确**的英文原句写进快照 | Gitee 主体不再被写成 GitHub（单测 + E2E 各钉一条）；中英同一套事实同一句模板；不加字段、不加迁移，旧快照照旧解析 | — |
+| 🔄 T08 | 规则版本 0.3 → **0.4**（版本号已发，`rules.ts`）+ 双向零误伤回归（未跑） | 26 GitHub + 9 Gitee 标注账号：正样本 0 误报、负样本 0 漏报（item5/26 基线不得倒退） | T04–T07 |
+
+> T07 落地时顺手拆掉两颗连带雷：① headline 原自带 `${login} — ` 前缀，与简历 `# {name} — {headline}` 模板相加会渲染成 **"alice — alice — …"**，故 `HeadlineFacts` 不含 login（姓名/账号由各处标题自己带）；② 快照原取 `input.repos[0].primaryLanguage`（＝**采集顺序第一个仓**的语言，不是主力语言），现与渲染侧统一取 `skillTags` 里第一个 language 标签。
+>
+> **刻意仍留数据层英文的表面**：`packages/storage/src/entities/candidate.ts:80`（人才库检索索引，该层无读者语言）、`toExportableProfile` 的 `headline` 与扩展填充（ATS 的 headline 字段本就常填英文）。要中英随扩展界面语言，得给 `ExportableProfile` 或填充层加语言入参——本批不做（半成品只会多一套要维护的契约），需要时按 T 编号新开一条。
 
 ### 批次 2 · C-B 指得清路
 
@@ -195,12 +199,13 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
-| T11 | 修简历 md 下载丢 `local`（`ResumeBuilder.tsx:275-285` 与 `:188-198` 对齐） | E2E 断言下载的 md 含姓名/邮箱 —— **修完这条才有"能直接投"的简历** | — |
+| ✅ T11 | 修简历 md 下载丢 `local`（`ResumeBuilder.tsx:275-285` 与 `:188-198` 对齐） | E2E 断言下载的 md 含姓名/邮箱 —— **修完这条才有"能直接投"的简历** | — |
 | T12 | 交付物卫生：内部批注（`markdown.ts:91-95`、`html.ts:159-165`）、匹配分、provenance 脚注移出交付物，只留产品界面 | 导出的 md/html 里不含 `[missing_skill]`、"缺少联系方式"、分数框 | — |
 | T13 | "项目条目"抽象：主体 + 动作 + 规模 + 结果 + 证据链接（吃 T06 的 diff 数据） | 仍受 no-fabrication 闸约束（`shared/src/index.ts:806-815`），空证据必抛 | T06, T12 |
 | T14 | 量化行进简历与面试包（`activity.metrics` 今天只在报告页渲染，进不了任何交付物） | 简历出现由画像直取的合并 PR 数 / 跨仓广度 / 持续月数，每个数字可回溯 | T13 |
 | T15 | 薄画像降级：`buildResume` 读 `authenticity.status`，`insufficient_data`/`suspicious` 时显式标注缺口 | 不再对空画像出"看似完整"的简历（PRD NFR-6 与 AGENTS 铁律） | — |
 | T16 | 岗位定向面试准备单（岗位命中技能 + 对应证据 + 会被问到什么 + 该反问什么） | 纯规则、仍可回溯；替换今天"5 道通用题干"的 kit | T13, T14 |
+| T23 | **中文交付物里剩余的英文句子**（T07 只修了 headline，真账号实测中文简历又露出 `50 PR(s) opened, 38 merged`）：`collaboration.prSummary`、`activity.cadenceSummary`、真实性信号的 `label`/`detail` 都是分析内核写的英文散文 | 中文简历/面试包里由内核生成的散文全部随读者语言；做法照 T07——事实留快照，模板收进 `shared`；`caveats` 与证据 `claim`（T-批次 41 已定英文口径）**不在本条范围** | T14 |
 
 ### 批次 4 · C-D 我的求职（产品第一次有账号感）
 
@@ -217,6 +222,17 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | --- | --- | --- |
 | T21 | 🔒 形态 C 控制台部署（Runbook §4-C / 执行单 A–J）→ 配 Actions secret `DATABASE_URL` → 手动跑一次 daily | **在此之前的岗位池是死的**：日更整条 gated 在未配置的 secret 上（`.github/workflows/jobs-sync.yml:66-86`） |
 | T22 | 扩岗位种子清单：现成 Greenhouse/Lever 适配器再加 30–50 家真在招 AI 公司（**纯配置**） | 语料从"17 家自选"变成能代表市场；不动一行匹配逻辑 |
+
+### 实测纠正（2026-09-25，T04 落地时）
+
+1. **topics 是采集的**，我此前推测"L0 没取 repositoryTopics"是错的（`packages/github-source/src/graphql.ts:82/127` 就在取并映射）。真正的坑是 **topics 走小写精确相等**，所以 GitHub 的真实 topic 拼写（`agentic-workflows`、`mcp-servers`、`modelcontextprotocol`、`ai-agents`）必须逐字进别名表，带空格形态匹配不到。已按此补录并加守护用例。
+2. **第一次"没有 AI 标签"的实测是假象**：`pnpm --filter @jobagent/cli build` 不会重建 `analyzer-core` 的 dist，CLI 跑的是旧产物（61 条目录）。**任何用 CLI 做的真账号实测之前必须先 `pnpm -r build`**，否则测的是上一个版本。
+3. 全量重建后实测 `bayernjf`（GitHub 源、规则 0.1-0.3）：`ai agents` = **proficient / 置信度 0.85 / 5 条证据**，是该画像里置信度最高的框架标签，压过 react/postgresql/redis。T04 的"说得清我"这一条对用户本人成立。
+4. **框架标签上限原为 8**（按 confidence 排序截断），AI 层进目录后把 `vue` 挤掉，已随 T05 提到 **10**（`skills.ts:280-283`）。但提到 10 也**没能把 vue 找回来**：真账号复测显示 `rag`、`model context protocol` 等真实标签一起进了前 10，`vue` 以 used/0.4 落到门外。结论要改口径——**这不是上限太小，是一堆并列 0.5 的弱信号在抢名额**；真要解决得让排序兼顾 depth 与仓库数，而不只看 confidence，留作 T14 一起处理。
+
+5. **一条守卫差点是假的**：我最初把「单仓话题被门槛丢弃」和「最多 3 条上限」写进同一个用例，摘掉两仓门槛后测试**仍然全绿**——那条断言其实是被上限挤掉的，不是被门槛拦的。拆成两个独立用例之后，禁用门槛立刻变红。**一条用例不要同时守两件事**，否则它会对着错误的机制给绿灯。
+
+6. **T06 挖出的第二个假数据**：Gitee 的 PR 映射把 `additions`/`deletions`/`changedFiles` **硬编成 0**（原 `gitee-source/src/mappers.ts:142-144`）。这三个字段自 2026-09-14 落地起**全仓零消费者**，所以那颗 0 从没被读到过；T06 一旦开始读，Gitee 画像就会宣称「此人合并了 0 行代码」。已改为 `null`（＝该证据源不提供），证据文案与统计指标一律「未知就整段缺席」，并用例钉住。教训：**采集层里没人读的字段不是中性占位值——它一直在等第一个读它的人把它当成事实。**
 
 ### 建议执行顺序
 

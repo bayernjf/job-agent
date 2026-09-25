@@ -1,4 +1,8 @@
-import { AbilityProfileSchema, type AbilityProfile } from '@jobagent/shared';
+import {
+  AbilityProfileSchema,
+  composeHeadline,
+  type AbilityProfile,
+} from '@jobagent/shared';
 
 /**
  * E2E 专用固定画像（#1）。
@@ -80,7 +84,8 @@ export function buildFixtureProfile(
       claimed: false,
     },
     summary: {
-      headline: 'E2E fixture: a reliable full-stack developer with steady OSS activity.',
+      // 与分析内核落盘时同一句（数据层英文）；报告页按读者语言另行现拼（T07）
+      headline: composeHeadline({ platform, language: 'TypeScript', months: 24 }, 'en'),
     },
     skillTags: [
       {
