@@ -146,4 +146,21 @@ describe('SqliteJobPostingsRepository', () => {
     expect(counts.remoteok).toBe(2);
     expect(counts.remotive).toBe(1);
   });
+
+  it('countActiveFresh only counts active rows seen within the cutoff window (T24)', async () => {
+    const repo = freshRepo();
+    await repo.upsertBatch(
+      [samplePosting({ sourceUrl: 'https://e.com/fresh', source: 'remoteok' })],
+      '2026-09-20T00:00:00.000Z',
+    );
+    await repo.upsertBatch(
+      [samplePosting({ sourceUrl: 'https://e.com/stale', source: 'remoteok' })],
+      '2026-08-01T00:00:00.000Z',
+    );
+    // 只数最近窗口内的行：stale 行虽仍是 active（未跑 markStale），但不再冒充新鲜
+    const recent = await repo.countActiveFresh('2026-09-01T00:00:00.000Z');
+    expect(recent.remoteok).toBe(1);
+    const all = await repo.countActiveFresh('2026-01-01T00:00:00.000Z');
+    expect(all.remoteok).toBe(2);
+  });
 });

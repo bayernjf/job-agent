@@ -10,6 +10,7 @@ import {
   type StoredProfile,
 } from '../entities/index.js';
 import type { IProfilesRepository } from '../repositories/profiles.js';
+import type { ProfileSnapshotPatch } from '../repositories/profiles.js';
 import { profiles as profilesTable } from './schema.js';
 
 /** 人才检索扫描上限：只取最近的 complete 画像在内存中精细过滤（MVP 画像量级可接受）。 */
@@ -78,6 +79,29 @@ export class PgProfilesRepository implements IProfilesRepository {
     await this.db
       .update(profilesTable)
       .set({ subjectClaimed: true, updatedAt: new Date().toISOString() })
+      .where(eq(profilesTable.id, id));
+  }
+
+  async deleteById(id: string): Promise<boolean> {
+    const rows = await this.db
+      .delete(profilesTable)
+      .where(eq(profilesTable.id, id))
+      .returning({ id: profilesTable.id });
+    return rows.length > 0;
+  }
+
+  async updateSnapshot(id: string, patch: ProfileSnapshotPatch): Promise<void> {
+    await this.db
+      .update(profilesTable)
+      .set({
+        snapshot: JSON.stringify(patch.snapshot),
+        analyzerVersion: patch.analyzerVersion,
+        analysisLayers: JSON.stringify(patch.analysisLayers),
+        dataWindowSince: patch.dataWindowSince,
+        dataWindowUntil: patch.dataWindowUntil,
+        status: patch.status,
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(profilesTable.id, id));
   }
 
