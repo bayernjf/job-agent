@@ -313,6 +313,25 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 | 403 `AUTH_NOT_PROFILE_OWNER` | 画像平台登录名与登录账号不一致（响应带画像 `subject`） |
 | 404 `AUTH_PROFILE_NOT_FOUND` | 画像不存在 |
 
+### `DELETE /profiles/:id`
+
+登录用户自助解绑并删除本人画像（B2，2026-09-27 落地，PRD「可解绑」验收）。归属判定与认领同口径：仅当画像的 `subject.platform` + `subject.login` 与登录账号完全一致才放行（`subject.platform='all'` 融合画像按登录名一致放行，跨平台/异名返回 403）。删除为**级联**：`evidence` → `applications` → `interviews` 全量删除 → `accounts.claimedProfileId` 置空 → 画像行删除；账号本身保留（仍可登录、可再次分析）。
+
+```json
+{
+  "deleted": true,
+  "profileId": "prof-alice"
+}
+```
+
+| 码 | 情形 |
+| --- | --- |
+| 200 | 删除成功（级联完成，分享链接立即失效） |
+| 400 | `id` 格式非法 |
+| 401 `AUTH_REQUIRED` | 未登录（匿名/演示会话） |
+| 403 `AUTH_NOT_PROFILE_OWNER` | 画像未认领或平台登录名与登录账号不一致（未认领 403 要求先走认领） |
+| 404 `AUTH_PROFILE_NOT_FOUND` | 画像不存在 |
+
 ### 授权分级闸与可见性（报告页，2026-09-19 落地）
 
 登录除认领外，还解锁报告页（Astro SSR，直读只读 storage）的完整核验内容。采用**两档模型**：未登录（anonymous/demo）看公开门面，登录 `user`（含本人与登录的招聘方，可见性相同；本人额外只有认领能力）可见全部。
