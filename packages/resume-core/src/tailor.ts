@@ -27,6 +27,7 @@ import {
 } from '@jobagent/shared';
 import { resumeCopy } from './i18n.js';
 import { normalizeName, rankEvidence, rankSkills } from './rank.js';
+import { projectEntriesFromEvidence } from './project-entries.js';
 import { DEFAULT_HIGHLIGHT_LIMIT, type BuildResumeInput, type ResumeMatchInput } from './types.js';
 
 /** 岗位标签里的通用词，不是技能，missing_skill 提示时过滤（保守，避免噪音） */
@@ -109,6 +110,13 @@ function buildSummary(
     sentences.push(ensureSentence(copy.summaryTargeting(posting.title, posting.company, topMatchedNames.join(', ')), locale));
   }
 
+  // 量化句（T14）：合并 PR 数 / 活跃仓库数 / 持续月数，三个都来自 activity.metrics；
+  // 缺任一键整句省略——宁可没有，也不写半句或猜数（旧快照天然兼容）。
+  const m = profile.activity.metrics;
+  if (m && typeof m.mergedPullRequests === 'number' && typeof m.commitRepoCount === 'number' && typeof m.activeMonths === 'number') {
+    sentences.push(ensureSentence(copy.quantifiedLine(m.mergedPullRequests, m.commitRepoCount, m.activeMonths), locale));
+  }
+
   const mergedCount = profile.collaboration.externalMergedContributions?.length ?? 0;
   const collabPhrase = copy.collaborationPhrase(mergedCount);
   const prSentence = collabPhrase ? undefined : collaborationSentence(profile, locale);
@@ -167,7 +175,11 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
   const matchedSkillTags = ranked.matched.map((r) => r.skill);
   const highlights = rankEvidence(input.evidence, matchedSkillTags, highlightLimit).map(evidenceToEntry);
 
-  // 3) 协作强信号（外部 merged / prSummary），refs 挂 collaboration.evidenceRefs
+  // 3) 项目条目（T13）：从证据全集解析结构化经历（主体+动作+规模+结果+证据链接），
+  //    解析不出格式的证据跳过（不猜）；与 evidenceHighlights 共用上限。
+  const projectEntries = projectEntriesFromEvidence(input.evidence, highlightLimit);
+
+  // 4) 协作强信号（外部 merged / prSummary），refs 挂 collaboration.evidenceRefs
   const collaboration: ResumeEntry[] = [];
   const collabRefs = profile.collaboration.evidenceRefs;
   for (const merged of profile.collaboration.externalMergedContributions ?? []) {
@@ -183,7 +195,7 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
     });
   }
 
-  // 4) 本地补填（source:'local'，允许 refs 为空）
+  // 5) 本地补填（source:'local'，允许 refs 为空）
   const education: ResumeEntry[] = (input.local?.education ?? []).map((e) => ({
     text: [e.degree, e.school, e.period].filter(Boolean).join(' · '),
     evidenceRefs: [],
@@ -197,16 +209,16 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
     supportsSkills: [],
   }));
 
-  // 5) header / summary
+  // 6) header / summary
   const name = input.local?.fullName?.trim() || profile.subject.displayName?.trim() || profile.subject.login;
   const contact = buildContact(input.local, profile.subject.profileUrl);
   const topMatchedNames = ranked.matched.slice(0, 3).map((r) => r.skill.name);
   const summary = buildSummary(input, topMatchedNames, locale);
 
-  // 6) 匹配分档
+  // 7) 匹配分档
   const tier = matchScoreTier(match.score, match.matchedSkills.length);
 
-  // 7) suggestions / gaps（诚实边界）
+  // 8) suggestions / gaps（诚实边界）
   const suggestions: ResumeSuggestion[] = findMissingSkills(input).map((s) => ({
     kind: 'missing_skill' as const,
     text: copy.missingSkill(s),
@@ -246,6 +258,7 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
     otherSkills: otherEntries,
     evidenceHighlights: highlights,
     collaboration,
+    projectEntries,
     localSections: { education, workHistory },
     suggestions,
     gaps,
