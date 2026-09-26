@@ -11,6 +11,7 @@ export type {
   PolishSkipReason,
 } from './polish.js';
 export { rankSkills, rankEvidence, normalizeName } from './rank.js';
+export { parseProjectEntry, projectEntriesFromEvidence, actionLabel } from './project-entries.js';
 export type { RankedSkill, RankedEvidence } from './rank.js';
 export { fromJobMatch, zeroResumeMatch } from './match-input.js';
 export type { JobMatchLike } from './match-input.js';

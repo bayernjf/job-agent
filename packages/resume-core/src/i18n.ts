@@ -11,6 +11,7 @@ export interface ResumeCopy {
   matchedSkillsHeading: string;
   otherSkillsHeading: string;
   highlightsHeading: string;
+  projectsHeading: string;
   collaborationHeading: string;
   workHistoryHeading: string;
   educationHeading: string;
@@ -20,6 +21,8 @@ export interface ResumeCopy {
   summaryTargeting: (jobTitle: string, company: string, topSkills: string) => string;
   /** 协作片段（external merged 数量），无则空串 */
   collaborationPhrase: (externalMergedCount: number) => string;
+  /** 量化句（T14）：三个数都来自 activity.metrics，缺任一整句省略（不写半句、不造数） */
+  quantifiedLine: (mergedPrs: number, activeRepos: number, months: number) => string;
   // suggestions / gaps 文案
   missingSkill: (skill: string) => string;
   missingField: (field: string) => string;
@@ -37,6 +40,7 @@ const zh: ResumeCopy = {
   matchedSkillsHeading: '岗位匹配技能',
   otherSkillsHeading: '其他技能',
   highlightsHeading: '项目与证据（可回溯）',
+  projectsHeading: '项目经历',
   collaborationHeading: '协作与外部贡献',
   workHistoryHeading: '工作经历（本人补填）',
   educationHeading: '教育经历（本人补填）',
@@ -45,6 +49,7 @@ const zh: ResumeCopy = {
   summaryTargeting: (title, company, top) =>
     `本次目标岗位「${title} @ ${company}」，重点突出 ${top}`,
   collaborationPhrase: (n) => (n > 0 ? `有 ${n} 项被外部仓库合并的贡献。` : ''),
+  quantifiedLine: (prs, repos, months) => `已合并 ${prs} 个 PR，覆盖 ${repos} 个活跃仓库，持续 ${months} 个月。`,
   missingSkill: (s) => `岗位提及「${s}」，画像未检出；如确有经验请在本地补填中说明，切勿虚构。`,
   missingField: (f) => `缺少${f}，建议补填以形成完整简历。`,
   lowMatch: (tier, score) => `该岗位匹配度为 ${tier}（${score} 分），可优先选择更高匹配岗位或补充相关证据。`,
@@ -68,6 +73,7 @@ const en: ResumeCopy = {
   matchedSkillsHeading: 'Skills matched to this role',
   otherSkillsHeading: 'Other skills',
   highlightsHeading: 'Highlights (verifiable evidence)',
+  projectsHeading: 'Projects',
   collaborationHeading: 'Collaboration & external contributions',
   workHistoryHeading: 'Work history (self-provided)',
   educationHeading: 'Education (self-provided)',
@@ -76,6 +82,8 @@ const en: ResumeCopy = {
   summaryTargeting: (title, company, top) =>
     `Targeting "${title} @ ${company}", with emphasis on ${top}.`,
   collaborationPhrase: (n) => (n > 0 ? `${n} contribution(s) merged into external repositories.` : ''),
+  quantifiedLine: (prs, repos, months) =>
+    `Merged ${prs} pull request(s) across ${repos} active repositories over ${months} months.`,
   missingSkill: (s) =>
     `The role mentions "${s}", which is not evidenced in the profile; add it locally only if true — never fabricate.`,
   missingField: (f) => `${f} is missing; add it locally for a complete resume.`,
