@@ -355,7 +355,7 @@ interface AbilityProfile {
     signals: AuthenticitySignal[];
   };
   interviewQuestions: Array<{ question: string; intent: string; basisEvidenceRef: string }>;
-  improvementSuggestions?: Array<{ suggestion: string; why: string; evidenceRefs: string[] }>; // C 端 P1
+  improvementSuggestions?: Array<{ code: 'no_pull_requests' | 'no_external_contributions'; suggestion: string; why: string; evidenceRefs: string[] }>; // C 端 P1（T09 产 / T10 渲染：suggestion+why 是数据层英文原句，页面按 code 现拼读者语言）
   caveats: string[];                   // 明确"无法判断"的盲区
 }
 ```
