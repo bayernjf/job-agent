@@ -2,7 +2,6 @@ import type { Sql } from 'postgres';
 import {
   listMigrationFiles,
   parseMigrationFile,
-  splitStatements,
   type RollbackResult,
   type RunMigrationsResult,
 } from '../migrations-fs.js';
@@ -56,11 +55,21 @@ export async function runPgMigrations(
         if (appliedVersions.has(version)) continue;
         const raw = await readFile(migrationsDir, file);
         const { up } = parseMigrationFile(raw);
-        for (const statement of splitStatements(up)) {
-          await c.unsafe(statement);
+        // T32：一个迁移文件 = 一条事务，且整个文件作为**一条 simple query** 发送。
+        // 实测（一次性 postgres:16-alpine 容器）：多语句 simple query 在 Postgres 内
+        // 就是一个隐式事务——任一条失败则前面已执行的 DDL 全部回滚；顺带解决按 ';'
+        // 朴素拆句会切断 `DO $$ ... $$;` 块的问题（验证 014 时两条都撞到了）。
+        // 版本记录并入同一事务：要么"结构已改且已记账"，要么什么都没发生。
+        await c.unsafe('BEGIN');
+        try {
+          await c.unsafe(up);
+          // ON CONFLICT 双保险：极端情况下两个实例都判定未应用时，后者不致崩溃。
+          await c`INSERT INTO schema_migrations (version) VALUES (${version}) ON CONFLICT (version) DO NOTHING`;
+          await c.unsafe('COMMIT');
+        } catch (err) {
+          await c.unsafe('ROLLBACK');
+          throw err;
         }
-        // ON CONFLICT 双保险：极端情况下两个实例都判定未应用时，后者不致崩溃。
-        await c`INSERT INTO schema_migrations (version) VALUES (${version}) ON CONFLICT (version) DO NOTHING`;
         applied.push(file);
       }
 
@@ -104,9 +113,14 @@ export async function rollbackPgMigration(
     );
   }
 
-  for (const statement of splitStatements(down)) {
-    await sql.unsafe(statement);
-  }
-  await sql`DELETE FROM schema_migrations WHERE version = ${version}`;
+  // T32：回滚也走单事务。此前失败的 down 脚本会把库留在"前面的 DDL 已生效、版本号还在"
+  // 的半破状态（验证 014 时实测：evidence 一度没有主键而 014 仍记 applied）。
+  // 用 sql.begin 而不是手写 BEGIN：postgres.js 在非 reserved 连接上禁止事务控制语句
+  // （`UNSAFE_TRANSACTION`，我在本轮实测撞到）。整文件作为一条 simple query 发送，
+  // 因此也不再按 ';' 拆句，`DO $$ ... $$;` 这类合法写法现在可用。
+  await sql.begin(async (tx) => {
+    await tx.unsafe(down);
+    await tx`DELETE FROM schema_migrations WHERE version = ${version}`;
+  });
   return { version, file: files[0]! };
 }

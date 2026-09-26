@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
@@ -271,6 +273,42 @@ describe('migrations', () => {
     expect(first.applied.length).toBeGreaterThan(0);
     expect(second.applied).toEqual([]);
     db.close();
+  });
+
+  it('T32: a failing migration file leaves no partial schema and records no version', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ja-migrations-'));
+    fs.writeFileSync(
+      path.join(dir, '001_partial_failure.sql'),
+      [
+        '-- Migration 001: create probe table',
+        '-- File: 001_partial_failure.sql',
+        '-- Date: 2026-09-26 01:20',
+        'CREATE TABLE probe_t32 (id INTEGER NOT NULL);',
+        '-- 故意失败：引用不存在的表',
+        'INSERT INTO probe_absent_table VALUES (1);',
+        '-- DOWN BEGIN',
+        'DROP TABLE IF EXISTS probe_t32;',
+        '-- DOWN END',
+        '',
+      ].join('\n'),
+    );
+
+    const db = freshDb();
+    try {
+      expect(() => runMigrations(db, dir)).toThrow();
+      const tables = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+        .all() as Array<{ name: string }>;
+      // 第一条语句已建出的表必须随事务一起回滚，否则库处于半破状态
+      expect(tables.map((t) => t.name)).not.toContain('probe_t32');
+      const versions = db.prepare('SELECT version FROM schema_migrations').all() as Array<{
+        version: string;
+      }>;
+      expect(versions.map((v) => v.version)).not.toContain('001');
+    } finally {
+      db.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('rolls back migrations in reverse order with their down scripts', () => {
