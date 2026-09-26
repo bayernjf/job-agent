@@ -187,13 +187,14 @@ const applicationStatusLabels = {
           )
         }
         {
-          /* 未认领且非融合画像：挂载认领 island，仅登录且主体一致的本人会看到 CTA */
-          !profile.subject.claimed && !isFusedProfile && (
+          /* 未认领：挂载认领 island；单源画像要求平台+登录名一致，融合画像（subjectPlatform='all'）
+             任一源（GitHub/Gitee 同 login）命中即可看到 CTA（T19） */
+          !profile.subject.claimed && (
             <ClaimProfile
               client:load
               apiBase={apiBase}
               profileId={profileId!}
-              subjectPlatform={profile.subject.platform}
+              subjectPlatform={isFusedProfile ? 'all' : profile.subject.platform}
               subjectLogin={profile.subject.login}
               ctaLabel={t('report.claim.cta')}
               claimingLabel={t('report.claim.claiming')}

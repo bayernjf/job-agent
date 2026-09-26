@@ -74,11 +74,12 @@ async function insertProfile(
   repos: StorageContext,
   id: string,
   login: string,
+  subjectPlatform: 'github' | 'gitee' | 'all' = 'github',
 ): Promise<void> {
   await repos.profiles.insert({
     id,
     analyzerVersion: 'schema-0.1-engine-0.1.0',
-    subjectPlatform: 'github',
+    subjectPlatform,
     subjectLogin: login,
     dataWindowSince: '2025-09-01T00:00:00.000Z',
     dataWindowUntil: '2026-09-01T00:00:00.000Z',
@@ -240,6 +241,37 @@ describe('POST /profiles/:id/claim', () => {
     expect(profile?.subjectClaimed).toBe(true);
     const account = await repos.accounts.getByProvider('github', '101');
     expect(account?.claimedProfileId).toBe('prof-alice');
+  });
+
+  it('lets either source claim a fused platform=all profile with the same login (T19)', async () => {
+    const { repos, cookies } = await loginAs();
+    await insertProfile(repos, 'prof-fused', 'alice', 'all');
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+    });
+    const auth = { Cookie: cookieHeader(cookies, 'jobagent_session') };
+
+    // GitHub 登录用户（主源）→ 200
+    const ok = await app.request('/profiles/prof-fused/claim', { method: 'POST', headers: auth });
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { subject?: { platform: string } };
+    expect(body.subject?.platform).toBe('all');
+
+    // Gitee 登录用户（辅源，同 login 'bob'）→ 200
+    const { repos: giteeRepos, cookies: giteeCookies } = await loginAsGitee();
+    await insertProfile(giteeRepos, 'prof-fused-bob', 'bob', 'all');
+    const giteeApp = await makeGiteeApp(giteeRepos);
+    const giteeAuth = { Cookie: cookieHeader(giteeCookies, 'jobagent_session') };
+    const okGitee = await giteeApp.request('/profiles/prof-fused-bob/claim', { method: 'POST', headers: giteeAuth });
+    expect(okGitee.status).toBe(200);
+
+    // 不同 login → 403（bob 认领 alice/all，同一 app+repos 内身份判定）
+    await insertProfile(giteeRepos, 'prof-fused-alice', 'alice', 'all');
+    const forbidden = await giteeApp.request('/profiles/prof-fused-alice/claim', { method: 'POST', headers: giteeAuth });
+    expect(forbidden.status).toBe(403);
+    expect((await forbidden.json() as { code: string }).code).toBe('AUTH_NOT_PROFILE_OWNER');
   });
 });
 
