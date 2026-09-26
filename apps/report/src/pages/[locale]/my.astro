@@ -6,6 +6,7 @@
  */
 import Layout from '../../layouts/Layout.astro';
 import GateCard from '../../components/GateCard.astro';
+import InterviewPlanner from '../../components/InterviewPlanner.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
 import { getStorage } from '../../lib/db.js';
 import { resolveViewer } from '../../lib/auth.js';
@@ -71,6 +72,73 @@ const dateFmt = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
           </li>
         ))}
       </ul>
+    )}
+
+    {viewer.kind === 'user' && profiles.length > 0 && (
+      <InterviewPlanner
+        client:load
+        apiBase={apiBase}
+        locale={locale}
+        loginHref={loginHref}
+        labels={{
+          title: t('interviews.title'),
+          hint: t('interviews.hint'),
+          loading: t('interviews.loading'),
+          error: t('interviews.error'),
+          empty: t('interviews.empty'),
+          add: t('interviews.add'),
+          save: t('interviews.save'),
+          cancel: t('interviews.cancel'),
+          required: t('interviews.required'),
+          loginRequiredTitle: t('interviews.loginRequiredTitle'),
+          loginRequiredBody: t('interviews.loginRequiredBody'),
+          loginButton: t('interviews.loginButton'),
+          application: t('interviews.application'),
+          applicationNone: t('interviews.applicationNone'),
+          applicationPlaceholder: t('interviews.applicationPlaceholder'),
+          role: t('interviews.role'),
+          rolePlaceholder: t('interviews.rolePlaceholder'),
+          company: t('interviews.company'),
+          companyPlaceholder: t('interviews.companyPlaceholder'),
+          start: t('interviews.start'),
+          end: t('interviews.end'),
+          format: t('interviews.format'),
+          round: t('interviews.round'),
+          roundPlaceholder: t('interviews.roundPlaceholder'),
+          interviewer: t('interviews.interviewer'),
+          interviewerPlaceholder: t('interviews.interviewerPlaceholder'),
+          interviewerEmail: t('interviews.interviewerEmail'),
+          interviewerEmailPlaceholder: t('interviews.interviewerEmailPlaceholder'),
+          status: t('interviews.status'),
+          outcome: t('interviews.outcome'),
+          outcomeUnset: t('interviews.outcomeUnset'),
+          rating: t('interviews.rating'),
+          ratingUnset: t('interviews.ratingUnset'),
+          feedback: t('interviews.feedback'),
+          feedbackPlaceholder: t('interviews.feedbackPlaceholder'),
+          saveResult: t('interviews.saveResult'),
+          noProfile: t('interviews.noProfile'),
+          noProfileAction: t('interviews.noProfileAction'),
+          statusLabels: {
+            scheduled: t('interviews.status.scheduled'),
+            completed: t('interviews.status.completed'),
+            cancelled: t('interviews.status.cancelled'),
+            no_show: t('interviews.status.no_show'),
+            rescheduled: t('interviews.status.rescheduled'),
+          },
+          formatLabels: {
+            onsite: t('interviews.format.onsite'),
+            phone: t('interviews.format.phone'),
+            video: t('interviews.format.video'),
+          },
+          outcomeLabels: {
+            strong_yes: t('interviews.outcome.strong_yes'),
+            yes: t('interviews.outcome.yes'),
+            neutral: t('interviews.outcome.neutral'),
+            no: t('interviews.outcome.no'),
+          },
+        }}
+      />
     )}
   </div>
 </Layout>

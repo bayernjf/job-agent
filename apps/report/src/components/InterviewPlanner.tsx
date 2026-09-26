@@ -1,8 +1,9 @@
 /**
- * InterviewPlanner——报告页 /recruit 招聘方视角的「面试计划」React island（handoff item45）。
- * POST/GET /interviews、PATCH /interviews/:id；全部端点要求登录、按账号行级隔离。
- * 挂载先 GET /auth/me：非登录用户渲染登录墙；登录后并行加载候选人（GET /candidates）
- * 与本人面试（GET /interviews）。不做物理删除：取消/爽约走 status=cancelled/no_show。
+ * InterviewPlanner——求职者版「我的面试管道」（T18，挂载于 /[locale]/my）。
+ * 登录后自动解析"我的画像"（认领画像优先，否则 by-subject 公开解析最新画像），
+ * 列出该画像的投递记录（我投了哪些）与面试（哪场面试 → 结果如何）。
+ * 建行从"我的投递"选 applicationId 真接上（API 将 saved/applied/viewed 推进为 interview），
+ * 不再要求"进前 100 候选人"才能建行。不做物理删除：取消/爽约走 status=cancelled/no_show。
  * 所有用户可见文案由 Astro 服务端通过 props 传入（组件不硬编码文案）。
  */
 import { useEffect, useState, type FormEvent } from 'react';
@@ -36,15 +37,22 @@ interface Interview {
   updatedAt: string;
 }
 
-interface Candidate {
+/** 投递记录（applications）：建行时从 saved/applied/viewed 里选，真接上 applicationId。 */
+interface Application {
+  id: string;
   profileId: string;
-  platform: string;
-  login: string;
-  displayName?: string;
+  jobId: string | null;
+  targetTitle: string;
+  targetCompany: string | null;
+  status: string;
+  appliedAt: string;
 }
 
 interface AuthMe {
   kind: 'anonymous' | 'demo' | 'user';
+  platform?: 'github' | 'gitee';
+  login?: string;
+  claimedProfileId?: string | null;
 }
 
 interface PlannerLabels {
@@ -60,8 +68,9 @@ interface PlannerLabels {
   loginRequiredTitle: string;
   loginRequiredBody: string;
   loginButton: string;
-  candidate: string;
-  candidatePlaceholder: string;
+  application: string;
+  applicationNone: string;
+  applicationPlaceholder: string;
   role: string;
   rolePlaceholder: string;
   company: string;
@@ -83,6 +92,8 @@ interface PlannerLabels {
   feedback: string;
   feedbackPlaceholder: string;
   saveResult: string;
+  noProfile: string;
+  noProfileAction: string;
   statusLabels: Record<InterviewStatus, string>;
   formatLabels: Record<InterviewFormat, string>;
   outcomeLabels: Record<InterviewOutcome, string>;
@@ -104,6 +115,8 @@ const STATUS_ORDER: InterviewStatus[] = [
 ];
 const FORMAT_ORDER: InterviewFormat[] = ['onsite', 'phone', 'video'];
 const OUTCOME_ORDER: InterviewOutcome[] = ['strong_yes', 'yes', 'neutral', 'no'];
+/** 只有早期阶段投递能推进为面试（终态不回退，与 API 一致）。 */
+const BUILDABLE_STATUSES = new Set(['saved', 'applied', 'viewed']);
 
 function formatDateTime(iso: string, locale: string): string {
   try {
@@ -125,16 +138,18 @@ function localInputToIso(value: string): string {
 
 export default function InterviewPlanner({ apiBase, locale, loginHref, labels }: Props) {
   const [me, setMe] = useState<AuthMe | null>(null);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [profileId, setProfileId] = useState<string | null>(null);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [items, setItems] = useState<Interview[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [noProfile, setNoProfile] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   // 表单字段
-  const [profileId, setProfileId] = useState('');
+  const [applicationId, setApplicationId] = useState('');
   const [role, setRole] = useState('');
   const [company, setCompany] = useState('');
   const [start, setStart] = useState('');
@@ -151,19 +166,36 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
     feedback: string;
   }>>({});
 
-  async function load() {
+  /** 解析"我的画像"：认领画像优先，否则 by-subject 公开解析最新画像（T18 不再依赖候选人列表）。 */
+  async function resolveMyProfile(user: AuthMe): Promise<string | null> {
+    if (user.claimedProfileId) return user.claimedProfileId;
+    if (!user.platform || !user.login) return null;
+    try {
+      const res = await fetch(
+        `${apiBase}/profiles/by-subject/${encodeURIComponent(user.platform)}/${encodeURIComponent(user.login)}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) return null;
+      const body = (await res.json()) as { id?: string };
+      return body.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function load(pid: string) {
     setLoading(true);
     setError(null);
     try {
-      const [candRes, intRes] = await Promise.all([
-        fetch(`${apiBase}/candidates?limit=100`, { credentials: 'include' }),
-        fetch(`${apiBase}/interviews`, { credentials: 'include' }),
+      const [appRes, intRes] = await Promise.all([
+        fetch(`${apiBase}/profiles/${encodeURIComponent(pid)}/applications`, { credentials: 'include' }),
+        fetch(`${apiBase}/interviews?profileId=${encodeURIComponent(pid)}`, { credentials: 'include' }),
       ]);
-      if (!candRes.ok) throw new Error(`candidates HTTP ${candRes.status}`);
+      if (!appRes.ok) throw new Error(`applications HTTP ${appRes.status}`);
       if (!intRes.ok) throw new Error(`interviews HTTP ${intRes.status}`);
-      const candBody = (await candRes.json()) as { items: Candidate[] };
+      const appBody = (await appRes.json()) as { items: Application[] };
       const intBody = (await intRes.json()) as { items: Interview[] };
-      setCandidates(candBody.items ?? []);
+      setApplications(appBody.items ?? []);
       setItems(intBody.items ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -181,8 +213,19 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
         const auth = (await res.json()) as AuthMe;
         if (cancelled) return;
         setMe(auth);
-        if (auth.kind === 'user') await load();
-        else setLoading(false);
+        if (auth.kind === 'user') {
+          const pid = await resolveMyProfile(auth);
+          if (cancelled) return;
+          if (!pid) {
+            setNoProfile(true);
+            setLoading(false);
+            return;
+          }
+          setProfileId(pid);
+          await load(pid);
+        } else {
+          setLoading(false);
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -196,15 +239,19 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase]);
 
-  const candidateMap = new Map(candidates.map((c) => [c.profileId, c]));
-  function candidateLabel(pid: string): string {
-    const c = candidateMap.get(pid);
-    if (c) return `@${c.login} · ${c.platform}`;
-    return pid.length > 12 ? `${pid.slice(0, 10)}…` : pid;
+  const buildable = applications.filter((a) => BUILDABLE_STATUSES.has(a.status));
+
+  function selectApplication(appId: string) {
+    setApplicationId(appId);
+    const app = applications.find((a) => a.id === appId);
+    if (app) {
+      setRole(app.targetTitle);
+      if (app.targetCompany) setCompany(app.targetCompany);
+    }
   }
 
   function resetForm() {
-    setProfileId('');
+    setApplicationId('');
     setRole('');
     setCompany('');
     setStart('');
@@ -237,6 +284,7 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
         format,
         roundLabel: round.trim(),
       };
+      if (applicationId) payload.applicationId = applicationId;
       if (company.trim()) payload.targetCompany = company.trim();
       if (interviewer.trim()) payload.interviewerName = interviewer.trim();
       if (interviewerEmail.trim()) payload.interviewerEmail = interviewerEmail.trim();
@@ -278,7 +326,7 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
       setItems((prev) => (prev ?? []).map((it) => (it.id === id ? updated : it)));
     } catch {
       setItems(before);
-      void load();
+      void load(profileId ?? '');
     }
   }
 
@@ -335,6 +383,19 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
     );
   }
 
+  // 登录但还没有本人画像：引导去生成（不再要求"进前 100 候选人"）
+  if (noProfile) {
+    return (
+      <section className="ja-card ivp" data-testid="interview-no-profile">
+        <h2>{labels.title}</h2>
+        <p className="ja-muted">{labels.noProfile}</p>
+        <a className="ja-btn" href={`/${locale}/`}>
+          {labels.noProfileAction}
+        </a>
+      </section>
+    );
+  }
+
   return (
     <section className="ja-card ivp">
       <div className="ja-flex-between ivp-head">
@@ -352,20 +413,23 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
       {showForm && (
         <form className="ivp-form" onSubmit={handleSubmit}>
           <div className="ivp-field ivp-field--wide">
-            <label htmlFor="ivp-candidate">{labels.candidate}</label>
+            <label htmlFor="ivp-application">{labels.application}</label>
             <select
-              id="ivp-candidate"
+              id="ivp-application"
               className="ja-input"
-              value={profileId}
-              onChange={(e) => setProfileId(e.target.value)}
+              value={applicationId}
+              onChange={(e) => selectApplication(e.target.value)}
             >
-              <option value="">{labels.candidatePlaceholder}</option>
-              {candidates.map((c) => (
-                <option key={c.profileId} value={c.profileId}>
-                  @{c.login} · {c.platform}
+              <option value="">{labels.applicationNone}</option>
+              {buildable.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.targetCompany ? `${a.targetCompany} · ` : ''}{a.targetTitle}
                 </option>
               ))}
             </select>
+            {buildable.length === 0 && (
+              <p className="ja-muted ivp-field-hint">{labels.applicationPlaceholder}</p>
+            )}
           </div>
           <div className="ivp-field">
             <label htmlFor="ivp-role">{labels.role}</label>
@@ -485,9 +549,11 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
               <li key={it.id} className="ivp-item" data-testid="interview-item">
                 <div className="ivp-item-main">
                   <div className="ivp-item-title">
-                    <strong>{candidateLabel(it.profileId)}</strong>
-                    <span className="ja-muted">· {it.targetTitle}</span>
+                    <strong>{it.targetTitle}</strong>
                     {it.targetCompany && <span className="ja-muted">· {it.targetCompany}</span>}
+                    {it.applicationId && (
+                      <span className="ivp-item-app ja-muted">· {labels.application}</span>
+                    )}
                   </div>
                   <div className="ivp-item-meta ja-muted">
                     <span>{formatDateTime(it.scheduledStart, locale)} – {formatDateTime(it.scheduledEnd, locale)}</span>
@@ -533,46 +599,53 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
                           }
                         >
                           <option value="">{labels.ratingUnset}</option>
-                          {[5, 4, 3, 2, 1].map((n) => (
-                            <option key={n} value={String(n)}>{n}</option>
+                          {[1, 2, 3, 4, 5].map((r) => (
+                            <option key={r} value={r}>{r}</option>
                           ))}
                         </select>
                       </label>
-                      <textarea
-                        className="ja-input ivp-feedback"
-                        rows={2}
-                        placeholder={labels.feedbackPlaceholder}
-                        value={draft.feedback}
-                        onChange={(e) =>
-                          setResultDrafts((p) => ({
-                            ...p,
-                            [it.id]: { ...draft, feedback: e.target.value },
-                          }))
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="ja-btn ja-btn--ghost ivp-save-result"
-                        onClick={() => void saveResult(it)}
-                      >
-                        {labels.saveResult}
-                      </button>
+                      <label className="ivp-result-field ivp-result-field--wide">
+                        <span className="ja-muted">{labels.feedback}</span>
+                        <textarea
+                          className="ja-input"
+                          rows={2}
+                          value={draft.feedback}
+                          placeholder={labels.feedbackPlaceholder}
+                          onChange={(e) =>
+                            setResultDrafts((p) => ({
+                              ...p,
+                              [it.id]: { ...draft, feedback: e.target.value },
+                            }))
+                          }
+                        />
+                      </label>
+                      <div className="ivp-result-actions">
+                        <button
+                          type="button"
+                          className="ja-btn ja-btn--ghost"
+                          disabled={submitting}
+                          onClick={() => void saveResult(it)}
+                        >
+                          {labels.saveResult}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
-                <label className="ivp-status">
-                  <span className="ja-muted ivp-status-label">{labels.status}</span>
-                  <select
-                    className="ja-input ivp-select"
-                    value={it.status}
-                    onChange={(e) => changeStatus(it, e.target.value as InterviewStatus)}
-                    aria-label={labels.status}
-                  >
-                    {STATUS_ORDER.map((s) => (
-                      <option key={s} value={s}>{labels.statusLabels[s]}</option>
-                    ))}
-                  </select>
-                </label>
+                <div className="ivp-item-side">
+                  <label className="ivp-status">
+                    <span className="ja-muted">{labels.status}</span>
+                    <select
+                      className="ja-input"
+                      value={it.status}
+                      onChange={(e) => changeStatus(it, e.target.value as InterviewStatus)}
+                    >
+                      {STATUS_ORDER.map((s) => (
+                        <option key={s} value={s}>{labels.statusLabels[s]}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               </li>
             );
           })}
