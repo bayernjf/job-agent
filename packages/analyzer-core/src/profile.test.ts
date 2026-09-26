@@ -75,6 +75,21 @@ describe('analyze (profile assembly)', () => {
     expect(a).toEqual({ ...b, profileId: 'id-a' });
   });
 
+  it('stores the PR summary exactly as the pre-composer sentence, byte for byte', () => {
+    // 快照里存的是数据层英文原句；渲染侧改用 composePrSummary 后，这句必须逐字节不变，
+    // 否则同一 analyzerVersion 会对应两套 prSummary。字面量写在测试里，不从 composer 反推。
+    const input = buildInput();
+    const opened = input.pullRequests.length;
+    const merged = input.pullRequests.filter((p) => p.state === 'MERGED').length;
+    const external = input.pullRequests.filter(
+      (p) => !p.repoOwnerIsSelf && p.state === 'MERGED',
+    ).length;
+    const literal = `${opened} PR(s) opened, ${merged} merged${
+      external > 0 ? `, ${external} into external projects` : ''
+    }`;
+    expect(analyze(input, { profileId: 'p-pr' }).collaboration.prSummary).toBe(literal);
+  });
+
   it('propagates missing data into caveats instead of hiding it', () => {
     const input = buildInput({ missing: ['commits:web-platform'] });
     const profile = analyze(input, { profileId: 'p' });

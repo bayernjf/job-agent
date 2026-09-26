@@ -8,11 +8,15 @@
  */
 import {
   composeHeadline,
+  composePrSummary,
+  composeSeniorityBand,
   headlineFactsFromProfile,
   matchScoreTier,
+  prSummaryFactsFromProfile,
   RESUME_RULE_VERSION,
   ResumeDraftSchema,
   SCHEMA_VERSION,
+  type AbilityProfile,
   type EvidenceItem,
   type LocalResumeFields,
   type ResumeDraft,
@@ -55,6 +59,16 @@ function skillToEntry(skill: SkillTag, supports: boolean): ResumeEntry {
   };
 }
 
+/**
+ * 协作一句话（T23）。快照里的 `prSummary` 是数据层英文原句，能取到 PR 计数就按读者语言
+ * 现拼；取不到（旧快照没写 metrics）就退回原句 —— 宁可留一句英文，也不臆造数字。
+ */
+function collaborationSentence(profile: AbilityProfile, locale: ResumeLocale): string | undefined {
+  const facts = prSummaryFactsFromProfile(profile);
+  if (facts) return composePrSummary(facts, locale);
+  return profile.collaboration.prSummary?.trim() || undefined;
+}
+
 function evidenceToEntry(ranked: { item: EvidenceItem; supportsSkills: string[] }): ResumeEntry {
   return {
     text: ranked.item.claim,
@@ -85,8 +99,9 @@ function buildSummary(
   // 首句：headline 为干，seniority 以括号紧随（不另起碎句）
   const headline = composeHeadline(headlineFactsFromProfile(profile), locale);
   const seniority = profile.summary.seniorityHint?.band?.trim();
-  const lead = seniority
-    ? `${headline}${locale === 'en' ? ` (${seniority})` : `（${seniority}）`}`
+  const band = seniority ? composeSeniorityBand(seniority, locale) : '';
+  const lead = band
+    ? `${headline}${locale === 'en' ? ` (${band})` : `（${band}）`}`
     : headline;
   const sentences: string[] = [ensureSentence(lead, locale)];
 
@@ -96,8 +111,9 @@ function buildSummary(
 
   const mergedCount = profile.collaboration.externalMergedContributions?.length ?? 0;
   const collabPhrase = copy.collaborationPhrase(mergedCount);
+  const prSentence = collabPhrase ? undefined : collaborationSentence(profile, locale);
   if (collabPhrase) sentences.push(ensureSentence(collabPhrase, locale));
-  else if (profile.collaboration.prSummary?.trim()) sentences.push(ensureSentence(profile.collaboration.prSummary, locale));
+  else if (prSentence) sentences.push(ensureSentence(prSentence, locale));
 
   // 各句自带句末标点；中文直接相连，英文以空格分隔
   return sentences.join(locale === 'en' ? ' ' : '');
@@ -157,9 +173,10 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
   for (const merged of profile.collaboration.externalMergedContributions ?? []) {
     collaboration.push({ text: merged, evidenceRefs: [...collabRefs], source: 'profile', supportsSkills: [] });
   }
-  if (profile.collaboration.prSummary?.trim() && collaboration.length === 0) {
+  const prLine = collaborationSentence(profile, locale);
+  if (prLine && collaboration.length === 0) {
     collaboration.push({
-      text: profile.collaboration.prSummary,
+      text: prLine,
       evidenceRefs: [...collabRefs],
       source: 'profile',
       supportsSkills: [],
