@@ -1,8 +1,11 @@
 /**
  * 简历 Markdown 渲染（纯函数、ATS 友好：单栏、标准标题、无表格布局）。
  * 所有外部文本做最小转义，防止 claim/补填文本破坏 Markdown 结构。
+ *
+ * 交付物卫生（T12）：匹配分分解、`[missing_*]` 改进提示、provenance 脚注**不进本文件**——
+ * 那些是给产品界面看的调试面，投出去的文件里只留简历本身。
  */
-import type { ResumeDraft, ResumeEntry } from '@jobagent/shared';
+import { composeSkillDepthLabel, type ResumeDraft, type ResumeEntry, type ResumeLocale } from '@jobagent/shared';
 import { resumeCopy } from '../i18n.js';
 
 function escapeMd(s: string): string {
@@ -23,12 +26,12 @@ function entryLine(e: ResumeEntry, supportsLabel: string): string {
   return `- ${link}${meta ? ` (${meta})` : ''}${supports}`;
 }
 
-function skillLine(e: ResumeEntry): string {
-  const depth = e.depth ? ` _(${e.depth})_` : '';
+function skillLine(e: ResumeEntry, locale: ResumeLocale): string {
+  const depth = e.depth ? ` _(${composeSkillDepthLabel(e.depth, locale)})_` : '';
   return `- ${escapeMd(e.text)}${depth}`;
 }
 
-export function renderMarkdown(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN'): string {
+export function renderMarkdown(draft: ResumeDraft, locale: ResumeLocale = 'zh-CN'): string {
   const copy = resumeCopy(locale);
   const lines: string[] = [];
   const contact = draft.header.contact ?? {};
@@ -51,9 +54,6 @@ export function renderMarkdown(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-
         : escapeMd(draft.targetJob.title)
     }  `,
   );
-  lines.push(
-    `**${copy.matchLabel}:** ${draft.targetJob.tier} (${draft.targetJob.matchScore}; title ${draft.targetJob.fieldScores.title}/tags ${draft.targetJob.fieldScores.tags}/desc ${draft.targetJob.fieldScores.description})`,
-  );
   lines.push('');
 
   lines.push(`## ${copy.summaryHeading}`);
@@ -62,12 +62,12 @@ export function renderMarkdown(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-
 
   lines.push(`## ${copy.matchedSkillsHeading}`);
   if (draft.matchedSkills.length === 0) lines.push(copy.noEntry);
-  else draft.matchedSkills.forEach((e) => lines.push(skillLine(e)));
+  else draft.matchedSkills.forEach((e) => lines.push(skillLine(e, locale)));
   lines.push('');
 
   if (draft.otherSkills.length > 0) {
     lines.push(`### ${copy.otherSkillsHeading}`);
-    draft.otherSkills.forEach((e) => lines.push(skillLine(e)));
+    draft.otherSkills.forEach((e) => lines.push(skillLine(e, locale)));
     lines.push('');
   }
 
@@ -90,18 +90,6 @@ export function renderMarkdown(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-
   lines.push(`## ${copy.educationHeading}`);
   if (draft.localSections.education.length === 0) lines.push(copy.noEntry);
   else draft.localSections.education.forEach((e) => lines.push(`- ${escapeMd(e.text)}`));
-  lines.push('');
-
-  if (draft.suggestions.length > 0) {
-    lines.push(`## ${copy.notesHeading}`);
-    draft.suggestions.forEach((s) => lines.push(`- [${s.kind}] ${escapeMd(s.text)}`));
-    lines.push('');
-  }
-
-  lines.push('---');
-  lines.push(
-    `${copy.provenanceLabel}: profile ${draft.provenance.profileId} · analyzer ${draft.provenance.analyzerVersion} · resume-rule ${draft.provenance.ruleVersion} · ${formatDate(draft.generatedAt)}`,
-  );
 
   return `${lines.join('\n')}\n`;
 }

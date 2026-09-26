@@ -4,8 +4,9 @@
  *   组件样式只消费 var(--ja-*)，不散落 hex；
  * - @media print 适配 A4，浏览器"打印→另存 PDF"即可，不引 puppeteer；
  * - 所有外部文本经 escapeHtml，防 claim/补填文本注入。
+ * - 交付物卫生（T12）：匹配分分解、`[missing_*]` 改进提示、provenance 脚注不进本文件。
  */
-import type { ResumeDraft, ResumeEntry } from '@jobagent/shared';
+import { composeSkillDepthLabel, type ResumeDraft, type ResumeEntry, type ResumeLocale } from '@jobagent/shared';
 import { resumeCopy } from '../i18n.js';
 
 export function escapeHtml(s: string): string {
@@ -23,16 +24,15 @@ function formatDate(iso: string | undefined): string {
   return Number.isNaN(d.getTime()) ? iso : d.toISOString().slice(0, 10);
 }
 
-const TIER_COLOR: Record<ResumeDraft['targetJob']['tier'], string> = {
-  high: 'var(--ja-color-green-600)',
-  mid: 'var(--ja-color-amber-600)',
-  low: 'var(--ja-color-neutral-500)',
-};
-
-function skillItems(list: ResumeEntry[]): string {
+function skillItems(list: ResumeEntry[], locale: ResumeLocale): string {
   if (list.length === 0) return '<p class="muted">&mdash;</p>';
   return `<ul>${list
-    .map((e) => `<li><code>${escapeHtml(e.text)}</code>${e.depth ? ` <span class="muted">(${escapeHtml(e.depth)})</span>` : ''}</li>`)
+    .map(
+      (e) =>
+        `<li><code>${escapeHtml(e.text)}</code>${
+          e.depth ? ` <span class="muted">(${escapeHtml(composeSkillDepthLabel(e.depth, locale))})</span>` : ''
+        }</li>`,
+    )
     .join('')}</ul>`;
 }
 
@@ -57,7 +57,7 @@ function localItems(list: ResumeEntry[]): string {
   return `<ul>${list.map((e) => `<li>${escapeHtml(e.text)}</li>`).join('')}</ul>`;
 }
 
-export function renderHtml(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN'): string {
+export function renderHtml(draft: ResumeDraft, locale: ResumeLocale = 'zh-CN'): string {
   const copy = resumeCopy(locale);
   const contact = draft.header.contact ?? {};
   const contactParts = [
@@ -101,11 +101,7 @@ export function renderHtml(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN')
   .contact { color: var(--ja-color-neutral-500); font-size: .92rem; }
   .target { background: var(--ja-color-neutral-50); border: 1px solid var(--ja-color-neutral-200);
             border-radius: var(--ja-radius-md); padding: var(--ja-space-2) var(--ja-space-3); margin: var(--ja-space-3) 0; font-size: .94rem; }
-  .tier { font-weight: 700; color: ${TIER_COLOR[tj.tier]}; }
   .muted { color: var(--ja-color-neutral-500); font-size: .9em; }
-  .suggestions li { font-size: .92rem; }
-  footer { margin-top: var(--ja-space-5); padding-top: var(--ja-space-2); border-top: 1px solid var(--ja-color-neutral-200);
-           color: var(--ja-color-neutral-500); font-size: .82rem; }
   @page { size: A4; margin: 14mm; }
   @media print {
     body { margin: 0; max-width: none; }
@@ -123,8 +119,6 @@ export function renderHtml(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN')
 
 <div class="target">
   <strong>${copy.targetLabel}:</strong> ${escapeHtml(tj.company ? `${tj.title} @ ${tj.company}` : tj.title)}
-  &nbsp;|&nbsp; <strong>${copy.matchLabel}:</strong> <span class="tier">${escapeHtml(tj.tier)}</span>
-  (${tj.matchScore}; title ${tj.fieldScores.title} / tags ${tj.fieldScores.tags} / desc ${tj.fieldScores.description})
   &nbsp;·&nbsp; <a href="${escapeHtml(tj.sourceUrl)}" rel="noopener noreferrer">${copy.targetLabel}</a>
 </div>
 
@@ -132,8 +126,8 @@ export function renderHtml(draft: ResumeDraft, locale: 'zh-CN' | 'en' = 'zh-CN')
 <p>${escapeHtml(draft.summary)}</p>
 
 <h2>${copy.matchedSkillsHeading}</h2>
-${skillItems(draft.matchedSkills)}
-${draft.otherSkills.length ? `<h3>${copy.otherSkillsHeading}</h3>${skillItems(draft.otherSkills)}` : ''}
+${skillItems(draft.matchedSkills, locale)}
+${draft.otherSkills.length ? `<h3>${copy.otherSkillsHeading}</h3>${skillItems(draft.otherSkills, locale)}` : ''}
 
 <h2>${copy.highlightsHeading}</h2>
 ${evidenceItems(draft.evidenceHighlights, copy.supportsLabel)}
@@ -155,18 +149,6 @@ ${localItems(draft.localSections.workHistory)}
 
 <h2>${copy.educationHeading}</h2>
 ${localItems(draft.localSections.education)}
-
-${
-  draft.suggestions.length
-    ? `<h2>${copy.notesHeading}</h2><ul class="suggestions">${draft.suggestions
-        .map((s) => `<li>[${escapeHtml(s.kind)}] ${escapeHtml(s.text)}</li>`)
-        .join('')}</ul>`
-    : ''
-}
-
-<footer>${copy.provenanceLabel}: profile ${escapeHtml(draft.provenance.profileId)} · analyzer ${escapeHtml(
-    draft.provenance.analyzerVersion,
-  )} · resume-rule ${escapeHtml(draft.provenance.ruleVersion)} · ${formatDate(draft.generatedAt)}</footer>
 </body>
 </html>
 `;
