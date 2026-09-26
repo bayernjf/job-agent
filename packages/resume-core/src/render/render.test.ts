@@ -60,14 +60,53 @@ function baseInput(claim = 'Refactored service'): BuildResumeInput {
 }
 
 describe('renderMarkdown', () => {
-  it('renders ATS-friendly sections with evidence link and provenance', () => {
+  it('renders ATS-friendly sections with the evidence link', () => {
     const md = renderMarkdown(buildResume(baseInput()), 'zh-CN');
     // 姓名行只出现一次：headline 是角色描述，不再自带 login（T07）
     expect(md).toContain('# alice — typescript 开发者');
     expect(md).toContain('岗位匹配技能');
     expect(md).toContain('typescript');
     expect(md).toContain('[Refactored service](https://github.com/acme/repo/pull/1)');
-    expect(md).toContain('resume-rule 0.1');
+  });
+
+  it('keeps match internals, suggestions and provenance out of the exported file (T12)', () => {
+    const draft = buildResume(baseInput());
+    // 正向对照：先证明这份草稿里确实有那些内部面，否则下面的"不含"是空断言
+    expect(draft.suggestions.length).toBeGreaterThan(0);
+    expect(draft.targetJob.fieldScores).toEqual({ title: 3, tags: 2, description: 0 });
+
+    const md = renderMarkdown(draft, 'zh-CN');
+    expect(md).not.toContain('[missing_');
+    expect(md).not.toContain('改进提示');
+    expect(md).not.toContain('title 3/tags 2');
+    expect(md).not.toContain('匹配度');
+    expect(md).not.toContain('resume-rule');
+    expect(md).not.toContain('溯源');
+  });
+
+  it('renders kernel prose in the reader language, not the snapshot English (T23)', () => {
+    const input = baseInput();
+    // 快照存的是数据层英文（内核原句）；中文读者要看到中文句子，数字仍来自画像
+    input.profile.summary.seniorityHint = { band: 'senior', confidence: 0.6, evidenceRefs: ['ev-1'] };
+    input.profile.activity.metrics = { totalPullRequests: 50, mergedPullRequests: 37 };
+    input.profile.collaboration.prSummary = '50 PR(s) opened, 37 merged';
+    // no-fabrication 闸要求 profile 条目必挂证据（这里正是它把空 refs 的草稿拦下过）
+    input.profile.collaboration.evidenceRefs = ['ev-1'];
+
+    const zhDraft = buildResume(input);
+    const zh = renderMarkdown(zhDraft, 'zh-CN');
+    expect(zh).toContain('（资深）');
+    expect(zh).toContain('开过 50 个 PR，合并 37 个');
+    expect(zh).toContain('(有深度)');
+    expect(zh).not.toContain('senior');
+    expect(zh).not.toContain('PR(s) opened');
+    expect(zh).not.toContain('proficient');
+
+    // 概述在装配时就按 --locale 定稿，所以英文读者要取英文草稿
+    const en = renderMarkdown(buildResume({ ...input, options: { ...input.options, locale: 'en' } }), 'en');
+    expect(en).toContain('(senior)');
+    expect(en).toContain('50 PR(s) opened, 37 merged');
+    expect(en).toContain('(proficient)');
   });
 
   it('renders English headings under en', () => {
@@ -106,9 +145,14 @@ describe('renderHtml', () => {
     expect(html).toContain('print-color-adjust: exact');
   });
 
-  it('links evidence and shows tier', () => {
-    const html = renderHtml(buildResume(baseInput()), 'en');
+  it('links evidence and keeps the score box out of the exported file (T12)', () => {
+    const draft = buildResume(baseInput());
+    const html = renderHtml(draft, 'en');
     expect(html).toContain('href="https://github.com/acme/repo/pull/1"');
-    expect(html).toContain('high');
+    expect(html).toContain('Backend Engineer @ Acme');
+    expect(html).not.toContain('title 3 / tags 2');
+    expect(html).not.toContain('[missing_');
+    expect(html).not.toContain('Provenance');
+    expect(html).not.toContain('Suggestions');
   });
 });
