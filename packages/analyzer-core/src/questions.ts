@@ -27,6 +27,8 @@ export function generateInterviewQuestions(
       question: `Describe your main contribution to ${topRepo.name} and the key design decisions behind it.`,
       intent: 'Assess depth of ownership and engineering judgment on real work',
       basisEvidenceRef: `repo:${repoRef(topRepo)}`,
+      kind: 'self_repo_depth',
+      facts: { repo: topRepo.name, commitCount: commitByRepo.get(repoRef(topRepo)) ?? 0 },
     });
   }
 
@@ -39,6 +41,8 @@ export function generateInterviewQuestions(
       question: `Walk us through PR "${mergedExternal.title}" in ${mergedExternal.repoNameWithOwner}: what problem did it solve, and what trade-offs did you make?`,
       intent: 'Assess collaboration skills and engineering judgment in external codebases',
       basisEvidenceRef: `pr:${mergedExternal.repoNameWithOwner}:${mergedExternal.number}`,
+      kind: 'external_pr',
+      facts: { repo: mergedExternal.repoNameWithOwner, prNumber: mergedExternal.number, title: mergedExternal.title },
     });
   }
 
@@ -51,6 +55,8 @@ export function generateInterviewQuestions(
       question: `${topStarRepo.name} has ${topStarRepo.stargazerCount} stars. What is its core design, and what did you learn building it?`,
       intent: 'Assess system design and community impact',
       basisEvidenceRef: `repo:${repoRef(topStarRepo)}`,
+      kind: 'high_star_design',
+      facts: { repo: topStarRepo.name, stars: topStarRepo.stargazerCount },
     });
   }
 
@@ -63,6 +69,8 @@ export function generateInterviewQuestions(
         question: `What is the most complex thing you have built with ${primaryLanguage}?`,
         intent: 'Assess language depth beyond syntax familiarity',
         basisEvidenceRef: `repo:${repoRef(langRepo)}`,
+        kind: 'language_depth',
+        facts: { language: primaryLanguage, repo: langRepo.name },
       });
     }
   }
@@ -82,6 +90,8 @@ export function generateInterviewQuestions(
         question: `You have engaged with ${topIssue[1]} issues in ${topIssue[0]}. Which one was the hardest to diagnose, and why?`,
         intent: 'Assess debugging and problem-analysis ability',
         basisEvidenceRef: `issue:${issue.repoNameWithOwner}:${issue.number}`,
+        kind: 'issue_diagnosis',
+        facts: { repo: topIssue[0], issueCount: topIssue[1] },
       });
     }
   }

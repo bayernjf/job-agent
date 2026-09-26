@@ -4,6 +4,12 @@ import {
   parseAbilityProfile,
   SCHEMA_VERSION,
   matchScoreTier,
+  composeSignalLabel,
+  composeSignalDetail,
+  composeInterviewIntent,
+  composeCadenceSummary,
+  composePrSummary,
+  prSummaryFactsFromProfile,
   type AbilityProfile,
   type MatchScoreTier,
 } from './index.js';
@@ -178,5 +184,67 @@ describe('matchScoreTier', () => {
     expect(matchScoreTier(6, 5)).toBe<MatchScoreTier>('low');
     // 3 skills, score 15 = 83% -> high (old absolute rule also high, but ratio is fair)
     expect(matchScoreTier(15, 3)).toBe<MatchScoreTier>('high');
+  });
+});
+
+
+describe('T33 composers (facts + code driven)', () => {
+  it('composeSignalLabel returns localized titles for known codes', () => {
+    expect(composeSignalLabel('r0.1.sig.commit_burst', 'zh-CN', 'fallback')).toBe('提交突发且前后长期沉默');
+    expect(composeSignalLabel('r0.1.sig.commit_burst', 'en', 'fallback')).toBe('Commit burst followed by long silence');
+  });
+
+  it('composeSignalLabel falls back to the snapshot English label for unknown codes', () => {
+    expect(composeSignalLabel('external_contributions', 'zh-CN', 'External PRs merged')).toBe('External PRs merged');
+    expect(composeSignalLabel('r9.9.sig.unknown', 'en', 'Raw snapshot sentence')).toBe('Raw snapshot sentence');
+  });
+
+  it('composeSignalDetail composes from facts and falls back to the snapshot sentence', () => {
+    const detail = composeSignalDetail(
+      'r0.1.sig.stale_activity',
+      'zh-CN',
+      'Latest GitHub activity was 30 months ago',
+      { monthsAgo: 30 },
+    );
+    expect(detail).toBe('最近的 GitHub 活动在 30 个月前');
+    // 缺 facts 时退回快照英文原句，不猜数
+    expect(composeSignalDetail('r0.1.sig.stale_activity', 'zh-CN', 'Latest GitHub activity was 30 months ago')).toBe(
+      'Latest GitHub activity was 30 months ago',
+    );
+  });
+
+  it('composeInterviewIntent returns the intent copy per kind and falls back otherwise', () => {
+    expect(composeInterviewIntent('external_pr', 'zh-CN', 'fallback')).toBe('考察在外部代码库中的协作能力与工程判断');
+    expect(composeInterviewIntent('external_pr', 'en', 'fallback')).toBe(
+      'Assess collaboration skills and engineering judgment in external codebases',
+    );
+    expect(composeInterviewIntent(undefined, 'zh-CN', 'fallback')).toBe('fallback');
+  });
+
+  it('composeCadenceSummary builds the sentence from metrics', () => {
+    expect(composeCadenceSummary({ commits: 12, months: 4 }, 'en')).toBe('3.0 commits/month across 4 active months');
+    expect(composeCadenceSummary({ commits: 12, months: 4 }, 'zh-CN')).toBe('平均每月 3.0 次提交，共活跃 4 个月');
+  });
+
+  it('prSummaryFactsFromProfile reads externalMergedPullRequests from metrics when present', () => {
+    const base = {
+      activity: { metrics: { totalPullRequests: 5, mergedPullRequests: 3 } },
+    } as Parameters<typeof prSummaryFactsFromProfile>[0];
+    expect(prSummaryFactsFromProfile(base)).toEqual({ opened: 5, merged: 3 });
+    expect(
+      prSummaryFactsFromProfile({
+        activity: { metrics: { totalPullRequests: 5, mergedPullRequests: 3, externalMergedPullRequests: 2 } },
+      } as Parameters<typeof prSummaryFactsFromProfile>[0]),
+    ).toEqual({ opened: 5, merged: 3, externalMerged: 2 });
+  });
+
+  it('composePrSummary renders the external fragment only when externalMerged > 0', () => {
+    expect(composePrSummary({ opened: 2, merged: 1 }, 'zh-CN')).toBe('开过 2 个 PR，合并 1 个');
+    expect(composePrSummary({ opened: 2, merged: 1, externalMerged: 1 }, 'zh-CN')).toBe(
+      '开过 2 个 PR，合并 1 个，其中 1 个合入他人仓库',
+    );
+    expect(composePrSummary({ opened: 2, merged: 1, externalMerged: 1 }, 'en')).toBe(
+      '2 PR(s) opened, 1 merged, 1 into external projects',
+    );
   });
 });

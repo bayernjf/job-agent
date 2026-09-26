@@ -45,6 +45,10 @@ export function computeActivity(
     totalCommits: input.commits.length,
     totalPullRequests: input.pullRequests.length,
     mergedPullRequests: input.pullRequests.filter((p) => p.state === 'MERGED').length,
+    // T33：外部 merged PR 计数写进 metrics（供 prSummaryFactsFromProfile 读，报告页本地化完整）
+    externalMergedPullRequests: input.pullRequests.filter(
+      (p) => !p.repoOwnerIsSelf && p.state === 'MERGED',
+    ).length,
     ...(mergedDiffLines.length > 0
       ? {
           mergedDiffLines: mergedDiffLines.reduce((a, b) => a + b, 0),

@@ -63,6 +63,9 @@ describe('analyze (profile assembly)', () => {
       claimed: false,
     });
     expect(profile.authenticity.status).toBe('likely_authentic');
+    expect(profile.activity.metrics?.externalMergedPullRequests).toBe(
+      input.pullRequests.filter((p) => !p.repoOwnerIsSelf && p.state === 'MERGED').length,
+    );
     expect(profile.skillTags.length).toBeGreaterThan(0);
     expect(profile.interviewQuestions.length).toBeGreaterThan(0);
     expect(profile.caveats.length).toBeGreaterThanOrEqual(3);

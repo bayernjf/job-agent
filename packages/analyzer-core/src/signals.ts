@@ -65,6 +65,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         label: 'Commit author identity does not match the claimed account',
         detail: `Only ${Math.round(emailRatio * 100)}% of commits use the account's public email and only ${Math.round(nameRatio * 100)}% match its identity`,
         evidenceRefs: commitRefs(commits),
+        facts: { emailMatchPct: emailRatio * 100, nameMatchPct: nameRatio * 100 },
       });
     } else if (emailKnown && emailRatio !== null && emailRatio < 0.3) {
       signals.push({
@@ -73,6 +74,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         label: 'Commit emails rarely match the account public email',
         detail: `Only ${Math.round(emailRatio * 100)}% of sampled commits use the account's public email (private/noreply email is common)`,
         evidenceRefs: commitRefs(commits),
+        facts: { emailMatchPct: emailRatio * 100 },
       });
     } else if (!emailKnown && nameRatio < 0.3) {
       signals.push({
@@ -81,6 +83,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         label: 'Commit authors rarely match the account identity',
         detail: `Only ${Math.round(nameRatio * 100)}% of sampled commit author names match the GitHub login or display name`,
         evidenceRefs: commitRefs(commits),
+        facts: { nameMatchPct: nameRatio * 100 },
       });
     } else if (nameRatio < 0.7) {
       signals.push({
@@ -89,6 +92,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         label: 'Partial author identity mismatch',
         detail: `${Math.round(nameRatio * 100)}% of sampled commit author names match the account identity`,
         evidenceRefs: commitRefs(commits),
+        facts: { nameMatchPct: nameRatio * 100 },
       });
     }
   }
@@ -113,6 +117,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         label: 'Commit burst followed by long silence',
         detail: `${count} commits in ${key} with no commits in adjacent months`,
         evidenceRefs: commitRefs(burstCommits),
+        facts: { commits: count, month: key },
       });
       break;
     }
@@ -129,6 +134,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         severity: 'warn',
         label: 'No activity in the last year',
         detail: `Latest GitHub activity was ${Math.round(days / 30)} months ago`,
+        facts: { monthsAgo: Math.round(days / 30) },
         evidenceRefs: validRefs(
           input,
           input.repos
@@ -143,6 +149,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         severity: 'info',
         label: 'Low recent activity',
         detail: `Latest GitHub activity was ${Math.round(days / 30)} months ago`,
+        facts: { monthsAgo: Math.round(days / 30) },
         evidenceRefs: validRefs(
           input,
           input.repos
@@ -163,6 +170,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
       severity: 'risk',
       label: 'High star count with very low commit activity',
       detail: `${totalStars} stars across repos but only ${commitContributions} commit contributions in the last year`,
+      facts: { stars: totalStars, commitContributions },
       evidenceRefs: validRefs(
         input,
         input.repos
@@ -177,6 +185,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
       severity: 'warn',
       label: 'Star count exceeds commit activity',
       detail: `${totalStars} stars across repos with ${commitContributions} commit contributions in the last year`,
+      facts: { stars: totalStars, commitContributions },
       evidenceRefs: validRefs(
         input,
         input.repos
@@ -220,6 +229,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         detail: isRisk
           ? `${totalStars} stars across ${totalCommits} sampled commits (ratio ${Math.round(ratio)}:1) with a short history and no collaboration record; strongly suggests purchased stars or a carried-over high-profile repository`
           : `${totalStars} stars across ${totalCommits} sampled commits (ratio ${Math.round(ratio)}:1); ${established ? "high but the account is long-lived with real collaboration, so treat as a maintainer profile and review manually" : "may indicate purchased stars or forked high-profile repos"}`,
+        facts: { stars: totalStars, commits: totalCommits, ratio, established },
         evidenceRefs: validRefs(
           input,
           input.repos
@@ -240,6 +250,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
       label: 'Not enough behavioral evidence',
       detail: `Only ${behaviorTotal} commit/PR/issue records and ${commitContributions} commit contributions`,
       evidenceRefs: validRefs(input, [`user:${input.subject.login}`]),
+      facts: { behaviorTotal, commitContributions },
     });
   }
 
@@ -255,6 +266,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         label: 'Short activity span',
         detail: `GitHub activity spans about ${Math.max(1, Math.round(months))} months`,
         evidenceRefs: validRefs(input, [`user:${input.subject.login}`]),
+        facts: { months: Math.max(1, Math.round(months)) },
       });
     }
   }
@@ -271,6 +283,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         ? 'Strong verified external contributions'
         : 'Merged contributions to external projects',
       detail: `${externalMerged.length} pull request(s) merged into projects not owned by the account (${isStrong ? 'strong positive signal' : 'weak positive signal'})`,
+      facts: { externalMergedCount: externalMerged.length, strong: isStrong },
       evidenceRefs: validRefs(
         input,
         externalMerged.slice(0, 5).map((p) => `pr:${p.repoNameWithOwner}:${p.number}`),
@@ -288,6 +301,7 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
       severity: 'warn',
       label: 'Nearly all pull requests are in self-owned repos',
       detail: `${selfPRs.length} of ${allPRs.length} pull requests (${Math.round((selfPRs.length / allPRs.length) * 100)}%) are in self-owned repos; may indicate inflated PR count`,
+      facts: { selfCount: selfPRs.length, total: allPRs.length, selfPct: (selfPRs.length / allPRs.length) * 100 },
       evidenceRefs: validRefs(
         input,
         selfPRs.slice(0, 3).map((p) => `pr:${p.repoNameWithOwner}:${p.number}`),
@@ -304,6 +318,10 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         severity: 'info',
         label: 'Single-language portfolio',
         detail: `${input.repos.length} repos but only ${languages.size === 0 ? 'no declared' : [...languages].join(', ')} primary language`,
+        facts: {
+          repoCount: input.repos.length,
+          language: languages.size === 0 ? 'none' : [...languages].join(', '),
+        },
         evidenceRefs: validRefs(
           input,
           input.repos.slice(0, 3).map((r) => `repo:${repoRef(r)}`),
@@ -358,6 +376,14 @@ export function computeAuthenticitySignals(input: AnalyzerInput): AuthenticitySi
         detail: be
           ? `${Math.round(top1CommitShare * 100)}% of sampled commits are in one repository, with fewer than 3 PRs, no externally merged PR, and only ${typeKinds} public event type(s) across ${be.distinctRepoCount} repo(s)`
           : `${Math.round(top1CommitShare * 100)}% of sampled commits are in one repository, with fewer than 3 PRs and no externally merged PR`,
+        facts: {
+          top1CommitSharePct: top1CommitShare * 100,
+          prCount: input.pullRequests.length,
+          externalMergedCount: scopeExternalMerged,
+          ...(be
+            ? { eventTypeCount: typeKinds, distinctRepoCount: be.distinctRepoCount }
+            : {}),
+        },
         evidenceRefs: validRefs(input, [
           ...narrowRepoRefs,
           ...narrowCommitRefs,

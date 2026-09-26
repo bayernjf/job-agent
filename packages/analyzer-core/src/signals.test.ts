@@ -5,6 +5,20 @@ import { SIGNAL_CODES } from './rules.js';
 import { buildInput } from './test-input.js';
 import type { AnalyzerCommit, AnalyzerInput, AnalyzerPullRequest, AnalyzerRepo } from './input.js';
 
+/** 断言所有信号要么带 facts（T33 结构化事实），要么按 code 明确豁免 */
+function expectFactsForAllSignals(input: AnalyzerInput): void {
+  for (const signal of computeAuthenticitySignals(input)) {
+    expect(
+      signal.facts !== undefined,
+      `signal ${signal.code} must carry structured facts (T33)`,
+    ).toBe(true);
+    expect(
+      Object.keys(signal.facts ?? {}).length > 0,
+      `signal ${signal.code} has empty facts`,
+    ).toBe(true);
+  }
+}
+
 /** 断言所有信号的 evidenceRefs 都真实存在（无证据不下结论） */
 function expectValidRefs(input: AnalyzerInput): void {
   const known = new Set(input.evidence.map((e) => e.evidenceId));
@@ -22,6 +36,7 @@ describe('computeAuthenticitySignals', () => {
     expect(signals.filter((s) => s.severity === 'risk')).toHaveLength(0);
     expect(signals.some((s) => s.code === SIGNAL_CODES.EXTERNAL_CONTRIBUTIONS)).toBe(true);
     expectValidRefs(input);
+    expectFactsForAllSignals(input);
   });
 
   it('flags warn (not risk) when only emails mismatch (privacy settings are common)', () => {
