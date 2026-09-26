@@ -326,5 +326,12 @@
   "interviews.noProfile": "You don't have a profile yet. Generate one first to manage interviews.",
   "interviews.noProfileAction": "Generate profile",
   "report.recommendations.loadMore": "Load more",
-  "report.recommendations.alternateSources": "Also on"
+  "report.recommendations.alternateSources": "Also on",
+  "my.delete": "Delete profile",
+  "my.deleteConfirmTitle": "Delete this ability profile?",
+  "my.deleteConfirmBody": "This permanently deletes its evidence, applications and interviews; share links stop working immediately. This cannot be undone.",
+  "my.deleteCancel": "Cancel",
+  "my.deleteOk": "Delete",
+  "my.deleteError": "Deletion failed. Please try again later.",
+  "my.deleteHint": "Delete a profile you claimed together with all related data (self-service unlink)"
 }
