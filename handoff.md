@@ -1,6 +1,6 @@
 # Handoff
 
-JobAgent 当前状态，截至 2026-09-24。
+JobAgent 当前状态，截至 2026-09-26。
 
 > 本文件只保留「项目当前状态 + 活跃任务 + 最近变更 + 文档索引」，是接手（人或 AI agent）的第一入口；**只写状态与结论，明细一律放进对应文档并在此给链接，不在本文件展开**。
 > 设计/结论全文放 [docs/](docs/)；缓做事项放 [docs/deferred-items.md](docs/deferred-items.md)；场景化导航见 [docs/README.md](docs/README.md)。
