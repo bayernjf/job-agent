@@ -121,6 +121,9 @@ export function renderHtml(draft: ResumeDraft, locale: ResumeLocale = 'zh-CN'): 
   .target { background: var(--ja-color-neutral-50); border: 1px solid var(--ja-color-neutral-200);
             border-radius: var(--ja-radius-md); padding: var(--ja-space-2) var(--ja-space-3); margin: var(--ja-space-3) 0; font-size: .94rem; }
   .muted { color: var(--ja-color-neutral-500); font-size: .9em; }
+  .notice { background: var(--ja-color-neutral-50); border-left: 3px solid var(--ja-color-amber-600);
+            padding: var(--ja-space-2) var(--ja-space-3); border-radius: 0 var(--ja-radius-md) var(--ja-radius-md) 0;
+            color: var(--ja-color-neutral-700); font-size: .92rem; }
   @page { size: A4; margin: 14mm; }
   @media print {
     body { margin: 0; max-width: none; }
@@ -174,6 +177,12 @@ ${localItems(draft.localSections.workHistory)}
 
 <h2>${copy.educationHeading}</h2>
 ${localItems(draft.localSections.education)}
+
+${
+  draft.dataQualityNote
+    ? `<h2>${copy.dataQualityHeading}</h2><p class="notice">${escapeHtml(draft.dataQualityNote)}</p>`
+    : ''
+}
 </body>
 </html>
 `;

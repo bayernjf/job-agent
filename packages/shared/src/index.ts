@@ -1339,6 +1339,8 @@ export const ResumeDraftSchema = z.object({
   }),
   suggestions: z.array(ResumeSuggestionSchema),
   gaps: z.array(z.string()), // 画像缺失、需用户补填的字段
+  // T15：薄画像（insufficient_data/suspicious）时的诚实标注，正常画像无此字段
+  dataQualityNote: z.string().optional(),
   provenance: z.object({
     profileId: z.string().min(1),
     analyzerVersion: z.string().min(1),
