@@ -200,12 +200,12 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
 | ✅ T11 | 修简历 md 下载丢 `local`（`ResumeBuilder.tsx:275-285` 与 `:188-198` 对齐） | E2E 断言下载的 md 含姓名/邮箱 —— **修完这条才有"能直接投"的简历** | — |
-| T12 | 交付物卫生：内部批注（`markdown.ts:91-95`、`html.ts:159-165`）、匹配分、provenance 脚注移出交付物，只留产品界面 | 导出的 md/html 里不含 `[missing_skill]`、"缺少联系方式"、分数框 | — |
+| ✅ T12 | 交付物卫生：内部批注、匹配分、provenance 脚注移出交付物，只留产品界面 | **2026-09-26 已落地**：`renderMarkdown`/`renderHtml` 删掉匹配分行（含 `fieldScores` 分解）、`## 改进提示` 区块与 `---` + 溯源脚注，随之删掉 `resumeCopy` 里失去使用者的 `matchLabel`/`notesHeading`/`provenanceLabel` 与 HTML 里失效的 `.tier`/`.suggestions`/`footer` 样式；`suggestions`/`provenance` 仍在 `--format json` 的 ResumeDraft 里，报告页 island 继续展示。**守卫带正向对照**：`render.test.ts` 先断言草稿里确实有 suggestions 与 `fieldScores`，再断言 md/html 不含 `[missing_`/`改进提示`/`title 3/tags 2`/`溯源`/`Provenance`（防止"空断言永远绿"）。真账号前后 diff 实测见 handoff item82 | — |
 | T13 | "项目条目"抽象：主体 + 动作 + 规模 + 结果 + 证据链接（吃 T06 的 diff 数据） | 仍受 no-fabrication 闸约束（`shared/src/index.ts:806-815`），空证据必抛 | T06, T12 |
 | T14 | 量化行进简历与面试包（`activity.metrics` 今天只在报告页渲染，进不了任何交付物） | 简历出现由画像直取的合并 PR 数 / 跨仓广度 / 持续月数，每个数字可回溯 | T13 |
 | T15 | 薄画像降级：`buildResume` 读 `authenticity.status`，`insufficient_data`/`suspicious` 时显式标注缺口 | 不再对空画像出"看似完整"的简历（PRD NFR-6 与 AGENTS 铁律） | — |
 | T16 | 岗位定向面试准备单（岗位命中技能 + 对应证据 + 会被问到什么 + 该反问什么） | 纯规则、仍可回溯；替换今天"5 道通用题干"的 kit | T13, T14 |
-| T23 | **中文交付物里剩余的英文句子**（T07 只修了 headline，真账号实测中文简历又露出 `50 PR(s) opened, 38 merged`）：`collaboration.prSummary`、`activity.cadenceSummary`、真实性信号的 `label`/`detail` 都是分析内核写的英文散文 | 中文简历/面试包里由内核生成的散文全部随读者语言；做法照 T07——事实留快照，模板收进 `shared`；`caveats` 与证据 `claim`（T-批次 41 已定英文口径）**不在本条范围** | T14 |
+| 🔄 T23 | **中文交付物里剩余的英文句子**（T07 只修了 headline，真账号实测中文简历又露出 `50 PR(s) opened, 38 merged`）：`collaboration.prSummary`、`activity.cadenceSummary`、真实性信号的 `label`/`detail` 都是分析内核写的英文散文 | **部分完成（2026-09-26）**：简历侧三处已收——`seniorityHint.band`、`collaboration.prSummary`、技能深度标签改走 `shared` 的 `composeSeniorityBand`/`composePrSummary`/`composeSkillDepthLabel`（事实留快照、句子随 `--locale` 现拼，取不到计数就退回英文原句而不是编数）；内核写 `prSummary` 也改调同一 composer，`profile.test.ts` 用**写在测试里的旧字面量**钉住"快照存的英文逐字节不变"，故**不升规则版本**。**剩余面拆给 T33**（阻塞在画像里没有可复算的事实，不是渲染没写）。`caveats` 与证据 `claim`（T-批次 41 已定英文口径）**不在本条范围** | T14 |
 
 ### 批次 4 · C-D 我的求职（产品第一次有账号感）
 
@@ -248,6 +248,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 | ✅ T31 | **回访即崩（P0，同日 T28 验证时用真 GitHub 撞出来的既存缺陷）**：`evidence` 表主键是裸 `id`（`sqlite/schema.ts:99`），而 `importFromProfile` 把 `id` 设成 `item.evidenceId`（不含 profileId，形如 `pr:owner/repo#12`）⇒ **同一账号第二次分析必撞 `UNIQUE constraint failed: evidence.id`**；缓存命中又要求 `complete` + 24h 内（`api/index.ts:875-881`），所以画像过期后、或 T28 之后的 `partial` 终态用户，每次重试都崩。跨账号同一条外部 PR 也撞。缺陷自证据入库起就存在（`59678c8` 前即如此），只因单测每例新建内存库、CLI 不落库而从未被跑到 | **2026-09-26 已落地**（`94d161b`/`fab1598`）：迁移 `014_alter_evidence_primary_key` 两侧各一份改复合主键 `(profile_id, id)`；`getById` 收窄为 `(profileId, id)`；worker 加"同账号连跑两次都成功"回归；**真 Postgres 16 容器实测**：有跨画像重复 id 时回滚拒绝（exit 1）、清掉后重试成功、重新 up 恢复复合主键。F10 预留号顺延为 **015**（编号必须连续，`migrations.test.ts:29-33` 守护） | T28 |
 | ✅ T32 | **迁移器逐语句无事务**（P1，验证 T31 时实测撞到）：`postgres/migrator.ts` 按 `;` 拆句逐条 `sql.unsafe()` 执行且不包事务，某条中途失败时前面的 DDL 已生效、`schema_migrations` 却不变 ⇒ **表留在半破状态**（实测：`evidence` 丢了主键而 014 仍记 applied）。副作用：`DO $$ ... $$;` 这类合法 PG 写法在本迁移器里不可用（会被从块中间切断） | **2026-09-26 已落地**：两侧都改成"一个迁移文件 = 一条事务，且整文件作为一条 simple query 发送"（PG 实测多语句 simple query 本身即隐式事务，顺带解掉拆句问题，死掉的 `splitStatements` 随之删除）；SQLite 用 `db.transaction()` 包住 DDL + 版本读写。**实测双向**：PG 失败文件的 `beta` 表不残留、版本不记；被拒绝的 down 不再把主键拆掉（`PRIMARY KEY (profile_id, id)` 与 014 记录都还在）。新增用例 `T32: a failing migration file leaves no partial schema and records no version`，并**用同一形状的老写法实测它会红**（无事务时表残留 true / 包事务 false） | — |
+| T33 | **内核散文里剩下的那些句子还翻不动，因为画像没存可复算的事实**（P1，T23 拆出来的另一半）：①面试准备包 `interview-kit.ts:128` 原样打 `signal.label`/`signal.detail`（`AuthenticitySignal` 只有 code + 散文，百分比/比率在文字里，渲染侧拿不到数）；②同一文件打 `interviewQuestions[].question`/`intent`（连 code 都没有）；③报告页 `report/[profileId].astro:507/534` 打 `cadenceSummary` 与带外部贡献片段的 `prSummary`——`prSummaryFactsFromProfile` 今天**只能**取 `totalPullRequests`/`mergedPullRequests`，因为"外部 merged PR 数"没进快照，而 `externalMergedContributions` 是去重后 ≤5 个仓库名，拿它当 PR 数就是造假 | 内核为每条信号补 `facts`、为每题补 `kind`+`facts`、为 `activity.metrics` 补 `externalMergedPullRequests`（都是"可由 API 直接得到的计数"，不新增判断）→ 规则 **0.6→0.7**；`shared` 加对应 composer；面试包/报告页/简历三处只认 code+facts 现拼。验收：中文面试包与中文报告页 `grep` 不到内核英文散文（`caveats`/证据 `claim` 仍按既定英文口径除外） | T23 |
 
 ### 实测纠正（2026-09-25，T04 落地时）
 
