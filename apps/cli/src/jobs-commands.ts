@@ -197,15 +197,28 @@ async function runStats(_rest: string[], deps: CliDeps): Promise<number> {
   const storage = await resolveStorage(deps);
   const active = await storage.jobPostings.countBySource('active');
   const inactive = await storage.jobPostings.countBySource('inactive');
+  // T30：与 API GET /job-postings/stats 对齐——status 列的 active 之外，增列"新鲜窗口内"
+  // 计数（last_seen_at 在 JOB_STALE_DAYS 内），避免过期行冒充在招的"2303"错觉。
+  // 时钟与 sync 写入一致（deps.now 可注入，测试里固定），真实环境回退 Date.now()。
+  const staleDays = Number(process.env.JOB_STALE_DAYS ?? 7);
+  const nowMs = deps.now ? new Date(deps.now!()).getTime() : Date.now();
+  const cutoff = new Date(nowMs - staleDays * 24 * 60 * 60 * 1000).toISOString();
+  const fresh = await storage.jobPostings.countActiveFresh(cutoff);
   const sources = Array.from(new Set([...Object.keys(active), ...Object.keys(inactive)])).sort();
   if (sources.length === 0) {
     stdout.write('(no job postings yet; run `jobagent jobs sync` first)\n');
     return 0;
   }
-  const lines = sources.map((s) => `${s}\tactive=${active[s] ?? 0}\tinactive=${inactive[s] ?? 0}`);
+  const freshKey = `freshWithin${staleDays}d`;
+  const lines = sources.map(
+    (s) => `${s}\tactive=${active[s] ?? 0}\tinactive=${inactive[s] ?? 0}\t${freshKey}=${fresh[s] ?? 0}`,
+  );
   const totalActive = Object.values(active).reduce((a, b) => a + b, 0);
   const totalInactive = Object.values(inactive).reduce((a, b) => a + b, 0);
-  stdout.write(`${lines.join('\n')}\ntotal\tactive=${totalActive}\tinactive=${totalInactive}\n`);
+  const totalFresh = Object.values(fresh).reduce((a, b) => a + b, 0);
+  stdout.write(
+    `${lines.join('\n')}\ntotal\tactive=${totalActive}\tinactive=${totalInactive}\t${freshKey}=${totalFresh}\tcutoff=${cutoff}\n`,
+  );
   return 0;
 }
 

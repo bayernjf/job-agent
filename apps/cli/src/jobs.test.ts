@@ -133,6 +133,9 @@ describe('cli jobs search / stats', () => {
     expect(code).toBe(0);
     expect(h.out()).toContain('remoteok');
     expect(h.out()).toContain('active=1');
+    // T30：口径与 API /job-postings/stats 对齐——增列"新鲜窗口内"计数与 cutoff（sync 后 last_seen_at=now）
+    expect(h.out()).toContain('freshWithin7d=1');
+    expect(h.out()).toContain('cutoff=');
   });
 
   it('missing subcommand exits 2', async () => {
