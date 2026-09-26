@@ -70,7 +70,9 @@ async function runSqlite(): Promise<void> {
         const result = rollbackLatestMigration(db, migrationsDir);
         console.log(`Rolled back ${result.version} (${result.file})`);
       } catch (error) {
-        console.log((error as Error).message);
+        // 回滚失败必须是**非零退出**：只 console.log 会让运维脚本/cron 把"没回滚"当成"回滚成功"。
+        console.error(`Rollback failed: ${(error as Error).message}`);
+        process.exitCode = 1;
       }
     } else if (command === 'status') {
       createSchemaMigrationsTable(db);
@@ -117,7 +119,8 @@ async function runPostgres(): Promise<void> {
         const result = await rollbackPgMigration(client, POSTGRES_DIR);
         console.log(`Rolled back ${result.version} (${result.file})`);
       } catch (error) {
-        console.log((error as Error).message);
+        console.error(`Rollback failed: ${(error as Error).message}`);
+        process.exitCode = 1;
       }
     } else if (command === 'status') {
       const files = listMigrationFiles(POSTGRES_DIR);

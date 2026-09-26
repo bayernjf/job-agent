@@ -62,8 +62,12 @@ export class SqliteEvidenceRepository implements IEvidenceRepository {
     await this.insertBatch(evidence);
   }
 
-  async getById(id: string): Promise<StoredEvidence | undefined> {
-    const row = this.db.select().from(evidenceTable).where(eq(evidenceTable.id, id)).get();
+  async getById(profileId: string, id: string): Promise<StoredEvidence | undefined> {
+    const row = this.db
+      .select()
+      .from(evidenceTable)
+      .where(and(eq(evidenceTable.profileId, profileId), eq(evidenceTable.id, id)))
+      .get();
     return row ? toStoredEvidence(row) : undefined;
   }
 

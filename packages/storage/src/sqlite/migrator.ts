@@ -50,8 +50,12 @@ export function runMigrations(db: Database, migrationsDir: string): RunMigration
     if (appliedVersions.has(version)) continue;
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
     const { up } = parseMigrationFile(sql);
-    db.exec(up);
-    db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(version);
+    // T32：一个迁移文件是一个原子单元。此前 exec 与版本插入分开自动提交，
+    // 中途失败会留下"前面的 DDL 已生效、版本号却没记"的半破库（验证 014 时实测撞到）。
+    db.transaction(() => {
+      db.exec(up);
+      db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(version);
+    })();
     applied.push(file);
   }
 
@@ -80,7 +84,10 @@ export function rollbackLatestMigration(db: Database, migrationsDir: string): Ro
     );
   }
 
-  db.exec(down);
-  db.prepare('DELETE FROM schema_migrations WHERE version = ?').run(version);
+  // T32：回滚同样要原子——否则失败的 down 脚本会把库留在"结构已改、版本号还在"的状态。
+  db.transaction(() => {
+    db.exec(down);
+    db.prepare('DELETE FROM schema_migrations WHERE version = ?').run(version);
+  })();
   return { version, file: files[0]! };
 }

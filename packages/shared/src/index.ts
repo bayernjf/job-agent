@@ -125,6 +125,25 @@ export const FusionReportSchema = z.object({
 });
 export type FusionReport = z.infer<typeof FusionReportSchema>;
 
+/**
+ * 改进建议（T09 生产者 / T10 渲染）。
+ *
+ * 每条建议带一个**稳定 code**，文案由 `composeImprovementSuggestion` 按读者语言现拼——
+ * 与 headline（`composeHeadline`）同一套路：内核只存一份数据层英文原文，双语表面各自现拼，
+ * 否则中文报告页会直接贴英文（T23 登记的那类问题）。渲染侧只认 code，不按英文句子匹配。
+ */
+export const IMPROVEMENT_SUGGESTION_CODES = ['no_pull_requests', 'no_external_contributions'] as const;
+export const ImprovementSuggestionCodeSchema = z.enum(IMPROVEMENT_SUGGESTION_CODES);
+export type ImprovementSuggestionCode = z.infer<typeof ImprovementSuggestionCodeSchema>;
+
+export const ImprovementSuggestionSchema = z.object({
+  code: ImprovementSuggestionCodeSchema,
+  suggestion: z.string().min(1), // 数据层英文原句（API/CLI/存档消费）
+  why: z.string().min(1),
+  evidenceRefs: z.array(z.string().min(1)), // 必挂真实证据；无证据不产建议
+});
+export type ImprovementSuggestion = z.infer<typeof ImprovementSuggestionSchema>;
+
 export const AbilityProfileSchema = z.object({
   profileId: z.string().min(1),
   analyzerVersion: z.string().min(1), // 分析引擎版本，保证可复现
@@ -176,15 +195,7 @@ export const AbilityProfileSchema = z.object({
       basisEvidenceRef: z.string().min(1),
     }),
   ),
-  improvementSuggestions: z
-    .array(
-      z.object({
-        suggestion: z.string().min(1),
-        why: z.string().min(1),
-        evidenceRefs: z.array(z.string().min(1)),
-      }),
-    )
-    .optional(), // C 端 P1
+  improvementSuggestions: z.array(ImprovementSuggestionSchema).optional(), // C 端 P1（T09 产、T10 渲染）
   caveats: z.array(z.string()), // 明确"无法判断"的盲区
   fusion: FusionReportSchema.optional(), // 仅双源融合画像存在（platform=all），单源画像缺省
 });
@@ -259,6 +270,44 @@ export function composeHeadline(facts: HeadlineFacts, locale: ResumeLocale): str
       ? role
       : `${role} with ${clauses.join(' and ')}`
     : [role, ...clauses].join('，');
+}
+
+/**
+ * 改进建议文案（T10）：按 code 取，中英同构，随读者语言渲染。
+ * 刻意只写"能从画像事实直接支撑的下一步动作"，不掺鼓励性套话；
+ * 事实与证据仍由内核与快照负责，这里不新增任何判断。
+ */
+const IMPROVEMENT_COPY: Record<
+  ImprovementSuggestionCode,
+  Record<ResumeLocale, { suggestion: string; why: string }>
+> = {
+  no_pull_requests: {
+    en: {
+      suggestion: 'Move your work into pull requests: open a PR for changes you keep committing locally, and go through review.',
+      why: 'The recorded commits all sit in your own repositories and no pull request was opened, so there is no evidence of working inside a review process.',
+    },
+    "zh-CN": {
+      suggestion: '把改动放进 PR：给一直在自己仓库里提交的变更开一个 PR，走完一轮 code review。',
+      why: '记录里的提交都落在自有仓库，且没有开过 PR，因此拿不到"在评审流程里协作"的证据。',
+    },
+  },
+  no_external_contributions: {
+    en: {
+      suggestion: 'Land one contribution outside your own repositories: pick a project you actually use and open a PR there.',
+      why: 'Pull requests exist, but none were merged into someone else\'s repository — a PR accepted by an external maintainer is the hardest-to-fake collaboration signal we can show.',
+    },
+    "zh-CN": {
+      suggestion: '做一项仓库外的贡献：挑一个你真正在用的项目，给它提一个 PR。',
+      why: '已有 PR，但没有一项落到别人的仓库并被合并——被外部维护者接受的 PR 是最难伪造的协作证据。',
+    },
+  },
+};
+
+export function composeImprovementSuggestion(
+  code: ImprovementSuggestionCode,
+  locale: ResumeLocale,
+): { suggestion: string; why: string } {
+  return IMPROVEMENT_COPY[code][locale];
 }
 
 /**

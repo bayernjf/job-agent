@@ -223,9 +223,10 @@ export class GitHubSource {
   }
 
   /**
-   * 分阶段采集 L0（T25 L0 早返回）：只采账号元数据 + 仓库列表，产出 L0 轻输入
-   * （commits/prs/issues 为空、missing=['l1_pending']），供 worker 先落 partial:L0
-   * 画像并让任务立即成功。返回 opaque handle 给 collectStagedL1 复用（避免重复查询）。
+   * 分阶段采集 L0（T28：仅用于降级，不用于提前发布）：只采账号元数据 + 仓库列表，
+   * 产出 L0 轻输入（commits/prs/issues 为空、missing=['l1_pending']）——它只在 L1 失败时
+   * 才会被 worker 作为"仅 L0"终态分析，正常路径等 L1 到齐后一次性发布。
+   * 返回 opaque handle 给 collectStagedL1 复用（避免重复查询）。
    */
   async collectStagedL0(login: string): Promise<{
     handle: { l0: L0Data; email: string | null; l0Evidence: EvidenceItem[] };

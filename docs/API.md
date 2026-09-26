@@ -407,6 +407,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 - `collaboration`（prSummary、externalMergedContributions）
 - `authenticity`（status、confidence、signals[]）
 - `interviewQuestions[]`、`caveats[]`
+- `improvementSuggestions[]`（可选，规则版本 0.6 起，T09 产 / T10 渲染）：`code`（稳定枚举 `no_pull_requests` / `no_external_contributions`）+ `suggestion`/`why`（**数据层英文原句**，由 `composeImprovementSuggestion(code, 'en')` 拼出）+ `evidenceRefs`（无证据不产条目）。报告页"下一步动作"区块按读者语言用 `composeImprovementSuggestion(code, locale)` 现拼，**只认 `code`、不按英文句子匹配**；接口本身不返回中文句。
 
 #### 不存在（404）
 
@@ -420,7 +421,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 ### `GET /profiles/by-subject/:platform/:login`
 
-按证据源平台与账号 login 反查该主体最近一版 `complete` 画像的轻量指针，供已持有账号身份的调用方在触发新分析前判断是否已有可引用画像。
+按证据源平台与账号 login 反查该主体最近一版**可用**画像的轻量指针，供已持有账号身份的调用方在触发新分析前判断是否已有可引用画像。**`partial` 也算可用，且它是终态**（T28）——`partial` 只代表"该次分析的 L1 真失败/预算耗尽，结论按仅 L0 数据给出"，一次分析只发布一份可分享结论，**不存在同一 profileId 之后被升级成另一份结论**的情况。`status` 字段即真实状态，客户端（含扩展）据此决定是否提示"部分数据"。
 
 - 路径参数：`platform`（`github` / `gitee`）、`login`（平台账号 login）；校验失败返回 400。
 - 命中（200）：
@@ -430,12 +431,12 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
   "profileId": "prf_...",
   "status": "complete",
   "cached": true,
-  "analyzerVersion": "0.3",
+  "analyzerVersion": "0.1-0.6",
   "updatedAt": "2026-09-20T08:00:00.000Z"
 }
 ```
 
-- 无完整画像（404）：`{ "error": "no complete profile for subject", "code": "PROFILE_NOT_FOUND" }`
+- 无可用画像（404）：`{ "error": "no complete profile for subject", "code": "PROFILE_NOT_FOUND" }`（仅在无画像或最新一版为 `error` 时；`partial` 走 200）
 
 ---
 
@@ -586,9 +587,13 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 按源统计在招/失效岗位数。该静态路径必须在 `/job-postings/:id` 之前注册，否则 `stats` 会被当成 id。
 
+**响应形状已于 2026-09-25（T24①）变更**：`active`/`inactive` 从按源 map 改为**扁平总数**，并新增新鲜度两字段；旧形状 `{"active":{"remoteok":99,...}}` 不再返回。
+
 ```json
-{ "active": { "remoteok": 99, "lever": 12 }, "inactive": { "remoteok": 3 } }
+{ "active": 2303, "inactive": 0, "staleAfterDays": 7, "cutoffIso": "2026-09-18T12:00:00.000Z" }
 ```
+
+`active` **只统计 `last_seen_at` 落在新鲜窗口内的行**（仓储 `countActiveFresh(cutoff)`，env `JOB_STALE_DAYS` 默认 7）。这修的是一个真实假繁荣：`markStale` 只在 sync 内跑，从没跑过 sync 的库里过期行状态仍是 `active`，旧口径会报出 `active=2303 / inactive=0` 而实际全部过期（见 [评审-MVP-20260925](评审-MVP-20260925.md) P0-1）。按源明细走 CLI `jobs stats`（直读仓储，不受此形状影响）。
 
 ### `GET /job-postings/:id`
 
@@ -644,6 +649,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 | --- | --- |
 | 400 | 非法 JSON；请求体校验失败；`skills` 与 `profileId` 都未提供 |
 | 404 | 传了 `profileId` 但画像不存在或无快照 |
+| 429 | **仅 demo 会话**：按 IP 桶命中 `DEMO_MATCH_RATE_PER_HOUR`（默认 60/小时）时返回 `{code:'RATE_LIMITED', bucket:'match', retryAfterSeconds:3600}`。该旋钮 2026-09-25 前是**死的**（env 与文档都在、无 handler 消费），T27① 才真正接上；IP 桶依赖 `TRUST_PROXY`，而 T27③ 已让生产环境未显式配置时**启动即失败**，不再静默放行 |
 
 ---
 
@@ -664,12 +670,13 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `profileId` | string | **是** | 画像 id；不存在或无快照返回 404 |
-| `jobId` | string | **是** | 岗位**内部主键**（`job_postings.id`，即推荐/检索响应里 `posting.id`，非外部 `jobId`）；不存在返回 404 |
+| `jobId` | string | **二选一** | 岗位**内部主键**（`job_postings.id`，即推荐/检索响应里 `posting.id`，非外部 `jobId`）；不存在返回 404 |
+| `posting` | object | **二选一** | **自选岗位（T24②，2026-09-25 新增）**：`{ title(必填 ≤300), description(必填 ≤20000，即粘贴的 JD 正文), company?(≤200) }`。服务端据此构造 `jobId: "manual-<uuid>"`、`source: 'manual'` 的临时岗位，**复用同一条匹配→简历链路，不入池、不落库**。`jobId` 与 `posting` 必须**恰好给一个**，否则 400 `exactly one of jobId or posting is required`。用途：岗位池为空/过期时简历链路不再被卡死（评审 P0-1） |
 | `local` | object | 否 | 本地补填字段，仅用于本次渲染，**不入库、不落日志**；结构见下 |
 | `locale` | `"zh-CN"` \| `"en"` | 否 | 文案语言，默认 `zh-CN`；非法值 400 |
 | `format` | `"json"` \| `"md"` \| `"html"` | 否 | 默认 `json`（仅结构化草稿）；`md`/`html` 额外返回渲染字符串 |
 | `highlightLimit` | number | 否 | 证据亮点上限，正整数，最大 50；默认取内核常量（10） |
-| `polish` | boolean | 否 | 是否请求 **B 档 LLM 措辞润色**，默认 `false`（纯规则版，零费用、零数据外发）。见下「LLM 措辞润色」 |
+| `polish` | boolean | 否 | 是否请求 **B 档 LLM 措辞润色**，默认 `false`（纯规则版，零费用、零数据外发）。**⚠️ T27②（2026-09-25）起 `polish:true` 仅对已登录 `user` 开放**——匿名/demo 会话传 `true` 返回 **403 `{code:'AUTH_REQUIRED'}`**，因为润色会真实调用付费 LLM，此前任何拿到报告链接的人都能借本端点消耗账号额度。不带 `polish` 的规则版仍公开。见下「LLM 措辞润色」 |
 
 `local` 子结构（全部可选；空白字符串与不完整行会被服务端/客户端剔除；`personalSite` 须为合法 URL）：
 

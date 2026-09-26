@@ -57,11 +57,11 @@ export class PgEvidenceRepository implements IEvidenceRepository {
     await this.insertBatch(evidence);
   }
 
-  async getById(id: string): Promise<StoredEvidence | undefined> {
+  async getById(profileId: string, id: string): Promise<StoredEvidence | undefined> {
     const rows = await this.db
       .select()
       .from(evidenceTable)
-      .where(eq(evidenceTable.id, id))
+      .where(and(eq(evidenceTable.profileId, profileId), eq(evidenceTable.id, id)))
       .limit(1);
     return rows[0] ? toStoredEvidence(rows[0]) : undefined;
   }
