@@ -1,12 +1,18 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE_PROFILE_ID, FIXTURE_LOGIN } from './fixtures/sample-profile.js';
+import {
+  FIXTURE_CLAIMED_PROFILE_ID,
+  FIXTURE_LOGIN,
+  FIXTURE_SESSION_TOKEN,
+} from './fixtures/sample-profile.js';
 
 /**
- * 面试计划（interviews，handoff item45）报告页 E2E：
- * - 未登录：/recruit 面试 island 渲染登录墙，登录链接带 return_to 回跳。
- * - 登录后：空态 → 选候选人/填表创建 → 列表出现新面试。
+ * 求职者面试管道（T18）E2E：组件从 /recruit 挪到 /[locale]/my 后按求职者视角重写。
+ * - 匿名：/my 页由 GateCard 承担登录墙（return_to 回跳 /en/my）。
+ * - 登录（FIXTURE_SESSION_TOKEN 真实会话）：SSR 列出本人画像并挂载 InterviewPlanner，
+ *   建行从「我的投递」选 applicationId 真接上（POST body 断言），列表展示岗位/轮次/状态。
  * - 状态流转到 completed → 展开结果区，登记 outcome/rating/feedback 并 PATCH。
- * webServer 只起 Astro（SSR），/auth/me、/candidates、/interviews 全部 page.route mock，零网络。
+ * webServer 只起 Astro（SSR），/auth/me、/profiles/:id/applications、/interviews
+ * 全部 page.route mock，零网络。
  */
 
 interface MockInterview {
@@ -33,47 +39,37 @@ function authMeUser(): Record<string, unknown> {
   return {
     kind: 'user',
     platform: 'github',
-    login: 'alice',
-    name: 'Alice',
+    login: FIXTURE_LOGIN,
+    name: 'E2E Fixture',
     avatarUrl: null,
     profileUrl: null,
-    claimedProfileId: null,
-    expiresAt: '2026-12-31T00:00:00.000Z',
+    claimedProfileId: FIXTURE_CLAIMED_PROFILE_ID,
+    expiresAt: '2030-01-01T00:00:00.000Z',
   };
 }
 
-const CANDIDATES = {
+/** 本人画像名下的一条"已投递"记录（saved/applied/viewed 可推进为面试）。 */
+const APPLICATIONS = {
   items: [
     {
-      profileId: FIXTURE_PROFILE_ID,
-      platform: 'github',
-      login: FIXTURE_LOGIN,
-      displayName: FIXTURE_LOGIN,
-      profileUrl: `https://github.com/${FIXTURE_LOGIN}`,
-      claimed: false,
-      headline: 'fixture developer',
-      authenticity: { status: 'likely_authentic', confidence: 0.9 },
-      skills: [],
-      skillCount: 0,
-      matchedSkills: [],
-      updatedAt: '2026-09-20T00:00:00.000Z',
+      id: 'app-e2e-1',
+      profileId: FIXTURE_CLAIMED_PROFILE_ID,
+      jobId: null,
+      targetTitle: 'Senior Backend Engineer',
+      targetCompany: 'Acme',
+      status: 'applied',
+      note: null,
+      appliedAt: '2026-09-20T00:00:00.000Z',
     },
   ],
-  total: 1,
-  limit: 100,
-  offset: 0,
 };
 
-async function mockAuth(page: Page, kind: 'user' | 'anonymous') {
+async function mockAuthAndApplications(page: Page) {
   await page.route('**/auth/me', (route) =>
-    route.fulfill({
-      status: 200,
-      json: kind === 'user' ? authMeUser() : { kind: 'anonymous' },
-    }),
+    route.fulfill({ status: 200, json: authMeUser() }),
   );
-  // 招聘工作台 island 也会请求 /candidates，统一返回 fixture 候选人
-  await page.route('**/candidates**', (route) =>
-    route.fulfill({ status: 200, json: CANDIDATES }),
+  await page.route('**/profiles/*/applications', (route) =>
+    route.fulfill({ status: 200, json: APPLICATIONS }),
   );
 }
 
@@ -90,10 +86,10 @@ function interviewRoutes(store: MockInterview[]) {
       }
       if (method === 'POST' && isCollection) {
         const body = (request.postDataJSON() ?? {}) as Partial<MockInterview>;
-        const now = '2026-09-24T00:00:00.000Z';
+        const now = '2026-09-26T00:00:00.000Z';
         const record: MockInterview = {
           id: 'int-e2e-1',
-          profileId: body.profileId ?? FIXTURE_PROFILE_ID,
+          profileId: body.profileId ?? FIXTURE_CLAIMED_PROFILE_ID,
           applicationId: body.applicationId ?? null,
           targetTitle: body.targetTitle ?? '',
           targetCompany: body.targetCompany ?? null,
@@ -125,67 +121,87 @@ function interviewRoutes(store: MockInterview[]) {
   };
 }
 
-test.describe('interview planner — login gate', () => {
-  test('anonymous visitors see a login gate with a return_to link', async ({ page }) => {
-    await mockAuth(page, 'anonymous');
-    await page.route('**/interviews**', (route) =>
-      route.fulfill({ status: 401, json: { error: 'authentication required' } }),
+test.describe('my interviews — login gate', () => {
+  test('anonymous visitors see the my-page login gate with a return_to link', async ({ page }) => {
+    await page.route('**/auth/me', (route) =>
+      route.fulfill({ status: 200, json: { kind: 'anonymous' } }),
     );
 
-    await page.goto('/en/recruit');
+    await page.goto('/en/my');
 
-    const gate = page.getByTestId('interview-login-gate');
+    const gate = page.getByTestId('my-gate');
     await expect(gate).toBeVisible();
-    const loginButton = page.getByTestId('interview-login-button');
+    const loginButton = gate.getByRole('link', { name: /sign in/i }).first();
     await expect(loginButton).toBeVisible();
     const href = await loginButton.getAttribute('href');
     expect(href).toContain('/auth/github/login');
-    expect(href).toContain('return_to=%2Fen%2Frecruit');
+    expect(href).toContain('return_to=%2Fen%2Fmy');
   });
 });
 
-test.describe('interview planner — signed in', () => {
+test.describe('my interviews — signed in', () => {
   test.beforeEach(async ({ context }) => {
     await context.addCookies([
-      { name: 'jobagent_session', value: 'ses-e2e-interview', domain: 'localhost', path: '/' },
+      {
+        name: 'jobagent_session',
+        value: FIXTURE_SESSION_TOKEN,
+        domain: 'localhost',
+        path: '/',
+      },
     ]);
   });
 
-  test('schedules an interview from a candidate and lists it', async ({ page }) => {
-    await mockAuth(page, 'user');
+  test('schedules an interview from one of my applications and lists it', async ({ page }) => {
+    await mockAuthAndApplications(page);
     const store: MockInterview[] = [];
     await interviewRoutes(store)(page);
 
-    await page.goto('/en/recruit');
+    await page.goto('/en/my');
 
     const planner = page.locator('.ivp');
-    await expect(planner).toContainText('Interview planner');
-    await expect(planner).toContainText('No interviews scheduled yet');
+    await expect(planner).toContainText('My interviews');
+    await expect(planner).toContainText('No interviews yet');
 
     await planner.getByRole('button', { name: /schedule interview/i }).click();
-    await planner.locator('#ivp-candidate').selectOption(FIXTURE_PROFILE_ID);
-    await planner.locator('#ivp-role').fill('Senior Backend Engineer');
-    await planner.locator('#ivp-company').fill('Acme');
+    // 从「我的投递」选一条已投递记录（T18：applicationId 真接上）
+    await planner.locator('#ivp-application').selectOption('app-e2e-1');
+    // 选投递后自动带出岗位/公司，仍可手改
+    const roleInput = planner.locator('#ivp-role');
+    await expect(roleInput).toHaveValue('Senior Backend Engineer');
+    const companyInput = planner.locator('#ivp-company');
+    await expect(companyInput).toHaveValue('Acme');
     await planner.locator('#ivp-start').fill('2026-10-01T09:00');
     await planner.locator('#ivp-end').fill('2026-10-01T10:00');
     await planner.locator('#ivp-round').fill('Technical screen');
+
+    const createReq = page.waitForRequest(
+      (req) =>
+        req.method() === 'POST' &&
+        req.url().includes('/interviews') &&
+        (req.postDataJSON() as Record<string, unknown>)?.applicationId === 'app-e2e-1',
+    );
     await planner.getByRole('button', { name: /^Create interview$/i }).click();
+    const req = await createReq;
+    const body = req.postDataJSON() as Record<string, unknown>;
+    expect(body.profileId).toBe(FIXTURE_CLAIMED_PROFILE_ID);
+    expect(body.applicationId).toBe('app-e2e-1');
+    expect(body.targetTitle).toBe('Senior Backend Engineer');
+    expect(body.targetCompany).toBe('Acme');
 
     const item = planner.getByTestId('interview-item');
     await expect(item).toHaveCount(1);
-    await expect(item).toContainText(`@${FIXTURE_LOGIN} · github`);
     await expect(item).toContainText('Senior Backend Engineer');
     await expect(item).toContainText('Acme');
     await expect(item).toContainText('Technical screen');
   });
 
   test('moves an interview to completed and records the outcome', async ({ page }) => {
-    await mockAuth(page, 'user');
+    await mockAuthAndApplications(page);
     const store: MockInterview[] = [
       {
         id: 'int-e2e-existing',
-        profileId: FIXTURE_PROFILE_ID,
-        applicationId: null,
+        profileId: FIXTURE_CLAIMED_PROFILE_ID,
+        applicationId: 'app-e2e-1',
         targetTitle: 'Backend Engineer',
         targetCompany: 'Acme',
         scheduledStart: '2026-10-03T09:00:00.000Z',
@@ -204,7 +220,7 @@ test.describe('interview planner — signed in', () => {
     ];
     await interviewRoutes(store)(page);
 
-    await page.goto('/en/recruit');
+    await page.goto('/en/my');
     const item = page.getByTestId('interview-item');
 
     // 状态切到 completed → 乐观更新并展开结果区（同时触发一次只含 status 的 PATCH）
@@ -212,8 +228,7 @@ test.describe('interview planner — signed in', () => {
     const result = page.getByTestId('interview-result');
     await expect(result).toBeVisible();
 
-    // 登记结论 / 评分 / 反馈并保存；保存按钮触发第二次 PATCH（含 outcome/rating/feedbackNote），
-    // waitForRequest 在 click 前注册，捕获这次请求。
+    // 登记结论 / 评分 / 反馈并保存；保存按钮触发第二次 PATCH（含 outcome/rating/feedbackNote）
     const selects = result.locator('select');
     await selects.nth(0).selectOption('yes');
     await selects.nth(1).selectOption('4');
