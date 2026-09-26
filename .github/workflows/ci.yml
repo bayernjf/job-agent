@@ -64,6 +64,11 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
+      - name: Check migrations
+        # Static naming/numbering/header alignment guard for both dialects;
+        # runs before the unit tests so a broken migration fails early.
+        run: bash tools/check-migrations.sh
+
       - name: Test
         run: pnpm -r test
 
@@ -73,11 +78,35 @@ jobs:
       - name: E2E tests
         run: pnpm e2e
 
+      - name: Upload report E2E artifacts
+        # Always run so a failed run still ships the error-context traces,
+        # screenshots and HTML report needed to debug page.goto timeouts etc.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-e2e-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Extension E2E tests
         # Loads the unpacked MV3 extension in --headless=new chromium (no xvfb needed);
         # the script rebuilds apps/extension/dist before launching. See
         # docs/design-extension-e2e-20260914.md.
         run: pnpm e2e:extension
+
+      - name: Upload extension E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-e2e-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Docker build smoke
         # Build the api target (exercises deps + full monorepo build) and the
