@@ -79,7 +79,7 @@ af3b71e feat(report): move interview planner into my page for candidates
 
 ## §4 item88：B2 自助解绑（第四次评审阻断项，2026-09-27）
 
-评审 [docs/评审-MVP-20260927.md](docs/评审-MVP-20260927.md) 暴露的最后一个纯代码阻断项——PRD:230「可解绑」此前全仓 0 个 `app.delete(`。B2 为纯代码、无外部依赖，一口气完成四层 + 文档。
+评审 [评审-MVP-20260927.md](评审-MVP-20260927.md) 暴露的最后一个纯代码阻断项——PRD:230「可解绑」此前全仓 0 个 `app.delete(`。B2 为纯代码、无外部依赖，一口气完成四层 + 文档。
 
 ### 4.1 层 1：storage 级联删除仓储（三接口六实现）
 
