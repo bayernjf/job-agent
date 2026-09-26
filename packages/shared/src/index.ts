@@ -311,6 +311,68 @@ export function composeImprovementSuggestion(
 }
 
 /**
+ * 内核枚举与计数 → 读者语言（T23）。
+ * 与 `composeHeadline` 同一条纪律：事实留在快照里，句子按读者语言现拼；
+ * 取不到的事实一律不编（宁可退回快照的英文原句），否则中文交付物会写出画像里没有的数字。
+ */
+
+const SKILL_DEPTH_LABELS: Record<SkillTagDepth, Record<ResumeLocale, string>> = {
+  used: { en: 'used', "zh-CN": '使用过' },
+  proficient: { en: 'proficient', "zh-CN": '有深度' },
+};
+
+export function composeSkillDepthLabel(depth: SkillTagDepth, locale: ResumeLocale): string {
+  return SKILL_DEPTH_LABELS[depth][locale];
+}
+
+const SENIORITY_BAND_LABELS: Record<string, Record<ResumeLocale, string>> = {
+  junior: { en: 'junior', "zh-CN": '初级' },
+  mid: { en: 'mid-level', "zh-CN": '中级' },
+  senior: { en: 'senior', "zh-CN": '资深' },
+};
+
+/** 档位内核只产三档，但快照里是开放 string（历史画像可能存别的值），未知值原样返回不臆译。 */
+export function composeSeniorityBand(band: string, locale: ResumeLocale): string {
+  return SENIORITY_BAND_LABELS[band]?.[locale] ?? band;
+}
+
+export interface PrSummaryFacts {
+  opened: number;
+  merged: number;
+  /** 合入他人仓库的 PR 数；缺省即整段省略（不能用 externalMergedContributions 的长度代替，那是去重后的仓库数） */
+  externalMerged?: number | null;
+}
+
+/**
+ * 从快照取 PR 计数。`activity.metrics` 的两个计数由内核直接写入，
+ * 但**外部 merged PR 数今天不在快照里**（只有 ≤5 个去重仓库名），所以本函数不返回它——
+ * 报告页要连那一段一起本地化，需要内核先把该计数补进 metrics（见 handoff T33）。
+ */
+export function prSummaryFactsFromProfile(
+  profile: Pick<AbilityProfile, 'activity'>,
+): PrSummaryFacts | null {
+  const opened = profile.activity.metrics?.totalPullRequests;
+  const merged = profile.activity.metrics?.mergedPullRequests;
+  if (typeof opened !== 'number' || typeof merged !== 'number') return null;
+  // 外部 merged 数不在快照里（见上），故不填该字段，句子自动省略该片段而不是猜一个数
+  return { opened, merged };
+}
+
+/** 分析内核写快照时用同一函数，故 'en' 分支与快照里的英文原句逐字节一致。 */
+export function composePrSummary(facts: PrSummaryFacts, locale: ResumeLocale): string {
+  const external =
+    typeof facts.externalMerged === 'number' && facts.externalMerged > 0 ? facts.externalMerged : 0;
+  if (locale === 'en') {
+    return `${facts.opened} PR(s) opened, ${facts.merged} merged${
+      external > 0 ? `, ${external} into external projects` : ''
+    }`;
+  }
+  return `开过 ${facts.opened} 个 PR，合并 ${facts.merged} 个${
+    external > 0 ? `，其中 ${external} 个合入他人仓库` : ''
+  }`;
+}
+
+/**
  * 可导出画像投影（v0.1，对应决策 #15：Chrome 扩展一键填充的消费契约）。
  *
  * 设计原则：
