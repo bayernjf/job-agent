@@ -319,5 +319,12 @@
   "my.empty": "You haven't analyzed any profile yet — go generate one.",
   "my.emptyCta": "Analyze my GitHub profile",
   "my.updatedAt": "Updated",
-  "my.claimedLabel": "My profile"
+  "my.claimedLabel": "My profile",
+  "interviews.application": "Application",
+  "interviews.applicationNone": "None (manual)",
+  "interviews.applicationPlaceholder": "No applications ready to advance yet. You can still fill in the role manually.",
+  "interviews.noProfile": "You don't have a profile yet. Generate one first to manage interviews.",
+  "interviews.noProfileAction": "Generate profile",
+  "report.recommendations.loadMore": "Load more",
+  "report.recommendations.alternateSources": "Also on"
 }

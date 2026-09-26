@@ -37,6 +37,8 @@ export interface JobMatchCriteria {
   salaryMinUsd?: number;
   /** 硬过滤：只要这些源 */
   sources?: readonly JobSource[];
+  /** 关键词硬过滤：title/tags/description 任一归一化后包含即过（子串匹配） */
+  keyword?: string;
   /** 返回上限（默认不截断） */
   limit?: number;
 }
@@ -84,6 +86,12 @@ function hasSkill(haystackNorm: string, skillNorm: string): boolean {
 function passesHardFilters(posting: JobPosting, criteria: JobMatchCriteria): boolean {
   if (criteria.remote === true && posting.remote !== true) return false;
   if (criteria.sources && !criteria.sources.includes(posting.source)) return false;
+  if (criteria.keyword) {
+    const kw = normalizeSegment(criteria.keyword);
+    if (kw.length === 0) return false;
+    const hay = normalizeSegment([posting.title, posting.tags ?? [], posting.description ?? ''].join(' '));
+    if (!hay.includes(kw)) return false;
+  }
   if (criteria.salaryMinUsd !== undefined) {
     const ref = posting.salaryMax ?? posting.salaryMin ?? null;
     if (ref === null || ref < criteria.salaryMinUsd) return false;
@@ -153,4 +161,69 @@ export function matchJobs<T extends JobPosting>(
   });
 
   return criteria.limit !== undefined ? matches.slice(0, criteria.limit) : matches;
+}
+
+
+/**
+ * 推荐后处理（T20，纯函数、无 I/O）：剔除已保存/已投的岗位 + 跨源同岗位合并。
+ * - 排除：posting.jobId 命中 excludeJobIds 的整条剔除（计 excludedCount）。
+ * - 合并：company + 归一化 title 相同的岗位只保留一条（score 最高者），
+ *   其余不同 source 的副本折叠进 alternateSources（计 mergedCount）；
+ *   同 source 的异常重复也折叠（不重复展示）。顺序保持输入排序。
+ */
+export interface DedupedItem<T extends JobPosting = JobPosting> {
+  match: JobMatch<T>;
+  /** 被合并掉的同岗位副本来源（与 match.posting.source 不同的 source+sourceUrl） */
+  alternateSources: Array<{ source: JobSource; sourceUrl: string }>;
+}
+
+export interface DedupedResult<T extends JobPosting = JobPosting> {
+  items: DedupedItem<T>[];
+  /** 因命中 excludeJobIds 被剔除的条数 */
+  excludedCount: number;
+  /** 被合并掉的同岗位副本条数（跨源合并） */
+  mergedCount: number;
+}
+
+export function excludeAndMergeMatches<T extends JobPosting>(
+  matches: readonly JobMatch<T>[],
+  opts: { excludeJobIds?: ReadonlySet<string> } = {},
+): DedupedResult<T> {
+  const excludeJobIds = opts.excludeJobIds ?? new Set<string>();
+  let excludedCount = 0;
+  let mergedCount = 0;
+  const items: DedupedItem<T>[] = [];
+  const byKey = new Map<string, DedupedItem<T>>();
+
+  for (const match of matches) {
+    if (excludeJobIds.has(match.posting.jobId)) {
+      excludedCount += 1;
+      continue;
+    }
+    const key = `${match.posting.company.toLowerCase()}${normalizeSegment(match.posting.title)}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      const item: DedupedItem<T> = { match, alternateSources: [] };
+      byKey.set(key, item);
+      items.push(item);
+      continue;
+    }
+    // 同岗位副本：保留 score 最高者为主项（输入未排序也正确），低分者折叠；
+    // 来源不同则记录 alternateSources；同源异常重复同样只展示一次。
+    mergedCount += 1;
+    const dup = { source: match.posting.source, sourceUrl: match.posting.sourceUrl };
+    if (match.score > existing.match.score) {
+      const prev = existing.match;
+      existing.match = match;
+      const prevDup = { source: prev.posting.source, sourceUrl: prev.posting.sourceUrl };
+      if (!existing.alternateSources.some((a) => a.sourceUrl === prevDup.sourceUrl)) {
+        existing.alternateSources.push(prevDup);
+      }
+    }
+    if (!existing.alternateSources.some((a) => a.sourceUrl === dup.sourceUrl)) {
+      existing.alternateSources.push(dup);
+    }
+  }
+
+  return { items, excludedCount, mergedCount };
 }

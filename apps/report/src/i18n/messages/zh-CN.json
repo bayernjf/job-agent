@@ -319,5 +319,12 @@
   "my.empty": "你还没有分析过任何画像——先去生成一份吧。",
   "my.emptyCta": "分析我的 GitHub 画像",
   "my.updatedAt": "更新于",
-  "my.claimedLabel": "我的画像"
+  "my.claimedLabel": "我的画像",
+  "interviews.application": "关联投递",
+  "interviews.applicationNone": "不关联（手动填写）",
+  "interviews.applicationPlaceholder": "还没有可推进的投递记录，也可以先手动填写职位。",
+  "interviews.noProfile": "还没有你的能力画像，先生成画像再来管理面试。",
+  "interviews.noProfileAction": "生成画像",
+  "report.recommendations.loadMore": "加载更多",
+  "report.recommendations.alternateSources": "也可在该来源查看"
 }

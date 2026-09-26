@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { JobPosting, JobSource } from '@jobagent/shared';
-import { matchJobs, MATCH_FIELD_WEIGHTS } from './job-match.js';
+import { matchJobs, MATCH_FIELD_WEIGHTS, excludeAndMergeMatches } from './job-match.js';
 
 let seq = 0;
 function posting(overrides: Partial<JobPosting> & { title: string }): JobPosting {
@@ -136,5 +136,56 @@ describe('matchJobs explainability (decision #10)', () => {
 
   it('exposes field weights used for the breakdown', () => {
     expect(MATCH_FIELD_WEIGHTS).toEqual({ title: 3, tags: 2, description: 1 });
+  });
+});
+
+
+describe('T20: keyword filter + exclude & cross-source merge', () => {
+  it('filters postings by keyword substring across title/tags/description', () => {
+    const p1 = posting({ title: 'Backend Engineer', description: 'we write python services' });
+    const p2 = posting({ title: 'Senior Python Engineer', tags: ['python'], description: 'python' });
+    const p3 = posting({ title: 'Sales Lead' });
+    const out = matchJobs([p1, p2, p3], { skills: ['Python'], keyword: 'backend' });
+    expect(out.map((m) => m.posting.title)).toEqual(['Backend Engineer']);
+    // keyword 不匹配但技能命中 → 被过滤
+    expect(out.length).toBe(1);
+  });
+
+  it('excludes jobIds and counts excluded rows', () => {
+    const p1 = posting({ title: 'Python Engineer', company: 'Acme' });
+    const p2 = posting({ title: 'Python Engineer', company: 'Beta' });
+    const matches = matchJobs([p1, p2], { skills: ['Python'] });
+    const result = excludeAndMergeMatches(matches, { excludeJobIds: new Set([p1.jobId]) });
+    expect(result.items.length).toBe(1);
+    expect(result.items[0]!.match.posting.company).toBe('Beta');
+    expect(result.excludedCount).toBe(1);
+    expect(result.mergedCount).toBe(0);
+  });
+
+  it('merges same company+title across sources into one item with alternateSources', () => {
+    const p1 = posting({ title: 'Python Engineer', company: 'Acme', source: 'remoteok', sourceUrl: 'https://a.test/1' });
+    const p2 = posting({ title: 'Python Engineer', company: 'Acme', source: 'greenhouse', sourceUrl: 'https://b.test/2' });
+    const matches = matchJobs([p1, p2], { skills: ['Python'] });
+    const result = excludeAndMergeMatches(matches);
+    expect(result.items.length).toBe(1);
+    expect(result.mergedCount).toBe(1);
+    const item = result.items[0]!;
+    expect(item.alternateSources).toEqual([{ source: 'greenhouse', sourceUrl: 'https://b.test/2' }]);
+    // 同 source 异常重复也折叠（不重复展示）
+    const p3 = posting({ title: 'Python Engineer', company: 'Acme', source: 'remoteok', sourceUrl: 'https://c.test/3' });
+    const r2 = excludeAndMergeMatches(matchJobs([p1, p3], { skills: ['Python'] }));
+    expect(r2.items.length).toBe(1);
+    expect(r2.mergedCount).toBe(1);
+  });
+
+  it('keeps the highest-scoring duplicate as the primary item', () => {
+    const p1 = posting({ title: 'Python Engineer', company: 'Acme', tags: ['python'] });
+    const p2 = posting({ title: 'Python Engineer', company: 'Acme', tags: ['python', 'python'], description: 'python x3' });
+    // p2 分更高；输入顺序故意反置（p1 在前），主项应取 p2
+    const matches = [matchJobs([p2], { skills: ['Python'] })[0]!, matchJobs([p1], { skills: ['Python'] })[0]!];
+    const result = excludeAndMergeMatches(matches);
+    expect(result.items.length).toBe(1);
+    expect(result.items[0]!.match.posting.sourceUrl).toBe(p2.sourceUrl);
+    expect(result.mergedCount).toBe(1);
   });
 });
