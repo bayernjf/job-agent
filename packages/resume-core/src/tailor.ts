@@ -233,6 +233,16 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
   if (education.length === 0) gaps.push(copy.gapField);
   if (workHistory.length === 0) gaps.push(copy.gapWork);
 
+  // T15：薄画像诚实标注（PRD NFR-6 / AGENTS 铁律——不产出"看似完整"的简历）。
+  // insufficient_data / suspicious 时在 JSON 缺口里显式标注，并在渲染面给出读者可见的数据说明；
+  // 正常画像不产生该字段，旧草稿逐字节不变（故不升规则版本）。
+  const authenticityStatus = profile.authenticity.status;
+  const dataQualityNote =
+    authenticityStatus === 'insufficient_data' || authenticityStatus === 'suspicious'
+      ? copy.dataQualityNote(authenticityStatus)
+      : undefined;
+  if (dataQualityNote) gaps.push(dataQualityNote);
+
   const draft = {
     schemaVersion: SCHEMA_VERSION,
     ruleVersion: RESUME_RULE_VERSION,
@@ -262,6 +272,7 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
     localSections: { education, workHistory },
     suggestions,
     gaps,
+    dataQualityNote,
     provenance: {
       profileId: profile.profileId,
       analyzerVersion: profile.analyzerVersion,

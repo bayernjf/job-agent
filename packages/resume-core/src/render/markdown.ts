@@ -113,6 +113,14 @@ export function renderMarkdown(draft: ResumeDraft, locale: ResumeLocale = 'zh-CN
   lines.push(`## ${copy.educationHeading}`);
   if (draft.localSections.education.length === 0) lines.push(copy.noEntry);
   else draft.localSections.education.forEach((e) => lines.push(`- ${escapeMd(e.text)}`));
+  lines.push('');
+
+  // T15：薄画像诚实标注——读者可见的数据说明（正常画像无此小节）
+  if (draft.dataQualityNote) {
+    lines.push(`## ${copy.dataQualityHeading}`);
+    lines.push(escapeMd(draft.dataQualityNote));
+    lines.push('');
+  }
 
   return `${lines.join('\n')}\n`;
 }

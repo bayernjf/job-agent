@@ -874,7 +874,7 @@ export const ClaimResultSchema = z.object({
   profileId: z.string().min(1),
   claimed: z.literal(true),
   subject: z.object({
-    platform: PlatformSchema,
+    platform: PlatformSchema.or(z.literal('all')),
     login: z.string().min(1),
   }),
   claimedProfileId: z.string().nullable(),
@@ -1339,6 +1339,8 @@ export const ResumeDraftSchema = z.object({
   }),
   suggestions: z.array(ResumeSuggestionSchema),
   gaps: z.array(z.string()), // 画像缺失、需用户补填的字段
+  // T15：薄画像（insufficient_data/suspicious）时的诚实标注，正常画像无此字段
+  dataQualityNote: z.string().optional(),
   provenance: z.object({
     profileId: z.string().min(1),
     analyzerVersion: z.string().min(1),

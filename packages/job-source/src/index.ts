@@ -49,9 +49,12 @@ export {
 export {
   matchJobs,
   MATCH_FIELD_WEIGHTS,
+  excludeAndMergeMatches,
   type JobMatch,
   type JobMatchCriteria,
   type MatchField,
   type SkillHit,
   type FieldScores,
+  type DedupedItem,
+  type DedupedResult,
 } from './match/job-match.js';

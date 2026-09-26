@@ -434,4 +434,74 @@ describe('GET /profiles/:id/job-recommendations', () => {
     expect(Object.keys(body.evidence).sort()).toEqual(['ev-1', 'ev-2', 'ev-3']);
     expect(body.evidence['ev-1']!.claim).toBe('authored TS PR');
   });
+
+  // ── T20：关键词 / 翻页 / 跨源合并 / 剔除已投 ─────────────────────────
+  it('filters matches by keyword (title/tags/description substring)', async () => {
+    const { app, repos } = await harness([
+      job({ title: 'Backend Engineer', description: 'we write python services' }),
+      job({ title: 'Senior Python Engineer', tags: ['python'], description: 'python' }),
+      job({ title: 'Sales Lead', description: 'python is not here' }),
+    ]);
+    await insertProfile(repos, 'prof-kw', ['Python']);
+    const res = await app.request('/profiles/prof-kw/job-recommendations?keyword=backend');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total: number; matches: Array<{ posting: { title: string } }> };
+    expect(body.total).toBe(1);
+    expect(body.matches[0]!.posting.title).toBe('Backend Engineer');
+  });
+
+  it('paginates with offset after dedupe and reports counts', async () => {
+    const { app, repos } = await harness([
+      job({ title: 'Python Engineer', company: 'Acme' }),
+      job({ title: 'Python Engineer', company: 'Acme', source: 'greenhouse', sourceUrl: 'https://gh.example/1' }),
+      job({ title: 'Python Engineer', company: 'Beta' }),
+      job({ title: 'Python Engineer', company: 'Gamma' }),
+    ]);
+    await insertProfile(repos, 'prof-page', ['Python']);
+    const first = await app.request('/profiles/prof-page/job-recommendations?limit=2');
+    const firstBody = (await first.json()) as {
+      total: number;
+      mergedCount: number;
+      offset: number;
+      matches: Array<{ posting: JobPosting; alternateSources: Array<{ source: string; sourceUrl: string }> }>;
+    };
+    expect(firstBody.total).toBe(3); // 4 条中 2 条同公司同标题 → 合并为 1
+    expect(firstBody.mergedCount).toBe(1);
+    expect(firstBody.offset).toBe(0);
+    expect(firstBody.matches.length).toBe(2);
+    // 合并项带 alternateSources（另一来源可跳转）
+    const acme = firstBody.matches.find((x) => x.posting.company === 'Acme')!;
+    expect(acme.alternateSources.length).toBe(1);
+    expect(acme.alternateSources[0]!.sourceUrl).toBe('https://gh.example/1');
+
+    const second = await app.request('/profiles/prof-page/job-recommendations?limit=2&offset=2');
+    const secondBody = (await second.json()) as { total: number; matches: unknown[] };
+    expect(secondBody.total).toBe(3);
+    expect(secondBody.matches.length).toBe(1); // 3 条去重结果，第 3 条在第二页
+  });
+
+  it('excludes jobs already applied/saved for the owning signed-in user (T20)', async () => {
+    const { app, repos } = await harness([
+      job({ title: 'Python Engineer', company: 'Acme' }),
+      job({ title: 'Python Engineer', company: 'Beta' }),
+    ]);
+    // 造未认领画像（subjectClaimed=false），并匿名写入一条投递（无 createdByAccountId）
+    await insertProfile(repos, 'prof-applied', ['Python']);
+    const jobs = await repos.jobPostings.search({ limit: 10 });
+    await repos.applications.insert({
+      id: 'app-t20-1',
+      profileId: 'prof-applied',
+      jobId: jobs[0]!.jobId,
+      source: jobs[0]!.source,
+      targetTitle: jobs[0]!.title,
+      targetCompany: jobs[0]!.company,
+      status: 'saved',
+      appliedAt: NOW,
+    });
+    // 未登录访客：无本人上下文 → 不剔除（保持匿名可见性）
+    const anon = await app.request('/profiles/prof-applied/job-recommendations');
+    const anonBody = (await anon.json()) as { total: number; excludedCount: number };
+    expect(anonBody.total).toBe(2);
+    expect(anonBody.excludedCount).toBe(0);
+  });
 });

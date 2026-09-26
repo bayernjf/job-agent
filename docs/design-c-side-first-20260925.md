@@ -203,7 +203,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | ✅ T12 | 交付物卫生：内部批注、匹配分、provenance 脚注移出交付物，只留产品界面 | **2026-09-26 已落地**：`renderMarkdown`/`renderHtml` 删掉匹配分行（含 `fieldScores` 分解）、`## 改进提示` 区块与 `---` + 溯源脚注，随之删掉 `resumeCopy` 里失去使用者的 `matchLabel`/`notesHeading`/`provenanceLabel` 与 HTML 里失效的 `.tier`/`.suggestions`/`footer` 样式；`suggestions`/`provenance` 仍在 `--format json` 的 ResumeDraft 里，报告页 island 继续展示。**守卫带正向对照**：`render.test.ts` 先断言草稿里确实有 suggestions 与 `fieldScores`，再断言 md/html 不含 `[missing_`/`改进提示`/`title 3/tags 2`/`溯源`/`Provenance`（防止"空断言永远绿"）。真账号前后 diff 实测见 handoff item82 | — |
 | ✅ T13 | "项目条目"抽象：主体 + 动作 + 规模 + 结果 + 证据链接（吃 T06 的 diff 数据） | **2026-09-26 已落地**：shared 增 `ProjectEntrySchema`（project/action/title/scale/url/occurredAt/evidenceRefs，superRefine 强制 refs 非空），resume-core 新 `project-entries.ts` 只解析自产稳定 claim 格式（PR 含 T06 diff 后缀 / Issue / Commit fallback / Repo stars-forks），解析不出跳过不猜；`ResumeDraft.projectEntries` 默认 `[]` 兼容旧草稿；md/html 增"项目经历"区块。**RESUME_RULE_VERSION 0.1→0.2**（排序/模板变更） | T06, T12 |
 | ✅ T14 | 量化行进简历与面试包（`activity.metrics` 今天只在报告页渲染，进不了任何交付物） | **2026-09-26 已落地**：buildSummary 增量化句（mergedPullRequests/commitRepoCount/activeMonths 三键齐全才写，缺任一整句省略）；interview-kit 增"量化概览"小节，同三键口径；数字全部直取快照 metrics 可回溯，旧快照（无键）天然不出 | T13 |
-| T15 | 薄画像降级：`buildResume` 读 `authenticity.status`，`insufficient_data`/`suspicious` 时显式标注缺口 | 不再对空画像出"看似完整"的简历（PRD NFR-6 与 AGENTS 铁律） | — |
+| ✅ T15 | 薄画像降级：`buildResume` 读 `authenticity.status`，`insufficient_data`/`suspicious` 时显式标注缺口（**2026-09-26 落地**） | `ResumeDraftSchema` 增可选 `dataQualityNote`，`tailor.ts` 命中 `insufficient_data`/`suspicious` 时设 note 并 push `gaps`，md/html 渲染"数据说明"小节（`.notice` amber）；不再对空画像出"看似完整"的简历（PRD NFR-6 与 AGENTS 铁律）。render 套件 13/13 绿 | — |
 | ✅ T16 | 岗位定向面试准备单（岗位命中技能 + 对应证据 + 会被问到什么 + 该反问什么） | **2026-09-26 已落地**：`renderInterviewKit(profile, evidence, locale, opts?)` 增可选岗位输入——有 `?jobId=` 时从 job_postings 加载岗位并经 matchJobs 定向（失败降级通用版不 500），渲染"岗位定向准备"（岗位 + 命中技能逐条挂证据行）与"你该反问什么"（纯规则按命中技能生成）；无 opts 保持通用版（向后兼容） | T13, T14 |
 | 🔄 T23 | **中文交付物里剩余的英文句子**（T07 只修了 headline，真账号实测中文简历又露出 `50 PR(s) opened, 38 merged`）：`collaboration.prSummary`、`activity.cadenceSummary`、真实性信号的 `label`/`detail` 都是分析内核写的英文散文 | **部分完成（2026-09-26）**：简历侧三处已收——`seniorityHint.band`、`collaboration.prSummary`、技能深度标签改走 `shared` 的 `composeSeniorityBand`/`composePrSummary`/`composeSkillDepthLabel`（事实留快照、句子随 `--locale` 现拼，取不到计数就退回英文原句而不是编数）；内核写 `prSummary` 也改调同一 composer，`profile.test.ts` 用**写在测试里的旧字面量**钉住"快照存的英文逐字节不变"，故**不升规则版本**。**剩余面拆给 T33**（阻塞在画像里没有可复算的事实，不是渲染没写）。`caveats` 与证据 `claim`（T-批次 41 已定英文口径）**不在本条范围** | T14 |
 
@@ -212,16 +212,16 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
 | ✅ T17 | "我的"页（2026-09-25 落地）：接上**今天无人调用**的 `profiles.listBySubject`；让 `AccountMenu` 真正渲染它已收到的 `claimedProfileId`（`AccountMenu.tsx:19` 收了不用）；导航加入口 | 登录后有一页能找回自己的全部画像，关掉浏览器也不丢 | T03 |
-| T18 | 求职者面试管道：复用 012 `interviews` 与行级归属，**换挂载点与文案**（从 `/recruit` 挪进"我的"），并把 `applicationId` 真接上（API 已支持推进投递状态、UI 从不传） | "我投了哪些 → 哪场面试 → 结果如何"一条链走通；不再要求"进前 100 候选人"才能建行 | T17, T03 |
-| T19 | 融合画像可认领（Q2：任一源命中即可，记录实走平台） | `platform=all` 画像能出"本人已验证"，与 item58 的"未经本人认领"提示条互斥正确 | T17 |
-| T20 | 推荐去重与翻页：剔除已保存/已投、加 offset 与关键词、跨源同岗位合并（今天只标记不合并） | 同一岗位不在推荐里出现两次；已投的不再推 | T17 |
+| ✅ T18 | 求职者面试管道：复用 012 `interviews` 与行级归属，**换挂载点与文案**（从 `/recruit` 挪进"我的"），并把 `applicationId` 真接上（API 已支持推进投递状态、UI 从不传）（**2026-09-27 落地**） | `InterviewPlanner.tsx` 重写——候选人下拉改「我的投递」`Application` 下拉（仅 `saved/applied/viewed`），选择自动带出岗位/公司，POST payload 带 `applicationId`；登录后 `resolveMyProfile()`（claimedProfileId 优先）；无画像引导生成。`my.astro` 登录态挂载、`recruit.astro` 移除；i18n 改求职者口吻（删 `interviews.candidate` 两 key，中英仍对齐）；E2E 重写 3 用例（登录墙 + 从投递建行断言 body 含 `applicationId` + 流转 completed）。"我投了哪些 → 哪场面试 → 结果如何"一条链走通 | T17, T03 |
+| ✅ T19 | 融合画像可认领（Q2：任一源命中即可，记录实走平台）（**2026-09-27 落地**） | 判定改 `subjectPlatform==='all' ? subjectLogin===principal.login : 平台+login 双等`（403 仍带 `subject`）；`ClaimResultSchema.subject.platform` 扩为 `PlatformSchema.or(z.literal('all'))`；`ClaimProfile.tsx` 支持 all；astro 去掉 `!isFusedProfile` 门控。`auth-flow.test.ts` +1 用例（GitHub alice 认领 alice/all→200；Gitee bob 认领 alice/all→403）。`platform=all` 画像能出"本人已验证" | T17 |
+| ✅ T20 | 推荐去重与翻页：剔除已保存/已投、加 offset 与关键词、跨源同岗位合并（今天只标记不合并）（**2026-09-27 落地**） | `job-match.ts` 增 `JobMatchCriteria.keyword` 子串硬过滤 + `excludeAndMergeMatches(matches,{excludeJobIds})`→`{items,excludedCount,mergedCount}`（key=company+title，保留最高分主项、其余折叠进 `alternateSources`）；`GET /profiles/:id/job-recommendations` 与 `POST /job-postings/match` 均加 offset/keyword、属主登录时按投递 jobId 剔除、响应加 total/excludedCount/mergedCount/offset；**limit 只做 slice 分页不截断匹配（否则 total 随页大小漂移）**；报告页 `JobRecommendations.tsx` 加 alternateSources 渲染 + loadMore 翻页（追加去重 sourceUrl）。测试：api +3、job-match +4（含最高分主项、同源折叠）。同一岗位不再出现两次；已投的不再推 | T17 |
 
 ### 批次 5 · 非代码前置（C 端代码救不了的）
 
 | # | 任务 | 判据 |
 | --- | --- | --- |
 | T21 | 🔒 形态 C 控制台部署（Runbook §4-C / 执行单 A–J）→ 配 Actions secret `DATABASE_URL` → 手动跑一次 daily | **在此之前的岗位池是死的**：日更整条 gated 在未配置的 secret 上（`.github/workflows/jobs-sync.yml:66-86`） |
-| T22 | 扩岗位种子清单：现成 Greenhouse/Lever 适配器再加 30–50 家真在招 AI 公司（**纯配置**） | 语料从"17 家自选"变成能代表市场；不动一行匹配逻辑 |
+| ✅ T22 | 扩岗位种子清单：现成 Greenhouse/Lever 适配器再加 30–50 家真在招 AI 公司（**纯配置**，2026-09-26 落地） | `SEED_GREENHOUSE_BOARDS` 8→45 家（brex/coinbase/databricks/anthropic/elastic/twilio/vercel/reddit/assemblyai/stabilityai/chime/pinterest/webflow/block/mixpanel/newrelic/lyft/lattice/airbnb/remote/pagerduty/gusto/wise/monzo/duolingo/deliveroo/n26/wolt 等，附 2026-09-26 实测 200 注释）；Lever 候选 64 家全 404 零新增；不动一行匹配逻辑 |
 
 ### 批次 6 · 上线阻断（2026-09-25 第三次评审新暴露，优先于批次 2–4）
 
