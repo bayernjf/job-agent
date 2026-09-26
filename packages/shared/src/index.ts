@@ -901,7 +901,7 @@ export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CO
 //  3. provenance：规则/分析版本随草稿输出，保证可复现。
 
 /** 简历装配规则版本：排序/模板逻辑变更时递增，写入 ResumeDraft.provenance */
-export const RESUME_RULE_VERSION = '0.1';
+export const RESUME_RULE_VERSION = '0.2';
 
 /** 简历支持的语言（P-R1 用户手选，默认 zh-CN；技能名等事实保持画像原文不翻译） */
 export const ResumeLocaleSchema = z.enum(['zh-CN', 'en']);
@@ -1255,6 +1255,36 @@ export const ResumeEntrySchema = z
   });
 export type ResumeEntry = z.infer<typeof ResumeEntrySchema>;
 
+/**
+ * 项目条目抽象（T13，设计 C-C 第 9 条）：一条经历 = 主体 + 动作 + 规模 + 结果 + 证据链接。
+ * 全部由画像证据（EvidenceItem）与 PR/commit/issue/repo 元数据派生，不新造事实。
+ * 渲染侧可据此结构化展示（按项目分组、突出规模），仍受 no-fabrication 闸约束：refs 必须非空。
+ */
+export const ProjectEntrySchema = z
+  .object({
+    /** 主体：owner/repo（从证据 claim/rawRef 解析，解析不出则该证据不产出条目） */
+    project: z.string().min(1),
+    /** 动作：证据类型（pr / issue / commit / repo），渲染侧按此出动作词 */
+    action: EvidenceSourceTypeSchema,
+    /** 结果/做了什么：PR/issue 标题、commit 短 SHA、repo 名（证据 claim 的原文片段，不改写） */
+    title: z.string().min(1),
+    /** 规模：PR 的 "+A/-D across N files"、repo 的 "N stars / N forks"；无统计时省略（不写 0） */
+    scale: z.string().optional(),
+    url: z.string().url(), // 证据链接（可点击回溯）
+    occurredAt: z.string().datetime().optional(),
+    evidenceRefs: z.array(z.string().min(1)), // -> EvidenceItem.evidenceId
+  })
+  .superRefine((entry, ctx) => {
+    if (entry.evidenceRefs.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'project entry must carry at least one evidenceRef (no-fabrication)',
+        path: ['evidenceRefs'],
+      });
+    }
+  });
+export type ProjectEntry = z.infer<typeof ProjectEntrySchema>;
+
 /** 针对岗位的改进提示（只提示、不写进简历正文） */
 export const ResumeSuggestionSchema = z.object({
   kind: z.enum(['missing_skill', 'missing_field', 'low_match']),
@@ -1302,6 +1332,7 @@ export const ResumeDraftSchema = z.object({
   otherSkills: z.array(ResumeEntrySchema), // 画像有、岗位未提（保留不删，排序在后）
   evidenceHighlights: z.array(ResumeEntrySchema), // 支撑命中技能的证据，按强度排序
   collaboration: z.array(ResumeEntrySchema).default([]), // 外部 merged PR 等强信号
+  projectEntries: z.array(ProjectEntrySchema).default([]), // T13：结构化项目条目（主体+动作+规模+结果+证据链接）
   localSections: z.object({
     education: z.array(ResumeEntrySchema).default([]),
     workHistory: z.array(ResumeEntrySchema).default([]),
