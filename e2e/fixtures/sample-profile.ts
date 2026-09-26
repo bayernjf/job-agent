@@ -1,6 +1,7 @@
 import {
   AbilityProfileSchema,
   composeHeadline,
+  composeImprovementSuggestion,
   type AbilityProfile,
 } from '@jobagent/shared';
 
@@ -39,6 +40,27 @@ export const FIXTURE_GITEE_LOGIN = 'e2e-gitee-user';
  * 未经本人授权提示条"的断言仍依赖它是无主的。
  */
 export const FIXTURE_CLAIMED_PROFILE_ID = 'profe2efixture00000000000003';
+
+/**
+ * "下一步动作"画像 fixture（#5，T10 渲染 E2E）：只有自有仓库里的提交、从未开 PR，
+ * 因此 `improvementSuggestions` 里的 `no_pull_requests` 与画像事实自洽
+ * （标准 fixture 有外部合并 PR，挂任何一条建议都会自相矛盾）。
+ */
+export const FIXTURE_NEXT_STEPS_PROFILE_ID = 'profe2efixture00000000000004';
+export const FIXTURE_NEXT_STEPS_LOGIN = 'e2e-next-steps-user';
+export const FIXTURE_NEXT_STEPS_EVIDENCE_ID = 'evt-next-steps-commit';
+
+/**
+ * globalSetup 实际落盘的全部画像 id（人才库 E2E 据此断言卡片数，
+ * 新增 fixture 时只改这里，不用再回去数 spec 里的硬编码）。
+ */
+export const FIXTURE_PROFILE_IDS = [
+  FIXTURE_PROFILE_ID,
+  FIXTURE_FUSED_PROFILE_ID,
+  FIXTURE_GITEE_PROFILE_ID,
+  FIXTURE_CLAIMED_PROFILE_ID,
+  FIXTURE_NEXT_STEPS_PROFILE_ID,
+] as const;
 
 /**
  * 授权分级闸 E2E：一个本人账号（login 与 FIXTURE_LOGIN 一致）+ 固定未过期会话 token。
@@ -160,6 +182,41 @@ export function buildGiteeFixtureProfile(): AbilityProfile {
 export function buildClaimedFixtureProfile(): AbilityProfile {
   const base = buildFixtureProfile({ id: FIXTURE_CLAIMED_PROFILE_ID });
   return AbilityProfileSchema.parse({ ...base, subject: { ...base.subject, claimed: true } });
+}
+
+/**
+ * "下一步动作"画像 fixture（T10）：提交都在自有仓库、一个 PR 都没开，
+ * 所以唯一成立的建议是 `no_pull_requests`；协作/信号字段同步收敛，避免画像内部自相矛盾。
+ */
+export function buildNextStepsFixtureProfile(): AbilityProfile {
+  const base = buildFixtureProfile({
+    id: FIXTURE_NEXT_STEPS_PROFILE_ID,
+    login: FIXTURE_NEXT_STEPS_LOGIN,
+    displayName: 'E2E Next Steps User',
+  });
+  return AbilityProfileSchema.parse({
+    ...base,
+    activity: {
+      longevityMonths: 8,
+      cadenceSummary: 'Weekly commits, all inside the subject\'s own repositories.',
+      metrics: { totalCommits: 42, totalRepos: 3 },
+    },
+    collaboration: { evidenceRefs: [FIXTURE_NEXT_STEPS_EVIDENCE_ID] },
+    authenticity: {
+      status: 'likely_authentic',
+      confidence: 0.72,
+      signals: [],
+    },
+    interviewQuestions: [],
+    improvementSuggestions: [
+      {
+        code: 'no_pull_requests',
+        // 数据层英文原文由内核写入；报告页按读者语言现拼（与 T07 headline 同套路）
+        ...composeImprovementSuggestion('no_pull_requests', 'en'),
+        evidenceRefs: [FIXTURE_NEXT_STEPS_EVIDENCE_ID],
+      },
+    ],
+  });
 }
 
 /** 融合画像 fixture：snapshot 形状与普通画像一致（platform 仍 github），融合身份只在存储行列。 */export function buildFusedFixtureProfile(): AbilityProfile {

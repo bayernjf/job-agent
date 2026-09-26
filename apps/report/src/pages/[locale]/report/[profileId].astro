@@ -15,7 +15,7 @@ import { resolveViewer, canViewGatedContent, canViewApplications } from '../../.
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
 import { browserApiBase } from '../../../lib/api-base.js';
-import { composeHeadline, headlineFactsFromProfile } from '@jobagent/shared';
+import { composeHeadline, composeImprovementSuggestion, headlineFactsFromProfile } from '@jobagent/shared';
 import type { EvidenceItem, SkillTagKind } from '@jobagent/shared';
 
 const { locale: rawLocale, profileId } = Astro.params;
@@ -229,6 +229,52 @@ const applicationStatusLabels = {
         )
       }
     </section>
+
+    <!-- 下一步动作（T10）：只渲染 improvementSuggestions 里带证据的条目，
+         文案按读者语言由 shared 的模板现拼；招聘方视图不需要这栏（那是给本人的建议）。 -->
+    {
+      !isRecruiter &&
+        profile.improvementSuggestions &&
+        profile.improvementSuggestions.length > 0 && (
+          <section class="ja-card next-steps" data-testid="next-steps">
+            <h2>{t('report.nextSteps.title')}</h2>
+            <p class="ja-muted next-steps-lead">{t('report.nextSteps.lead')}</p>
+            <ol class="ja-stack-2 next-steps-list">
+              {
+                profile.improvementSuggestions.map((s) => {
+                  const copy = composeImprovementSuggestion(s.code, locale);
+                  const refs = resolveEvidence(s.evidenceRefs);
+                  return (
+                    <li class="next-step">
+                      <p class="next-step-action">{copy.suggestion}</p>
+                      <p class="ja-muted next-step-why">{t('report.nextSteps.why')}: {copy.why}</p>
+                      {
+                        refs.length > 0 &&
+                          (canViewGated ? (
+                            <ul class="next-step-evidence">
+                              <li class="ja-muted">{t('report.nextSteps.evidence')}:</li>
+                              {refs.map((ev) => (
+                                <li>
+                                  <a href={ev.url} target="_blank" rel="noopener noreferrer">
+                                    {ev.claim} ↗
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p class="ja-muted">
+                              {t('report.nextSteps.evidenceHidden', { count: refs.length })}
+                            </p>
+                          ))
+                      }
+                    </li>
+                  );
+                })
+              }
+            </ol>
+          </section>
+        )
+    }
 
     {
       isRecruiter &&
@@ -659,6 +705,30 @@ const applicationStatusLabels = {
   .headline {
     margin-top: var(--ja-space-3);
     font-size: var(--ja-text-lg);
+  }
+
+  /* 下一步动作（T10）：只用既有 token，不引入新色板 */
+  .next-steps-lead {
+    margin-bottom: var(--ja-space-3);
+  }
+
+  .next-steps-list {
+    margin: 0;
+    padding-left: var(--ja-space-4);
+  }
+
+  .next-step-action {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .next-step-why {
+    margin: var(--ja-space-1) 0 0;
+  }
+
+  .next-step-evidence {
+    margin: var(--ja-space-2) 0 0;
+    padding-left: var(--ja-space-4);
   }
 
   h2 {

@@ -4,6 +4,7 @@ import {
   FIXTURE_CLAIMED_PROFILE_ID,
   FIXTURE_GITEE_PROFILE_ID,
   FIXTURE_GITEE_LOGIN,
+  FIXTURE_PROFILE_IDS,
   FIXTURE_SESSION_TOKEN,
 } from './fixtures/sample-profile.js';
 
@@ -148,7 +149,7 @@ test.describe('candidate search page', () => {
   }) => {
     await page.goto('/en/recruit');
     const cards = page.locator('.recruit-grid .recruit-card');
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(FIXTURE_PROFILE_IDS.length);
 
     // 普通 GitHub 画像卡：裸显平台 github，核验链接指向其 profileId。
     // 按链接定位而非按登录名——已认领的那张卡与它同名（同一个人的两份画像快照）。
@@ -176,8 +177,10 @@ test.describe('candidate search page', () => {
       new RegExp(`/en/report/${FIXTURE_GITEE_PROFILE_ID}\\?view=recruiter`),
     );
 
-    // 决策 #1-A：三张未认领卡逐卡标「未经本人认领」；已认领那张标「本人已验证」
-    await expect(cards.locator('[data-testid="candidate-unclaimed"]')).toHaveCount(3);
+    // 决策 #1-A：未认领卡逐卡标「未经本人认领」；已认领那张标「本人已验证」
+    await expect(cards.locator('[data-testid="candidate-unclaimed"]')).toHaveCount(
+      FIXTURE_PROFILE_IDS.length - 1,
+    );
     await expect(githubCard.locator('[data-testid="candidate-unclaimed"]')).toContainText(
       'Not claimed by owner',
     );
