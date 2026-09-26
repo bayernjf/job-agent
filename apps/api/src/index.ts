@@ -21,6 +21,7 @@
  *   POST /auth/logout    — 撤销当前登录会话、清 Cookie
  *   GET  /auth/me        — 当前登录身份（刻意不含 email/providerAccountId）
  *   POST /profiles/:id/claim — 登录用户认领本人画像（平台登录名一致才放行）
+ *   DELETE /profiles/:id    — 登录本人删除已认领画像（级联删证据/投递/面试并撤销认领，PRD:230 可解绑）
  *   GET  /jobs/:id       — 查询任务状态（queued/running/succeeded/failed + stage + profileId）
  *   GET  /profiles/by-subject/:platform/:login — 公开只读解析某主体最新 complete 画像（无 TTL/不扣配额，扩展加载已有画像用）
  *   GET  /profiles/:id   — 查询画像快照（完整 AbilityProfile JSON）
@@ -1176,6 +1177,57 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       claimedProfileId: account?.claimedProfileId ?? profile.id,
     };
     return c.json(result);
+  });
+
+  // DELETE /profiles/:id：登录本人删除自己已认领的画像（B2 自助解绑，兑现 PRD:230「可解绑」）。
+  // 仅已认领且平台登录名与本人一致的画像可删；未认领（无归属关系）一律 403，未登录 401。
+  // 级联：evidence → applications → interviews → 撤销认领（accounts.claimed_profile_id 置空）→ 删画像行；
+  // 删除后分享链指向 /report/<id> 自然 404，账号本身保留（仍可登录）。
+  app.delete('/profiles/:id', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json(
+        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
+        401,
+      );
+    }
+    const parsed = ProfileIdParamSchema.safeParse(c.req.param());
+    if (!parsed.success) return c.json({ error: 'invalid profile id' }, 400);
+
+    const profile = await repos.profiles.getById(parsed.data.id);
+    if (!profile) {
+      return c.json({ error: 'profile not found', code: AUTH_ERROR_CODES.profileNotFound }, 404);
+    }
+    if (!profile.subjectClaimed) {
+      // 未认领画像没有「本人」可验证：不允许自助删除（也不区分 403/404 语义，统一拒）
+      return c.json(
+        { error: 'profile is not claimed; self-delete requires claiming it first', code: AUTH_ERROR_CODES.notProfileOwner },
+        403,
+      );
+    }
+    // 归属判定与 claim 端点同口径：融合画像任一源 login 一致即放行
+    const subjectMatches =
+      profile.subjectPlatform === 'all'
+        ? profile.subjectLogin === principal.login
+        : profile.subjectPlatform === principal.platform && profile.subjectLogin === principal.login;
+    if (!subjectMatches) {
+      return c.json(
+        {
+          error: 'not the profile owner',
+          code: AUTH_ERROR_CODES.notProfileOwner,
+          subject: { platform: profile.subjectPlatform, login: profile.subjectLogin },
+        },
+        403,
+      );
+    }
+
+    // 先删子表（证据/投递/面试），再撤销认领，最后删主表——分享链与「我的」页归属一并失效
+    await repos.evidence.deleteByProfile(profile.id);
+    await repos.applications.deleteByProfile(profile.id);
+    await repos.interviews.deleteByProfile(profile.id);
+    await repos.accounts.clearClaimedProfile(principal.accountId);
+    const existed = await repos.profiles.deleteById(profile.id);
+    return c.json({ deleted: existed, profileId: profile.id });
   });
 
   // GET /profiles/:id/job-recommendations：画像技能 → 岗位匹配推荐（第一档①，报告页消费）
