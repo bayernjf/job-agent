@@ -86,6 +86,16 @@ export class PgAccountsRepository implements IAccountsRepository {
     return this.getById(accountId);
   }
 
+  async clearClaimedProfile(accountId: string): Promise<StoredAccount | undefined> {
+    const existing = await this.db.select().from(t).where(eq(t.id, accountId)).limit(1);
+    if (!existing[0]) return undefined;
+    await this.db
+      .update(t)
+      .set({ claimedProfileId: null, updatedAt: new Date().toISOString() })
+      .where(eq(t.id, accountId));
+    return this.getById(accountId);
+  }
+
   async deleteUnclaimed(nowIso: string, retainMs: number): Promise<number> {
     const retainCutoff = new Date(Date.parse(nowIso) - retainMs).toISOString();
     // 仅删：从未认领、超过保留期未更新、且当前没有未过期会话的账号。

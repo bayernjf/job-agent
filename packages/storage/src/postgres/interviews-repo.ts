@@ -73,4 +73,8 @@ export class PgInterviewsRepository implements IInterviewsRepository {
     await this.db.update(t).set(set).where(eq(t.id, id));
     return this.getById(id);
   }
+
+  async deleteByProfile(profileId: string): Promise<void> {
+    await this.db.delete(t).where(eq(t.profileId, profileId));
+  }
 }
