@@ -23,4 +23,6 @@ export interface IInterviewsRepository {
   ): Promise<StoredInterview[]>;
   /** 局部更新排期/状态/结果；返回更新后的行，不存在返回 undefined */
   update(id: string, patch: InterviewPatchInput): Promise<StoredInterview | undefined>;
+  /** 物理删除以某画像为候选人的全部面试（B2 自助删除画像时级联调用），无行也成功 */
+  deleteByProfile(profileId: string): Promise<void>;
 }
