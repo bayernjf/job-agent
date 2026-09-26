@@ -23,15 +23,13 @@ COMMENT ON COLUMN evidence.profile_id IS
   'Owning profile snapshot id (FK -> profiles.id, not enforced); scopes evidence.id';
 
 -- DOWN BEGIN
--- Rolling back restores a globally unique id. No PL/pgSQL guard on purpose: the migrator
--- splits statements on ';' and would cut a DO $$ ... $$ block mid-flight (hit during
--- verification), and it also runs each statement outside a transaction, so a guard that
--- aborts halfway would leave the table with no primary key at all. Therefore:
---   * DROP uses IF EXISTS so a retry after a failed attempt is not blocked by the fact
---     that the first attempt already removed the constraint;
---   * the ADD PRIMARY KEY below fails loudly with a unique violation whenever any
---     evidenceId is shared across profiles, refusing the rollback instead of deleting
---     rows to force it through.
+-- Rolling back restores a globally unique id. Two deliberate choices:
+--   * ADD PRIMARY KEY is what refuses the rollback: it fails with a unique violation
+--     whenever an evidenceId is shared across profiles, so the tool refuses instead of
+--     deleting rows to force its way through;
+--   * DROP uses IF EXISTS so re-running a previously refused rollback is not blocked by
+--     the constraint already being gone. Since T32 each file runs in one transaction, so
+--     a refusal now leaves the schema untouched rather than half-migrated.
 ALTER TABLE evidence DROP CONSTRAINT IF EXISTS evidence_pkey;
 ALTER TABLE evidence ADD PRIMARY KEY (id);
 COMMENT ON TABLE evidence IS NULL;
