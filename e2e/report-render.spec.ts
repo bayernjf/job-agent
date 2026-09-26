@@ -1,8 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { composeImprovementSuggestion } from '@jobagent/shared';
 import {
   FIXTURE_GITEE_PROFILE_ID,
   FIXTURE_PROFILE_ID,
   FIXTURE_FUSED_PROFILE_ID,
+  FIXTURE_NEXT_STEPS_PROFILE_ID,
+  FIXTURE_SESSION_TOKEN,
   FIXTURE_LOGIN,
 } from './fixtures/sample-profile.js';
 
@@ -98,5 +101,51 @@ test.describe('report page SSR render', () => {
     await expect(badge).toBeVisible();
     await expect(badge).toContainText('双源融合');
     await expect(page.getByTestId('fusion-stats')).toContainText('条重复提交已去重');
+  });
+});
+
+/**
+ * 下一步动作区块（T10）：`improvementSuggestions` 快照只存数据层英文原文，
+ * 页面按读者语言由 shared 的模板现拼；证据外链仍受授权分级闸约束；招聘方视图不显示。
+ */
+const nextStepsPath = `/en/report/${FIXTURE_NEXT_STEPS_PROFILE_ID}`;
+const EN_COPY = composeImprovementSuggestion('no_pull_requests', 'en');
+const ZH_COPY = composeImprovementSuggestion('no_pull_requests', 'zh-CN');
+
+test.describe('next steps suggestions', () => {
+  test('renders the English copy for an English reader', async ({ page }) => {
+    await page.goto(nextStepsPath);
+    const section = page.getByTestId('next-steps');
+    await expect(section).toBeVisible();
+    await expect(section.locator('h2')).toHaveText('Next steps');
+    await expect(section.locator('.next-step-action')).toHaveText(EN_COPY.suggestion);
+    await expect(section.locator('.next-step-why')).toContainText(EN_COPY.why);
+    // 未登录：只报条数，不给证据外链
+    await expect(section).toContainText('1 related evidence');
+    expect(await section.locator('.next-step-evidence a').count()).toBe(0);
+  });
+
+  test('renders Chinese copy, not the stored English sentence, under zh-CN', async ({ page }) => {
+    await page.goto(`/zh-CN/report/${FIXTURE_NEXT_STEPS_PROFILE_ID}`);
+    const section = page.getByTestId('next-steps');
+    await expect(section).toBeVisible();
+    await expect(section.locator('h2')).toHaveText('下一步动作');
+    await expect(section.locator('.next-step-action')).toHaveText(ZH_COPY.suggestion);
+    expect(await page.getByText(EN_COPY.suggestion).count()).toBe(0);
+  });
+
+  test('unlocks the evidence link once signed in', async ({ page, context }) => {
+    await context.addCookies([
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+    ]);
+    await page.goto(nextStepsPath);
+    const link = page.locator('.next-step-evidence a');
+    await expect(link).toHaveCount(1);
+    await expect(link).toHaveAttribute('href', /github\.com\/e2e-next-steps-user/);
+  });
+
+  test('is absent from the recruiter view', async ({ page }) => {
+    await page.goto(`${nextStepsPath}?view=recruiter`);
+    expect(await page.getByTestId('next-steps').count()).toBe(0);
   });
 });
