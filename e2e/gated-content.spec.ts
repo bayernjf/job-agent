@@ -1,4 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { preloadAstro } from './preload.js';
+
+test.beforeAll(async () => {
+  await preloadAstro('http://127.0.0.1:4321');
+}, { timeout: 120000 });
 import {
   FIXTURE_PROFILE_ID,
   FIXTURE_GITEE_PROFILE_ID,

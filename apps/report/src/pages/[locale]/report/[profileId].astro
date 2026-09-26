@@ -429,9 +429,11 @@ const applicationStatusLabels = {
       )
     }
 
-    <!-- 岗位定向简历（P-R2）：由上方岗位卡片按钮经 DOM 事件触发——仅求职者视角 -->
+    <!-- 岗位定向简历（P-R2）：由上方岗位卡片按钮经 DOM 事件触发——仅求职者视角。
+         T29：去掉 skillTags 门控——零技能/薄画像也必须能走到自选岗位表单（T15 同族：
+         画像不完整不等于没有出路），简历内核自有 insufficient_data 显式标注。 -->
     {
-      !isRecruiter && profile.skillTags.length > 0 && (
+      !isRecruiter && (
         <ResumeBuilder
           client:load
           profileId={profileId!}
