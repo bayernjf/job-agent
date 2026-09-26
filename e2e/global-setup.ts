@@ -11,10 +11,13 @@ import {
   buildClaimedFixtureProfile,
   buildFusedFixtureProfile,
   buildGiteeFixtureProfile,
+  buildNextStepsFixtureProfile,
   FIXTURE_PROFILE_ID,
   FIXTURE_CLAIMED_PROFILE_ID,
   FIXTURE_FUSED_PROFILE_ID,
   FIXTURE_GITEE_PROFILE_ID,
+  FIXTURE_NEXT_STEPS_PROFILE_ID,
+  FIXTURE_NEXT_STEPS_EVIDENCE_ID,
   FIXTURE_LOGIN,
   FIXTURE_ACCOUNT_PROVIDER_ID,
   FIXTURE_SESSION_TOKEN,
@@ -87,6 +90,32 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     status: 'complete',
     snapshot: giteeProfile,
   });
+
+  // "下一步动作"画像（T10）：带 improvementSuggestions + 一条可点开的提交证据，
+  // 供 report-render spec 断言建议随读者语言渲染、证据外链仍受登录闸约束。
+  const nextStepsProfile = buildNextStepsFixtureProfile();
+  await storage.profiles.insert({
+    id: FIXTURE_NEXT_STEPS_PROFILE_ID,
+    analyzerVersion: nextStepsProfile.analyzerVersion,
+    subjectPlatform: nextStepsProfile.subject.platform,
+    subjectLogin: nextStepsProfile.subject.login,
+    subjectClaimed: nextStepsProfile.subject.claimed,
+    dataWindowSince: nextStepsProfile.dataWindow.since,
+    dataWindowUntil: nextStepsProfile.dataWindow.until,
+    status: 'complete',
+    snapshot: nextStepsProfile,
+  });
+  await storage.evidence.importFromProfile(FIXTURE_NEXT_STEPS_PROFILE_ID, [
+    {
+      evidenceId: FIXTURE_NEXT_STEPS_EVIDENCE_ID,
+      sourcePlatform: 'github',
+      sourceType: 'commit',
+      url: 'https://github.com/e2e-next-steps-user/core/commit/aa11bb2',
+      layer: 'L1',
+      claim: '42 commits across 3 own repositories.',
+      rawRef: 'e2e-next-steps-user/core@aa11bb2',
+    },
+  ]);
 
   // 授权分级闸（2026-09-19）：本人账号 + 固定未过期会话 + 一条可点击外部 PR 证据，
   // 供 gated-content spec 用 jobagent_session cookie 模拟已登录 user。

@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
@@ -273,9 +275,68 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('T32: a failing migration file leaves no partial schema and records no version', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ja-migrations-'));
+    fs.writeFileSync(
+      path.join(dir, '001_partial_failure.sql'),
+      [
+        '-- Migration 001: create probe table',
+        '-- File: 001_partial_failure.sql',
+        '-- Date: 2026-09-26 01:20',
+        'CREATE TABLE probe_t32 (id INTEGER NOT NULL);',
+        '-- 故意失败：引用不存在的表',
+        'INSERT INTO probe_absent_table VALUES (1);',
+        '-- DOWN BEGIN',
+        'DROP TABLE IF EXISTS probe_t32;',
+        '-- DOWN END',
+        '',
+      ].join('\n'),
+    );
+
+    const db = freshDb();
+    try {
+      expect(() => runMigrations(db, dir)).toThrow();
+      const tables = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+        .all() as Array<{ name: string }>;
+      // 第一条语句已建出的表必须随事务一起回滚，否则库处于半破状态
+      expect(tables.map((t) => t.name)).not.toContain('probe_t32');
+      const versions = db.prepare('SELECT version FROM schema_migrations').all() as Array<{
+        version: string;
+      }>;
+      expect(versions.map((v) => v.version)).not.toContain('001');
+    } finally {
+      db.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('rolls back migrations in reverse order with their down scripts', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
+
+    // 回滚 014（证据主键退回单列 id；空库无跨画像重复 id，所以回滚是安全的）
+    const pkBefore14 = (db.prepare('PRAGMA table_info(evidence)').all() as Array<{
+      name: string;
+      pk: number;
+    }>)
+      .filter((c) => c.pk > 0)
+      .map((c) => c.name)
+      .sort();
+    expect(pkBefore14).toEqual(['id', 'profile_id']);
+    const result14 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result14.version).toBe('014');
+    const pkAfter14 = (db.prepare('PRAGMA table_info(evidence)').all() as Array<{
+      name: string;
+      pk: number;
+    }>)
+      .filter((c) => c.pk > 0)
+      .map((c) => c.name);
+    expect(pkAfter14).toEqual(['id']);
+    let evidenceAfter14 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(evidenceAfter14.map((t) => t.name)).toContain('evidence'); // 只换主键，不丢表
 
     // 回滚 013（applications 只去掉归属列，表本身仍在）
     const colsBefore13 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;

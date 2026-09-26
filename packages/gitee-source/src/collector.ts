@@ -230,7 +230,7 @@ export class GiteeSource {
   }
 
   /**
-   * 分阶段采集 L0（T25 L0 早返回）：只采账号元数据 + 仓库列表（Gitee L0 无行为时序），
+   * 分阶段采集 L0（T28：**只用于降级，不用于提前发布**——正常路径等 L1 到齐后一次性落画像）：只采账号元数据 + 仓库列表（Gitee L0 无行为时序），
    * 产出 L0 轻输入（commits/prs/issues 为空、missing=['l1_pending']）。返回 opaque
    * handle 给 collectStagedL1 复用（避免重复查询）。
    */

@@ -5,6 +5,13 @@
 
 /**
  * 分析引擎规则版本（analyzerVersion = `${SCHEMA_VERSION}-${ruleVersion}`）。
+ * 0.6（2026-09-26，T10）：`improvementSuggestions` 每条新增稳定 `code`，文案改由
+ * `shared` 的 `composeImprovementSuggestion(code, locale)` 现拼（快照里仍存按 'en'
+ * 拼出的数据层原句）。分级同样不受影响：`signals.ts` 自 `be07ab6` 起仍逐字节未变。
+ * 0.5（2026-09-25，#18 批次 6）：新增 `improvementSuggestions` 生产者（T09，
+ * `suggestions.ts` 两条保守规则、每条必挂真实证据）——画像输出新增可选字段。
+ * **分级不受影响的结构性证明**：`signals.ts` 自 0.3 代码态 `be07ab6` 起仍逐字节未变，
+ * T09 只新增文件与 `profile.ts` 装配一行，分级路径读不到它；0.4 的实跑校准结论由此继承。
  * 0.4（2026-09-25，#18 批次 1）：**画像输出实际已变**——技能目录新增 19 条 AI/Agent
  * framework 词条、framework 上限 8→10、新增 topics 兜底标签生产者（T04/T05）、
  * headline 改为平台正确且不带 login（T07）。
@@ -20,7 +27,7 @@
  * 全部 0 命中）。代码不能让分级变化，剩下只能是线上数据变了。
  * 结论：0.4 可上线。
  */
-export const RULE_VERSION = '0.5';
+export const RULE_VERSION = '0.6';
 
 /**
  * 真实性信号码。规则 0.1 遗留信号在 0.2/0.3 中逻辑未变，保留 r0.1 前缀以避免快照漂移；
