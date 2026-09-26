@@ -38,6 +38,8 @@ interface JobMatchItem {
   matchedSkills: string[];
   fieldScores?: FieldScores;
   skillReasons?: SkillReason[];
+  /** T20 跨源同岗位副本（不同来源的可跳转入口） */
+  alternateSources?: Array<{ source: string; sourceUrl: string }>;
   posting: {
     id?: string;
     title: string;
@@ -53,6 +55,8 @@ interface JobMatchItem {
 interface JobRecommendationsResponse {
   matches: JobMatchItem[];
   evidence?: Record<string, EvidenceBrief>;
+  total?: number;
+  offset?: number;
 }
 
 interface JobRecommendationsProps {
@@ -76,6 +80,8 @@ interface JobRecommendationsProps {
   evidenceCountTemplate: string;
   viewEvidenceLabel: string;
   generateResumeLabel: string;
+  loadMoreLabel: string;
+  alternateSourcesLabel: string;
 }
 
 const MAX_DISPLAY = 10;
@@ -144,11 +150,16 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
     evidenceCountTemplate,
     viewEvidenceLabel,
     generateResumeLabel,
+    loadMoreLabel,
+    alternateSourcesLabel,
   } = props;
 
   const [data, setData] = useState<JobRecommendationsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const matches = data?.matches ?? null;
 
   useEffect(() => {
@@ -156,6 +167,8 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
     async function load() {
       setLoading(true);
       setError(null);
+      setOffset(0);
+      setHasMore(false);
       try {
         const url = `${apiBase}/profiles/${encodeURIComponent(profileId)}/job-recommendations?limit=${MAX_DISPLAY}`;
         const res = await fetch(url, { credentials: 'include' });
@@ -163,6 +176,8 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
         const body = (await res.json()) as JobRecommendationsResponse;
         if (!cancelled) {
           setData({ matches: body.matches ?? [], evidence: body.evidence ?? {} });
+          const total = body.total ?? body.matches.length;
+          setHasMore(total > body.matches.length);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -175,6 +190,32 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
       cancelled = true;
     };
   }, [profileId, apiBase]);
+
+  // T20 翻页：加载下一页并追加（同一岗位不会重复——API 已跨源合并）
+  const loadMore = async (): Promise<void> => {
+    if (loadingMore || !data) return;
+    setLoadingMore(true);
+    try {
+      const next = offset + data.matches.length;
+      const url = `${apiBase}/profiles/${encodeURIComponent(profileId)}/job-recommendations?limit=${MAX_DISPLAY}&offset=${next}`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as JobRecommendationsResponse;
+      const seen = new Set(data.matches.map((m) => m.posting.sourceUrl));
+      const fresh = (body.matches ?? []).filter((m) => !seen.has(m.posting.sourceUrl));
+      setData({
+        matches: [...data.matches, ...fresh],
+        evidence: { ...data.evidence, ...body.evidence },
+      });
+      setOffset(next);
+      const total = body.total ?? 0;
+      setHasMore(total > next + fresh.length);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const fieldLabels: Array<[MatchField, string]> = [
     ['title', fieldTitleLabel],
@@ -243,6 +284,23 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
                     <span className="ja-muted">{formatDate(m.posting.postedAt, locale)}</span>
                   )}
                 </div>
+
+                {m.alternateSources && m.alternateSources.length > 0 && (
+                  <div className="rec-alt">
+                    <span className="ja-muted">{alternateSourcesLabel}:</span>
+                    {m.alternateSources.map((alt) => (
+                      <a
+                        key={alt.sourceUrl}
+                        href={alt.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rec-alt-link"
+                      >
+                        {alt.source}
+                      </a>
+                    ))}
+                  </div>
+                )}
 
                 {((reasons ? reasons.map((r) => r.skill) : m.matchedSkills).length > 0) && (
                   <div className="rec-skills">
@@ -340,6 +398,17 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
             );
           })}
         </ul>
+      )}
+
+      {!loading && !error && matches && matches.length > 0 && hasMore && (
+        <button
+          type="button"
+          className="ja-btn rec-load-more"
+          onClick={() => void loadMore()}
+          disabled={loadingMore}
+        >
+          {loadingMore ? `${loadMoreLabel}…` : loadMoreLabel}
+        </button>
       )}
     </section>
   );

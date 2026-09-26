@@ -103,7 +103,7 @@ import {
   type StoredEvidence,
   type StoredProfile,
 } from '@jobagent/storage';
-import { matchJobs } from '@jobagent/job-source';
+import { matchJobs, excludeAndMergeMatches } from '@jobagent/job-source';
 import {
   buildResume,
   renderHtml,
@@ -248,6 +248,8 @@ const JobMatchRequestSchema = z.object({
   postedAfter: z.string().trim().min(1).optional(),
   candidateLimit: z.number().int().positive().max(500).optional(),
   limit: z.number().int().positive().max(500).optional(),
+  /** T20 翻页：跳过前 offset 条去重后的匹配（默认 0） */
+  offset: z.number().int().nonnegative().optional(),
 }).refine((d) => (d.skills && d.skills.length > 0) || !!d.profileId, {
   message: 'either non-empty skills or profileId is required',
   path: ['skills'],
@@ -1209,6 +1211,19 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       if (!Number.isInteger(n) || n < 1 || n > 100) return c.json({ error: 'limit must be an integer between 1 and 100' }, 400);
       limit = n;
     }
+    // T20 翻页：跳过前 offset 条去重后的匹配
+    let offset = 0;
+    if (q.offset !== undefined) {
+      const n = Number(q.offset);
+      if (!Number.isInteger(n) || n < 0) return c.json({ error: 'offset must be a non-negative integer' }, 400);
+      offset = n;
+    }
+    // T20 关键词：title/tags/description 任一包含（子串，归一化后比较）
+    let keyword: string | undefined;
+    if (q.keyword !== undefined) {
+      keyword = String(q.keyword).trim();
+      if (keyword.length === 0) keyword = undefined;
+    }
     let candidateLimit = 500;
     if (q.candidate_limit !== undefined) {
       const n = Number(q.candidate_limit);
@@ -1223,8 +1238,30 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       limit: candidateLimit,
       orderBy: 'posted_desc',
     });
-    const matches = matchJobs(candidates, { skills, remote, salaryMinUsd, sources, limit });
-    const serialized = matches.map((x) => {
+    // limit 只控制分页（slice），不截断匹配——否则 total 会随页大小变化
+    const matches = matchJobs(candidates, {
+      skills,
+      remote,
+      salaryMinUsd,
+      sources,
+      keyword,
+    });
+    // T20：剔除已保存/已投（仅画像属主登录时能读投递；匿名无本人上下文不剔除），
+    // 跨源同岗位合并（同 company+title 只留 score 最高者）。
+    const principal = c.get('principal');
+    let excludeJobIds: Set<string> | undefined;
+    if (principal.kind === 'user') {
+      const owner = requireProfileOwner(c, profile);
+      if (!owner) {
+        const apps = await repos.applications.listByProfile(parsed.data.id);
+        const ids = new Set<string>();
+        for (const a of apps) if (a.jobId) ids.add(a.jobId);
+        if (ids.size > 0) excludeJobIds = ids;
+      }
+    }
+    const deduped = excludeAndMergeMatches(matches, { excludeJobIds });
+    const page = deduped.items.slice(offset, offset + limit);
+    const serialized = page.map(({ match: x, alternateSources }) => {
       const skillReasons = buildSkillReasons(x, tags);
       const base = {
         score: x.score,
@@ -1232,6 +1269,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
         fieldScores: x.fieldScores,
         skillHits: x.skillHits,
         posting: x.posting,
+        alternateSources,
       };
       return skillReasons ? { ...base, skillReasons } : base;
     });
@@ -1241,7 +1279,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       profileSkills: skills,
       matches: serialized,
       evidence: collectEvidence(allReasons, evidenceRows),
-      total: matches.length,
+      total: deduped.items.length,
+      excludedCount: deduped.excludedCount,
+      mergedCount: deduped.mergedCount,
+      offset,
       candidatePool: candidates.length,
     });
   });
@@ -1343,14 +1384,31 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       limit: m.candidateLimit ?? 500,
       orderBy: 'posted_desc',
     });
+    // limit 只控制分页（slice），不截断匹配——否则 total 会随页大小变化
     const matches = matchJobs(candidates, {
       skills,
       remote: m.remote,
       salaryMinUsd: m.salaryMinUsd,
       sources: m.sources,
-      limit: m.limit ?? 50,
+      keyword: m.keyword,
     });
-    const serialized = matches.map((x) => {
+    // T20：剔除已保存/已投（画像属主登录时）、跨源同岗位合并、offset 翻页
+    let excludeJobIds: Set<string> | undefined;
+    if (m.profileId) {
+      const matchPrincipal = c.get('principal');
+      if (matchPrincipal.kind === 'user') {
+        const profileForExclude = await repos.profiles.getById(m.profileId);
+        if (profileForExclude && !requireProfileOwner(c, profileForExclude)) {
+          const apps = await repos.applications.listByProfile(m.profileId);
+          const ids = new Set<string>();
+          for (const a of apps) if (a.jobId) ids.add(a.jobId);
+          if (ids.size > 0) excludeJobIds = ids;
+        }
+      }
+    }
+    const deduped = excludeAndMergeMatches(matches, { excludeJobIds });
+    const page = deduped.items.slice(m.offset ?? 0, (m.offset ?? 0) + (m.limit ?? 50));
+    const serialized = page.map(({ match: x, alternateSources }) => {
       const skillReasons = buildSkillReasons(x, tags);
       const base = {
         score: x.score,
@@ -1358,6 +1416,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
         fieldScores: x.fieldScores,
         skillHits: x.skillHits,
         posting: x.posting,
+        alternateSources,
       };
       return skillReasons ? { ...base, skillReasons } : base;
     });
@@ -1390,7 +1449,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     }
     return c.json({
       matches: serialized,
-      total: matches.length,
+      total: deduped.items.length,
+      excludedCount: deduped.excludedCount,
+      mergedCount: deduped.mergedCount,
+      offset: m.offset ?? 0,
       ...(m.profileId ? { profileSkills: skills } : {}),
       ...(tags ? { evidence: collectEvidence(allReasons, evidenceRows) } : {}),
     });
