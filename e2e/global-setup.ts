@@ -12,15 +12,19 @@ import {
   buildFusedFixtureProfile,
   buildGiteeFixtureProfile,
   buildNextStepsFixtureProfile,
+  buildPartialFixtureProfile,
   FIXTURE_PROFILE_ID,
   FIXTURE_CLAIMED_PROFILE_ID,
   FIXTURE_FUSED_PROFILE_ID,
   FIXTURE_GITEE_PROFILE_ID,
   FIXTURE_NEXT_STEPS_PROFILE_ID,
   FIXTURE_NEXT_STEPS_EVIDENCE_ID,
+  FIXTURE_PARTIAL_PROFILE_ID,
   FIXTURE_LOGIN,
   FIXTURE_ACCOUNT_PROVIDER_ID,
   FIXTURE_SESSION_TOKEN,
+  FIXTURE_EMPTY_LOGIN,
+  FIXTURE_EMPTY_SESSION_TOKEN,
 } from './fixtures/sample-profile.js';
 
 const TMP_DIR = resolve(process.cwd(), 'e2e', '.tmp');
@@ -116,6 +120,38 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       rawRef: 'e2e-next-steps-user/core@aa11bb2',
     },
   ]);
+
+  // T29：partial 终态画像（T25 语义），供批次 6 表面「partial 提示条」浏览器级验证。
+  const partialProfile = buildPartialFixtureProfile();
+  await storage.profiles.insert({
+    id: FIXTURE_PARTIAL_PROFILE_ID,
+    analyzerVersion: partialProfile.analyzerVersion,
+    subjectPlatform: partialProfile.subject.platform,
+    subjectLogin: partialProfile.subject.login,
+    subjectClaimed: partialProfile.subject.claimed,
+    dataWindowSince: partialProfile.dataWindow.since,
+    dataWindowUntil: partialProfile.dataWindow.until,
+    status: 'partial',
+    snapshot: partialProfile,
+  });
+
+  // T29：「我的」页空态账号——登录但名下没有任何画像（供 my-page 空态断言）。
+  const emptyAccount = await storage.accounts.upsertFromProvider({
+    id: 'acc-e2e-empty',
+    identity: {
+      platform: 'github',
+      providerAccountId: '9002',
+      login: FIXTURE_EMPTY_LOGIN,
+      name: 'E2E Empty User',
+      email: null,
+      avatarUrl: null,
+    },
+  });
+  await storage.authSessions.create({
+    id: FIXTURE_EMPTY_SESSION_TOKEN,
+    accountId: emptyAccount.id,
+    expiresAt: '2030-01-01T00:00:00.000Z',
+  });
 
   // 授权分级闸（2026-09-19）：本人账号 + 固定未过期会话 + 一条可点击外部 PR 证据，
   // 供 gated-content spec 用 jobagent_session cookie 模拟已登录 user。

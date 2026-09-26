@@ -1,5 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { FIXTURE_PROFILE_ID, FIXTURE_LOGIN } from './fixtures/sample-profile.js';
+import { preloadAstro } from './preload.js';
+
+// T29：本 spec 按字母序最先执行，beforeAll 预热全部 fixture 路由（Astro dev SSR 冷编译），
+// 缓解 CI 上后续 spec 的偶发 page.goto 30s 超时（item81）。
+test.beforeAll(async () => {
+  await preloadAstro('http://127.0.0.1:4321');
+}, { timeout: 120000 });
 
 /**
  * 账号登录/认领前端 E2E（账号主脊 item28-⑤）：
