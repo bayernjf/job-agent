@@ -141,6 +141,9 @@ importers:
       '@jobagent/api':
         specifier: workspace:*
         version: link:../api
+      '@jobagent/job-source':
+        specifier: workspace:*
+        version: link:../../packages/job-source
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../../packages/shared

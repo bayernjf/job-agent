@@ -145,6 +145,51 @@ describe('renderHtml', () => {
     expect(html).toContain('print-color-adjust: exact');
   });
 
+  it('renders structured project entries with scale and evidence link (T13)', () => {
+    const draft = buildResume(
+      baseInput('PR "Stream MCP responses" (acme/repo#42) · +120/-30 across 14 files'),
+    );
+    expect(draft.projectEntries.length).toBeGreaterThan(0);
+    const entry = draft.projectEntries[0]!;
+    expect(entry.project).toBe('acme/repo');
+    expect(entry.action).toBe('pr');
+    expect(entry.title).toBe('Stream MCP responses');
+    expect(entry.scale).toBe('+120/-30 across 14 files');
+    expect(entry.evidenceRefs).toContain('ev-1');
+
+    const md = renderMarkdown(draft, 'zh-CN');
+    expect(md).toContain('## 项目经历');
+    expect(md).toContain('[PR Stream MCP responses](https://github.com/acme/repo/pull/1)');
+    expect(md).toContain('acme/repo');
+    expect(md).toContain('+120/-30 across 14 files');
+
+    const html = renderHtml(draft, 'zh-CN');
+    expect(html).toContain('<h2>项目经历</h2>');
+    expect(html).toContain('PR Stream MCP responses</a>');
+    expect(html).toContain('+120/-30 across 14 files');
+  });
+
+  it('renders the quantified line when activity.metrics has all three keys (T14)', () => {
+    const input = baseInput();
+    input.profile.activity = {
+      metrics: { mergedPullRequests: 38, commitRepoCount: 7, activeMonths: 24 },
+    };
+    const md = renderMarkdown(buildResume(input), 'zh-CN');
+    expect(md).toContain('已合并 38 个 PR，覆盖 7 个活跃仓库，持续 24 个月');
+
+    const enInput = { ...input, options: { ...input.options, locale: 'en' as const } };
+    const en = renderMarkdown(buildResume(enInput), 'en');
+    expect(en).toContain('Merged 38 pull request(s) across 7 active repositories over 24 months.');
+  });
+
+  it('omits the quantified line when metrics lack a key (old snapshots stay clean)', () => {
+    const input = baseInput();
+    input.profile.activity = { metrics: { commitCount: 120 } };
+    const md = renderMarkdown(buildResume(input), 'zh-CN');
+    expect(md).not.toContain('已合并');
+    expect(md).not.toContain('pull request');
+  });
+
   it('links evidence and keeps the score box out of the exported file (T12)', () => {
     const draft = buildResume(baseInput());
     const html = renderHtml(draft, 'en');

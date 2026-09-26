@@ -6,7 +6,14 @@
  * - 所有外部文本经 escapeHtml，防 claim/补填文本注入。
  * - 交付物卫生（T12）：匹配分分解、`[missing_*]` 改进提示、provenance 脚注不进本文件。
  */
-import { composeSkillDepthLabel, type ResumeDraft, type ResumeEntry, type ResumeLocale } from '@jobagent/shared';
+import {
+  composeSkillDepthLabel,
+  type ProjectEntry,
+  type ResumeDraft,
+  type ResumeEntry,
+  type ResumeLocale,
+} from '@jobagent/shared';
+import { actionLabel } from '../project-entries.js';
 import { resumeCopy } from '../i18n.js';
 
 export function escapeHtml(s: string): string {
@@ -48,6 +55,18 @@ function evidenceItems(list: ResumeEntry[], supportsLabel: string): string {
         ? ` <span class="muted">(${escapeHtml(supportsLabel)}: ${e.supportsSkills.map(escapeHtml).join(', ')})</span>`
         : '';
       return `<li>${body}${date ? ` <span class="muted">${date}</span>` : ''}${supports}</li>`;
+    })
+    .join('')}</ul>`;
+}
+
+function projectItems(list: ProjectEntry[]): string {
+  if (list.length === 0) return '<p class="muted">&mdash;</p>';
+  return `<ul>${list
+    .map((e) => {
+      const date = formatDate(e.occurredAt);
+      const scale = e.scale ? ` <span class="muted">${escapeHtml(e.scale)}</span>` : '';
+      const when = date ? ` <span class="muted">${date}</span>` : '';
+      return `<li><a href="${escapeHtml(e.url)}" rel="noopener noreferrer">${escapeHtml(actionLabel(e.action))} ${escapeHtml(e.title)}</a> <span class="muted">(${escapeHtml(e.project)})</span>${scale}${when}</li>`;
     })
     .join('')}</ul>`;
 }
@@ -131,6 +150,12 @@ ${draft.otherSkills.length ? `<h3>${copy.otherSkillsHeading}</h3>${skillItems(dr
 
 <h2>${copy.highlightsHeading}</h2>
 ${evidenceItems(draft.evidenceHighlights, copy.supportsLabel)}
+
+${
+  (draft.projectEntries?.length ?? 0)
+    ? `<h2>${copy.projectsHeading}</h2>${projectItems(draft.projectEntries)}`
+    : ''
+}
 
 ${
   draft.collaboration.length

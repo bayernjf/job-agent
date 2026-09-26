@@ -5,7 +5,14 @@
  * 交付物卫生（T12）：匹配分分解、`[missing_*]` 改进提示、provenance 脚注**不进本文件**——
  * 那些是给产品界面看的调试面，投出去的文件里只留简历本身。
  */
-import { composeSkillDepthLabel, type ResumeDraft, type ResumeEntry, type ResumeLocale } from '@jobagent/shared';
+import {
+  composeSkillDepthLabel,
+  type ProjectEntry,
+  type ResumeDraft,
+  type ResumeEntry,
+  type ResumeLocale,
+} from '@jobagent/shared';
+import { actionLabel } from '../project-entries.js';
 import { resumeCopy } from '../i18n.js';
 
 function escapeMd(s: string): string {
@@ -24,6 +31,16 @@ function entryLine(e: ResumeEntry, supportsLabel: string): string {
   const link = e.url ? `[${escapeMd(e.text)}](${e.url})` : escapeMd(e.text);
   const meta = [e.source === 'local' ? '' : date].filter(Boolean).join(' · ');
   return `- ${link}${meta ? ` (${meta})` : ''}${supports}`;
+}
+
+function projectLine(e: ProjectEntry): string {
+  const date = formatDate(e.occurredAt);
+  const label = `${actionLabel(e.action)} ${escapeMd(e.title)}`;
+  const link = `[${label}](${e.url})`;
+  const parts = [escapeMd(e.project), e.scale ? escapeMd(e.scale) : '', date]
+    .filter(Boolean)
+    .join(' · ');
+  return `- ${link} (${parts})`;
 }
 
 function skillLine(e: ResumeEntry, locale: ResumeLocale): string {
@@ -75,6 +92,12 @@ export function renderMarkdown(draft: ResumeDraft, locale: ResumeLocale = 'zh-CN
   if (draft.evidenceHighlights.length === 0) lines.push(copy.noEntry);
   else draft.evidenceHighlights.forEach((e) => lines.push(entryLine(e, copy.supportsLabel)));
   lines.push('');
+
+  if ((draft.projectEntries?.length ?? 0) > 0) {
+    lines.push(`## ${copy.projectsHeading}`);
+    draft.projectEntries.forEach((e) => lines.push(projectLine(e)));
+    lines.push('');
+  }
 
   if (draft.collaboration.length > 0) {
     lines.push(`## ${copy.collaborationHeading}`);
