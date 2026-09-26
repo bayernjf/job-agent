@@ -193,7 +193,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
 | ✅ T09 | `improvementSuggestions` **生产者**（2026-09-25 落地，规则 0.5）（契约已在 `shared/src/index.ts:179-187`，全仓零生产者） | 纯函数、规则版本化；每条挂 `evidenceRefs`；任取 5 份真实画像出 3–5 条**可执行可核验**建议（禁"多参与开源"这类无证据套话） | T08 |
-| T10 | 报告页"下一步动作"区块 | 中英 key 同构、全用 `--ja-*` token、证据可点开；`pnpm e2e` 补用例 | T09 |
+| ✅ T10 | 报告页"下一步动作"区块（**2026-09-26 落地**，规则 0.6） | 中英 key 同构、全用 `--ja-*` token、证据可点开；`pnpm e2e` 补用例 —— **达成**：区块只认每条的 `code`、文案由 `shared` 的 `composeImprovementSuggestion(code, locale)` 现拼（快照仍存数据层英文原句，与 T07 headline 同套路）；i18n 各 +5 key 由一致性测试守护；E2E 4 例（英文原句 / 中文页不出现英文句 / 登录后证据外链解锁 / 招聘方视图不渲染） | T09 |
 
 ### 批次 3 · C-C 交得出东西
 
@@ -244,7 +244,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | T29 | **给批次 6 的三个新前端表面补浏览器级验证**（P1）：`/my`（登录态 + 空态）、自选岗位表单（填→提交→简历预览）、partial 提示条与 `?unavailable=1` 分流；另修两件事——简历岛不再让零技能画像彻底没有出路（与 T15 同族），`apps/api` 显式 testTimeout 或给 `interviews`/`resume` 两条撞线用例留余量 | 报告 E2E 用例数从 **66** 上升且新增用例真覆盖上述三表面；`pnpm -r test` 在负载下不再出现 5s 超时假红 | — |
 | T30 | **岗位池口径对齐**（P2）：`GET /job-postings/stats` 已如实报 `active:0`（7 天新鲜窗口），CLI `jobs stats` 仍报 `active=2303`（状态列），同一件事两个表面讲两个故事 | CLI 增列"新鲜窗口内 N 条"，或两处输出都带 cutoff 语义；产品界面不得出现"看起来有 2303 条在招"的错觉 | T24 |
 
-> **T09 只完成了一半**：生产者已接进画像，但 `improvementSuggestions` 在 `apps/report`/`apps/extension` **零消费者**（grep 0 命中）——第 2 步"指得清路"对用户仍不可见，可见性就是 **T10**，别再把它当已完成项。
+> ~~**T09 只完成了一半**~~ → **T10 已于 2026-09-26 补完这一半**：区块在报告页 `[locale]/report/[profileId].astro` 落地（`data-testid="next-steps"`），每条按 `code` 现拼读者语言、证据外链沿用登录闸。`apps/extension` 仍**不**消费本字段（面板没有"建议"位，且扩展的一键填充场景不需要），这是刻意边界不是遗漏。
 
 | ✅ T31 | **回访即崩（P0，同日 T28 验证时用真 GitHub 撞出来的既存缺陷）**：`evidence` 表主键是裸 `id`（`sqlite/schema.ts:99`），而 `importFromProfile` 把 `id` 设成 `item.evidenceId`（不含 profileId，形如 `pr:owner/repo#12`）⇒ **同一账号第二次分析必撞 `UNIQUE constraint failed: evidence.id`**；缓存命中又要求 `complete` + 24h 内（`api/index.ts:875-881`），所以画像过期后、或 T28 之后的 `partial` 终态用户，每次重试都崩。跨账号同一条外部 PR 也撞。缺陷自证据入库起就存在（`59678c8` 前即如此），只因单测每例新建内存库、CLI 不落库而从未被跑到 | **2026-09-26 已落地**（`94d161b`/`fab1598`）：迁移 `014_alter_evidence_primary_key` 两侧各一份改复合主键 `(profile_id, id)`；`getById` 收窄为 `(profileId, id)`；worker 加"同账号连跑两次都成功"回归；**真 Postgres 16 容器实测**：有跨画像重复 id 时回滚拒绝（exit 1）、清掉后重试成功、重新 up 恢复复合主键。F10 预留号顺延为 **015**（编号必须连续，`migrations.test.ts:29-33` 守护） | T28 |
 | ✅ T32 | **迁移器逐语句无事务**（P1，验证 T31 时实测撞到）：`postgres/migrator.ts` 按 `;` 拆句逐条 `sql.unsafe()` 执行且不包事务，某条中途失败时前面的 DDL 已生效、`schema_migrations` 却不变 ⇒ **表留在半破状态**（实测：`evidence` 丢了主键而 014 仍记 applied）。副作用：`DO $$ ... $$;` 这类合法 PG 写法在本迁移器里不可用（会被从块中间切断） | **2026-09-26 已落地**：两侧都改成"一个迁移文件 = 一条事务，且整文件作为一条 simple query 发送"（PG 实测多语句 simple query 本身即隐式事务，顺带解掉拆句问题，死掉的 `splitStatements` 随之删除）；SQLite 用 `db.transaction()` 包住 DDL + 版本读写。**实测双向**：PG 失败文件的 `beta` 表不残留、版本不记；被拒绝的 down 不再把主键拆掉（`PRIMARY KEY (profile_id, id)` 与 014 记录都还在）。新增用例 `T32: a failing migration file leaves no partial schema and records no version`，并**用同一形状的老写法实测它会红**（无事务时表残留 true / 包事务 false） | — |

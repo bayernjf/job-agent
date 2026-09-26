@@ -407,6 +407,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 - `collaboration`（prSummary、externalMergedContributions）
 - `authenticity`（status、confidence、signals[]）
 - `interviewQuestions[]`、`caveats[]`
+- `improvementSuggestions[]`（可选，规则版本 0.6 起，T09 产 / T10 渲染）：`code`（稳定枚举 `no_pull_requests` / `no_external_contributions`）+ `suggestion`/`why`（**数据层英文原句**，由 `composeImprovementSuggestion(code, 'en')` 拼出）+ `evidenceRefs`（无证据不产条目）。报告页"下一步动作"区块按读者语言用 `composeImprovementSuggestion(code, locale)` 现拼，**只认 `code`、不按英文句子匹配**；接口本身不返回中文句。
 
 #### 不存在（404）
 
@@ -430,7 +431,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
   "profileId": "prf_...",
   "status": "complete",
   "cached": true,
-  "analyzerVersion": "0.1-0.5",
+  "analyzerVersion": "0.1-0.6",
   "updatedAt": "2026-09-20T08:00:00.000Z"
 }
 ```
