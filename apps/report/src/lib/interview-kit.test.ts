@@ -77,6 +77,62 @@ describe('renderInterviewKit', () => {
     expect(md).toContain('暂无可点击的原始证据');
   });
 
+  it('renders the quantified overview when metrics have all three keys (T14)', () => {
+    const p = profile();
+    p.activity = { metrics: { mergedPullRequests: 38, commitRepoCount: 7, activeMonths: 24 } };
+    const md = renderInterviewKit(p, [], 'zh-CN');
+    expect(md).toContain('## 量化概览');
+    expect(md).toContain('已合并 38 个 PR，覆盖 7 个活跃仓库，持续 24 个月');
+
+    const en = renderInterviewKit(p, [], 'en');
+    expect(en).toContain('## Quantified overview');
+    expect(en).toContain('Merged 38 pull request(s) across 7 active repositories over 24 months.');
+  });
+
+  it('omits the quantified block when metrics lack a key (old snapshots stay clean)', () => {
+    const md = renderInterviewKit(profile(), [], 'zh-CN');
+    expect(md).not.toContain('量化概览');
+    expect(md).not.toContain('已合并');
+  });
+
+  it('renders job-targeted prep with matched skills and ask-back questions (T16)', () => {
+    const md = renderInterviewKit(
+      profile(),
+      [evidence('e1', 'perf PR', 'https://github.test/pr/1')],
+      'zh-CN',
+      {
+        posting: { title: 'Frontend Engineer', company: 'Acme', sourceUrl: 'https://example.com/jobs/1' },
+        matchedSkills: ['TypeScript'],
+      },
+    );
+    expect(md).toContain('## 岗位定向准备');
+    expect(md).toContain('目标岗位：**Frontend Engineer** @ Acme');
+    expect(md).toContain('### 岗位命中技能');
+    expect(md).toContain('**TypeScript**');
+    expect(md).toContain('[perf PR](https://github.test/pr/1)');
+    expect(md).toContain('## 你该反问什么');
+    expect(md).toContain('针对「TypeScript」');
+
+    const en = renderInterviewKit(
+      profile(),
+      [evidence('e1', 'perf PR', 'https://github.test/pr/1')],
+      'en',
+      {
+        posting: { title: 'Frontend Engineer', company: 'Acme', sourceUrl: 'https://example.com/jobs/1' },
+        matchedSkills: ['TypeScript'],
+      },
+    );
+    expect(en).toContain('## Job-targeted prep');
+    expect(en).toContain('## Questions to ask back');
+    expect(en).toContain('For "TypeScript"');
+  });
+
+  it('stays generic when no job options are passed (T16 backward compatible)', () => {
+    const md = renderInterviewKit(profile(), [], 'zh-CN');
+    expect(md).not.toContain('岗位定向准备');
+    expect(md).not.toContain('你该反问什么');
+  });
+
   it('renders English kit', () => {
     const md = renderInterviewKit(profile(), [evidence('e1', 'perf PR', 'https://github.test/pr/1')], 'en');
     expect(md).toContain('# Interview Prep Kit · Alice');
