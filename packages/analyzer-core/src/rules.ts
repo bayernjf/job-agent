@@ -5,6 +5,13 @@
 
 /**
  * 分析引擎规则版本（analyzerVersion = `${SCHEMA_VERSION}-${ruleVersion}`）。
+ * 0.8（2026-09-27，T14 遗留排序修正）：framework 标签排序键由「仅 confidence」
+ * 改为「depth 主序 + confidence + 仓库数加分（封顶 0.1）+ 名称确定性」——此前并列
+ * 0.5 的单仓弱信号与多仓真实标签无法区分、真实技术栈会被挤出前十。排序只影响
+ * `skillTags` 输出集合与顺序，分级不受影响（`signals.ts` 对 `skillTag` 零引用，
+ * 继承 0.4 起的分级结论）；标签输出是画像内容，行为变了就必须升版。
+ * 0.7（2026-09-26，T33）：信号/面试题新增可复算 `facts`、metrics 补
+ * `externalMergedPullRequests`，渲染面只认 code+facts 现拼。
  * 0.6（2026-09-26，T10）：`improvementSuggestions` 每条新增稳定 `code`，文案改由
  * `shared` 的 `composeImprovementSuggestion(code, locale)` 现拼（快照里仍存按 'en'
  * 拼出的数据层原句）。分级同样不受影响：`signals.ts` 自 `be07ab6` 起仍逐字节未变。
@@ -27,7 +34,7 @@
  * 全部 0 命中）。代码不能让分级变化，剩下只能是线上数据变了。
  * 结论：0.4 可上线。
  */
-export const RULE_VERSION = '0.7';
+export const RULE_VERSION = '0.8';
 
 /**
  * 真实性信号码。规则 0.1 遗留信号在 0.2/0.3 中逻辑未变，保留 r0.1 前缀以避免快照漂移；

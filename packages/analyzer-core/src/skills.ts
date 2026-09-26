@@ -248,6 +248,14 @@ function computeCatalogTags(input: AnalyzerInput, known: Set<string>): SkillTag[
   }
 
   const produced: SkillTag[] = [];
+  const repoCountByTag = new Map<string, number>();
+
+  /** framework 排序键：depth 主序（proficient 提 0.2）+ 置信度 + 仓库数加分（封顶 0.1，只破并列）+ 名称确定性。 */
+  function frameworkRankKey(t: SkillTag): number {
+    const depthBonus = t.depth === 'proficient' ? 0.2 : 0;
+    const repoBonus = Math.min(0.1, 0.02 * ((repoCountByTag.get(t.name) ?? 1) - 1));
+    return t.confidence + depthBonus + repoBonus;
+  }
   for (const agg of aggregates.values()) {
     // repo 证据最多 3、行为证据最多 2，且必须真实存在
     const repoEvidence = agg.refList.filter((r) => r.startsWith('repo:')).slice(0, 3);
@@ -272,14 +280,20 @@ function computeCatalogTags(input: AnalyzerInput, known: Set<string>): SkillTag[
       confidence,
       evidenceRefs,
     });
+    repoCountByTag.set(agg.entry.name, repoCount);
   }
 
   // 上限从 8 提到 10（T05 同批）：AI/Agent 层进词典后，一个全栈 agent 开发者的
   // 框架标签数已经越过 8——实测 bayernjf 的 vue 被挤掉。上限的作用是防灌水，
-  // 不是牺牲真实技术，所以先放宽到 10，等 T14 之后按真实画像分布再校。
+  // 不是牺牲真实技术，所以先放宽到 10。T14 之后按真实画像分布再校（2026-09-27）：
+  // 问题不在上限大小，而是一堆并列 0.5 的单仓弱信号在抢名额——只按 confidence
+  // 排序时它们与"多仓真实标签"无法区分。排序键改为 depth 主序 + confidence +
+  // 仓库数加分（封顶 0.1，只破并列、不盖过置信度差）+ 名称确定性：proficient
+  // （多仓或行为佐证）先于 used，仓库数在并列弱信号中打破平局，真实多仓技术栈
+  // 上浮、单仓凑数标签下沉。
   const frameworks = produced
     .filter((t) => t.kind === 'framework')
-    .sort((a, b) => b.confidence - a.confidence)
+    .sort((a, b) => frameworkRankKey(b) - frameworkRankKey(a) || a.name.localeCompare(b.name))
     .slice(0, 10);
   const domains = produced
     .filter((t) => t.kind === 'domain')
