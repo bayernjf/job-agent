@@ -49,11 +49,21 @@ export const FIXTURE_CLAIMED_PROFILE_ID = 'profe2efixture00000000000003';
 export const FIXTURE_NEXT_STEPS_PROFILE_ID = 'profe2efixture00000000000004';
 export const FIXTURE_NEXT_STEPS_LOGIN = 'e2e-next-steps-user';
 export const FIXTURE_NEXT_STEPS_EVIDENCE_ID = 'evt-next-steps-commit';
+// T29：partial 终态画像（T25 语义：仅 L0 + analysisLayers:['L0']，存储行 status='partial'），
+// 供批次 6 表面「partial 提示条」的浏览器级验证。
+export const FIXTURE_PARTIAL_PROFILE_ID = 'profe2efixture00000000000005';
+export const FIXTURE_PARTIAL_LOGIN = 'e2e-partial-user';
+// T29：「我的」页空态——登录但名下没有任何画像的账号。
+export const FIXTURE_EMPTY_LOGIN = 'e2e-empty-user';
+export const FIXTURE_EMPTY_SESSION_TOKEN = 'ses-e2e-empty-token';
 
 /**
  * globalSetup 实际落盘的全部画像 id（人才库 E2E 据此断言卡片数，
  * 新增 fixture 时只改这里，不用再回去数 spec 里的硬编码）。
  */
+// 注：FIXTURE_PROFILE_IDS 语义是「complete 终态画像集」（recruiter-features 用其 length
+// 数卡片，且 searchCandidates 只扫 status='complete'）；partial 画像不入此数组，
+// 由 FIXTURE_PARTIAL_PROFILE_ID 独立引用（T29）。
 export const FIXTURE_PROFILE_IDS = [
   FIXTURE_PROFILE_ID,
   FIXTURE_FUSED_PROFILE_ID,
@@ -182,6 +192,20 @@ export function buildGiteeFixtureProfile(): AbilityProfile {
 export function buildClaimedFixtureProfile(): AbilityProfile {
   const base = buildFixtureProfile({ id: FIXTURE_CLAIMED_PROFILE_ID });
   return AbilityProfileSchema.parse({ ...base, subject: { ...base.subject, claimed: true } });
+}
+
+/** partial 终态画像 fixture（T25/T29）：仅 L0、真实性证据不足；存储行 status='partial'。 */
+export function buildPartialFixtureProfile(): AbilityProfile {
+  const base = buildFixtureProfile({
+    id: FIXTURE_PARTIAL_PROFILE_ID,
+    login: FIXTURE_PARTIAL_LOGIN,
+    displayName: 'E2E Partial User',
+  });
+  return AbilityProfileSchema.parse({
+    ...base,
+    analysisLayers: ['L0'],
+    authenticity: { status: 'insufficient_data', confidence: 0.35, signals: [] },
+  });
 }
 
 /**
