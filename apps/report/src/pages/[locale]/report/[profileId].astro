@@ -15,7 +15,17 @@ import { resolveViewer, canViewGatedContent, canViewApplications } from '../../.
 import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
 import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
 import { browserApiBase } from '../../../lib/api-base.js';
-import { composeHeadline, composeImprovementSuggestion, headlineFactsFromProfile } from '@jobagent/shared';
+import {
+  composeHeadline,
+  composeImprovementSuggestion,
+  composeSignalLabel,
+  composeSignalDetail,
+  composeInterviewIntent,
+  composeCadenceSummary,
+  composePrSummary,
+  prSummaryFactsFromProfile,
+  headlineFactsFromProfile,
+} from '@jobagent/shared';
 import type { EvidenceItem, SkillTagKind } from '@jobagent/shared';
 
 const { locale: rawLocale, profileId } = Astro.params;
@@ -321,10 +331,10 @@ const applicationStatusLabels = {
             return (
               <div class={`signal signal--${signal.severity}`}>
                 <div class="ja-flex-between">
-                  <strong>{signal.label}</strong>
+                  <strong>{composeSignalLabel(signal.code, locale, signal.label)}</strong>
                   <span class="ja-muted signal-code">{signal.code}</span>
                 </div>
-                <p>{signal.detail}</p>
+                <p>{composeSignalDetail(signal.code, locale, signal.detail, signal.facts)}</p>
                 {
                   isRecruiter && canViewGated && sigEvidence.length > 0 && (
                     <ul class="evidence-links">
@@ -501,12 +511,20 @@ const applicationStatusLabels = {
                 <strong>{t('report.activity.months', { count: profile.activity.longevityMonths })}</strong>
               </div>
             )}
-            {profile.activity.cadenceSummary && (
-              <div class="ja-flex-between">
-                <span class="ja-muted">{t('report.activity.cadence')}</span>
-                <strong>{profile.activity.cadenceSummary}</strong>
-              </div>
-            )}
+            {profile.activity.cadenceSummary &&
+              typeof profile.activity.metrics?.totalCommits === 'number' &&
+              typeof profile.activity.metrics?.activeMonths === 'number' &&
+              profile.activity.metrics.activeMonths > 0 && (
+                <div class="ja-flex-between">
+                  <span class="ja-muted">{t('report.activity.cadence')}</span>
+                  <strong>
+                    {composeCadenceSummary(
+                      { commits: profile.activity.metrics.totalCommits, months: profile.activity.metrics.activeMonths },
+                      locale,
+                    )}
+                  </strong>
+                </div>
+              )}
             {profile.activity.metrics && Object.keys(profile.activity.metrics).length > 0 && (
               <div class="metrics-grid">
                 {Object.entries(profile.activity.metrics).map(([key, value]) => (
@@ -531,7 +549,10 @@ const applicationStatusLabels = {
         <section class="ja-card">
           <h2>{t('report.collaboration.title')}</h2>
           <div class="ja-stack-2">
-            {profile.collaboration.prSummary && <p>{profile.collaboration.prSummary}</p>}
+            {profile.collaboration.prSummary && (() => {
+              const facts = prSummaryFactsFromProfile(profile);
+              return <p>{facts ? composePrSummary(facts, locale) : profile.collaboration.prSummary}</p>;
+            })()}
             {profile.collaboration.externalMergedContributions &&
               profile.collaboration.externalMergedContributions.length > 0 && (
                 <div>
@@ -572,7 +593,7 @@ const applicationStatusLabels = {
                 <div class="interview-item">
                   <p class="question">{iq.question}</p>
                   <p class="ja-muted intent">
-                    {t('report.interview.intent')}: {iq.intent}
+                    {t('report.interview.intent')}: {composeInterviewIntent(iq.kind, locale, iq.intent)}
                   </p>
                   {
                     isRecruiter && qEvidence.length > 0 && (

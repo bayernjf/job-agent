@@ -5,7 +5,13 @@
  * 内容全部来自画像已有证据，不新增任何结论；面试题附上可点击的原始证据，
  * 方便求职者围绕"自己真正做过的事"准备，而不是背通用八股。
  */
-import { composeHeadline, headlineFactsFromProfile } from '@jobagent/shared';
+import {
+  composeHeadline,
+  composeSignalLabel,
+  composeSignalDetail,
+  composeInterviewIntent,
+  headlineFactsFromProfile,
+} from '@jobagent/shared';
 import type { AbilityProfile, EvidenceItem, SkillTagKind } from '@jobagent/shared';
 import type { Locale } from '../i18n/index.js';
 
@@ -125,7 +131,9 @@ export function renderInterviewKit(
   lines.push(`## ${d.authenticity}`);
   lines.push(`${d.confidence}: ${Math.round(profile.authenticity.confidence * 100)}%`);
   for (const signal of profile.authenticity.signals) {
-    lines.push(`- ${signal.label}: ${signal.detail}`);
+    lines.push(
+      `- ${composeSignalLabel(signal.code, locale, signal.label)}: ${composeSignalDetail(signal.code, locale, signal.detail, signal.facts)}`,
+    );
   }
   lines.push('');
 
@@ -137,7 +145,7 @@ export function renderInterviewKit(
   } else {
     profile.interviewQuestions.forEach((q, i) => {
       lines.push(`${i + 1}. **${q.question}**`);
-      lines.push(`    - ${d.intent}: ${q.intent}`);
+      lines.push(`    - ${d.intent}: ${composeInterviewIntent(q.kind, locale, q.intent)}`);
       lines.push(evidenceLine(q.basisEvidenceRef, byId, d));
       lines.push('');
     });
