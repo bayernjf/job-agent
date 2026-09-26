@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { buildResume, renderHtml, renderMarkdown } from '../index.js';
 import type { BuildResumeInput } from '../index.js';
 
+function thinInput(status: 'insufficient_data' | 'suspicious'): BuildResumeInput {
+  const input = baseInput();
+  input.profile.authenticity = { status, confidence: 0.3, signals: [] };
+  return input;
+}
+
 function baseInput(claim = 'Refactored service'): BuildResumeInput {
   return {
     profile: {
@@ -199,5 +205,25 @@ describe('renderHtml', () => {
     expect(html).not.toContain('[missing_');
     expect(html).not.toContain('Provenance');
     expect(html).not.toContain('Suggestions');
+  });
+
+  it('annotates data quality for thin profiles in draft gaps, md and html (T15)', () => {
+    for (const status of ['insufficient_data', 'suspicious'] as const) {
+      const draft = buildResume(thinInput(status));
+      expect(draft.gaps.some((g) => g.includes(status === 'insufficient_data' ? '数据不足' : '存疑'))).toBe(true);
+      expect(draft.dataQualityNote).toBeDefined();
+      const md = renderMarkdown(draft, 'zh-CN');
+      expect(md).toContain('## 数据说明');
+      const html = renderHtml(draft, 'zh-CN');
+      expect(html).toContain('数据说明');
+      expect(html).toContain('class="notice"');
+    }
+  });
+
+  it('omits the data quality note for normal profiles (old output stays byte-identical) (T15)', () => {
+    const draft = buildResume(baseInput());
+    expect(draft.dataQualityNote).toBeUndefined();
+    expect(renderMarkdown(draft, 'zh-CN')).not.toContain('数据说明');
+    expect(renderMarkdown(draft, 'en')).not.toContain('Data notice');
   });
 });

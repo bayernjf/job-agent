@@ -32,6 +32,9 @@ export interface ResumeCopy {
   gapContact: string;
   fieldLabels: { email: string; phone: string; location: string; personalSite: string; education: string; workHistory: string };
   noEntry: string; // 空区块占位
+  // T15：薄画像（insufficient_data/suspicious）时的诚实数据说明，投出去的交付物可见
+  dataQualityNote: (status: string) => string;
+  dataQualityHeading: string;
 }
 
 const zh: ResumeCopy = {
@@ -65,6 +68,11 @@ const zh: ResumeCopy = {
     workHistory: '工作经历',
   },
   noEntry: '（暂无）',
+  dataQualityNote: (status) =>
+    status === 'insufficient_data'
+      ? '本简历基于公开数据生成的画像，因数据不足，部分能力与经历未经充分证实；相关陈述请以原始证据为准，面试时如实说明。'
+      : '本简历基于真实性存疑的画像生成，相关陈述请务必核对原始证据后再投递。',
+  dataQualityHeading: '数据说明',
 };
 
 const en: ResumeCopy = {
@@ -101,6 +109,11 @@ const en: ResumeCopy = {
     workHistory: 'work history',
   },
   noEntry: '(none)',
+  dataQualityNote: (status) =>
+    status === 'insufficient_data'
+      ? 'This resume is generated from a profile built on limited public data; some skills and experience are not fully verified. Please treat statements against the original evidence and clarify honestly in interviews.'
+      : 'This resume is generated from a profile whose authenticity is in question. Verify the original evidence before submitting.',
+  dataQualityHeading: 'Data notice',
 };
 
 export function resumeCopy(locale: ResumeLocale): ResumeCopy {
