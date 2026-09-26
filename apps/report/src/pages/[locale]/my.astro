@@ -7,6 +7,7 @@
 import Layout from '../../layouts/Layout.astro';
 import GateCard from '../../components/GateCard.astro';
 import InterviewPlanner from '../../components/InterviewPlanner.tsx';
+import DeleteProfileButton from '../../components/DeleteProfileButton.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
 import { getStorage } from '../../lib/db.js';
 import { resolveViewer } from '../../lib/auth.js';
@@ -57,7 +58,7 @@ const dateFmt = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
     ) : (
       <ul class="my-profile-list">
         {profiles.map((p) => (
-          <li class="ja-card my-profile-item" key={p.id}>
+          <li class="ja-card my-profile-item" key={p.id} id={`my-profile-${p.id}`}>
             <a class="my-profile-link" href={`/${locale}/report/${p.id}`}>
               <span class="my-profile-title">
                 {p.snapshot?.summary?.headline ?? p.subjectLogin}
@@ -69,6 +70,19 @@ const dateFmt = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
                 </span>
               </span>
             </a>
+            <DeleteProfileButton
+              client:load
+              apiBase={apiBase}
+              profileId={p.id}
+              cardId={`my-profile-${p.id}`}
+              deleteLabel={t('my.delete')}
+              confirmTitle={t('my.deleteConfirmTitle')}
+              confirmBody={t('my.deleteConfirmBody')}
+              cancelLabel={t('my.deleteCancel')}
+              okLabel={t('my.deleteOk')}
+              errorLabel={t('my.deleteError')}
+              hintLabel={t('my.deleteHint')}
+            />
           </li>
         ))}
       </ul>

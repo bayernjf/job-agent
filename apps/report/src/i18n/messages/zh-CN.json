@@ -326,5 +326,12 @@
   "interviews.noProfile": "还没有你的能力画像，先生成画像再来管理面试。",
   "interviews.noProfileAction": "生成画像",
   "report.recommendations.loadMore": "加载更多",
-  "report.recommendations.alternateSources": "也可在该来源查看"
+  "report.recommendations.alternateSources": "也可在该来源查看",
+  "my.delete": "删除画像",
+  "my.deleteConfirmTitle": "删除这份能力画像？",
+  "my.deleteConfirmBody": "将同时删除其全部证据、投递记录与面试计划，分享链接立即失效。此操作不可撤销。",
+  "my.deleteCancel": "取消",
+  "my.deleteOk": "确认删除",
+  "my.deleteError": "删除失败，请稍后重试。",
+  "my.deleteHint": "删除本账号已认领的画像及其全部关联数据（自助解绑）"
 }
