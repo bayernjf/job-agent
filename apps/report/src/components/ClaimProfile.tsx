@@ -24,7 +24,7 @@ type UiStatus = 'loading' | 'eligible' | 'claiming' | 'claimed' | 'hidden' | 'er
 interface ClaimProfileProps {
   apiBase: string;
   profileId: string;
-  subjectPlatform: 'github' | 'gitee';
+  subjectPlatform: 'github' | 'gitee' | 'all';
   subjectLogin: string;
   ctaLabel: string;
   claimingLabel: string;
@@ -56,11 +56,14 @@ export default function ClaimProfile({
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`auth/me ${res.status}`))))
       .then((me: AuthMe) => {
         if (cancelled) return;
-        if (
+        // 单源画像：平台+登录名一致；融合画像（subjectPlatform='all'，按同一 login 双采）：
+        // GitHub 或 Gitee 任一源登录名一致即可认领（T19）。
+        const matches =
           me.kind === 'user' &&
-          me.platform === subjectPlatform &&
-          me.login === subjectLogin
-        ) {
+          (subjectPlatform === 'all'
+            ? me.login === subjectLogin
+            : me.platform === subjectPlatform && me.login === subjectLogin);
+        if (matches) {
           setStatus(me.claimedProfileId === profileId ? 'claimed' : 'eligible');
         } else {
           setStatus('hidden');

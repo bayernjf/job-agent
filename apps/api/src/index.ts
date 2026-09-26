@@ -1146,7 +1146,13 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     if (!profile) {
       return c.json({ error: 'profile not found', code: AUTH_ERROR_CODES.profileNotFound }, 404);
     }
-    if (profile.subjectPlatform !== principal.platform || profile.subjectLogin !== principal.login) {
+    // 融合画像（subjectPlatform='all'，按同一 login 双采 GitHub/Gitee）：
+    // 任一源命中即可认领——GitHub 或 Gitee 登录用户，login 与主源一致即放行。
+    const subjectMatches =
+      profile.subjectPlatform === 'all'
+        ? profile.subjectLogin === principal.login
+        : profile.subjectPlatform === principal.platform && profile.subjectLogin === principal.login;
+    if (!subjectMatches) {
       return c.json(
         {
           error: 'profile does not belong to the authenticated account',
@@ -1159,10 +1165,12 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
     await repos.profiles.markClaimed(profile.id);
     const account = await repos.accounts.setClaimedProfile(principal.accountId, profile.id);
+    // subjectPlatform 存储层为 string；语义上只可能是 github/gitee/all，此处收窄供契约使用
+    const subjectPlatform = profile.subjectPlatform as 'github' | 'gitee' | 'all';
     const result: ClaimResult = {
       profileId: profile.id,
       claimed: true,
-      subject: { platform: profile.subjectPlatform, login: profile.subjectLogin },
+      subject: { platform: subjectPlatform, login: profile.subjectLogin },
       claimedProfileId: account?.claimedProfileId ?? profile.id,
     };
     return c.json(result);

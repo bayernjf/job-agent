@@ -874,7 +874,7 @@ export const ClaimResultSchema = z.object({
   profileId: z.string().min(1),
   claimed: z.literal(true),
   subject: z.object({
-    platform: PlatformSchema,
+    platform: PlatformSchema.or(z.literal('all')),
     login: z.string().min(1),
   }),
   claimedProfileId: z.string().nullable(),
