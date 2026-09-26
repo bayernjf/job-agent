@@ -7,7 +7,6 @@ import type { ResumeLocale } from '@jobagent/shared';
 
 export interface ResumeCopy {
   targetLabel: string; // 目标岗位
-  matchLabel: string; // 匹配度
   summaryHeading: string;
   matchedSkillsHeading: string;
   otherSkillsHeading: string;
@@ -15,9 +14,7 @@ export interface ResumeCopy {
   collaborationHeading: string;
   workHistoryHeading: string;
   educationHeading: string;
-  notesHeading: string;
   selfProvidedTag: string; // 本地补填标记
-  provenanceLabel: string;
   supportsLabel: string;
   /** summary 组装：headline + 目标岗位 + top 命中技能 */
   summaryTargeting: (jobTitle: string, company: string, topSkills: string) => string;
@@ -36,7 +33,6 @@ export interface ResumeCopy {
 
 const zh: ResumeCopy = {
   targetLabel: '目标岗位',
-  matchLabel: '匹配度',
   summaryHeading: '个人概述',
   matchedSkillsHeading: '岗位匹配技能',
   otherSkillsHeading: '其他技能',
@@ -44,9 +40,7 @@ const zh: ResumeCopy = {
   collaborationHeading: '协作与外部贡献',
   workHistoryHeading: '工作经历（本人补填）',
   educationHeading: '教育经历（本人补填）',
-  notesHeading: '改进提示',
   selfProvidedTag: '本人补填',
-  provenanceLabel: '溯源',
   supportsLabel: '支撑技能',
   summaryTargeting: (title, company, top) =>
     `本次目标岗位「${title} @ ${company}」，重点突出 ${top}`,
@@ -70,7 +64,6 @@ const zh: ResumeCopy = {
 
 const en: ResumeCopy = {
   targetLabel: 'Target',
-  matchLabel: 'Match',
   summaryHeading: 'Summary',
   matchedSkillsHeading: 'Skills matched to this role',
   otherSkillsHeading: 'Other skills',
@@ -78,9 +71,7 @@ const en: ResumeCopy = {
   collaborationHeading: 'Collaboration & external contributions',
   workHistoryHeading: 'Work history (self-provided)',
   educationHeading: 'Education (self-provided)',
-  notesHeading: 'Suggestions',
   selfProvidedTag: 'self-provided',
-  provenanceLabel: 'Provenance',
   supportsLabel: 'supports',
   summaryTargeting: (title, company, top) =>
     `Targeting "${title} @ ${company}", with emphasis on ${top}.`,

@@ -178,12 +178,13 @@ export function buildResume(input: BuildResumeInput): ResumeDraft;
 - `renderMarkdown(draft): string`：单栏、标准 section 标题（Summary / Skills / Experience / Projects / Education），ATS 友好（无表格布局、无图标文字、标准字体）。
 - `renderHtml(draft): string`：带 `@media print` 打印 CSS（A4、分页不断行），用户浏览器"打印→另存 PDF"即可得 PDF，**不引 puppeteer 等重依赖**；颜色只消费 `packages/ui-tokens` 的 `--ja-*`，禁硬编码 hex（对齐 token 规则）。
 - HTML 对所有外部文本做 XSS 转义（report-format 已有 escapeHtml 可提取共享）。
-- 证据条目渲染为可点外链（commit/PR URL），并在页脚列 provenance（profileId/analyzerVersion/ruleVersion/生成时间）。
+- 证据条目渲染为可点外链（commit/PR URL）。**导出的 md/html 只含简历本身**（T12，2026-09-26）：匹配分与 fieldScores 分解、`suggestions`（`[missing_*]` 改进提示）、provenance 脚注（profileId/analyzerVersion/ruleVersion）**都不进导出文件**，它们留在 `--format json` 的 ResumeDraft 与报告页界面上——投出去的文件里出现机器内部面，等于让招聘方看到工具痕迹。
+- 内核生成的散文按**读者语言**现拼（T23，2026-09-26）：资历档位、技能深度、PR 计数句分别走 `shared` 的 `composeSeniorityBand` / `composeSkillDepthLabel` / `composePrSummary`，与 headline 同一套路——事实留快照，句子随 `--locale` 拼；取不到事实（旧快照没写 `activity.metrics`）时退回快照英文原句，**不臆造数字**。
 - 用户可见文案走 i18n（中英 key 同构，对齐 design-i18n：先 zh-CN key 再 en key、key 对齐测试）。
 
 ### 5.2 匹配度徽标
 
-header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier 与既有三档色）+ fieldScores 分解（标题/标签/正文各贡献多少），让用户知道"这份简历为何针对该岗"。
+header 展示 matchScoreTier（high/mid/low，颜色用 shared.matchScoreTier 与既有三档色）+ fieldScores 分解（标题/标签/正文各贡献多少），让用户知道"这份简历为何针对该岗"。**这一节是产品界面（报告页 island / JSON）的表面，导出的 md/html 不含**（T12）。
 
 ### 5.3 ATS 友好约束
 

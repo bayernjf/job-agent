@@ -725,6 +725,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 - `tier`：`high` / `mid` / `low`，由 `matchScoreTier(score, matchedSkills.length)` 相对分档，与推荐/扩展一致。
 - `suggestions[].kind`：`missing_skill`（岗位要求但画像没有，仅提示不写进正文）/ `missing_field`（缺联系方式/教育/工作）/ `low_match`（零命中或低分）。
 - **HTML 已内置 `@media print` 的 A4 适配**：前端用浏览器"打印 → 另存 PDF"即可，服务端不引入 puppeteer（设计 §10 #3 **已决策**：保持浏览器打印 CSS）。
+- **`markdown` / `html` 两个字段是"投出去的那份文件"**（T12，2026-09-26）：不含匹配分与 `fieldScores` 分解、不含 `suggestions`（`[missing_*]` 改进提示）、不含 provenance 脚注。这三类内部面只在 `draft` JSON 里返回、由报告页界面展示。`draft.summary` 与技能深度标签按请求的 `locale` 现拼（T23），中文请求不会拿到 `50 PR(s) opened, 37 merged` / `proficient` 这类内核英文散文（旧快照缺计数时退回英文原句，不臆造数字）。
 
 #### LLM 措辞润色（B 档，可选，默认关闭）
 

@@ -3,7 +3,13 @@
  * 纯函数、无 I/O；analyzerVersion = `${SCHEMA_VERSION}-${RULE_VERSION}` 保证可复现。
  */
 
-import { SCHEMA_VERSION, type AbilityProfile, type FusionReport, type SupportedPlatform } from '@jobagent/shared';
+import {
+  SCHEMA_VERSION,
+  composePrSummary,
+  type AbilityProfile,
+  type FusionReport,
+  type SupportedPlatform,
+} from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
 import { computeActivity } from './activity.js';
 import { generateInterviewQuestions } from './questions.js';
@@ -49,9 +55,14 @@ export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): 
   const collaboration: AbilityProfile['collaboration'] = {
     prSummary:
       input.pullRequests.length > 0
-        ? `${input.pullRequests.length} PR(s) opened, ${mergedCount} merged${
-            mergedExternal.length > 0 ? `, ${mergedExternal.length} into external projects` : ''
-          }`
+        ? composePrSummary(
+            {
+              opened: input.pullRequests.length,
+              merged: mergedCount,
+              externalMerged: mergedExternal.length,
+            },
+            'en',
+          )
         : undefined,
     externalMergedContributions:
       mergedExternal.length > 0
