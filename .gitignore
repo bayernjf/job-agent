@@ -43,3 +43,7 @@ apps/extension/key.pem
 
 # Chrome extension CWS release artifacts (produced by `pnpm release`)
 apps/extension/release/
+
+# Vercel CLI project link (`.vercel/` also covered above; do NOT add `.env*`
+# here — the `!.env.example` whitelist above would stop working)
+.vercel
