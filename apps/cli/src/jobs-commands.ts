@@ -19,6 +19,7 @@ import {
   syncOnce,
   matchJobs,
   type JobHttpOptions,
+  type SyncResult,
 } from '@jobagent/job-source';
 import type { JobSourceAdapter } from '@jobagent/job-source';
 import type { CliDeps } from './index.js';
@@ -113,15 +114,33 @@ async function runSync(rest: string[], deps: CliDeps): Promise<number> {
   const http = createJobHttpClient({ ...httpOptionsFromEnv(), logger });
   const now = deps.now ? () => new Date(deps.now!()) : undefined;
 
-  const result = await syncOnce({
-    adapters,
-    repo: storage.jobPostings,
-    http,
-    staleDays,
-    dryRun: Boolean(values['dry-run']),
-    now,
-    logger,
+  // 总预算保险丝（默认 20min，覆盖各源预算之和；JOB_SYNC_TOTAL_BUDGET_MS 可调）：
+  // 即使 abortAll 因底层 undici 缺陷未能中止挂起 socket，也强制进程退出，避免步骤挂到 workflow 上限被 cancel。
+  // 已 upsert 的数据已落库，属于"部分成功"语义（退出码 1，stderr 已说明）。
+  const totalBudgetMs = Number(process.env.JOB_SYNC_TOTAL_BUDGET_MS ?? 20 * 60_000);
+  let watchdog: NodeJS.Timeout | undefined;
+  const guardedSync = new Promise<SyncResult>((resolve, reject) => {
+    watchdog = setTimeout(() => {
+      logger.error(`[jobs] sync exceeded total budget ${totalBudgetMs}ms; forcing exit (partial results may be persisted)`);
+      process.exit(1);
+    }, totalBudgetMs);
+    syncOnce({
+      adapters,
+      repo: storage.jobPostings,
+      http,
+      staleDays,
+      dryRun: Boolean(values['dry-run']),
+      now,
+      logger,
+    }).then(resolve, reject);
   });
+
+  let result: SyncResult;
+  try {
+    result = await guardedSync;
+  } finally {
+    clearTimeout(watchdog);
+  }
 
   const header = ['source', 'fetched', 'inserted', 'updated', 'unchanged', 'invalid', 'error'].join('\t');
   const lines = result.outcomes.map((o) =>
