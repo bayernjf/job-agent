@@ -1,6 +1,7 @@
 import type { JobSource, JobPosting } from '@jobagent/shared';
 import type { CollectContext, CollectResult, JobSourceAdapter } from './types.js';
 import { buildMany, type RawPostingCandidate } from './builder.js';
+import { mapConcurrent } from './concurrency.js';
 import { parseSalaryText, type SalaryRange } from '../normalize/salary.js';
 import { stripHtml } from '../normalize/html.js';
 import { toPostedIso } from '../normalize/date.js';
@@ -9,6 +10,8 @@ import { inferRemote } from '../normalize/remote.js';
 const BOARD_ENDPOINT = (token: string) =>
   `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(token)}/jobs?content=true`;
 const DEFAULT_INTERVAL_MS = 300;
+/** 并发拉取 board 的上限：45 家串行在部分网络（如托管 runner）会被 15s 超时线性放大。 */
+const DEFAULT_CONCURRENCY = 6;
 const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface GreenhouseBoard {
@@ -85,7 +88,8 @@ export interface GreenhouseAdapterOptions {
   boards: GreenhouseBoard[];
   sleep?: (ms: number) => Promise<void>;
   intervalMs?: number;
-  /** 单个 board 失败时记录警告，不影响其他 board */
+  /** 并发拉取 board 上限（默认 6）；单个 board 失败时记录警告，不影响其他 board */
+  concurrency?: number;
   logger?: Pick<Console, 'warn'>;
 }
 
@@ -94,29 +98,34 @@ export class GreenhouseAdapter implements JobSourceAdapter {
   private readonly boards: GreenhouseBoard[];
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly intervalMs: number;
+  private readonly concurrency: number;
   private readonly logger?: Pick<Console, 'warn'>;
 
   constructor(options: GreenhouseAdapterOptions) {
     this.boards = options.boards;
     this.sleep = options.sleep ?? realSleep;
     this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+    this.concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
     this.logger = options.logger;
   }
 
   async collect(ctx: CollectContext): Promise<CollectResult> {
-    const merged: JobPosting[] = [];
-    let invalid = 0;
-    for (let i = 0; i < this.boards.length; i += 1) {
-      const board = this.boards[i]!;
+    const parts = await mapConcurrent(this.boards, this.concurrency, async (board, i) => {
       try {
         const raw = await ctx.http.getJson<unknown>(BOARD_ENDPOINT(board.token));
         const part = parseGreenhouseJobs(raw, ctx.fetchedAt, board.companyName ?? board.token);
-        merged.push(...part.postings);
-        invalid += part.invalid;
+        if (i < this.boards.length - 1) await this.sleep(this.intervalMs); // 礼貌限速
+        return part;
       } catch (err) {
         this.logger?.warn(`[greenhouse] board "${board.token}" skipped: ${(err as Error).message}`);
+        return { postings: [], invalid: 0 };
       }
-      if (i < this.boards.length - 1) await this.sleep(this.intervalMs); // 礼貌限速
+    });
+    const merged: JobPosting[] = [];
+    let invalid = 0;
+    for (const part of parts) {
+      merged.push(...part.postings);
+      invalid += part.invalid;
     }
     return { postings: merged, invalid };
   }

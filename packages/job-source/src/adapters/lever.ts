@@ -1,6 +1,7 @@
 import type { JobSource, JobPosting } from '@jobagent/shared';
 import type { CollectContext, CollectResult, JobSourceAdapter } from './types.js';
 import { buildMany, type RawPostingCandidate } from './builder.js';
+import { mapConcurrent } from './concurrency.js';
 import { stripHtml, truncateText } from '../normalize/html.js';
 import { epochToIso } from '../normalize/date.js';
 import { inferRemote, workplaceTypeToRemote } from '../normalize/remote.js';
@@ -8,6 +9,7 @@ import { inferRemote, workplaceTypeToRemote } from '../normalize/remote.js';
 const POSTINGS_ENDPOINT = (slug: string) =>
   `https://api.lever.co/v0/postings/${encodeURIComponent(slug)}?mode=json`;
 const DEFAULT_INTERVAL_MS = 300;
+const DEFAULT_CONCURRENCY = 6;
 const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface LeverBoard {
@@ -93,7 +95,8 @@ export interface LeverAdapterOptions {
   boards: LeverBoard[];
   sleep?: (ms: number) => Promise<void>;
   intervalMs?: number;
-  /** 单个 board 失败时记录警告，不影响其他 board */
+  /** 并发拉取 board 上限（默认 6）；单个 board 失败时记录警告，不影响其他 board */
+  concurrency?: number;
   logger?: Pick<Console, 'warn'>;
 }
 
@@ -102,29 +105,34 @@ export class LeverAdapter implements JobSourceAdapter {
   private readonly boards: LeverBoard[];
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly intervalMs: number;
+  private readonly concurrency: number;
   private readonly logger?: Pick<Console, 'warn'>;
 
   constructor(options: LeverAdapterOptions) {
     this.boards = options.boards;
     this.sleep = options.sleep ?? realSleep;
     this.intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+    this.concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
     this.logger = options.logger;
   }
 
   async collect(ctx: CollectContext): Promise<CollectResult> {
-    const merged: JobPosting[] = [];
-    let invalid = 0;
-    for (let i = 0; i < this.boards.length; i += 1) {
-      const board = this.boards[i]!;
+    const parts = await mapConcurrent(this.boards, this.concurrency, async (board, i) => {
       try {
         const raw = await ctx.http.getJson<unknown>(POSTINGS_ENDPOINT(board.slug));
         const part = parseLeverPostings(raw, ctx.fetchedAt, board.companyName);
-        merged.push(...part.postings);
-        invalid += part.invalid;
+        if (i < this.boards.length - 1) await this.sleep(this.intervalMs); // 礼貌限速
+        return part;
       } catch (err) {
         this.logger?.warn(`[lever] board "${board.slug}" skipped: ${(err as Error).message}`);
+        return { postings: [], invalid: 0 };
       }
-      if (i < this.boards.length - 1) await this.sleep(this.intervalMs);
+    });
+    const merged: JobPosting[] = [];
+    let invalid = 0;
+    for (const part of parts) {
+      merged.push(...part.postings);
+      invalid += part.invalid;
     }
     return { postings: merged, invalid };
   }
