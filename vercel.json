@@ -3,6 +3,7 @@
   "framework": "astro",
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "pnpm --filter @jobagent/report... build",
+  "outputDirectory": "apps/report/dist",
   "regions": ["hnd1"],
   "crons": [
     {
