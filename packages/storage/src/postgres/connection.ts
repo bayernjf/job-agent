@@ -14,7 +14,12 @@ type PostgresOptions = NonNullable<Parameters<typeof postgres>[1]>;
  *   自动 `prepare: false`——事务池化不支持会话级 prepared statement 复用，
  *   否则会报 "prepared statement already exists / does not exist"。
  * - 迁移/DDL 请走会话池化/直连（5432），不要用事务池化串（见部署 Runbook 形态 C）。
- * - `sslmode=require|verify-ca|verify-full` 时显式开启 TLS（Supabase 证书为公共 CA）。
+ * - `sslmode=require|verify-ca|verify-full` 时显式开启 TLS 并校验证书链；
+ *   `sslmode=no-verify` 时开启 TLS 但跳过链校验（标准 sslmode，适用于私有 CA 或
+ *   临时环境的运维连接）。注意：Supabase pooler 证书由 Supabase 私有 CA
+ *   （Supabase Intermediate 2021 CA）签发，Node 内置信任库不包含该 CA，
+ *   `require` 在本机/云端默认会报 "self-signed certificate in certificate chain"，
+ *   迁移/预热等运维连接请使用 `no-verify`。
  */
 export interface PgConnection {
   /** postgres-js 标签模板客户端（迁移器、事务也用它） */
@@ -34,7 +39,7 @@ export interface PgOpenOptions {
 /** Supabase 事务池化（PgBouncer transaction mode）默认端口。 */
 const SUPABASE_TRANSACTION_POOLER_PORT = '6543';
 
-function resolvePostgresOptions(databaseUrl: string, options?: PgOpenOptions): PostgresOptions {
+export function resolvePostgresOptions(databaseUrl: string, options?: PgOpenOptions): PostgresOptions {
   let pgbouncer = false;
   let sslmode: string | null = null;
   try {
@@ -55,9 +60,12 @@ function resolvePostgresOptions(databaseUrl: string, options?: PgOpenOptions): P
   const ssl =
     options?.ssl ??
     (sslmode === 'require' || sslmode === 'verify-ca' || sslmode === 'verify-full'
-      ? // Supabase 使用公共 CA 签发的证书，默认校验证书链；verify-full 的主机名校验由 TLS 默认行为覆盖
+      ? // 校验证书链；verify-full 的主机名校验由 TLS 默认行为覆盖
         { rejectUnauthorized: true }
-      : undefined);
+      : sslmode === 'no-verify'
+        ? // 保持 TLS 加密但跳过链校验（私有 CA / 运维连接的临时信任）
+          { rejectUnauthorized: false }
+        : undefined);
   if (ssl !== undefined) {
     resolved.ssl = ssl;
   }
