@@ -106,6 +106,35 @@ describe('cli jobs sync', () => {
     expect(code).toBe(2);
     expect(h.err()).toContain('unknown source');
   });
+
+  it('applies JOB_SOURCE_BUDGETS_MS per-source budget to hanging adapter', async () => {
+    const h = await harness([
+      {
+        source: 'remoteok',
+        collect: () => new Promise<never>(() => undefined), // never settles
+      },
+    ]);
+    process.env.JOB_SOURCE_BUDGETS_MS = 'remoteok:1s';
+    try {
+      const code = await run(['jobs', 'sync', '--dry-run'], h.deps);
+      expect(code).toBe(1);
+      expect(h.err()).toContain('exceeded 1000ms budget');
+    } finally {
+      delete process.env.JOB_SOURCE_BUDGETS_MS;
+    }
+  });
+
+  it('rejects malformed JOB_SOURCE_BUDGETS_MS with exit 2', async () => {
+    const h = await harness([]);
+    process.env.JOB_SOURCE_BUDGETS_MS = 'remoteok:abc,ghost:1s';
+    try {
+      const code = await run(['jobs', 'sync'], h.deps);
+      expect(code).toBe(2);
+      expect(h.err()).toContain('invalid budget value for remoteok: abc');
+    } finally {
+      delete process.env.JOB_SOURCE_BUDGETS_MS;
+    }
+  });
 });
 
 describe('cli jobs search / stats', () => {

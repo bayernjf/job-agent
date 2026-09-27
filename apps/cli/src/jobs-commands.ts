@@ -58,6 +58,38 @@ function parseSources(raw: string | undefined, logger: Pick<Console, 'error'>): 
 }
 
 /**
+ * 解析源级采集预算覆盖（JOB_SOURCE_BUDGETS_MS，格式 `source:ms,source:ms`）。
+ * 值支持纯毫秒整数，或 `s`/`m` 后缀（如 `remoteok:3s,greenhouse:8m`）。
+ * 未知源或非法数值返回 null 并报错；未配置时返回 undefined（走 job-source 默认预算）。
+ */
+function parseSourceBudgetsMs(
+  raw: string | undefined,
+  logger: Pick<Console, 'error'>,
+): Partial<Record<JobSource, number>> | null | undefined {
+  if (!raw) return undefined;
+  const out: Partial<Record<JobSource, number>> = {};
+  for (const part of raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0)) {
+    const [source, value] = part.split(':').map((s) => s.trim());
+    if (!source || !ENABLED_SOURCES.includes(source as JobSource)) {
+      logger.error(`unknown budget source: ${source} (expected one of: ${ENABLED_SOURCES.join(', ')})`);
+      return null;
+    }
+    const m = /^(\d+)(s|m)?$/.exec(value ?? '');
+    if (!m) {
+      logger.error(`invalid budget value for ${source}: ${value} (expected ms int, or <int>s / <int>m)`);
+      return null;
+    }
+    const ms = Number(m[1]) * (m[2] === 'm' ? 60_000 : m[2] === 's' ? 1_000 : 1);
+    if (ms < 1) {
+      logger.error(`budget for ${source} must be >= 1ms`);
+      return null;
+    }
+    out[source as JobSource] = ms;
+  }
+  return out;
+}
+
+/**
  * 解析出站代理：优先 JOB_HTTP_PROXY（本项目专用），再回退标准 HTTPS_PROXY/HTTP_PROXY（兼容大小写）。
  * Node 全局 fetch 不读这些变量，必须显式传给 createJobHttpClient 才生效。
  */
@@ -112,6 +144,8 @@ async function runSync(rest: string[], deps: CliDeps): Promise<number> {
   const adapters: JobSourceAdapter[] =
     deps.jobAdapters ?? createDefaultAdapters({ sources: sources ?? undefined, logger });
   const http = createJobHttpClient({ ...httpOptionsFromEnv(), logger });
+  const sourceBudgets = parseSourceBudgetsMs(process.env.JOB_SOURCE_BUDGETS_MS, logger);
+  if (sourceBudgets === null) return 2;
   const now = deps.now ? () => new Date(deps.now!()) : undefined;
 
   // 总预算保险丝（默认 20min，覆盖各源预算之和；JOB_SYNC_TOTAL_BUDGET_MS 可调）：
@@ -129,6 +163,7 @@ async function runSync(rest: string[], deps: CliDeps): Promise<number> {
       repo: storage.jobPostings,
       http,
       staleDays,
+      ...(sourceBudgets ? { sourceBudgetsMs: sourceBudgets } : {}),
       dryRun: Boolean(values['dry-run']),
       now,
       logger,
