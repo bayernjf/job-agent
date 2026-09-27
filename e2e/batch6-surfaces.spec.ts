@@ -101,6 +101,40 @@ test.describe('/my (T17 surface)', () => {
     // 空态不渲染画像列表
     await expect(page.locator('.my-profile-list')).toHaveCount(0);
   });
+
+  test('owner can delete a claimed profile (B2 self-service unlink)', async ({ page }) => {
+    await seedSession(page, FIXTURE_SESSION_TOKEN);
+    // 零后端：mock DELETE /profiles/:id；其余请求放行（SSR 直读 storage fixture）
+    await page.route('**/profiles/*', (route) => {
+      if (route.request().method() === 'DELETE') {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ deleted: true, profileId: FIXTURE_CLAIMED_PROFILE_ID }),
+        });
+      }
+      return route.continue();
+    });
+    await page.goto('/zh-CN/my');
+    const card = page.locator(`li#my-profile-${FIXTURE_CLAIMED_PROFILE_ID}`);
+    await expect(card).toBeVisible();
+    // 等 astro-island hydrate 完成（client-render-time 属性出现）再交互，
+    // 避免点击落在 SSR 静态按钮上被 React 接管过程吞掉（B2 实测竞态）
+    await page.waitForFunction(
+      (cardId) => {
+        const el = document.getElementById(cardId)?.querySelector('astro-island');
+        return !!el?.hasAttribute('client-render-time');
+      },
+      `my-profile-${FIXTURE_CLAIMED_PROFILE_ID}`,
+    );
+    // 两段式：先展开内联确认，再点确认触发原生 confirm 弹窗 → 接受
+    await card.getByTestId('delete-profile-button').click();
+    await expect(card.getByTestId('delete-profile-confirm')).toBeVisible();
+    page.once('dialog', (dialog) => void dialog.accept());
+    await card.getByTestId('delete-profile-confirm').click();
+    // 成功后卡片从列表移除
+    await expect(card).toHaveCount(0);
+  });
 });
 
 test.describe('partial notice + unavailable/notfound split (T25 surfaces)', () => {

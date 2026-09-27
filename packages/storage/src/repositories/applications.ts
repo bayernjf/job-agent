@@ -27,4 +27,6 @@ export interface IApplicationsRepository {
     patch: ApplicationPatch,
     ownerAccountId?: string | null,
   ): Promise<StoredApplication | undefined>;
+  /** 物理删除某画像的全部投递（B2 自助删除画像时级联调用），无行也成功 */
+  deleteByProfile(profileId: string): Promise<void>;
 }

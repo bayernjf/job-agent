@@ -76,3 +76,101 @@ af3b71e feat(report): move interview planner into my page for candidates
 ```
 
 未 push；push 后 `pr-helper-by-bayernjf` 会在约 5 分钟内自动建并合 `dev → main` PR。
+
+## §4 item88：B2 自助解绑（第四次评审阻断项，2026-09-27）
+
+评审 [评审-MVP-20260927.md](评审-MVP-20260927.md) 暴露的最后一个纯代码阻断项——PRD:230「可解绑」此前全仓 0 个 `app.delete(`。B2 为纯代码、无外部依赖，一口气完成四层 + 文档。
+
+### 4.1 层 1：storage 级联删除仓储（三接口六实现）
+
+- `IApplicationsRepository.deleteByProfile(profileId)` / `IInterviewsRepository.deleteByProfile(profileId)`：按 `profile_id` 列级联删除投递与面试行（SQLite `DELETE ... WHERE`、Postgres 同构）。
+- `IAccountsRepository.clearClaimedProfile(profileId)`：把 `accounts.claimed_profile_id = profileId` 的行置 null（撤链、保留账号）。
+- 踩坑：python 补丁的 `rfind(anchor)` 在多处新增方法（sqlite applications/interviews、pg applications/interviews、accounts 两文件）时把旧 `}` 与新代码粘到一行产生语法错误，每次 `git checkout -- <file>` 重置后改用唯一锚点（`if (patch.xxx !== undefined) ... return this.getById(id);\n  }\n}`）重插修复；修复后 storage typecheck/build 全绿。
+
+### 4.2 层 2：API `DELETE /profiles/:id`（`apps/api/src/index.ts:1186`）
+
+语义（与 claim 端点同口径的 `requireProfileOwner`，`subjectPlatform==='all'` 时仅 login 一致放行）：
+
+| 码 | 情形 |
+| --- | --- |
+| 401 `AUTH_REQUIRED` | 未登录（匿名/演示） |
+| 403 `AUTH_NOT_PROFILE_OWNER` | 未认领（"self-delete requires claiming it first"）或平台+login 与账号不一致 |
+| 404 `AUTH_PROFILE_NOT_FOUND` | 不存在 |
+| 200 | 级联 `evidence → applications → interviews → accounts.clearClaimedProfile → profiles.deleteById`，响应 `{deleted, profileId}`；账号保留 |
+
+### 4.3 层 3：API 测试（`apps/api/src/profile-delete.test.ts`，6 用例全过）
+
+未登录 401 无副作用 / 未认领 403 / 不存在 404 / 他人已认领 403 / 本人删除 200 全级联（profile 行消失、evidence+applications 空、interviews 按 owner 查空、claimedProfileId 置 null、GET 404、账号保留）/ 融合画像 `platform=all` 本人删除 200。复用 `auth-flow.test.ts` 的 `loginAs(ALICE)` 完整 OAuth 模式（FakeAuthProvider + extractCookies/cookieHeader）+ `seedClaimedProfileWithData`。**类型修一处**：`AbilityProfile.subject.platform` 是单源（融合标记 'all' 只在 storage 行级 `subjectPlatform`），测试 helper 参数收窄、融合用例 snapshot 传单源。
+
+### 4.4 层 4：报告页「我的」页删除入口
+
+- i18n：zh/en 各 +7 key（`my.delete*`，含确认标题/正文/取消/确认/错误/提示），一致性测试守护。
+- 新组件 `apps/report/src/components/DeleteProfileButton.tsx`：**两段式防误删**——点「删除画像」展开内联 cancel/confirm，confirm 再触发 `window.confirm`；成功 `document.getElementById(cardId).remove()`，列表清空则 reload。props 全由 Astro 经 t() 传入（组件零硬编码文案，同 ClaimProfile 惯例）。
+- `my.astro`：每张画像卡 `<li id="my-profile-${p.id}">` 内挂 `client:load`。
+- **E2E 踩坑（真实竞态）**：第一版只点一次按钮失败；改两段式后仍失败——DIAG 显示点击后 island 无反应，直到打印 `client-render-time` 属性才发现 **Playwright 点击发生在 astro-island hydrate 完成之前**（点击落在 SSR 静态按钮上被 React 接管过程吞掉）。修复＝点击前 `waitForFunction` 等目标 island 出现 `client-render-time` 属性再交互，确定性等待非 sleep。用例 `owner can delete a claimed profile (B2 self-service unlink)`（seedSession + mock DELETE 200 + 两段式点击 + 卡片消失）通过。顺带确认 `apiBase=''` 是设计行为（E2E 无 VERCEL；形态 C Vercel 部署 resolveBrowserApiBase 返回 '/api'），非缺陷。
+
+### 4.5 文档与验证
+
+- `docs/API.md` 增补 `DELETE /profiles/:id` 一节（受 api-doc-consistency 守护，路由双向对齐 2/2 过）。
+- 全量验证（Node v24.0.0）：`pnpm -r typecheck` 0 error、`pnpm -r test` 全绿（**api 194→200**、report 66、storage 129+11skip、analyzer 87 等 13 包）、`pnpm -r build` 全 Done、`check-migrations` 14 对 0 warning、报告 E2E 新用例通过、`git diff --check` 干净。
+
+### 4.6 提交
+
+- `9627de0` feat(storage): add cascade delete repos（9 文件：3 接口 + sqlite 3 + postgres 3）
+- `293895d` feat(api): add DELETE /profiles/:id
+- `f97a63c` test(api): cover profile delete cascade（6 用例）
+- `942150b` feat(report): add delete button on my page（DeleteProfileButton + i18n + my.astro）
+- `2c04c84` test(report): e2e for self-service unlink
+- `231d8dd` docs(api): document profile delete endpoint
+- docs(handoff) 本批（handoff.md + 本归档 §4）
+
+英文原子、作者 bayernjf、无 AI co-author、未 push（push 由用户执行）。
+
+## §5 item89：CI 补迁移校验与 E2E 产物上传 + T14 遗留的 framework 标签排序修正（2026-09-27）
+
+用户指示「如果还有你可以处理的待办任务，你继续推进一下」，实查第四次评审
+（[评审-MVP-20260927.md](评审-MVP-20260927.md)）后确认阻断仅剩 B1（T21 外部条件），
+deferred 各条触发条件均未满足，可一口气推进的登记遗留为两项：CI 两条缺口 + T14 排序遗留。
+
+### 5.1 CI 补 check-migrations 步骤与 E2E test-results 上传（`.github/workflows/ci.yml`）
+
+- **check-migrations**：09-25 评审 P1 点名「check-migrations.sh 不在 CI」，补在 Typecheck 后、Test 前
+  （`bash tools/check-migrations.sh`，静态校验先于单测失败）。
+- **test-results 上传**：item81 备注「CI 没上传 test-results 产物，排查 E2E 失败时拿不到
+  error-context」——report E2E 与 extension E2E 各步骤后跟 `actions/upload-artifact@v4`
+  （`if: always()` 失败也上传，path `test-results/` + `playwright-report/`，
+  `if-no-files-found: ignore` + `retention-days: 7`）。
+- 验证：actionlint 1.7.12（Docker 镜像与 CI 同版）全仓扫 exit 0。
+
+### 5.2 T14 遗留：framework 标签排序兼顾 depth 与仓库数（`packages/analyzer-core`）
+
+- **背景**：item62/63 记「上限不是 vue 消失的原因（并列 0.5 的弱信号在抢名额），排序修正留作
+  T14」——T14 实际落地了「量化行进交付物」（item86），排序修正一直未做，`skills.ts` 注释仍写着
+  「等 T14 之后按真实画像分布再校」。
+- **改法**（`skills.ts`）：排序键由「仅 confidence」改为 `frameworkRankKey`＝
+  **depth 主序（proficient +0.2）→ confidence → 仓库数加分（`min(0.1, 0.02*(repoCount-1))`，
+  只破并列不盖过置信度差）→ 名称确定性**。仓库数经内部 `repoCountByTag` Map 收集，
+  不动 `SkillTag` 契约（shared 零改动）。
+- **RULE_VERSION 0.7 → 0.8**（`rules.ts`）：排序改变 `skillTags` 输出集合与顺序＝行为变化，
+  必须升版否则同一 analyzerVersion 对应两套输出；分级不受影响（`signals.ts` 对 `skillTag`
+  零引用，继承 0.4 起结论）。
+- **测试**（`skills.test.ts` +2 用例）：①多仓真实标签不被并列单仓弱信号挤出——构造 3 仓 redis
+  （proficient 0.52）与 10 个「单仓+1 行为」0.5 弱信号，修正前 redis 排第 11 名被 `slice(0,10)`
+  挤出、修正后 `frameworks[0]==='redis'` 且弱信号至少一个落榜；②同 depth/confidence/repoCount
+  按名称稳定排序（svelte < vue）。现有 16 条集合断言不受顺序影响全绿。
+- **顺带修复一条真断链**：doc-links 守护抓到 `docs/handoff-archive-2026-09-27.md` 里
+  `docs/评审-MVP-20260927.md` 链接（归档在 docs/ 下、评审文档也在 docs/ 下，多写一层 docs/ 前缀）
+  → 改为 `评审-MVP-20260927.md`（独立 commit `9109195`）。**守护有效性的实证**：全量测试正是
+  被这条断链拦红后修复。
+
+### 5.3 验证与提交
+
+- 验证（Node v24.0.0）：`pnpm -r typecheck` 0 error、`pnpm -r test` 全绿（**analyzer 87→89**、
+  api 200、shared 99、storage 129+11skip 等 13 包）、`pnpm -r build` 全 Done、check-migrations
+  14 对 0 warning、actionlint exit 0、四条文档守护 11/11、`git diff --check` 干净。
+- 提交（英文原子、作者 bayernjf、无 co-author、未 push）：
+  - `chore(ci)` add check-migrations step and upload E2E test artifacts
+  - `fix(analyzer)` rank framework tags by depth and repos（skills.ts + rules.ts 0.8）
+  - `test(analyzer)` guard T14 framework ranking with regression cases
+  - `9109195` fix(docs) correct archive link to review doc
+  - `docs(handoff)` record item89（handoff.md + 本归档 §5）

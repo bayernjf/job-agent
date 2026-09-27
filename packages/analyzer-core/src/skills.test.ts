@@ -328,4 +328,56 @@ describe('computeSkillTags', () => {
       }
     }
   });
+
+  // ── T14 遗留：framework 排序兼顾 depth 与仓库数 ──────────────────────────────
+
+  it('ranks a real multi-repo stack above a crowd of tied single-repo weak signals', () => {
+    // 2026-09-27 修正前：只按 confidence 排序，redis（2 仓，0.46）排在十个
+    // "单仓 + 1 条行为"的 0.5 弱信号后面，第 11 名被 slice(0,10) 挤出——真实
+    // 技术栈输给凑数标签。修正后排序键给 proficient + 仓库数加分，redis 必须进榜。
+    const weak = ['react', 'vue', 'next.js', 'tailwind', 'vite', 'hono', 'express', 'koa', 'django', 'flask'];
+    const repos = [
+      repo({ name: 'cache-a', description: 'redis cache layer' }),
+      repo({ name: 'cache-b', description: 'redis pubsub fanout' }),
+      repo({ name: 'cache-c', description: 'redis streams consumer' }),
+    ];
+    const commits: AnalyzerCommit[] = [];
+    weak.forEach((name, i) => {
+      repos.push(repo({ name: `w-${i}-${name.replace(/[^a-z]/g, '')}`, description: `a ${name} ${name} app` }));
+      commits.push(commit({ oid: `${i}`.repeat(40), messageHeadline: `feat: ${name} integration` }));
+    });
+    const input = buildInput({ repos, commits, pullRequests: [] });
+    const frameworks = computeSkillTags(input).filter((t) => t.kind === 'framework');
+    const names = frameworks.map((t) => t.name);
+
+    // 多仓真实标签必须进前十，且排在全部并列 0.5 弱信号之前
+    expect(names).toContain('redis');
+    expect(frameworks[0]?.name).toBe('redis');
+    // 十个弱信号里至少有一个被挤出（名额有限）
+    expect(names.filter((n) => weak.includes(n)).length).toBeLessThan(weak.length);
+    // 每个命中标签的证据仍是输入里真实存在的
+    expectValidRefs(input, computeSkillTags(input));
+  });
+
+  it('breaks ties deterministically by name when depth and confidence tie', () => {
+    // 两个同 depth、同 confidence、同仓库数的标签必须按名称稳定排序（svelte < vue）。
+    const input = buildInput({
+      repos: [
+        repo({ name: 'a', description: 'svelte app' }),
+        repo({ name: 'b', description: 'svelte kit' }),
+        repo({ name: 'c', description: 'vue app' }),
+        repo({ name: 'd', description: 'vue router' }),
+      ],
+      commits: [],
+      pullRequests: [],
+    });
+    const names = computeSkillTags(input)
+      .filter((t) => t.kind === 'framework')
+      .map((t) => t.name);
+    const svelteIdx = names.indexOf('svelte');
+    const vueIdx = names.indexOf('vue');
+    expect(svelteIdx).toBeGreaterThanOrEqual(0);
+    expect(vueIdx).toBeGreaterThanOrEqual(0);
+    expect(svelteIdx).toBeLessThan(vueIdx);
+  });
 });
