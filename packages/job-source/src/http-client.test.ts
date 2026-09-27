@@ -59,6 +59,26 @@ describe('createJobHttpClient', () => {
     await http.getJson('https://x.test/limit');
     expect(sleep).toHaveBeenCalledWith(3000);
   });
+
+  it('abortAll aborts in-flight requests and stops further retries', async () => {
+    let abortedCount = 0;
+    const fetchImpl = vi.fn((_input: unknown, init?: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          abortedCount += 1;
+          reject(new DOMException('The operation was aborted.', 'AbortError'));
+        });
+      }) as never;
+    });
+    const http = createJobHttpClient({ fetchImpl, sleep: noSleep, retries: 2 });
+    const pending = http.getJson('https://x.test/hang');
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    http.abortAll();
+    await expect(pending).rejects.toBeInstanceOf(JobHttpError);
+    // 预算中止后不得再发起重试请求
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(abortedCount).toBe(1);
+  });
 });
 
 describe('createJobHttpClient proxy support', () => {

@@ -101,4 +101,35 @@ describe('syncOnce', () => {
     expect(result.outcomes[0]!.inserted).toBe(0);
     expect(result.markedStale).toBe(0);
   });
+
+  it('enforces a per-source budget: a hanging source is aborted and skipped, later sources still run', async () => {
+    // 模拟 runner 上 greenhouse 请求挂起（永不 resolve）：预算到点必须中止并隔离该源。
+    const hang = adapter('greenhouse', () => new Promise<{ postings: JobPosting[]; invalid: number }>(() => {}));
+    const good = adapter('lever', async () => ({ postings: [makePosting('lever', 1)], invalid: 0 }));
+    const repo = fakeRepo();
+    const aborted: boolean[] = [];
+    const fakeHttp = {
+      getJson: async () => {
+        throw new Error('not used in this test');
+      },
+      abortAll: () => {
+        aborted.push(true);
+      },
+    };
+    const result = await syncOnce({
+      adapters: [hang, good],
+      repo,
+      now: fixedNow,
+      http: fakeHttp as never,
+      sourceBudgetsMs: { greenhouse: 50, lever: 60_000 },
+    });
+
+    expect(aborted).toHaveLength(1);
+    const gh = result.outcomes.find((o) => o.source === 'greenhouse')!;
+    expect(gh.error).toContain('exceeded');
+    expect(gh.fetched).toBe(0);
+    expect(result.outcomes.find((o) => o.source === 'lever')!.error).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(repo.upsertBatch).toHaveBeenCalledOnce(); // 只有 lever 的产出入库
+  });
 });

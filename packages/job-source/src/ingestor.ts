@@ -1,3 +1,4 @@
+import type { JobSource } from '@jobagent/shared';
 import type { IJobPostingsRepository, NewJobPosting } from '@jobagent/storage';
 import { createJobHttpClient } from './http-client.js';
 import { makeNormalizedKey } from './normalize/dedupe-key.js';
@@ -7,6 +8,18 @@ import type { JobSourceAdapter } from './adapters/types.js';
 const DEFAULT_STALE_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** 单源采集整体预算（毫秒）：ATS 类源在部分网络（如托管 runner）单请求可能挂起超时，
+ *  并发拉取只压缩"批数×超时"仍不够时，必须给整个 collect 一个硬顶，超时中止全部在途请求并跳过该源。 */
+const DEFAULT_SOURCE_BUDGETS_MS: Record<JobSource, number> = {
+  remoteok: 3 * 60_000,
+  remotive: 3 * 60_000,
+  greenhouse: 8 * 60_000,
+  lever: 3 * 60_000,
+  hn_whoishiring: 5 * 60_000,
+  weworkremotely: 3 * 60_000,
+  manual: 60_000,
+};
+
 export interface SyncOnceDeps {
   adapters: JobSourceAdapter[];
   repo: Pick<IJobPostingsRepository, 'upsertBatch' | 'markStale'>;
@@ -15,6 +28,8 @@ export interface SyncOnceDeps {
   httpOptions?: JobHttpOptions;
   now?: () => Date;
   staleDays?: number;
+  /** 单源采集预算覆盖（毫秒）；未覆盖的源用 DEFAULT_SOURCE_BUDGETS_MS */
+  sourceBudgetsMs?: Partial<Record<JobSource, number>>;
   /** dry-run：只采集校验，不写库、不 markStale */
   dryRun?: boolean;
   logger?: Pick<Console, 'info' | 'warn' | 'error'>;
@@ -34,6 +49,31 @@ function emptyOutcome(source: SourceSyncOutcome['source'], durationMs: number, e
 }
 
 /**
+ * 给单个 promise 套整体预算：到点先中止全部在途请求（http.abortAll），再拒绝。
+ * Promise.race 放行后挂起的底层请求若不中止，Node 进程会因活跃 socket 永不退出（runner 黑洞即此形态）。
+ */
+async function withSourceBudget<T>(
+  task: Promise<T>,
+  budgetMs: number,
+  source: JobSource,
+  http: JobHttpClient,
+  logger: SyncOnceDeps['logger'],
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      http.abortAll();
+      reject(new Error(`collect ${source} exceeded ${budgetMs}ms budget; in-flight requests aborted`));
+    }, budgetMs);
+  });
+  try {
+    return await Promise.race([task, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 执行一轮岗位采集：源间串行（礼貌抓取），单源失败被捕获并隔离，
  * 不影响其他源；每条岗位已在适配器内过契约校验，这里统一补跨源去重键后批量 upsert。
  * 全部源结束后 markStale（dry-run 除外）。
@@ -44,11 +84,23 @@ export async function syncOnce(deps: SyncOnceDeps): Promise<SyncResult> {
   const http = deps.http ?? createJobHttpClient(deps.httpOptions);
   const staleDays = deps.staleDays ?? DEFAULT_STALE_DAYS;
   const outcomes: SourceSyncOutcome[] = [];
+  const budgets: Record<JobSource, number> = {
+    ...DEFAULT_SOURCE_BUDGETS_MS,
+    ...(deps.sourceBudgetsMs as Partial<Record<JobSource, number>> | undefined),
+  } as Record<JobSource, number>;
 
   for (const adapter of deps.adapters) {
     const t0 = now().getTime();
     try {
-      const { postings, invalid } = await adapter.collect({ fetchedAt: startedAt, http });
+      const budgetMs = budgets[adapter.source];
+      const collected = await withSourceBudget(
+        adapter.collect({ fetchedAt: startedAt, http }),
+        budgetMs,
+        adapter.source,
+        http,
+        deps.logger,
+      );
+      const { postings, invalid } = collected;
       const enriched: NewJobPosting[] = postings.map((p) => ({
         ...p,
         normalizedKey: makeNormalizedKey(p.title, p.company, p.location),

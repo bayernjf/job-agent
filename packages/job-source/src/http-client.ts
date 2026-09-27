@@ -56,10 +56,18 @@ export function createJobHttpClient(options: JobHttpOptions = {}): JobHttpClient
   const sleep = options.sleep ?? realSleep;
   const logger = options.logger;
 
+  // 在途请求的 AbortController 集合：源级预算超时（ingestor withBudget）需要中止所有挂起请求，
+  // 否则 Promise.race 放行后底层 socket 仍挂着、Node 进程不退出（runner 上 greenhouse 黑洞即此形态）。
+  const activeControllers = new Set<AbortController>();
+  // abortAll 置位后 getJson 的 catch 不再重试（预算已超时，重试只会再造挂起请求）。
+  let forceStop = false;
+
   async function getJson<T>(url: string): Promise<T> {
     let lastError: unknown;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
+      if (forceStop) break;
       const ctrl = new AbortController();
+      activeControllers.add(ctrl);
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
         const res = await fetchImpl(url, {
@@ -82,17 +90,25 @@ export function createJobHttpClient(options: JobHttpOptions = {}): JobHttpClient
         lastError = err;
         // 已构造的 JobHttpError（4xx 非重试）直接抛，不再重试
         if (err instanceof JobHttpError) throw err;
-        if (attempt >= retries) break;
+        if (forceStop || attempt >= retries) break;
         const backoff = 250 * 2 ** attempt;
         logger?.warn(`[http] GET ${url} network error (${(err as Error).message}), retry in ${backoff}ms`);
         await sleep(backoff);
       } finally {
         clearTimeout(timer);
+        activeControllers.delete(ctrl);
       }
     }
     if (lastError instanceof JobHttpError) throw lastError;
     throw new JobHttpError(url, undefined, `GET ${url} failed after ${retries + 1} attempts: ${(lastError as Error).message}`);
   }
 
-  return { getJson };
+  return {
+    getJson,
+    abortAll() {
+      forceStop = true;
+      for (const ctrl of activeControllers) ctrl.abort();
+      activeControllers.clear();
+    },
+  };
 }
