@@ -19,6 +19,7 @@ import {
   syncOnce,
   matchJobs,
   type JobHttpOptions,
+  type SyncResult,
 } from '@jobagent/job-source';
 import type { JobSourceAdapter } from '@jobagent/job-source';
 import type { CliDeps } from './index.js';
@@ -54,6 +55,38 @@ function parseSources(raw: string | undefined, logger: Pick<Console, 'error'>): 
     return null;
   }
   return picked;
+}
+
+/**
+ * 解析源级采集预算覆盖（JOB_SOURCE_BUDGETS_MS，格式 `source:ms,source:ms`）。
+ * 值支持纯毫秒整数，或 `s`/`m` 后缀（如 `remoteok:3s,greenhouse:8m`）。
+ * 未知源或非法数值返回 null 并报错；未配置时返回 undefined（走 job-source 默认预算）。
+ */
+function parseSourceBudgetsMs(
+  raw: string | undefined,
+  logger: Pick<Console, 'error'>,
+): Partial<Record<JobSource, number>> | null | undefined {
+  if (!raw) return undefined;
+  const out: Partial<Record<JobSource, number>> = {};
+  for (const part of raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0)) {
+    const [source, value] = part.split(':').map((s) => s.trim());
+    if (!source || !ENABLED_SOURCES.includes(source as JobSource)) {
+      logger.error(`unknown budget source: ${source} (expected one of: ${ENABLED_SOURCES.join(', ')})`);
+      return null;
+    }
+    const m = /^(\d+)(s|m)?$/.exec(value ?? '');
+    if (!m) {
+      logger.error(`invalid budget value for ${source}: ${value} (expected ms int, or <int>s / <int>m)`);
+      return null;
+    }
+    const ms = Number(m[1]) * (m[2] === 'm' ? 60_000 : m[2] === 's' ? 1_000 : 1);
+    if (ms < 1) {
+      logger.error(`budget for ${source} must be >= 1ms`);
+      return null;
+    }
+    out[source as JobSource] = ms;
+  }
+  return out;
 }
 
 /**
@@ -111,17 +144,38 @@ async function runSync(rest: string[], deps: CliDeps): Promise<number> {
   const adapters: JobSourceAdapter[] =
     deps.jobAdapters ?? createDefaultAdapters({ sources: sources ?? undefined, logger });
   const http = createJobHttpClient({ ...httpOptionsFromEnv(), logger });
+  const sourceBudgets = parseSourceBudgetsMs(process.env.JOB_SOURCE_BUDGETS_MS, logger);
+  if (sourceBudgets === null) return 2;
   const now = deps.now ? () => new Date(deps.now!()) : undefined;
 
-  const result = await syncOnce({
-    adapters,
-    repo: storage.jobPostings,
-    http,
-    staleDays,
-    dryRun: Boolean(values['dry-run']),
-    now,
-    logger,
+  // 总预算保险丝（默认 20min，覆盖各源预算之和；JOB_SYNC_TOTAL_BUDGET_MS 可调）：
+  // 即使 abortAll 因底层 undici 缺陷未能中止挂起 socket，也强制进程退出，避免步骤挂到 workflow 上限被 cancel。
+  // 已 upsert 的数据已落库，属于"部分成功"语义（退出码 1，stderr 已说明）。
+  const totalBudgetMs = Number(process.env.JOB_SYNC_TOTAL_BUDGET_MS ?? 20 * 60_000);
+  let watchdog: NodeJS.Timeout | undefined;
+  const guardedSync = new Promise<SyncResult>((resolve, reject) => {
+    watchdog = setTimeout(() => {
+      logger.error(`[jobs] sync exceeded total budget ${totalBudgetMs}ms; forcing exit (partial results may be persisted)`);
+      process.exit(1);
+    }, totalBudgetMs);
+    syncOnce({
+      adapters,
+      repo: storage.jobPostings,
+      http,
+      staleDays,
+      ...(sourceBudgets ? { sourceBudgetsMs: sourceBudgets } : {}),
+      dryRun: Boolean(values['dry-run']),
+      now,
+      logger,
+    }).then(resolve, reject);
   });
+
+  let result: SyncResult;
+  try {
+    result = await guardedSync;
+  } finally {
+    clearTimeout(watchdog);
+  }
 
   const header = ['source', 'fetched', 'inserted', 'updated', 'unchanged', 'invalid', 'error'].join('\t');
   const lines = result.outcomes.map((o) =>
