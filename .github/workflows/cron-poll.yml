@@ -1,0 +1,85 @@
+name: Cron poll
+
+# Analysis-job consumption for form C while the deployment stays on the
+# Vercel Hobby plan. Vercel Hobby allows only one cron invocation per day, so
+# the per-minute `process-job` cron cannot be deployed (it fails at deploy
+# time). This workflow polls the same internal endpoint every hour instead.
+#
+# Trade-off (recorded in docs/deployment-runbook-20260920.md §4-C-5 and
+# docs/部署执行单-形态C-20260921.md E1): queued analyses are consumed within
+# ≤1 h instead of ≤1 min. Once the project is upgraded to Vercel Pro, restore
+# the per-minute cron in apps/report/vercel.json and this poller can be
+# removed or kept as a fallback.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   CRON_SECRET     The production CRON_SECRET (same value as the Vercel env).
+#   VERCEL_PROD_URL Production origin, e.g. https://app.job-agent.bayjf.com
+#                   (no trailing slash).
+#
+# Manual runs: Actions → Cron poll → Run workflow. The endpoint is idempotent:
+# an empty queue returns HTTP 200 with body "idle", so a manual run is a safe
+# liveness probe.
+#
+# While CRON_SECRET/VERCEL_PROD_URL are absent (form C not yet deployed),
+# scheduled runs finish with a visible warning; a manual dispatch fails fast to
+# surface the misconfiguration.
+
+on:
+  schedule:
+    # Hourly, UTC. Off the top of the hour to spread load.
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never overlap two polls; a manual run during a scheduled one is a no-op.
+  group: cron-poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Guard secrets
+        id: guard
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_PROD_URL: ${{ secrets.VERCEL_PROD_URL }}
+        run: |
+          if [ -n "$CRON_SECRET" ] && [ -n "$VERCEL_PROD_URL" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Secrets are configured; polling will run."
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo '::error::repository secrets CRON_SECRET and VERCEL_PROD_URL are not both set. Add them at Settings -> Secrets and variables -> Actions (see workflow header and the deployment checklist stage E).'
+            exit 1
+          else
+            echo '::warning::CRON_SECRET/VERCEL_PROD_URL not configured yet (form C not deployed). Skipping this scheduled poll — add the secrets to activate it.'
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Drain analysis queue (process-job)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_PROD_URL: ${{ secrets.VERCEL_PROD_URL }}
+        run: |
+          # process-job consumes AT MOST ONE queued analysis per call and
+          # answers {"ok":true,"outcome":{"kind":"idle"}} when the queue is
+          # empty. Loop up to 10 times so a small backlog is drained in one
+          # hourly pass instead of leaving analyses waiting for the next hour.
+          # 401/403/5xx abort immediately.
+          for i in $(seq 1 10); do
+            body="$(curl -fsS -m 60 \
+              "$VERCEL_PROD_URL/api/internal/cron/process-job?token=$CRON_SECRET")" \
+              || { echo "::error::process-job failed on attempt $i (curl exit $?)"; exit 1; }
+            kind="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"]["kind"])' 2>/dev/null || echo __unparseable)"
+            if [ "$kind" = "idle" ]; then
+              echo "Queue idle (attempt $i)."
+              break
+            fi
+            echo "Processed one job (attempt $i, kind=$kind); continuing to drain."
+            sleep 5
+          done
