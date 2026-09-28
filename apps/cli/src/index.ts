@@ -343,7 +343,12 @@ function flushStdout(): Promise<void> {
   return new Promise((resolve) => process.stdout.once('drain', resolve));
 }
 
-main().catch((err) => {
-  console.error(`jobagent: ${(err as Error).message}`);
-  process.exit(1);
-});
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(`jobagent: ${(err as Error).message}`);
+    process.exit(1);
+  });
+}
