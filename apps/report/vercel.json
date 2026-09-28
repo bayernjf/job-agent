@@ -1,9 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "astro",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @jobagent/report... build",
-  "outputDirectory": "apps/report/dist",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && ASTRO_ADAPTER=vercel pnpm --filter @jobagent/report... build",
   "regions": ["hnd1"],
   "crons": [
     {
