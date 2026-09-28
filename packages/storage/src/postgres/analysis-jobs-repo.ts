@@ -15,6 +15,40 @@ import { tsLt } from './time-text.js';
 const formalFirst = sql`CASE WHEN ${analysisJobs.requesterKind} = 'demo' THEN 1 ELSE 0 END`;
 
 /**
+ * TEMPORARY (JA_PG_DIAG-gated): serialize a possibly-wrapped PG error.
+ * Drizzle wraps postgres-js PostgresError as `new Error("Failed query: ...",
+ * { cause: e })`, stripping code/severity/hint from the top level, so the
+ * whole cause chain must be walked to surface the real server-side failure.
+ */
+function serializePgError(err: unknown): unknown {
+  const chain: unknown[] = [];
+  let cur: unknown = err;
+  for (let depth = 0; depth < 5 && cur; depth += 1) {
+    const e = cur as Record<string, unknown>;
+    const entry: Record<string, unknown> = {
+      name: e.name,
+      code: e.code,
+      severity: e.severity,
+      hint: e.hint,
+      detail: e.detail,
+      where: e.where,
+      schemaName: e.schemaName,
+      tableName: e.tableName,
+      columnName: e.columnName,
+      dataType: e.dataType,
+      constraintName: e.constraintName,
+      message: e.message,
+    };
+    for (const key of Object.keys(entry)) {
+      if (entry[key] === undefined) delete entry[key];
+    }
+    chain.push(entry);
+    cur = e.cause;
+  }
+  return chain;
+}
+
+/**
  * analysis_jobs 仓储的 Postgres 实现。
  * 认领在 async 事务内两步完成（SELECT 最老 queued → UPDATE 特定 id 双校验）；
  * 正式优先、同级 FIFO。MVP 单 Worker，FOR UPDATE SKIP LOCKED 缓做（设计文档 §9）。
@@ -180,6 +214,16 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
       );
     }
     try {
+      if (diag) {
+        const schema = await this.db.execute(
+          sql`select data_type, udt_name from information_schema.columns
+              where table_schema = 'public'
+                and table_name = 'analysis_jobs'
+                and column_name in ('started_at', 'updated_at')
+              order by column_name`,
+        );
+        console.info(`[diag:columns] ${JSON.stringify(Array.from(schema))}`);
+      }
       const result = await this.db
         .update(analysisJobs)
         .set({
@@ -201,17 +245,7 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
       return result.length;
     } catch (err) {
       if (diag) {
-        const e = err as Error & { code?: string };
-        console.error(
-          '[diag:reclaim] FAIL ' +
-            JSON.stringify({
-              name: e?.name,
-              code: e?.code,
-              message: e?.message,
-              cutoffType: typeof cutoff,
-            }),
-        );
-        console.error(e?.stack);
+        console.error('[diag:reclaim] FAIL ' + JSON.stringify(serializePgError(err)));
       }
       throw err;
     }
