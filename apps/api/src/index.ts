@@ -616,7 +616,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       const outcome = await processOnce();
       return c.json({ ok: true, outcome });
     } catch (err) {
-      // 如 GITHUB_TOKEN 缺失等配置错误：显式 500，不伪装成功（Vercel 日志可见）
+      // 配置错误（如 GITHUB_TOKEN 缺失）或仓储/驱动错误：显式 500，并把完整
+      // code/stack/cause 打到 serverless 日志（Vercel runtime logs），不伪装成功。
+      console.error('[cron] process-job failed:', JSON.stringify(describeError(err)));
       return c.json({ ok: false, error: (err as Error).message }, 500);
     }
   });
@@ -1844,11 +1846,27 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // 错误处理
   app.onError((err, c) => {
-    console.error(`[api] unhandled error: ${err.message}`);
+    console.error('[api] unhandled error:', JSON.stringify(describeError(err)));
     return c.json({ error: 'internal server error' }, 500);
   });
 
   return app;
+}
+
+/**
+ * Expand an unknown error into a loggable shape, including the driver `code`
+ * and the full `cause` chain. Serverless runtimes (Vercel) otherwise surface
+ * only an empty 500 with no stack, which makes production failures impossible
+ * to diagnose. Stacks are truncated to keep log lines bounded.
+ */
+function describeError(err: unknown, depth = 0): unknown {
+  if (!(err instanceof Error)) return { value: String(err) };
+  const e = err as Error & { code?: string; cause?: unknown };
+  const out: Record<string, unknown> = { name: e.name, message: e.message };
+  if (e.code) out.code = e.code;
+  if (e.stack) out.stack = e.stack.split('\n').slice(0, 14).join('\n');
+  if (e.cause && depth < 4) out.cause = describeError(e.cause, depth + 1);
+  return out;
 }
 
 // ─── 入口 ────────────────────────────────────────────────────────────────
