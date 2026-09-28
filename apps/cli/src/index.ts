@@ -330,10 +330,25 @@ async function main(): Promise<void> {
     token: process.env.GITHUB_TOKEN,
     giteeToken: process.env.GITEE_TOKEN,
   });
-  process.exitCode = code;
+  // CLI 是一次性短命令：显式退出，避免 dangling handles（postgres 连接池 /
+  // undici keep-alive socket）让进程挂住事件循环（2026-09-28 G2 验证实测：
+  // jobs sync 完成后进程挂 43 分钟，逼近 workflow 45min 上限）。退出前先
+  // 排空 stdout 管道缓冲，避免表格输出被截断。
+  await flushStdout();
+  process.exit(code);
 }
 
-main().catch((err) => {
-  console.error(`jobagent: ${(err as Error).message}`);
-  process.exitCode = 1;
-});
+function flushStdout(): Promise<void> {
+  if (process.stdout.writableLength === 0) return Promise.resolve();
+  return new Promise((resolve) => process.stdout.once('drain', resolve));
+}
+
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(`jobagent: ${(err as Error).message}`);
+    process.exit(1);
+  });
+}

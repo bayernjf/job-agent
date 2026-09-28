@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, gte, inArray, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ilike, or, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { tsGte, tsLt } from './time-text.js';
 import {
   jobPostingSignature,
   makeJobPostingId,
@@ -184,7 +185,7 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
       conditions.push(sql`COALESCE(${t.salaryMax}, ${t.salaryMin}) >= ${query.salaryMinUsd}`);
     }
     if (query.postedAfter) {
-      conditions.push(gte(t.postedAt, query.postedAfter));
+      conditions.push(tsGte(t.postedAt, query.postedAfter));
     }
     if (query.tags && query.tags.length > 0) {
       const tagMatch = query.tags.map((tag) => ilike(t.tags, `%${tag}%`));
@@ -228,7 +229,7 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     const rows = await this.db
       .select({ source: t.source, count: sql<string>`count(*)` })
       .from(t)
-      .where(and(eq(t.status, 'active'), gte(t.lastSeenAt, cutoffIso)))
+      .where(and(eq(t.status, 'active'), tsGte(t.lastSeenAt, cutoffIso)))
       .groupBy(t.source);
     const result: Record<string, number> = {};
     for (const row of rows) result[row.source] = Number(row.count);
@@ -239,7 +240,7 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     const changed = await this.db
       .update(t)
       .set({ status: 'inactive', updatedAt: new Date().toISOString() })
-      .where(and(eq(t.status, 'active'), sql`${t.lastSeenAt} < ${cutoffIso}`))
+      .where(and(eq(t.status, 'active'), tsLt(t.lastSeenAt, cutoffIso)))
       .returning({ id: t.id });
     return changed.length;
   }

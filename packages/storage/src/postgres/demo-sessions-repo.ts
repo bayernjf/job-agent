@@ -1,6 +1,7 @@
-import { and, eq, gt, lt, or, sql } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { tsGt, tsLt } from './time-text.js';
 import {
   toStoredDemoSession,
   type AnalyzedLogin,
@@ -36,7 +37,7 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
         and(
           eq(demoSessions.id, id),
           eq(demoSessions.status, 'active'),
-          gt(demoSessions.expiresAt, now),
+          tsGt(demoSessions.expiresAt, now),
         ),
       )
       .limit(1);
@@ -54,7 +55,7 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
         and(
           eq(demoSessions.id, id),
           eq(demoSessions.status, 'active'),
-          gt(demoSessions.expiresAt, now),
+          tsGt(demoSessions.expiresAt, now),
           // 剩余额度不足 cost 时整单不匹配（影响 0 行），杜绝部分扣减导致的超用
           sql`${demoSessions.analyzeCount} + ${cost} <= ${quota}`,
         ),
@@ -139,7 +140,7 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
         and(
           eq(demoRateEvents.ipHash, ipHash),
           eq(demoRateEvents.kind, kind),
-          gt(demoRateEvents.createdAt, since),
+          tsGt(demoRateEvents.createdAt, since),
         ),
       );
     return Number(rows[0]?.count ?? 0);
@@ -162,9 +163,9 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
         or(
           and(
             eq(demoSessions.status, 'exited'),
-            lt(demoSessions.lastSeenAt, retainCutoff),
+            tsLt(demoSessions.lastSeenAt, retainCutoff),
           ),
-          lt(demoSessions.expiresAt, retainCutoff),
+          tsLt(demoSessions.expiresAt, retainCutoff),
         ),
       )
       .returning({ id: demoSessions.id });
@@ -174,7 +175,7 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
   async purgeRateEventsBefore(cutoff: string): Promise<number> {
     const rows = await this.db
       .delete(demoRateEvents)
-      .where(lt(demoRateEvents.createdAt, cutoff))
+      .where(tsLt(demoRateEvents.createdAt, cutoff))
       .returning({ id: demoRateEvents.id });
     return rows.length;
   }
