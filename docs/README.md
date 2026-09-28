@@ -14,6 +14,7 @@
 | 理解产品初衷、要解决的根本问题 | [产品构想-以GitHub为桥梁的招聘系统.md](产品构想-以GitHub为桥梁的招聘系统.md) |
 | **问"这项目怎么分应聘者/招聘方、主力是哪边"** | **一句话答案**：没有 B/C 两套账号，只有**四条判据互不一致的机制**——`?view=recruiter`（纯 query）/ 内容分级闸（判据是"已登录"）/ `/[locale]/recruit`（SSR 直出）/ 端点闸（只有 `/interviews` 要登录，`/candidates`·`/applications` 不查身份）；**主力是应聘方**（招聘侧无独立身份线）。全文见 [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) §1.1，工程硬约束见 [../AGENTS.md](../AGENTS.md) 运行架构第 9 条 |
 | **问"C 端下一步做什么 / 为什么我的简历说不清我做 AI Agent"** | [design-c-side-first-20260925.md](design-c-side-first-20260925.md) ★（#18 已拍板 2026-09-25、批次 0 已落地＝handoff item61：六步求职判据 + 逐条 `file:line` 断点 + C-A~C-D 四期 + 与 #17 的改序 + "岗位池今天是死的"这个非代码阻塞）；**批次 6（T24–T27/T17/T09）与批次 7（T28 单一发布 / T31 证据按画像隔离 / T32 迁移原子性 / T10 下一步动作区块 / T12+T23 交付物成色）均已落地**，未做＝T13–T16、T18–T20、T21/T22、T29/T30、**T33（内核散文剩余面，要先给快照补 facts 并升规则 0.7）**） |
+| 想让**别的系统/agent** 接进来（MCP 或 HTTP），先搞清能看见什么 | [design-mcp-surface-20260928.md](design-mcp-surface-20260928.md)（决策 #19 **提案未开工**：现状实查=全仓无 MCP 面、对外只有 HTTP `docs/API.md`；三条硬原则=薄壳不直读 storage / 服务账号不是人所以给密钥也不解锁证据与面试题 / 只读且绝不触发分析；v0 四个只读工具与 `MCP_API_KEY` fail-closed；三件待勾子问见 §7）+ [API.md](API.md)（现行 30 条 HTTP 路由契约） |
 | 看产品范围、功能 F1–F11、画像契约、指标与风险 | [PRD.md](PRD.md) ★ |
 | 搞清楚"项目怎么分应聘者/招聘方"、B 端要不要角色与组织、为什么 `/candidates` 今天匿名可读、F10/F11 与决策 #17 的范围 | [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) ★（#17 已拍板 2026-09-25、未实施：两侧共用账号无角色的现状表、声明式角色立场、迁移 013 草案、A/D/U/R 权限矩阵、`auth cleanup` 会删掉招聘方账号这条坑、5 个待勾子问题） |
 | 回看"为什么从分析 GitHub 切入、MVP 如何收敛"的讨论过程 | [讨论记录-01-切入口与MVP收敛-20260910.md](讨论记录-01-切入口与MVP收敛-20260910.md) |
