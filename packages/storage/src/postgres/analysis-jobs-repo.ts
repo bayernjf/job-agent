@@ -9,6 +9,7 @@ import {
 } from '../entities/index.js';
 import type { IAnalysisJobsRepository } from '../repositories/analysis-jobs.js';
 import { analysisJobs } from './schema.js';
+import { tsLt } from './time-text.js';
 
 /** 正式（非 demo）任务优先认领的排序表达式：demo 排后，同级再按创建时间 FIFO */
 const formalFirst = sql`CASE WHEN ${analysisJobs.requesterKind} = 'demo' THEN 1 ELSE 0 END`;
@@ -193,7 +194,7 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
         .where(
           and(
             eq(analysisJobs.status, 'running'),
-            lt(analysisJobs.startedAt, cutoff),
+            tsLt(analysisJobs.startedAt, cutoff),
           ),
         )
         .returning({ id: analysisJobs.id });

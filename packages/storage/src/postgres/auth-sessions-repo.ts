@@ -1,5 +1,6 @@
-import { and, eq, gt, lt, or } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { tsGt, tsLt } from './time-text.js';
 import {
   toStoredAuthSession,
   type NewAuthSession,
@@ -24,7 +25,7 @@ export class PgAuthSessionsRepository implements IAuthSessionsRepository {
     const rows = await this.db
       .select()
       .from(t)
-      .where(and(eq(t.id, id), eq(t.status, 'active'), gt(t.expiresAt, nowIso)))
+      .where(and(eq(t.id, id), eq(t.status, 'active'), tsGt(t.expiresAt, nowIso)))
       .limit(1);
     return rows[0] ? toStoredAuthSession(rows[0]!) : undefined;
   }
@@ -44,8 +45,8 @@ export class PgAuthSessionsRepository implements IAuthSessionsRepository {
       .delete(t)
       .where(
         or(
-          and(eq(t.status, 'revoked'), lt(t.lastSeenAt, retainCutoff)),
-          lt(t.expiresAt, retainCutoff),
+          and(eq(t.status, 'revoked'), tsLt(t.lastSeenAt, retainCutoff)),
+          tsLt(t.expiresAt, retainCutoff),
         ),
       )
       .returning({ id: t.id });
