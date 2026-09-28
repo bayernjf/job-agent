@@ -1,0 +1,47 @@
+name: temp-preset-warmup
+
+# ONE-SHOT workflow (2026-09-29) to warm the three demo preset profiles in the
+# production DB from a clean network path. Safe to delete after it completes.
+on:
+  workflow_dispatch:
+
+jobs:
+  warmup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up preset profiles
+        env:
+          BASE: https://app.job-agent.bayjf.com/api
+        run: |
+          set -euo pipefail
+          jar="$(mktemp)"
+
+          echo "== create demo session =="
+          curl -fsS -m 30 -c "$jar" -X POST "$BASE/demo/sessions" \
+            -H 'content-type: application/json' \
+            -H 'origin: https://app.job-agent.bayjf.com' \
+            -H 'referer: https://app.job-agent.bayjf.com/'
+          echo
+
+          for u in torvalds bayernjf MSNightmare; do
+            echo "== enqueue $u =="
+            curl -fsS -m 30 -b "$jar" -X POST "$BASE/analyze" \
+              -H 'content-type: application/json' \
+              -H 'origin: https://app.job-agent.bayjf.com' \
+              -H 'referer: https://app.job-agent.bayjf.com/' \
+              -d "{\"username\":\"$u\",\"platform\":\"github\"}"
+            echo
+          done
+
+          echo "== drain queue (process-job until idle, max 10) =="
+          for i in $(seq 1 10); do
+            body="$(curl -fsS -m 60 \
+              "$BASE/internal/cron/process-job?token=${{ secrets.CRON_SECRET }}")"
+            kind="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"]["kind"])')"
+            echo "attempt $i kind=$kind"
+            if [ "$kind" = "idle" ]; then break; fi
+            sleep 5
+          done
+
+          echo "== verify presets ready =="
+          curl -fsS -m 30 "$BASE/demo/presets" | python3 -m json.tool
