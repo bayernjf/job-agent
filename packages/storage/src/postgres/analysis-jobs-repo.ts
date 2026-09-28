@@ -169,25 +169,51 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
   async reclaimStaleRunning(maxAgeMs: number): Promise<number> {
     const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
     const now = new Date().toISOString();
-    const result = await this.db
-      .update(analysisJobs)
-      .set({
-        status: 'queued',
-        stage: null,
-        errorMessage: 'Reclaimed: worker likely crashed mid-job',
-        claimedBy: null,
-        startedAt: null,
-        finishedAt: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(analysisJobs.status, 'running'),
-          lt(analysisJobs.startedAt, cutoff),
-        ),
-      )
-      .returning({ id: analysisJobs.id });
-    return result.length;
+    const diag = process.env.JA_PG_DIAG === '1';
+    if (diag) {
+      // TEMPORARY production probe for the text-column vs timestamptz 42883
+      // failure: proves the JS type of the comparison parameter at runtime.
+      console.info(
+        '[diag:reclaim] ' +
+          JSON.stringify({ cutoffType: typeof cutoff, cutoff, nowType: typeof now, maxAgeMs }),
+      );
+    }
+    try {
+      const result = await this.db
+        .update(analysisJobs)
+        .set({
+          status: 'queued',
+          stage: null,
+          errorMessage: 'Reclaimed: worker likely crashed mid-job',
+          claimedBy: null,
+          startedAt: null,
+          finishedAt: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(analysisJobs.status, 'running'),
+            lt(analysisJobs.startedAt, cutoff),
+          ),
+        )
+        .returning({ id: analysisJobs.id });
+      return result.length;
+    } catch (err) {
+      if (diag) {
+        const e = err as Error & { code?: string };
+        console.error(
+          '[diag:reclaim] FAIL ' +
+            JSON.stringify({
+              name: e?.name,
+              code: e?.code,
+              message: e?.message,
+              cutoffType: typeof cutoff,
+            }),
+        );
+        console.error(e?.stack);
+      }
+      throw err;
+    }
   }
 
   async listBySubject(
