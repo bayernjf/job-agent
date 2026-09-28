@@ -312,6 +312,54 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(reclaimed?.id).toBe(id);
   });
 
+  // 回归（生产 cron 500，PG 42883 "operator does not exist: text < timestamp with time zone"）：
+  // 所有时间戳列都是 text、比较参数是 ISO 字符串。经事务池化（Supabase pooler, prepare=false）
+  // 时未显式定型的参数可能被推断成 timestamptz，导致 text < timestamptz 无操作符而整单失败。
+  // 钉死：reclaim 用 ::text 定型后，在真 PG 的直连与 pooler(prepare=false) 两种形态下都
+  // 正确回收过期 running 任务、保留新近 running 任务，且不抛 42883。
+  pgIt('reclaims stale running jobs over text timestamps without 42883', async (s) => {
+    if (!basePgUrl) throw new Error('PG url not initialized');
+    const suffix = randomUUID().slice(0, 8);
+    const staleId = `job_stale_${suffix}`;
+    const freshId = `job_fresh_${suffix}`;
+    await s.jobs.create({ id: staleId, subjectLogin: `u_${suffix}` });
+    await s.jobs.create({ id: freshId, subjectLogin: `u_${suffix}` });
+
+    const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+    const nowIso = new Date().toISOString();
+    const backdate = openPostgres(basePgUrl, { max: 2 });
+    try {
+      // 直接置 running 并给定 started_at，绕过 claimNext 的 FIFO/队列不确定性
+      await backdate.client.unsafe(
+        `update analysis_jobs set status='running', attempts=1, claimed_by='w', started_at=$1 where id=$2`,
+        [tenMinAgo, staleId],
+      );
+      await backdate.client.unsafe(
+        `update analysis_jobs set status='running', attempts=1, claimed_by='w', started_at=$1 where id=$2`,
+        [nowIso, freshId],
+      );
+    } finally {
+      await backdate.client.end({ timeout: 5 });
+    }
+
+    const reclaimed = await s.jobs.reclaimStaleRunning(5 * 60_000);
+    expect(reclaimed).toBeGreaterThanOrEqual(1);
+    expect((await s.jobs.getById(staleId))?.status).toBe('queued');
+    expect((await s.jobs.getById(freshId))?.status).toBe('running');
+
+    // pooler 形态（prepare=false，Supabase 6543 同款）：::text 定型的比较必须健康
+    const pooled = openPostgres(basePgUrl, { max: 2, prepare: false });
+    try {
+      const rows = await pooled.client.unsafe(
+        `select id from analysis_jobs where status='running' and started_at < $1::text limit 5`,
+        [new Date(Date.now() - 5 * 60_000).toISOString()],
+      );
+      expect(Array.isArray(rows)).toBe(true);
+    } finally {
+      await pooled.client.end({ timeout: 5 });
+    }
+  });
+
   pgIt('inserts and reads back a profile with boolean and JSON round-trip', async (s) => {
     const id = `prof_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
     const snapshot = minimalSnapshot(`pg_${randomUUID().slice(0, 6)}`);

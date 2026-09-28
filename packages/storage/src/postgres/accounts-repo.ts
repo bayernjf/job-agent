@@ -1,5 +1,6 @@
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import { tsLt } from './time-text.js';
 import {
   toStoredAccount,
   type ProviderIdentity,
@@ -105,8 +106,8 @@ export class PgAccountsRepository implements IAccountsRepository {
       .where(
         and(
           isNull(t.claimedProfileId),
-          lt(t.updatedAt, retainCutoff),
-          sql`not exists (select 1 from auth_sessions where auth_sessions.account_id = ${t.id} and auth_sessions.expires_at >= ${nowIso})`,
+          tsLt(t.updatedAt, retainCutoff),
+          sql`not exists (select 1 from auth_sessions where auth_sessions.account_id = ${t.id} and auth_sessions.expires_at >= ${nowIso}::text)`,
         ),
       )
       .returning({ id: t.id });
