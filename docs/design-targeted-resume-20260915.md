@@ -252,7 +252,7 @@ LocalProfileFields   = {
 
 | 阶段 | 范围 | 量级 | 依赖 |
 | --- | --- | --- | --- |
-| **P-R1（规则版闭环，建议先做）✅ 已落地 2026-09-15** | shared ResumeDraft/LocalResumeFields 契约；resume-core（rank/tailor/render md+html）；CLI `jobagent resume build --profile <file|id> --job <id> [--local-fields f.json] [--format md|html|json] -o out`；全套单测 | 小（1–1.5 天） | 已有画像/岗位库/匹配，无新外部依赖 |
+| **P-R1（规则版闭环，建议先做）✅ 已落地 2026-09-15** | shared ResumeDraft/LocalResumeFields 契约；resume-core（rank/tailor/render md+html）；CLI `jobagent resume build --profile <file\|id> --job <id> [--local-fields f.json] [--format md\|html\|json] -o out`；全套单测 | 小（1–1.5 天） | 已有画像/岗位库/匹配，无新外部依赖 |
 | **P-R2（在线消费）✅ 已落地 2026-09-16** | API `POST /resumes/build`（body: profileId+jobId+可选 local，返回 ResumeDraft；不入库）；报告页岗位卡片加"针对此岗生成简历"（island：预览 md/html、打印 PDF、local 补填表单存 localStorage）；docs/API.md §3.4；E2E（含 `?resumeJob=` 深链自动触发）。实现增补：CLI/API 共用 `fromJobMatch` 映射；storage 共享 `toEvidenceItem(s)`；修复无 evidenceRefs 弱信号技能误标 source:'profile' 的内核 bug | 中（2–3 天） | P-R1 |
 | **P-R3 🟡 可闭环子项已落地 2026-09-16，余外部/缓做项** | 已做：B 档 LLM **端口 + Fake + 受约束润色安全层**（§7，`resume-core/polish.ts` 数字防臆造闸门）+ **OpenAI 兼容客户端与 env 工厂**（`packages/llm/openai-compatible-client.ts`，默认关闭）+ **API `POST /resumes/build` 可选 `polish` 接线（未配置/失败回退规则版）**；扩展面板生成（深链 CTA）；多岗位批量简历（CLI `resume batch`）；**报告页「AI 润色措辞」开关 UI（2026-09-16，item19 ②，勾选带 `polish:true`、诚实回退提示、中英 i18n + 2 E2E）**。仍缓做/外部：真实启用需用户自配 LLM env（厂商/费用由用户决定）、简历版本管理（随服务端持久化，见 deferred）、~~本地档案跨端自动互通~~（schema 统一 §5.4.1 + 自动同步 item24 均已落地 2026-09-17） | — | 触发条件见 §7/§10 |
 
