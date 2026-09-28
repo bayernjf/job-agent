@@ -74,7 +74,35 @@ export function resolvePostgresOptions(databaseUrl: string, options?: PgOpenOpti
 }
 
 export function openPostgres(databaseUrl: string, options?: PgOpenOptions): PgConnection {
-  const client = postgres(databaseUrl, resolvePostgresOptions(databaseUrl, options));
+  const resolved = resolvePostgresOptions(databaseUrl, options);
+  // Opt-in diagnostics (JA_PG_DIAG=1): log the *shape* of the resolved
+  // connection, never credentials. Used to diagnose production driver issues
+  // (e.g. Vercel serverless) where the runtime connection differs from local.
+  if (process.env.JA_PG_DIAG === '1') {
+    let host = '?';
+    let port = '(default)';
+    let sslmode = '(default)';
+    try {
+      const u = new URL(databaseUrl);
+      host = u.hostname;
+      if (u.port) port = u.port;
+      if (u.searchParams.get('sslmode')) sslmode = u.searchParams.get('sslmode') as string;
+    } catch {
+      host = '(unparseable url)';
+    }
+    console.info(
+      '[diag:pg] open ' +
+        JSON.stringify({
+          host,
+          port,
+          sslmode,
+          prepare: resolved.prepare === undefined ? '(default true)' : resolved.prepare,
+          max: resolved.max,
+          node: process.versions.node,
+        }),
+    );
+  }
+  const client = postgres(databaseUrl, resolved);
   const db = drizzle(client);
   return { client, db };
 }
