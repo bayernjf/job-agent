@@ -20,9 +20,21 @@ export interface IAccountsRepository {
   /** 撤销认领（B2 自助删除画像时把 claimed_profile_id 置空）；账号不存在返回 undefined */
   clearClaimedProfile(accountId: string): Promise<StoredAccount | undefined>;
   /**
+   * F10 招聘方显式自声明（决策 #17 第一期）：把 recruiter_declared_at 置为当前
+   * UTC ISO8601；幂等（已声明则保留原时刻），账号不存在返回 undefined。
+   */
+  declareRecruiter(accountId: string, nowIso: string): Promise<StoredAccount | undefined>;
+  /**
+   * 撤销招聘方声明：recruiter_declared_at 置 NULL（既有面试/投递数据不删，
+   * 见设计 §2.1 反制通道）；幂等，账号不存在返回 undefined。
+   */
+  revokeRecruiter(accountId: string): Promise<StoredAccount | undefined>;
+  /**
    * 运维清理（cron 用）：删除从未认领画像（claimed_profile_id 为空）、updated_at 早于
    * 保留期截止，且当前没有任何未过期会话的账号，返回删除行数。再次登录会按
    * (platform, provider_account_id) 重新 upsert，故删除无认领记录的闲置账号不丢数据。
+   * F10：已声明招聘方的账号（recruiter_declared_at 非空）永不被清理——招聘方通常
+   * 不认领自己的画像，且声明不得被后台任务静默重置（设计 §7.1）。
    */
   deleteUnclaimed(nowIso: string, retainMs: number): Promise<number>;
 }

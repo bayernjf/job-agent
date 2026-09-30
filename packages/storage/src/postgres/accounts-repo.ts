@@ -97,15 +97,43 @@ export class PgAccountsRepository implements IAccountsRepository {
     return this.getById(accountId);
   }
 
+  async declareRecruiter(
+    accountId: string,
+    nowIso: string,
+  ): Promise<StoredAccount | undefined> {
+    const existing = await this.db.select().from(t).where(eq(t.id, accountId)).limit(1);
+    if (!existing[0]) return undefined;
+    // 幂等：已声明则保留原时刻。
+    if (existing[0].recruiterDeclaredAt) return toStoredAccount(existing[0]);
+    await this.db
+      .update(t)
+      .set({ recruiterDeclaredAt: nowIso, updatedAt: nowIso })
+      .where(eq(t.id, accountId));
+    return this.getById(accountId);
+  }
+
+  async revokeRecruiter(accountId: string): Promise<StoredAccount | undefined> {
+    const existing = await this.db.select().from(t).where(eq(t.id, accountId)).limit(1);
+    if (!existing[0]) return undefined;
+    const now = new Date().toISOString();
+    await this.db
+      .update(t)
+      .set({ recruiterDeclaredAt: null, updatedAt: now })
+      .where(eq(t.id, accountId));
+    return this.getById(accountId);
+  }
+
   async deleteUnclaimed(nowIso: string, retainMs: number): Promise<number> {
     const retainCutoff = new Date(Date.parse(nowIso) - retainMs).toISOString();
-    // 仅删：从未认领、超过保留期未更新、且当前没有未过期会话的账号。
+    // 仅删：从未认领、从未声明招聘方（F10 §7.1）、超过保留期未更新、且当前
+    // 没有未过期会话的账号。
     // 物理表/列名 sqlite 与 postgres 一致（snake_case），故此 NOT EXISTS 子句双方言通用。
     const rows = await this.db
       .delete(t)
       .where(
         and(
           isNull(t.claimedProfileId),
+          isNull(t.recruiterDeclaredAt),
           tsLt(t.updatedAt, retainCutoff),
           sql`not exists (select 1 from auth_sessions where auth_sessions.account_id = ${t.id} and auth_sessions.expires_at >= ${nowIso}::text)`,
         ),

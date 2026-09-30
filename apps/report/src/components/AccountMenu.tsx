@@ -17,6 +17,7 @@ type AuthMe =
       avatarUrl: string | null;
       profileUrl: string | null;
       claimedProfileId: string | null;
+      recruiterDeclaredAt?: string | null;
       expiresAt: string;
     };
 
@@ -34,6 +35,12 @@ interface AccountMenuProps {
   menuLabel: string;
   myLabel: string;
   claimedLabel: string;
+  recruiterBadgeLabel: string;
+  declareLabel: string;
+  declareConfirm: string;
+  revokeLabel: string;
+  revokeConfirm: string;
+  actionFailedLabel: string;
 }
 
 /** providers 拉取失败时的保守默认：保留 GitHub 入口、隐藏 Gitee（避免跳到未配置的 501）。 */
@@ -51,9 +58,16 @@ export default function AccountMenu({
   menuLabel,
   myLabel,
   claimedLabel,
+  recruiterBadgeLabel,
+  declareLabel,
+  declareConfirm,
+  revokeLabel,
+  revokeConfirm,
+  actionFailedLabel,
 }: AccountMenuProps) {
   const [me, setMe] = useState<AuthMe | null>(null);
   const [providers, setProviders] = useState<ProvidersResponse | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +108,27 @@ export default function AccountMenu({
       .catch(() => undefined);
   };
 
+  const setRecruiter = (declared: boolean) => {
+    if (busy || me?.kind !== 'user') return;
+    const confirmed = window.confirm(declared ? declareConfirm : revokeConfirm);
+    if (!confirmed) return;
+    setBusy(true);
+    fetch(`${apiBase}/auth/recruiter`, {
+      method: declared ? 'PUT' : 'DELETE',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: declared ? '{}' : undefined,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`auth/recruiter ${res.status}`);
+        window.location.reload();
+      })
+      .catch(() => {
+        setBusy(false);
+        window.alert(actionFailedLabel);
+      });
+  };
+
   // 首次加载前不渲染，避免闪现登录按钮
   if (!me) return null;
 
@@ -129,6 +164,7 @@ export default function AccountMenu({
 
   const displayName = me.name || me.login;
   const avatar = me.avatarUrl;
+  const isRecruiter = Boolean(me.recruiterDeclaredAt);
 
   return (
     <div className="account-menu" role="navigation" aria-label={menuLabel}>
@@ -164,6 +200,20 @@ export default function AccountMenu({
           {claimedLabel}
         </a>
       ) : null}
+      {isRecruiter ? (
+        <span className="account-menu__recruiter-badge" data-testid="recruiter-badge">
+          {recruiterBadgeLabel}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="account-menu__recruiter-toggle"
+        data-testid={isRecruiter ? 'recruiter-revoke' : 'recruiter-declare-menu'}
+        disabled={busy}
+        onClick={() => setRecruiter(!isRecruiter)}
+      >
+        {isRecruiter ? revokeLabel : declareLabel}
+      </button>
       <button type="button" className="account-menu__signout" onClick={handleLogout}>
         {signOutLabel}
       </button>

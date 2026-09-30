@@ -79,6 +79,15 @@ export const FIXTURE_PROFILE_IDS = [
 export const FIXTURE_ACCOUNT_PROVIDER_ID = '9001';
 export const FIXTURE_SESSION_TOKEN = 'ses-e2e-fixed-active-token';
 
+/**
+ * F10 招聘方声明 E2E：一个已显式声明 recruiter 的账号 + 固定未过期会话。
+ * /recruit 声明墙"匿名/未声明→墙、已声明→列表"两条断言分别用无 cookie、
+ * FIXTURE_SESSION_TOKEN（普通登录）与本 token（已声明）。
+ */
+export const FIXTURE_RECRUITER_LOGIN = 'e2e-recruiter-user';
+export const FIXTURE_RECRUITER_ACCOUNT_PROVIDER_ID = '9003';
+export const FIXTURE_RECRUITER_SESSION_TOKEN = 'ses-e2e-recruiter-token';
+
 
 const EVIDENCE = {
   extPr: 'evt-ext-pr-1',

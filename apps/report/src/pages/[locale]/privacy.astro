@@ -32,7 +32,7 @@ interface PrivacySection {
   blocks: Block[];
 }
 
-const lastUpdated = '2026-09-24';
+const lastUpdated = '2026-09-30';
 
 const en: PrivacySection[] = [
   {
@@ -192,6 +192,20 @@ const en: PrivacySection[] = [
       { kind: 'p', text: disputeEmail },
     ],
   },
+  {
+    heading: '11. Recruiter self-declaration',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'Candidate search and recruiter interview tools are available only to logged-in users who explicitly declare recruiter status. Declaring is a reversible, self-service action with no approval step; it does not make your account visible to candidates, and candidates are not notified when a recruiter views their profile.',
+      },
+      {
+        kind: 'p',
+        text: 'We record the declaration timestamp and never reset it silently on re-login; cleanup jobs never delete a declared account. You can revoke the declaration anytime, which removes access to recruiter surfaces but does not delete interview records you created. For objections, contact:',
+      },
+      { kind: 'p', text: disputeEmail },
+    ],
+  },
 ];
 
 const zhCN: PrivacySection[] = [
@@ -345,6 +359,20 @@ const zhCN: PrivacySection[] = [
     heading: '10. 变更与联系',
     blocks: [
       { kind: 'p', text: '我们可能更新本政策；重大变更会更新"最后更新"日期与本页面。咨询、更正/删除请求与异议请联系：' },
+      { kind: 'p', text: disputeEmail },
+    ],
+  },
+  {
+    heading: '11. 招聘方自声明',
+    blocks: [
+      {
+        kind: 'p',
+        text: '人才检索与招聘方面试工具仅向已登录、并显式声明招聘方身份的用户开放。声明是可逆的自助操作，无审核环节；声明不会让你的账号对候选人公开，候选人也不会在其画像被招聘方查看时收到通知。',
+      },
+      {
+        kind: 'p',
+        text: '我们记录声明时刻，且不会因重新登录而静默重置；运维清理任务永不删除已声明的账号。你可以随时撤销声明，撤销将收回招聘方表面的访问权，但不会删除你已创建的面试记录。异议请联系：',
+      },
       { kind: 'p', text: disputeEmail },
     ],
   },

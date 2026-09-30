@@ -13,30 +13,7 @@
  * 报告页通过 PUBLIC_API_BASE 指向它（见部署 Runbook 形态 A/B）。
  */
 import type { APIRoute } from 'astro';
-import { createApp } from '@jobagent/api';
-import { stripApiPrefix } from '../../lib/api-prefix';
-
-type JobAgentApp = Awaited<ReturnType<typeof createApp>>;
-
-// 函数实例内复用单例（温实例避免每次调用重建 Hono 路由与存储连接池）。
-let appPromise: Promise<JobAgentApp> | null = null;
-
-function getApp(): Promise<JobAgentApp> {
-  if (!appPromise) {
-    appPromise = createApp();
-  }
-  return appPromise;
-}
-
-/** 把 /api/xxx 的请求改写为 Hono 期望的 /xxx 后交给 Hono 处理。 */
-async function forwardToHono(request: Request): Promise<Response> {
-  const app = await getApp();
-  const url = new URL(request.url);
-  // /api → /，/api/ → /，/api/analyze → /analyze；query string 由 URL 对象保留
-  url.pathname = stripApiPrefix(url.pathname);
-  // new Request 保留 method/headers/body；Hono 返回标准 Web Response，Astro 可直接回传
-  return app.fetch(new Request(url, request));
-}
+import { forwardToHono } from '../../lib/internal-api';
 
 // ALL 覆盖 GET/POST/PATCH/OPTIONS（含 CORS 预检，由 Hono cors 中间件处理）
 export const ALL: APIRoute = ({ request }) => forwardToHono(request);

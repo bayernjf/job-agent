@@ -22,6 +22,11 @@ export interface StoredAccount {
   avatarUrl: string | null;
   /** 本人认领的画像快照 id，未认领为 null */
   claimedProfileId: string | null;
+  /**
+   * 招聘方显式自声明时刻（F10，决策 #17 第一期，UTC ISO8601）。
+   * null=未声明；声明后永不因重新登录或后台清理被静默重置。
+   */
+  recruiterDeclaredAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +56,7 @@ export interface RawAccountRow {
   email: string | null;
   avatarUrl: string | null;
   claimedProfileId: string | null;
+  recruiterDeclaredAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -67,6 +73,7 @@ export function toStoredAccount(row: RawAccountRow): StoredAccount {
     email: row.email ?? null,
     avatarUrl: row.avatarUrl ?? null,
     claimedProfileId: row.claimedProfileId ?? null,
+    recruiterDeclaredAt: row.recruiterDeclaredAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

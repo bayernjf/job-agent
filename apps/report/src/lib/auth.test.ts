@@ -47,7 +47,21 @@ describe('resolveViewer', () => {
   it('resolves a logged-in user from an active session', async () => {
     const storage = await setupStorage();
     const viewer = await resolveViewer('jobagent_session=ses-active', { storage });
-    expect(viewer).toMatchObject({ kind: 'user', platform: 'github', login: 'alice' });
+    expect(viewer).toMatchObject({
+      kind: 'user',
+      platform: 'github',
+      login: 'alice',
+      recruiter: false,
+    });
+  });
+
+  it('exposes recruiter declaration state from the account row (F10)', async () => {
+    const storage = await setupStorage();
+    const account = await storage.accounts.getByProvider('github', '101');
+    expect(account).toBeDefined();
+    await storage.accounts.declareRecruiter(account!.id, new Date().toISOString());
+    const viewer = await resolveViewer('jobagent_session=ses-active', { storage });
+    expect(viewer).toMatchObject({ kind: 'user', recruiter: true });
   });
 
   it('falls back to anonymous for an expired or unknown session', async () => {
@@ -71,9 +85,9 @@ describe('resolveViewer', () => {
 
 /** 投递管道可见性（决策 #17-F11）：认领即收归本人，未认领画像沿用公开口径。 */
 describe('canViewApplications', () => {
-  const user = { kind: 'user', platform: 'github', login: 'alice', claimedProfileId: null } as const;
-  const otherUser = { kind: 'user', platform: 'github', login: 'mallory', claimedProfileId: null } as const;
-  const giteeUser = { kind: 'user', platform: 'gitee', login: 'alice', claimedProfileId: null } as const;
+  const user = { kind: 'user', platform: 'github', login: 'alice', claimedProfileId: null, recruiter: false } as const;
+  const otherUser = { kind: 'user', platform: 'github', login: 'mallory', claimedProfileId: null, recruiter: false } as const;
+  const giteeUser = { kind: 'user', platform: 'gitee', login: 'alice', claimedProfileId: null, recruiter: false } as const;
   const anon = { kind: 'anonymous' } as const;
   const unclaimed = { subjectClaimed: false, subjectPlatform: 'github', subjectLogin: 'bob' };
   const claimedByAlice = { subjectClaimed: true, subjectPlatform: 'github', subjectLogin: 'alice' };

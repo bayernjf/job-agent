@@ -100,7 +100,7 @@
 ## 4. 明确不做（边界与缓做）
 
 - **JSON API 字段级裁剪不在本刀**：`GET /profiles/:id` 与 `/profiles/:id/exportable` 保持公开。理由：浏览器扩展一键填充依赖 exportable，且其投影本身不含证据 URL、不含面试题；未登录 API 面本就基本拿不到证据 URL（exportable 无；snapshot 内只有 evidenceId 无 URL；仅 job-recommendations 返回匹配理由相关的少量证据，而决策 #10 要求其可回溯）。若未来对外公开分享后出现 API 批量抓取/搬运滥用，再对 snapshot 做字段级裁剪（连面试题文本也裁），已登记 [deferred-items](deferred-items.md)「JSON API 字段级授权裁剪」。
-- 不做三级可见性、不做招聘方白名单/名单审核、不做联系方式门控（契约无此字段）。
+- 不做三级可见性、不做招聘方白名单/名单审核、不做联系方式门控（契约无此字段）。**2026-09-30 起部分改口**：仍不做"名单审核"，但已引入**自声明门**（无任何审核，仅 `accounts.recruiter_declared_at` 时间戳 + 显式 POST），`/candidates` 与 `/interviews` 写侧收紧为"已声明招聘方"可见——见 [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) F10（已落地）。
 - 不改 analyzer-core / 不把身份逻辑拖进分析内核（内核保持源无关、无 I/O）。
 
 ## 5. 测试与验证
