@@ -1,14 +1,23 @@
 ---
 /**
- * 企业侧人才筛选工作台 /[locale]/recruit（痛点解决方案批次 2，P-A/P-B）。
+ * 企业侧人才筛选工作台 /[locale]/recruit（痛点解决方案批次 2，P-A/P-B；F10 加声明墙）。
+ *
  * SSR 直连只读 storage 渲染首屏候选人；过滤/分页交互由 CandidateWorkspace
  * island 调同源 GET /candidates 完成。
+ *
+ * F10（决策 #17 第一期）：仅「已登录且已显式声明招聘方」可见首屏数据；
+ * 其余身份（anonymous/demo/已登录未声明）整页渲染声明墙——连 SSR 首屏 12 条
+ * 候选人也不出（design-recruiter-roles §7.2，不允许半屏数据+报错）。
+ * 声明是纯 SSR 表单 POST（无 JS），服务端改写为 Hono PUT /auth/recruiter。
  */
 import Layout from '../../layouts/Layout.astro';
+import GateCard from '../../components/GateCard.astro';
 import CandidateWorkspace from '../../components/CandidateWorkspace.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
 import { loadInitialCandidates } from '../../lib/db.js';
 import { browserApiBase } from '../../lib/api-base.js';
+import { resolveViewer } from '../../lib/auth.js';
+import { callInternalRoute } from '../../lib/internal-api.js';
 
 const { locale: rawLocale } = Astro.params;
 if (!isLocale(rawLocale)) {
@@ -19,8 +28,17 @@ const t = createTranslator(locale);
 
 const apiBase = browserApiBase();
 const reportBasePath = `/${locale}/report`;
-// SSR 首屏候选人（只读 storage）；岛屿后续过滤/分页走同源 GET /candidates
-const initial = await loadInitialCandidates({ limit: 12 });
+const disputeEmail =
+  (import.meta.env.PUBLIC_DISPUTE_EMAIL as string | undefined) ?? 'dispute@job-agent.bayjf.com';
+
+const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
+const isRecruiter = viewer.kind === 'user' && viewer.recruiter;
+const declareFailed = Astro.url.searchParams.get('declare_error') === '1';
+
+// SSR 首屏候选人（只读 storage）；仅已声明招聘方加载，未声明不查、不渲染（§7.2）
+const initial = isRecruiter ? await loadInitialCandidates({ limit: 12 }) : { items: [], total: 0 };
+const pagePath = `/${locale}/recruit`;
+const loginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(pagePath)}`;
 ---
 
 <Layout locale={locale} titleKey="recruit.title" robots="noindex,nofollow">
@@ -30,64 +48,102 @@ const initial = await loadInitialCandidates({ limit: 12 });
       <p class="ja-muted">{t('recruit.subtitle')}</p>
     </header>
 
-    <CandidateWorkspace
-      client:load
-      apiBase={apiBase}
-      locale={locale}
-      reportBasePath={reportBasePath}
-      initialItems={initial.items}
-      initialTotal={initial.total}
-      labels={{
-        keyword: t('recruit.keyword'),
-        keywordPlaceholder: t('recruit.keywordPlaceholder'),
-        skills: t('recruit.skills'),
-        skillsPlaceholder: t('recruit.skillsPlaceholder'),
-        skillMatch: t('recruit.skillMatch'),
-        skillMatchAny: t('recruit.skillMatchAny'),
-        skillMatchAll: t('recruit.skillMatchAll'),
-        authenticity: t('recruit.authenticity'),
-        authenticityAny: t('recruit.authenticityAny'),
-        minConfidence: t('recruit.minConfidence'),
-        platform: t('recruit.platform'),
-        platformAll: t('recruit.platformAll'),
-        platformGithub: t('home.platform.github'),
-        platformGitee: t('home.platform.gitee'),
-        platformFused: t('home.platform.all'),
-        fusedBadge: t('report.fusion.badge'),
-        fusedBadgeTitle: t('report.fusion.badgeTitle'),
-        claimedBadge: t('report.claimedBadge'),
-        unclaimedBadge: t('report.unclaimedBadge'),
-        unclaimedBadgeTitle: t('report.unclaimedBadgeTitle'),
-        sortBy: t('recruit.sortBy'),
-        sortConfidence: t('recruit.sort.confidence'),
-        sortSkills: t('recruit.sort.skills'),
-        sortRecent: t('recruit.sort.recent'),
-        search: t('recruit.search'),
-        reset: t('recruit.reset'),
-        searching: t('recruit.searching'),
-        loading: t('recruit.loading'),
-        error: t('recruit.error'),
-        empty: t('recruit.empty'),
-        resultsCount: t('recruit.resultsCount'),
-        viewReport: t('recruit.viewReport'),
-        skillCount: t('recruit.skillCount'),
-        matchedSkills: t('recruit.matchedSkills'),
-        updatedAt: t('recruit.updatedAt'),
-        confidence: t('recruit.confidence'),
-        shortlist: t('recruit.shortlist'),
-        shortlisted: t('recruit.shortlisted'),
-        shortlistTitle: t('recruit.shortlistTitle'),
-        prev: t('recruit.prev'),
-        next: t('recruit.next'),
-        authenticityLabels: {
-          likely_authentic: t('report.authenticity.likely_authentic'),
-          mixed_signals: t('report.authenticity.mixed_signals'),
-          suspicious: t('report.authenticity.suspicious'),
-          insufficient_data: t('report.authenticity.insufficient_data'),
-        },
-      }}
-    />
+    {!isRecruiter && (
+      <GateCard
+        title={t('recruit.gate.title')}
+        body={t('recruit.gate.body')}
+        testId="recruiter-gate"
+      >
+        <div class="gate-extra" slot="extra">
+          <ul class="gate-consequences">
+            <li>{t('recruit.gate.self')}</li>
+            <li>{t('recruit.gate.candidate')}</li>
+            <li>
+              {t('recruit.gate.dispute', { email: disputeEmail })}
+              <a href={`mailto:${disputeEmail}`}>{disputeEmail}</a>
+            </li>
+          </ul>
+          {viewer.kind === 'user' ? (
+            <form method="post" action={`${pagePath}/declare`} class="gate-declare-form">
+              <label class="gate-consent">
+                <input type="checkbox" name="consent" value="1" required />
+                <span>{t('recruit.gate.consent')}</span>
+              </label>
+              {declareFailed && (
+                <p class="gate-error" role="alert">{t('recruit.gate.failed')}</p>
+              )}
+              <button type="submit" class="ja-btn" data-testid="recruiter-declare">
+                {t('recruit.gate.submit')}
+              </button>
+            </form>
+          ) : (
+            <a class="ja-btn gate-login" href={loginHref} data-testid="recruiter-gate-login">
+              {t('recruit.gate.login')}
+            </a>
+          )}
+        </div>
+      </GateCard>
+    )}
 
+    {isRecruiter && (
+      <CandidateWorkspace
+        client:load
+        apiBase={apiBase}
+        locale={locale}
+        reportBasePath={reportBasePath}
+        initialItems={initial.items}
+        initialTotal={initial.total}
+        labels={{
+          keyword: t('recruit.keyword'),
+          keywordPlaceholder: t('recruit.keywordPlaceholder'),
+          skills: t('recruit.skills'),
+          skillsPlaceholder: t('recruit.skillsPlaceholder'),
+          skillMatch: t('recruit.skillMatch'),
+          skillMatchAny: t('recruit.skillMatchAny'),
+          skillMatchAll: t('recruit.skillMatchAll'),
+          authenticity: t('recruit.authenticity'),
+          authenticityAny: t('recruit.authenticityAny'),
+          minConfidence: t('recruit.minConfidence'),
+          platform: t('recruit.platform'),
+          platformAll: t('recruit.platformAll'),
+          platformGithub: t('home.platform.github'),
+          platformGitee: t('home.platform.gitee'),
+          platformFused: t('home.platform.all'),
+          fusedBadge: t('report.fusion.badge'),
+          fusedBadgeTitle: t('report.fusion.badgeTitle'),
+          claimedBadge: t('report.claimedBadge'),
+          unclaimedBadge: t('report.unclaimedBadge'),
+          unclaimedBadgeTitle: t('report.unclaimedBadgeTitle'),
+          sortBy: t('recruit.sortBy'),
+          sortConfidence: t('recruit.sort.confidence'),
+          sortSkills: t('recruit.sort.skills'),
+          sortRecent: t('recruit.sort.recent'),
+          search: t('recruit.search'),
+          reset: t('recruit.reset'),
+          searching: t('recruit.searching'),
+          loading: t('recruit.loading'),
+          error: t('recruit.error'),
+          empty: t('recruit.empty'),
+          resultsCount: t('recruit.resultsCount'),
+          viewReport: t('recruit.viewReport'),
+          skillCount: t('recruit.skillCount'),
+          matchedSkills: t('recruit.matchedSkills'),
+          updatedAt: t('recruit.updatedAt'),
+          confidence: t('recruit.confidence'),
+          shortlist: t('recruit.shortlist'),
+          shortlisted: t('recruit.shortlisted'),
+          shortlistTitle: t('recruit.shortlistTitle'),
+          prev: t('recruit.prev'),
+          next: t('recruit.next'),
+          authenticityLabels: {
+            likely_authentic: t('report.authenticity.likely_authentic'),
+            mixed_signals: t('report.authenticity.mixed_signals'),
+            suspicious: t('report.authenticity.suspicious'),
+            insufficient_data: t('report.authenticity.insufficient_data'),
+          },
+        }}
+      />
+    )}
   </div>
 </Layout>
 
@@ -105,5 +161,25 @@ const initial = await loadInitialCandidates({ limit: 12 });
   .recruit-header h1 {
     font-size: var(--ja-text-2xl);
     margin-bottom: var(--ja-space-2);
+  }
+
+  .gate-declare-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-2);
+    align-items: flex-start;
+  }
+
+  .gate-consent {
+    display: flex;
+    gap: var(--ja-space-2);
+    align-items: flex-start;
+    font-size: var(--ja-text-sm);
+    max-width: 60ch;
+  }
+
+  .gate-error {
+    color: var(--ja-color-danger);
+    font-size: var(--ja-text-sm);
   }
 </style>

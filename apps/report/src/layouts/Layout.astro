@@ -24,6 +24,8 @@ const otherLocale: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
 
 // API 地址：显式 PUBLIC_API_BASE 优先；Vercel 同域为 /api；本地默认同源
 const apiBase = browserApiBase();
+const disputeEmail =
+  (import.meta.env.PUBLIC_DISPUTE_EMAIL as string | undefined) ?? 'dispute@job-agent.bayjf.com';
 
 const pageTitle = title
   ? `${title} · ${t('app.name')}`
@@ -73,6 +75,12 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
             menuLabel={t('account.menuLabel')}
             myLabel={t('nav.my')}
             claimedLabel={t('my.claimedLabel')}
+            recruiterBadgeLabel={t('account.recruiterBadge')}
+            declareLabel={t('account.declareRecruiter')}
+            declareConfirm={t('account.declareConfirm', { email: disputeEmail })}
+            revokeLabel={t('account.revokeRecruiter')}
+            revokeConfirm={t('account.revokeConfirm', { email: disputeEmail })}
+            actionFailedLabel={t('account.recruiterActionFailed')}
           />
           <a href={langSwitchPath} class="lang-switch">{t('nav.language')}</a>
         </nav>

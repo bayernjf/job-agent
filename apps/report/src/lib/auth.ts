@@ -21,6 +21,8 @@ export type Viewer =
       platform: SupportedPlatform;
       login: string;
       claimedProfileId: string | null;
+      /** F10：是否已显式声明招聘方（accounts.recruiter_declared_at 非空） */
+      recruiter: boolean;
     };
 
 /** 从 Cookie 头解析单个 cookie（document.cookie 风格），不存在返回 undefined。 */
@@ -69,6 +71,7 @@ export async function resolveViewer(
       platform: account.platform,
       login: account.login,
       claimedProfileId: account.claimedProfileId,
+      recruiter: account.recruiterDeclaredAt !== null,
     };
   } catch {
     return { kind: 'anonymous' };

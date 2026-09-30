@@ -1,15 +1,18 @@
 ---
 /**
- * GateCard：授权分级闸的登录解锁卡片（纯 SSR，无 JS 依赖）。
- * 未登录访客访问被墙模块（完整证据外链 / 面试题 / 面试准备包）时，
- * 在原模块位置渲染本卡片：说明被墙内容 + GitHub 登录按钮（带 return_to 深链）。
+ * GateCard：授权分级闸的解锁卡片（纯 SSR，无 JS 依赖）。
+ *
+ * 两种形态：
+ * 1. 登录墙（默认）：说明被墙内容 + 登录按钮（带 return_to 深链）。
+ * 2. F10 招聘方声明墙：传 slot="extra" 渲染声明确认内容与纯表单 POST
+ *    （HTML 表单不支持 PUT，POST 由 SSR 端点改写为 Hono PUT /auth/recruiter）。
  * 所有用户可见文案由调用方经 t() 传入，组件不硬编码。
  */
 interface Props {
   title: string;
   body?: string;
-  loginHref: string;
-  loginLabel: string;
+  loginHref?: string;
+  loginLabel?: string;
   testId?: string;
 }
 const { title, body, loginHref, loginLabel, testId = 'gate-card' } = Astro.props;
@@ -18,9 +21,13 @@ const { title, body, loginHref, loginLabel, testId = 'gate-card' } = Astro.props
 <section class="ja-card gate-card" data-testid={testId}>
   <h2 class="gate-title">{title}</h2>
   {body && <p class="ja-muted gate-body">{body}</p>}
-  <a class="ja-btn gate-login" href={loginHref} data-testid="gate-login">
-    {loginLabel}
-  </a>
+  <slot name="extra" />
+  {loginHref && (
+    <a class="ja-btn gate-login" href={loginHref} data-testid="gate-login">
+      {loginLabel}
+    </a>
+  )}
+  <slot />
 </section>
 
 <style>
@@ -44,5 +51,26 @@ const { title, body, loginHref, loginLabel, testId = 'gate-card' } = Astro.props
 
   .gate-login {
     margin-top: var(--ja-space-1);
+  }
+
+  .gate-extra {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-2);
+    align-items: flex-start;
+  }
+
+  .gate-consequences {
+    font-size: var(--ja-text-sm);
+    max-width: 60ch;
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-1);
+    margin: 0;
+    padding-left: var(--ja-space-4);
+  }
+
+  .gate-dispute {
+    font-size: var(--ja-text-sm);
   }
 </style>
