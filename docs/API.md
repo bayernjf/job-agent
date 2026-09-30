@@ -286,11 +286,21 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
   "name": "Alice",
   "avatarUrl": "https://avatars.githubusercontent.com/u/101",
   "claimedProfileId": "prof-...",
+  "recruiterDeclaredAt": "2026-09-30T01:55:00.000Z",
   "expiresAt": "2026-10-18T00:00:00.000Z"
 }
 ```
 
 > 刻意**不返回** `email` 与平台数字 `providerAccountId`（最小对外暴露）；邮箱仅服务端留存。坏/过期/已撤销会话 Cookie 静默降级为匿名。
+> `recruiterDeclaredAt` 为 `null` 或缺省表示未做招聘方声明（F10，决策 #17 第一期）；声明是账号级显式自声明，不是角色枚举，未声明不影响应聘侧功能。
+
+### `PUT` / `DELETE /auth/recruiter`
+
+F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关。声明是一次**显式动作**，不会由访问 `/recruit` 推导；无审核、无企业邮箱门槛、不建组织/席位。声明后解锁招聘方面（`GET /candidates`、`/interviews` 写读、`/recruit` 工作台），撤销只收回访问权，**既有面试/投递数据不删除**（`created_by_account_id` 保留）。
+
+- `PUT /auth/recruiter`：幂等声明。未登录 `401 AUTH_REQUIRED`；成功返回更新后的 `/auth/me` 同构对象（已声明则保留原 `recruiterDeclaredAt` 时刻）。请求体可省略，或传空对象 `{}`（`.strict()`，拒绝额外字段）。
+- `DELETE /auth/recruiter`：撤销声明。未登录 `401`；成功 `204`（幂等，账号不存在 `404`）。
+- 反制通道：撤销入口在界面上与异议 mailto（`PUBLIC_DISPUTE_EMAIL`）就近给出。
 
 ### `POST /profiles/:id/claim`
 
@@ -786,6 +796,8 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 实现上仓储层先用一条粗筛 SQL 取最近不超过 1000 条 complete 画像（刻意规避 SQLite/Postgres 的 JSON 查询方言差异），技能/真实性/置信度/关键词等精细过滤与排序全部在源无关的纯函数层（`packages/storage` 的 `searchCandidates`）完成。
 
+**访问前提（F10，2026-09-30 起，决策 #17 第一期）**——本端点是唯一仍可批量检索未经本人授权画像库的入口，故只对**已显式声明招聘方**的登录用户开放：anonymous/demo → `401 AUTH_REQUIRED`；已登录未声明 → `403 RECRUITER_DECLARATION_REQUIRED`（响应体不含任何画像字段）；已声明 → 200。声明经 `PUT /auth/recruiter` 完成（无审核、自声明）。单张画像的公开只读口径（`GET /profiles/:id`、`/exportable`、`/by-subject/*`）不受影响，仍全放行（决策 #1-A）。报告页 `/[locale]/recruit` 对未声明身份 SSR 渲染声明墙，墙同时替换首屏候选人列表（不存在半屏数据）。
+
 #### Query 参数（全部可选）
 
 | 参数 | 类型 | 说明 |
@@ -966,7 +978,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 - `201`：返回创建后的完整记录，`id` 形如 `int-<uuid>`，默认 `status=scheduled`，`outcome`/`rating`/`feedbackNote` 为 `null`。
 - `400`：非法 JSON、缺必填字段、`scheduledEnd <= scheduledStart`、邮箱格式非法、`applicationId` 不属于该画像。
-- `401`：未登录。
+- `401`：未登录（anonymous/demo，`AUTH_REQUIRED`）。`403 RECRUITER_DECLARATION_REQUIRED`：已登录但未做招聘方声明（F10 起面试写侧与 `/candidates` 同批收紧为已声明招聘方）。
 - `404`：画像不存在，或 `applicationId` 指向的投递不存在。
 
 ### `GET /interviews`
@@ -986,7 +998,7 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 { "items": [ { "id": "int-<uuid>", "profileId": "prof...", "status": "scheduled" } ] }
 ```
 
-未登录返回 `401`。
+未登录返回 `401 AUTH_REQUIRED`；已登录未声明招聘方返回 `403 RECRUITER_DECLARATION_REQUIRED`（F10 起）。
 
 ### `PATCH /interviews/:id`
 
@@ -1010,8 +1022,8 @@ GitHub 授权后回跳（携带 `code` 与 `state`）。服务端校验 query `s
 
 - `200`：返回更新后的完整记录。
 - `400`：非法 JSON、请求体为空、枚举非法、`rating` 越界、邮箱非法、合并后 `scheduledEnd <= scheduledStart`。
-- `401`：未登录。
-- `404`：面试不存在，或不属于当前登录账号。
+- `401`：未登录（`AUTH_REQUIRED`）；`403 RECRUITER_DECLARATION_REQUIRED`：已登录未声明招聘方（F10 起）。
+- `404`：面试不存在，或不属于当前登录账号（非本人资源一律 404，不泄露存在）。
 
 ---
 
