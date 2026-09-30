@@ -318,6 +318,7 @@ export const accounts = sqliteTable(
     email: text('email'),
     avatarUrl: text('avatar_url'),
     claimedProfileId: text('claimed_profile_id'),
+    recruiterDeclaredAt: text('recruiter_declared_at'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
