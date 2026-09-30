@@ -18,7 +18,7 @@
 
 ### JobAgent Privacy Policy
 
-_Last updated: 2026-09-24_
+_Last updated: 2026-09-30_
 
 This policy covers the JobAgent web service (the ability-report site and its API)
 and the **JobAgent Autofill** browser extension (collectively, "JobAgent", "we",
@@ -167,13 +167,27 @@ We may update this policy; material changes update the "last updated" date and
 the hosted page. Questions, correction/deletion requests and objections:
 **dispute@job-agent.bayjf.com**.
 
+#### 11. Recruiter self-declaration
+
+Candidate search and recruiter interview tools are available only to logged-in
+users who explicitly declare recruiter status. Declaring is a reversible,
+self-service action with no approval step; it does not make your account
+visible to candidates, and candidates are not notified when a recruiter views
+their profile.
+
+We record the declaration timestamp and never reset it silently on re-login;
+maintenance cleanup jobs never delete a declared account. You can revoke the
+declaration anytime, which removes access to recruiter surfaces but does not
+delete interview records you created. For objections, contact
+**dispute@job-agent.bayjf.com**.
+
 ---
 
 ## 中文（简体）
 
 ### JobAgent 隐私政策
 
-_最后更新：2026-09-24_
+_最后更新：2026-09-30_
 
 本政策适用于 JobAgent 网络服务（能力报告站及其 API）与 **JobAgent 自动填充**
 浏览器扩展（合称"JobAgent"或"我们"）。JobAgent 只分析开发者在 GitHub、Gitee
@@ -293,3 +307,13 @@ JobAgent 是面向专业开发者的工具，不面向儿童；我们不会在�
 
 我们可能更新本政策；重大变更会更新"最后更新"日期与托管页面。咨询、更正/删除请求
 与异议请联系：**dispute@job-agent.bayjf.com**。
+
+#### 11. 招聘方自声明
+
+人才检索与招聘方面试工具仅向已登录、并显式声明招聘方身份的用户开放。声明是可逆的
+自助操作，无审核环节；声明不会让你的账号对候选人公开，候选人也不会在其画像被招聘方
+查看时收到通知。
+
+我们记录声明时刻，且不会因重新登录而静默重置；运维清理任务永不删除已声明的账号。
+你可以随时撤销声明，撤销将收回招聘方表面的访问权，但不会删除你已创建的面试记录。
+异议请联系：**dispute@job-agent.bayjf.com**。

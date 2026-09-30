@@ -1,7 +1,7 @@
 # 设计：B 端角色与组织（招聘方声明 + 访问闸）
 
 - 日期：2026-09-25
-- 状态：**已拍板（2026-09-25，决策 [#17](待拍板决策清单-20260910.md) 选 A + 五个子问题全部采纳助手建议），未实施**。立场：**分期**——第一期"声明式角色 + 访问闸"，组织/团队/席位缓做；排期按 [#18](design-c-side-first-20260925.md) 的改序结果执行：**F11（投递归属）提前与 C-A 并行，F10（招聘方声明 + `/candidates` 加闸）维持"上线后第一迭代"**。
+- 状态：**已拍板（2026-09-25，决策 [#17](待拍板决策清单-20260910.md) 选 A + 五个子问题全部采纳助手建议）；F10 第一期已落地（2026-09-30，handoff item59），组织/团队/席位缓做**。立场：**分期**——第一期"声明式角色 + 访问闸"，组织/团队/席位缓做；排期按 [#18](design-c-side-first-20260925.md) 的改序结果执行：**F11（投递归属）已提前于 2026-09-25 落地（item61），F10（招聘方声明 + `/candidates` 加闸）于 2026-09-30 落地**。
 - 关联：[PRD.md](PRD.md) §3.1/§6、[design-c-side-first-20260925.md](design-c-side-first-20260925.md)（C 端优先，决定本文两半的实施顺序）、[design-auth-gating-20260919.md](design-auth-gating-20260919.md)（两档可见性矩阵）、[proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md) §4（item45 当时的角色取舍）、[design-demo-mode-20260915.md](design-demo-mode-20260915.md)（三态 Principal）、[deferred-items.md](deferred-items.md)
 - 登记：本文是 handoff item59 的设计全文。
 

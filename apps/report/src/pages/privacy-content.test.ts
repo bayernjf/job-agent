@@ -37,7 +37,7 @@ function extractAstroHeadings(source: string): string[] {
 }
 
 function expectNumberedOneThroughTen(headings: string[], label: string): void {
-  expect(headings.length, `${label} must have exactly 10 sections`).toBe(10);
+  expect(headings.length, `${label} must have exactly 11 sections`).toBe(11);
   headings.forEach((heading, i) => {
     expect(heading, `${label} section #${i + 1}`).toMatch(new RegExp(`^${i + 1}\\.\\s`));
   });
@@ -47,16 +47,16 @@ describe('privacy policy source ↔ online page consistency', () => {
   const mdEn = extractMarkdownHeadings(markdown, '## English', '## 中文');
   const mdZh = extractMarkdownHeadings(markdown, '## 中文（简体）');
   const astroHeadings = extractAstroHeadings(astroSource);
-  const astroEn = astroHeadings.slice(0, 10);
-  const astroZh = astroHeadings.slice(10, 20);
+  const astroEn = astroHeadings.slice(0, 11);
+  const astroZh = astroHeadings.slice(11, 22);
 
-  it('parses ten sections for each language from the canonical markdown', () => {
+  it('parses eleven sections for each language from the canonical markdown', () => {
     expectNumberedOneThroughTen(mdEn, 'markdown English');
     expectNumberedOneThroughTen(mdZh, 'markdown Chinese');
   });
 
   it('privacy.astro declares exactly twenty inline headings (10 en + 10 zh-CN)', () => {
-    expect(astroHeadings.length, 'expected 10 English then 10 Chinese headings').toBe(20);
+    expect(astroHeadings.length, 'expected 11 English then 11 Chinese headings').toBe(22);
     expectNumberedOneThroughTen(astroEn, 'astro English');
     expectNumberedOneThroughTen(astroZh, 'astro Chinese');
   });
