@@ -51,6 +51,7 @@
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 装 / 试用浏览器扩展，一键填充 ATS 表单（含真机故障排查：SW 代发、host_permissions 重载、缓存画像 by-subject、跨端同步） | [../apps/extension/README.md](../apps/extension/README.md) + [../apps/extension/INSTALL.md](../apps/extension/INSTALL.md)（真机试用/跨端同步详细步骤，handoff item46） |
 | 快速了解项目门面与技术栈 | [../README.md](../README.md) |
+| **做一次项目级代码审计 / 想一次性看全所有产品功能点与健康度** | [代码审计与功能全景-20260930.md](代码审计与功能全景-20260930.md) ★（2026-09-30 只读审计：分层架构核查 + 8 条架构违规 + 安全与隐私 6 条已确认/5 条疑似 + 测试与工程化实测（991 单测 / 81 报告 E2E / 11 扩展 E2E / 15 对迁移）+ 产品功能全景 12 个能力域 + P0–P3 风险登记与建议） |
 
 ## 文档分层约定（重要）
 
