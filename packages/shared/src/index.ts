@@ -865,9 +865,19 @@ export const AuthMeSchema = z.object({
   name: z.string().nullable().optional(),
   avatarUrl: z.string().nullable().optional(),
   claimedProfileId: z.string().nullable().optional(),
+  // F10（决策 #17 第一期）：招聘方显式自声明时刻（UTC ISO8601），null/缺省=未声明。
+  // 这是账号属性而非角色枚举：不声明不影响应聘侧功能，声明仅解锁招聘方面。
+  recruiterDeclaredAt: z.string().nullable().optional(),
   expiresAt: z.string().optional(),
 });
 export type AuthMe = z.infer<typeof AuthMeSchema>;
+
+/**
+ * PUT /auth/recruiter 请求体（F10）：声明是幂等的显式动作，无请求字段，
+ * 仅要求已登录；空对象即可，仍走 Zod 校验拒绝额外/非对象负载。
+ */
+export const RecruiterDeclareRequestSchema = z.object({}).strict();
+export type RecruiterDeclareRequest = z.infer<typeof RecruiterDeclareRequestSchema>;
 
 /** POST /profiles/:id/claim 响应体：认领成功后回画像主体与认领标记 */
 export const ClaimResultSchema = z.object({
@@ -889,6 +899,7 @@ export const AUTH_ERROR_CODES = {
   exchangeFailed: 'AUTH_EXCHANGE_FAILED', // 502：用授权码换 token / 取用户资料失败
   profileNotFound: 'AUTH_PROFILE_NOT_FOUND', // 404：认领的画像不存在
   notProfileOwner: 'AUTH_NOT_PROFILE_OWNER', // 403：画像主体 platform/login 与登录账号不一致
+  recruiterRequired: 'RECRUITER_DECLARATION_REQUIRED', // 403：已登录但未做招聘方声明（F10，#17 第一期）
 } as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CODES];
 
