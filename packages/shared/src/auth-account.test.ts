@@ -99,6 +99,7 @@ describe('auth cookie names and error codes', () => {
       exchangeFailed: 'AUTH_EXCHANGE_FAILED',
       profileNotFound: 'AUTH_PROFILE_NOT_FOUND',
       notProfileOwner: 'AUTH_NOT_PROFILE_OWNER',
+      recruiterRequired: 'RECRUITER_DECLARATION_REQUIRED',
     });
   });
 });
