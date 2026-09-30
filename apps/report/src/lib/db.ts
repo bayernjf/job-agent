@@ -18,6 +18,7 @@ import {
 const DB_PATH = process.env.DB_PATH ?? 'data/job-agent.db';
 
 let storageSingleton: Promise<StorageContext> | null = null;
+let writableStorageSingleton: Promise<StorageContext> | null = null;
 
 /** 报告页只读 storage 单例（SSR 页面/端点与认证解析共用，避免多连接）。 */
 export function getStorage(): Promise<StorageContext> {
@@ -27,6 +28,23 @@ export function getStorage(): Promise<StorageContext> {
     storageSingleton = createStorage({ readonly: true, sqlitePath: DB_PATH });
   }
   return storageSingleton;
+}
+
+/**
+ * 可写 storage 单例（仅纯 SSR 写动作使用，目前只有 F10 招聘方声明）。
+ *
+ * 与只读单例分开：报告页 99% 的路径是只读，readonly 连接更安全（不自动迁移、
+ * 不设 journal_mode）；只有声明这种必须落 accounts 列的动作才取可写连接。
+ * postgres（生产）走 createStorage() 读 DATABASE_URL；sqlite（本地/CI）用 DB_PATH。
+ */
+export function getWritableStorage(): Promise<StorageContext> {
+  if (!writableStorageSingleton) {
+    writableStorageSingleton =
+      process.env.DB_DRIVER === 'postgres'
+        ? createStorage()
+        : createStorage({ sqlitePath: DB_PATH, autoMigrate: false });
+  }
+  return writableStorageSingleton;
 }
 
 /** 按 profileId 读取画像快照；不存在或解析失败返回 null */

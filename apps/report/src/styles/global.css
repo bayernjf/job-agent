@@ -220,6 +220,36 @@ h4 { font-size: var(--ja-text-lg); }
   color: var(--ja-color-danger);
 }
 
+.account-menu__recruiter-badge {
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+  font-size: var(--ja-text-xs);
+  white-space: nowrap;
+}
+
+.account-menu__recruiter-toggle {
+  padding: var(--ja-space-1) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.account-menu__recruiter-toggle:hover:not(:disabled) {
+  border-color: var(--ja-color-accent);
+  color: var(--ja-color-accent);
+}
+
+.account-menu__recruiter-toggle:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .claim-profile {
   display: inline-flex;
   align-items: center;
