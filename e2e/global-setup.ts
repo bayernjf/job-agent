@@ -25,6 +25,9 @@ import {
   FIXTURE_SESSION_TOKEN,
   FIXTURE_EMPTY_LOGIN,
   FIXTURE_EMPTY_SESSION_TOKEN,
+  FIXTURE_RECRUITER_LOGIN,
+  FIXTURE_RECRUITER_ACCOUNT_PROVIDER_ID,
+  FIXTURE_RECRUITER_SESSION_TOKEN,
 } from './fixtures/sample-profile.js';
 
 const TMP_DIR = resolve(process.cwd(), 'e2e', '.tmp');
@@ -169,6 +172,24 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   await storage.authSessions.create({
     id: FIXTURE_SESSION_TOKEN,
     accountId: account.id,
+    expiresAt: '2030-01-01T00:00:00.000Z',
+  });
+  // F10：已显式声明招聘方的账号 + 会话，供 /recruit「声明后可见列表」E2E。
+  const recruiterAccount = await storage.accounts.upsertFromProvider({
+    id: 'acc-e2e-recruiter',
+    identity: {
+      platform: 'github',
+      providerAccountId: FIXTURE_RECRUITER_ACCOUNT_PROVIDER_ID,
+      login: FIXTURE_RECRUITER_LOGIN,
+      name: 'E2E Recruiter',
+      email: null,
+      avatarUrl: null,
+    },
+  });
+  await storage.accounts.declareRecruiter(recruiterAccount.id, '2026-09-30T00:00:00.000Z');
+  await storage.authSessions.create({
+    id: FIXTURE_RECRUITER_SESSION_TOKEN,
+    accountId: recruiterAccount.id,
     expiresAt: '2030-01-01T00:00:00.000Z',
   });
   await storage.evidence.importFromProfile(FIXTURE_PROFILE_ID, [

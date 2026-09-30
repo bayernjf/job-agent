@@ -6,6 +6,7 @@ import {
   FIXTURE_GITEE_LOGIN,
   FIXTURE_PROFILE_IDS,
   FIXTURE_SESSION_TOKEN,
+  FIXTURE_RECRUITER_SESSION_TOKEN,
 } from './fixtures/sample-profile.js';
 
 /**
@@ -144,9 +145,75 @@ test.describe('candidate search page', () => {
     expect(await robots!.text()).toContain('Disallow: /api/');
   });
 
-  test('renders fixture candidates from SSR data with a fused badge and a Gitee-only card', async ({
+  test('F10: anonymous visitors see the declaration wall, not candidate data', async ({
     page,
   }) => {
+    await page.goto('/en/recruit');
+
+    const wall = page.locator('[data-testid="recruiter-gate"]');
+    await expect(wall).toBeVisible();
+    await expect(wall).toContainText('Declare recruiter status');
+    // 匿名访客看到的是"先登录"出口，而非直接声明表单（声明必须在登录身份上落库）
+    await expect(page.locator('[data-testid="recruiter-gate-login"]')).toBeVisible();
+    await expect(page.locator('[data-testid="recruiter-declare"]')).toHaveCount(0);
+    // §7.2：墙必须连 SSR 首屏候选人卡一起替掉，不允许半屏数据
+    await expect(page.locator('.recruit-grid .recruit-card')).toHaveCount(0);
+  });
+
+  test('F10: a logged-in user who has not declared sees the wall with an explicit POST form', async ({
+    page,
+    context,
+  }) => {
+    await context.addCookies([
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+    ]);
+    await page.goto('/en/recruit');
+
+    const wall = page.locator('[data-testid="recruiter-gate"]');
+    await expect(wall).toBeVisible();
+    // 已登录未声明：直接声明显式 POST（§7.3，不能因访问过本页自动打标），需勾选确认
+    await expect(page.locator('[data-testid="recruiter-declare"]')).toBeVisible();
+    await expect(page.locator('[data-testid="recruiter-gate-login"]')).toHaveCount(0);
+    await expect(page.locator('.recruit-grid .recruit-card')).toHaveCount(0);
+  });
+
+  test('F10: an explicit declaration POST unlocks the candidate list (PRG)', async ({
+    page,
+    context,
+  }) => {
+    await context.addCookies([
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+    ]);
+    await page.goto('/en/recruit');
+
+    // 勾选后纯 SSR POST → 302 回列表；捕获该导航响应的状态码与 Location。
+    // check() 必须 await：勾选是异步的，未勾上时 required 校验会静默拦截提交。
+    await page.locator('input[name="consent"]').check();
+    const declareResponse = page.waitForResponse(
+      (res) => res.url().includes('/recruit/declare'),
+      { timeout: 10000 },
+    );
+    await page.locator('[data-testid="recruiter-declare"]').click();
+    const res = await declareResponse;
+    expect(res.status()).toBe(302);
+    expect(res.headers().location).not.toContain('declare_error');
+    await page.waitForLoadState('networkidle');
+
+    // 声明成功：墙消失，SSR 首屏候选人出现
+    await expect(page.locator('[data-testid="recruiter-gate"]')).toHaveCount(0);
+    await expect(page.locator('.recruit-grid .recruit-card')).toHaveCount(
+      FIXTURE_PROFILE_IDS.length,
+    );
+  });
+
+  test('renders fixture candidates from SSR data with a fused badge and a Gitee-only card', async ({
+    page,
+    context,
+  }) => {
+    // F10：人才库仅已声明招聘方可见，本用例使用已声明账号会话
+    await context.addCookies([
+      { name: 'jobagent_session', value: FIXTURE_RECRUITER_SESSION_TOKEN, domain: 'localhost', path: '/' },
+    ]);
     await page.goto('/en/recruit');
     const cards = page.locator('.recruit-grid .recruit-card');
     await expect(cards).toHaveCount(FIXTURE_PROFILE_IDS.length);
