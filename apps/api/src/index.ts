@@ -67,6 +67,7 @@ import {
   AUTH_SESSION_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_RETURN_COOKIE,
+  RecruiterDeclareRequestSchema,
   InterviewCreateSchema,
   InterviewPatchSchema,
   InterviewListQuerySchema,
@@ -438,6 +439,36 @@ function requireProfileOwner(c: Context, profile: StoredProfile): Response | und
     return c.json({ error: 'not the profile owner', code: AUTH_ERROR_CODES.notProfileOwner }, 403);
   }
   return undefined;
+}
+
+/**
+ * F10 招聘方面访问闸（决策 #17 第一期，design-recruiter-roles §4/§5）。
+ * 两态分流（不静默降级）：
+ *   - anonymous / demo → 401 AUTH_REQUIRED（先登录）
+ *   - 已登录但未声明     → 403 RECRUITER_DECLARATION_REQUIRED
+ *   - 已登录且已声明     → 放行，返回 { principal, account }（同一次 getById，
+ *                         与 GET /auth/me 共用一次查询，不在路由内二次查库）
+ * 声明是账号属性（accounts.recruiter_declared_at）而非会话/Principal 属性。
+ */
+async function requireRecruiter(
+  c: Parameters<typeof requireProfileOwner>[0],
+  accounts: { getById(id: string): Promise<{ recruiterDeclaredAt: string | null } | undefined> },
+): Promise<
+  | { principal: Extract<Principal, { kind: 'user' }>; account: { recruiterDeclaredAt: string | null } }
+  | Response
+> {
+  const principal = c.get('principal');
+  if (principal.kind !== 'user') {
+    return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
+  }
+  const account = await accounts.getById(principal.accountId);
+  if (!account || !account.recruiterDeclaredAt) {
+    return c.json(
+      { error: 'recruiter declaration required', code: AUTH_ERROR_CODES.recruiterRequired },
+      403,
+    );
+  }
+  return { principal, account };
 }
 
 /**
@@ -849,6 +880,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       name: account?.name ?? null,
       avatarUrl: account?.avatarUrl ?? null,
       claimedProfileId: account?.claimedProfileId ?? null,
+      recruiterDeclaredAt: account?.recruiterDeclaredAt ?? null,
       expiresAt: principal.expiresAt,
     } satisfies AuthMe);
   });
@@ -859,6 +891,55 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       github: { configured: githubProvider !== null },
       gitee: { configured: giteeProvider !== null },
     });
+  });
+
+  // PUT /auth/recruiter：招聘方显式自声明（F10，#17 第一期）。幂等：已声明保留原时刻。
+  // 仅登录可用（401）；无审核/无门槛；必须是显式动作，不能由访问 /recruit 推导（§7.3）。
+  app.put('/auth/recruiter', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json(
+        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
+        401,
+      );
+    }
+    // 空对象负载仍走 Zod（.strict() 拒绝额外字段）；body 可缺省。
+    const parsed = RecruiterDeclareRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid body', details: parsed.error.flatten() }, 400);
+    }
+    const nowIso = now();
+    const updated = await repos.accounts.declareRecruiter(principal.accountId, nowIso);
+    if (!updated) return c.json({ error: 'account not found' }, 404);
+    return c.json(
+      {
+        kind: 'user',
+        accountId: principal.accountId,
+        platform: principal.platform,
+        login: principal.login,
+        name: updated.name,
+        avatarUrl: updated.avatarUrl,
+        claimedProfileId: updated.claimedProfileId,
+        recruiterDeclaredAt: updated.recruiterDeclaredAt,
+        expiresAt: principal.expiresAt,
+      } satisfies AuthMe,
+      200,
+    );
+  });
+
+  // DELETE /auth/recruiter：撤销招聘方声明（反制通道，§2.1/§6.2）。幂等；既有
+  // 面试/投递数据不删除（created_by_account_id 保留），只收回招聘方面访问权。
+  app.delete('/auth/recruiter', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json(
+        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
+        401,
+      );
+    }
+    const updated = await repos.accounts.revokeRecruiter(principal.accountId);
+    if (!updated) return c.json({ error: 'account not found' }, 404);
+    return new Response(null, { status: 204 });
   });
 
   // POST /analyze：创建分析任务
@@ -1624,6 +1705,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // ── 企业侧人才检索（筛选工作台 P-A/P-B）：只读已生成画像，不触发新采集 ──
   app.get('/candidates', async (c) => {
+    // F10（#17 第一期）：人才批量检索只对已声明招聘方开放——anonymous/demo 401、
+    // 已登录未声明 403；单张画像公开口径（/profiles/:id 等）不变。
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
     const parsed = CandidateSearchQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
       return c.json({ error: 'invalid query', details: parsed.error.flatten() }, 400);
@@ -1741,13 +1826,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // POST /interviews：为候选人安排面试（可关联一条投递；关联后把早期阶段投递推进到 interview）
   app.post('/interviews', async (c) => {
-    const principal = c.get('principal');
-    if (principal.kind !== 'user') {
-      return c.json(
-        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
-        401,
-      );
-    }
+    // F10（#17 第一期）：面试计划写侧只对已声明招聘方开放（§8 子问题 1 已拍板收紧）。
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const principal = recruiter.principal;
     const parsed = InterviewCreateSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) {
       return c.json({ error: 'invalid interview', details: parsed.error.flatten() }, 400);
@@ -1791,13 +1873,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // GET /interviews：列出当前登录账号创建的面试（可按 profileId/status 过滤，强制本人作用域）
   app.get('/interviews', async (c) => {
-    const principal = c.get('principal');
-    if (principal.kind !== 'user') {
-      return c.json(
-        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
-        401,
-      );
-    }
+    // F10（#17 第一期）：面试计划读侧同样只对已声明招聘方开放。
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const principal = recruiter.principal;
     const parsed = InterviewListQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
       return c.json({ error: 'invalid query', details: parsed.error.flatten() }, 400);
@@ -1811,13 +1890,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // PATCH /interviews/:id：改期/状态流转/结果录入；非本人资源一律 404（不泄露存在），不物理删除
   app.patch('/interviews/:id', async (c) => {
-    const principal = c.get('principal');
-    if (principal.kind !== 'user') {
-      return c.json(
-        { error: 'authentication required', code: AUTH_ERROR_CODES.authRequired },
-        401,
-      );
-    }
+    // F10（#17 第一期）：面试计划改期/结果录入只对已声明招聘方开放；行级 404 归属不变。
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const principal = recruiter.principal;
     const id = c.req.param('id');
     if (!id) return c.json({ error: 'invalid interview id' }, 400);
     const parsed = InterviewPatchSchema.safeParse(await c.req.json().catch(() => ({})));

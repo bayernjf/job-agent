@@ -79,6 +79,7 @@ async function insertProfile(repos: StorageContext, id: string, login: string): 
 async function loginUser(
   repos: StorageContext,
   identity: OAuthProfile,
+  opts: { declareRecruiter?: boolean } = {},
 ): Promise<{ Cookie: string }> {
   const deps: ApiDeps = {
     repos,
@@ -96,7 +97,17 @@ async function loginUser(
   expect(cb.status).toBe(302);
   const session = extractCookies(cb).jobagent_session;
   expect(session).toBeTruthy();
-  return { Cookie: `jobagent_session=${session!}` };
+  const cookie = `jobagent_session=${session!}`;
+  // F10：面试写读只对已声明招聘方开放；需要时在同一登录态上补一次显式声明。
+  if (opts.declareRecruiter) {
+    const declared = await app.request('/auth/recruiter', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: '{}',
+    });
+    expect(declared.status).toBe(200);
+  }
+  return { Cookie: cookie };
 }
 
 async function harness() {
@@ -143,7 +154,7 @@ describe('POST /interviews', () => {
   it('creates with defaults, 404s unknown profile, 400s on invalid body', async () => {
     const { repos, app } = await harness();
     await insertProfile(repos, 'p1', 'alice');
-    const auth = await loginUser(repos, ALICE);
+    const auth = await loginUser(repos, ALICE, { declareRecruiter: true });
 
     // profile 不存在 → 404
     const missing = await app.request('/interviews', {
@@ -209,7 +220,7 @@ describe('POST /interviews', () => {
     const { repos, app } = await harness();
     await insertProfile(repos, 'p1', 'alice');
     await insertProfile(repos, 'p2', 'carol');
-    const auth = await loginUser(repos, ALICE);
+    const auth = await loginUser(repos, ALICE, { declareRecruiter: true });
 
     // 求职者侧公开创建一条投递（默认 applied）
     const appRes = await app.request('/profiles/p1/applications', {
@@ -261,8 +272,8 @@ describe('GET /interviews', () => {
   it('lists only the owner interviews, newest first, with filters', async () => {
     const { repos, app } = await harness();
     await insertProfile(repos, 'p1', 'alice');
-    const alice = await loginUser(repos, ALICE);
-    const bob = await loginUser(repos, BOB);
+    const alice = await loginUser(repos, ALICE, { declareRecruiter: true });
+    const bob = await loginUser(repos, BOB, { declareRecruiter: true });
 
     // alice 两条（不同时间），bob 一条
     for (const [start, label] of [
@@ -316,8 +327,8 @@ describe('PATCH /interviews/:id', () => {
   it('records outcome, reschedules, enforces ownership and validation', async () => {
     const { repos, app } = await harness();
     await insertProfile(repos, 'p1', 'alice');
-    const alice = await loginUser(repos, ALICE);
-    const bob = await loginUser(repos, BOB);
+    const alice = await loginUser(repos, ALICE, { declareRecruiter: true });
+    const bob = await loginUser(repos, BOB, { declareRecruiter: true });
 
     const created = await app.request('/interviews', {
       method: 'POST',

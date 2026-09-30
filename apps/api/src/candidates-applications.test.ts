@@ -104,16 +104,104 @@ async function harness() {
   return { app, repos };
 }
 
+const RECRUITER: OAuthProfile = {
+  platform: 'github',
+  providerAccountId: '900',
+  login: 'recruiter',
+  name: 'Recruiter',
+  email: 'recruiter@example.com',
+  avatarUrl: null,
+};
+
+function extractCookies(res: Response): Record<string, string> {
+  const out: Record<string, string> = {};
+  const headers =
+    typeof res.headers.getSetCookie === 'function'
+      ? res.headers.getSetCookie()
+      : [res.headers.get('set-cookie') ?? ''];
+  for (const sc of headers) {
+    const pair = sc.split(';')[0] ?? '';
+    const eq = pair.indexOf('=');
+    if (eq > 0) out[pair.slice(0, eq).trim()] = decodeURIComponent(pair.slice(eq + 1));
+  }
+  return out;
+}
+
+/**
+ * F10：/candidates 只对已声明招聘方开放。走一次假 GitHub 登录再 PUT 声明，
+ * 会话存共享 repos，故返回的 Cookie 可用于同一 repos 上的任意 app 实例。
+ */
+async function recruiterHeaders(repos: StorageContext): Promise<{ Cookie: string }> {
+  const authApp = await createApp({
+    repos,
+    authConfig: loadAuthConfig({}),
+    githubAuthProvider: new FakeAuthProvider(RECRUITER),
+  });
+  const loginRes = await authApp.request('/auth/github/login');
+  const state = extractCookies(loginRes).jobagent_oauth_state;
+  const cb = await authApp.request(
+    `/auth/github/callback?state=${encodeURIComponent(state!)}&code=fake-code`,
+    { headers: { Cookie: `jobagent_oauth_state=${state!}` } },
+  );
+  const cookie = `jobagent_session=${extractCookies(cb).jobagent_session}`;
+  const declared = await authApp.request('/auth/recruiter', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    body: '{}',
+  });
+  expect(declared.status).toBe(200);
+  return { Cookie: cookie };
+}
+
 describe('GET /candidates', () => {
   it('returns an empty list on a fresh database', async () => {
-    const { app } = await harness();
-    const res = await app.request('/candidates');
+    const { app, repos } = await harness();
+    const res = await app.request('/candidates', { headers: await recruiterHeaders(repos) });
     expect(res.status).toBe(200);
     const body = (await res.json()) as CandidateListResponse;
     expect(body.items).toEqual([]);
     expect(body.total).toBe(0);
     expect(body.limit).toBe(20);
     expect(body.offset).toBe(0);
+  });
+
+  it('gates anonymous and logged-in-but-undeclared callers (F10)', async () => {
+    const { app } = await harness();
+    const anon = await app.request('/candidates');
+    expect(anon.status).toBe(401);
+    expect(((await anon.json()) as { code: string }).code).toBe('AUTH_REQUIRED');
+
+    // 已登录但未声明招聘方 → 403 RECRUITER_DECLARATION_REQUIRED，且不回画像字段
+    const repos = (await createStorage({ sqlitePath: ':memory:' })) as StorageContext;
+    const appWithUser = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider({
+        platform: 'github',
+        providerAccountId: '777',
+        login: 'plainuser',
+        name: 'Plain User',
+        email: 'u@example.test',
+        avatarUrl: null,
+      }),
+    });
+    const loginRes = await appWithUser.request('/auth/github/login');
+    const state = loginRes.headers.getSetCookie
+      ? loginRes.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+      : '';
+    const stateVal = /jobagent_oauth_state=([^;]+)/.exec(state)?.[1];
+    const cb = await appWithUser.request(
+      `/auth/github/callback?state=${encodeURIComponent(stateVal!)}&code=fake-code`,
+      { headers: { Cookie: `jobagent_oauth_state=${stateVal!}` } },
+    );
+    const setCookie = cb.headers.getSetCookie
+      ? cb.headers.getSetCookie().map((c) => c.split(';')[0] ?? '').join('; ')
+      : '';
+    const declared = await appWithUser.request('/candidates', { headers: { Cookie: setCookie } });
+    expect(declared.status).toBe(403);
+    const declaredBody = (await declared.json()) as Record<string, unknown>;
+    expect(declaredBody.code).toBe('RECRUITER_DECLARATION_REQUIRED');
+    expect(declaredBody).not.toHaveProperty('items');
   });
 
   it('only scans complete profiles and filters by skill + confidence', async () => {
@@ -136,28 +224,30 @@ describe('GET /candidates', () => {
       'partial', // partial 不进候选人库
     );
     const appWithData = await createApp({ repos });
+    const headers = await recruiterHeaders(repos);
 
-    const all = await appWithData.request('/candidates');
+    const all = await appWithData.request('/candidates', { headers });
     const allBody = (await all.json()) as CandidateListResponse;
     expect(allBody.total).toBe(2); // carol(partial) 被排除
     expect(allBody.items.map((c) => c.login)).toEqual(['alice', 'bob']); // confidence desc
 
-    const ts = await appWithData.request('/candidates?skills=typescript');
+    const ts = await appWithData.request('/candidates?skills=typescript', { headers });
     const tsBody = (await ts.json()) as CandidateListResponse;
     expect(tsBody.total).toBe(2);
 
-    const confident = await appWithData.request('/candidates?minConfidence=0.9');
+    const confident = await appWithData.request('/candidates?minConfidence=0.9', { headers });
     const confidentBody = (await confident.json()) as CandidateListResponse;
     expect(confidentBody.items.map((c) => c.login)).toEqual(['alice']);
   });
 
   it('rejects unknown authenticity values and bad numbers with 400', async () => {
-    const { app } = await harness();
-    const badEnum = await app.request('/candidates?authenticity=likely_authentic,bogus');
+    const { app, repos } = await harness();
+    const headers = await recruiterHeaders(repos);
+    const badEnum = await app.request('/candidates?authenticity=likely_authentic,bogus', { headers });
     expect(badEnum.status).toBe(400);
-    const badNumber = await app.request('/candidates?minConfidence=5');
+    const badNumber = await app.request('/candidates?minConfidence=5', { headers });
     expect(badNumber.status).toBe(400);
-    const badSort = await app.request('/candidates?sortBy=hack');
+    const badSort = await app.request('/candidates?sortBy=hack', { headers });
     expect(badSort.status).toBe(400);
   });
 
@@ -172,16 +262,17 @@ describe('GET /candidates', () => {
       makeProfile('p2', 'bob', { status: 'suspicious', confidence: 0.2, skills: [skill('Rust')] }),
     );
     const app = await createApp({ repos });
+    const headers = await recruiterHeaders(repos);
 
-    const authentic = await app.request('/candidates?authenticity=likely_authentic');
+    const authentic = await app.request('/candidates?authenticity=likely_authentic', { headers });
     const authenticBody = (await authentic.json()) as CandidateListResponse;
     expect(authenticBody.items.map((c) => c.login)).toEqual(['alice']);
 
-    const keyword = await app.request('/candidates?keyword=systems');
+    const keyword = await app.request('/candidates?keyword=systems', { headers });
     const keywordBody = (await keyword.json()) as CandidateListResponse;
     expect(keywordBody.items.map((c) => c.login)).toEqual(['alice']);
 
-    const paged = await app.request('/candidates?limit=1&offset=0');
+    const paged = await app.request('/candidates?limit=1&offset=0', { headers });
     const pagedBody = (await paged.json()) as CandidateListResponse;
     expect(pagedBody.items).toHaveLength(1);
     expect(pagedBody.total).toBe(2);
