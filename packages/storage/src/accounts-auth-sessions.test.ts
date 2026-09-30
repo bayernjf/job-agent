@@ -120,6 +120,36 @@ describe('SqliteAccountsRepository', () => {
     expect(await accounts.setClaimedProfile('missing', 'prof-x')).toBeUndefined();
     close();
   });
+
+  it('F10: declares/revokes recruiter status idempotently and never resets it on re-login', async () => {
+    const { accounts, close } = fresh();
+    await accounts.upsertFromProvider({ id: 'acc-1', identity: githubIdentity('alice', '101') });
+
+    // 未知账号 → undefined
+    expect(await accounts.declareRecruiter('missing', NOW)).toBeUndefined();
+
+    const declared = await accounts.declareRecruiter('acc-1', NOW);
+    expect(declared?.recruiterDeclaredAt).toBe(NOW);
+
+    // 幂等：再次声明保留原时刻（声明是审计事件，不该被覆盖）
+    const declaredAgain = await accounts.declareRecruiter('acc-1', FUTURE);
+    expect(declaredAgain?.recruiterDeclaredAt).toBe(NOW);
+
+    // 重新登录（upsertFromProvider）刷新 login/name，但绝不动 recruiter_declared_at（§4 不变式）
+    const afterRelogin = await accounts.upsertFromProvider({
+      id: 'acc-ignored',
+      identity: githubIdentity('alice-renamed', '101'),
+    });
+    expect(afterRelogin.login).toBe('alice-renamed');
+    expect(afterRelogin.recruiterDeclaredAt).toBe(NOW);
+
+    // 撤销 → null（不删行、不动认领列）
+    const revoked = await accounts.revokeRecruiter('acc-1');
+    expect(revoked?.recruiterDeclaredAt).toBeNull();
+    expect(await accounts.getById('acc-1')).toBeDefined();
+    expect(await accounts.revokeRecruiter('missing')).toBeUndefined();
+    close();
+  });
 });
 
 describe('SqliteAuthSessionsRepository', () => {
@@ -207,13 +237,14 @@ describe('SqliteAccountsRepository.deleteUnclaimed', () => {
     id: string,
     claimedProfileId: string | null,
     updatedAt: string,
+    recruiterDeclaredAt: string | null = null,
   ): void {
     client
       .prepare(
-        `INSERT INTO accounts (id, platform, provider_account_id, login, name, email, avatar_url, claimed_profile_id, created_at, updated_at)
-         VALUES (?, 'github', ?, ?, null, null, null, ?, ?, ?)`,
+        `INSERT INTO accounts (id, platform, provider_account_id, login, name, email, avatar_url, claimed_profile_id, recruiter_declared_at, created_at, updated_at)
+         VALUES (?, 'github', ?, ?, null, null, null, ?, ?, ?, ?)`,
       )
-      .run(id, `${id}-pid`, id, claimedProfileId, PAST, updatedAt);
+      .run(id, `${id}-pid`, id, claimedProfileId, recruiterDeclaredAt, PAST, updatedAt);
   }
 
   it('deletes only stale unclaimed accounts without a live session', async () => {
@@ -236,6 +267,22 @@ describe('SqliteAccountsRepository.deleteUnclaimed', () => {
     expect(await ctx.accounts.getById('acc-claimed')).toBeDefined();
     expect(await ctx.accounts.getById('acc-live-session')).toBeDefined();
     expect(await ctx.accounts.getById('acc-recent')).toBeDefined();
+    ctx.close();
+  });
+
+  it('F10 §7.1: never deletes a recruiter-declared account even if unclaimed, stale and sessionless', async () => {
+    const ctx = fresh();
+    // 招聘方通常不认领自己的画像：无认领 + 旧 updated_at + 无会话，本应被清理，
+    // 但因声明过招聘方，必须保留（否则 interviews.created_by_account_id 悬空、
+    // 且重新登录后声明静默消失）。
+    insertAccount(ctx.client, 'acc-declared-recruiter', null, PAST, NOW);
+    insertAccount(ctx.client, 'acc-plain-unclaimed', null, PAST, null);
+
+    const removed = await ctx.accounts.deleteUnclaimed(NOW, 0);
+    expect(removed).toBe(1);
+    expect(await ctx.accounts.getById('acc-declared-recruiter')).toBeDefined();
+    expect((await ctx.accounts.getById('acc-declared-recruiter'))?.recruiterDeclaredAt).toBe(NOW);
+    expect(await ctx.accounts.getById('acc-plain-unclaimed')).toBeUndefined();
     ctx.close();
   });
 });

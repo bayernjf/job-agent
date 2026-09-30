@@ -315,6 +315,14 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 015（accounts 去掉 recruiter_declared_at，表本身仍在）
+    const accountColsBefore15 = db.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>;
+    expect(accountColsBefore15.map((c) => c.name)).toContain('recruiter_declared_at');
+    const result15 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result15.version).toBe('015');
+    const accountColsAfter15 = db.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>;
+    expect(accountColsAfter15.map((c) => c.name)).not.toContain('recruiter_declared_at');
+
     // 回滚 014（证据主键退回单列 id；空库无跨画像重复 id，所以回滚是安全的）
     const pkBefore14 = (db.prepare('PRAGMA table_info(evidence)').all() as Array<{
       name: string;

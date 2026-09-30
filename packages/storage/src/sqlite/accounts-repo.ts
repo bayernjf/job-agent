@@ -101,15 +101,46 @@ export class SqliteAccountsRepository implements IAccountsRepository {
     return this.getById(accountId);
   }
 
+  async declareRecruiter(
+    accountId: string,
+    nowIso: string,
+  ): Promise<StoredAccount | undefined> {
+    const existing = await this.getById(accountId);
+    if (!existing) return undefined;
+    // 幂等：已声明则保留原时刻，仅在未声明时写入。
+    if (existing.recruiterDeclaredAt) return existing;
+    this.db
+      .update(t)
+      .set({ recruiterDeclaredAt: nowIso, updatedAt: nowIso })
+      .where(eq(t.id, accountId))
+      .run();
+    return this.getById(accountId);
+  }
+
+  async revokeRecruiter(accountId: string): Promise<StoredAccount | undefined> {
+    const existing = await this.getById(accountId);
+    if (!existing) return undefined;
+    const now = new Date().toISOString();
+    this.db
+      .update(t)
+      // 撤声明不动 updatedAt 的清理语义风险：仍更新时间戳，与其他写操作一致。
+      .set({ recruiterDeclaredAt: null, updatedAt: now })
+      .where(eq(t.id, accountId))
+      .run();
+    return this.getById(accountId);
+  }
+
   async deleteUnclaimed(nowIso: string, retainMs: number): Promise<number> {
     const retainCutoff = new Date(Date.parse(nowIso) - retainMs).toISOString();
-    // 仅删：从未认领、超过保留期未更新、且当前没有未过期会话的账号。
+    // 仅删：从未认领、超过保留期未更新、当前没有未过期会话、且从未声明招聘方
+    // 的账号（F10 §7.1：声明账号永不被后台清理，避免权限被静默收回）。
     // 物理表/列名 sqlite 与 postgres 一致（snake_case），故此 NOT EXISTS 子句双方言通用。
     const result = this.db
       .delete(t)
       .where(
         and(
           isNull(t.claimedProfileId),
+          isNull(t.recruiterDeclaredAt),
           lt(t.updatedAt, retainCutoff),
           sql`not exists (select 1 from auth_sessions where auth_sessions.account_id = ${t.id} and auth_sessions.expires_at >= ${nowIso})`,
         ),
