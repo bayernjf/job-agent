@@ -47,3 +47,6 @@ apps/extension/release/
 # Vercel CLI project link (`.vercel/` also covered above; do NOT add `.env*`
 # here — the `!.env.example` whitelist above would stop working)
 .vercel
+
+# local resume outputs + PII (name/email/phone/work history) — never commit
+resumes/
