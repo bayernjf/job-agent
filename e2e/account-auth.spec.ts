@@ -1,5 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE_PROFILE_ID, FIXTURE_LOGIN } from './fixtures/sample-profile.js';
+import {
+  FIXTURE_PROFILE_ID,
+  FIXTURE_CLAIMED_PROFILE_ID,
+  FIXTURE_LOGIN,
+} from './fixtures/sample-profile.js';
 import { preloadAstro } from './preload.js';
 
 // T29：本 spec 按字母序最先执行，beforeAll 预热全部 fixture 路由（Astro dev SSR 冷编译），
@@ -210,5 +214,68 @@ test.describe('ClaimProfile', () => {
     // 已认领该画像：island 直接渲染徽章，不出现认领按钮
     await expect(page.getByTestId('claim-button')).toHaveCount(0);
     await expect(page.getByTestId('claimed-badge')).toBeVisible();
+  });
+
+  test('shows the unclaim CTA only to the owner of a claimed profile and posts on confirm', async ({ page }) => {
+    await test.step('owner sees and confirms unclaim', async () => {
+      await mockAuthMe(page, {
+        kind: 'user',
+        platform: 'github',
+        login: FIXTURE_LOGIN,
+        claimedProfileId: FIXTURE_CLAIMED_PROFILE_ID,
+      });
+      let unclaimCalls = 0;
+      await page.route(/\/profiles\/[^/]+\/unclaim$/, (route) => {
+        unclaimCalls += 1;
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            profileId: FIXTURE_CLAIMED_PROFILE_ID,
+            claimed: false,
+            subject: { platform: 'github', login: FIXTURE_LOGIN },
+            claimedProfileId: null,
+          }),
+        });
+      });
+
+      await page.goto(`/en/report/${FIXTURE_CLAIMED_PROFILE_ID}`);
+      await waitForHydrated(page);
+      const unclaimButton = page.getByTestId('unclaim-button');
+      await expect(unclaimButton).toBeVisible();
+      await expect(unclaimButton).toContainText('Unclaim');
+      // SSR 徽章始终在（与身份无关），解绑按钮才是本人专属 island
+      await expect(page.getByTestId('claimed-badge')).toBeVisible();
+
+      page.once('dialog', (dialog) => {
+        expect(dialog.message()).toContain('public read-only');
+        void dialog.accept();
+      });
+      await unclaimButton.click();
+      await expect.poll(() => unclaimCalls).toBe(1);
+    });
+  });
+
+  test('hides the unclaim CTA for a non-owner and an anonymous visitor of a claimed profile', async ({ page }) => {
+    await test.step('non-owner', async () => {
+      await mockAuthMe(page, {
+        kind: 'user',
+        platform: 'github',
+        login: 'someone-else',
+        claimedProfileId: null,
+      });
+      await page.goto(`/en/report/${FIXTURE_CLAIMED_PROFILE_ID}`);
+      await waitForHydrated(page);
+      await expect(page.getByTestId('unclaim-button')).toHaveCount(0);
+      // 他人仍看到静态「本人已验证」徽章
+      await expect(page.getByTestId('claimed-badge')).toBeVisible();
+    });
+
+    await test.step('anonymous', async () => {
+      await mockAuthMe(page, { kind: 'anonymous' });
+      await page.goto(`/en/report/${FIXTURE_CLAIMED_PROFILE_ID}`);
+      await waitForHydrated(page);
+      await expect(page.getByTestId('unclaim-button')).toHaveCount(0);
+    });
   });
 });

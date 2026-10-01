@@ -6,6 +6,7 @@
 import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
 import ClaimProfile from '../../../components/ClaimProfile.tsx';
+import UnclaimProfile from '../../../components/UnclaimProfile.tsx';
 import GateCard from '../../../components/GateCard.astro';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
@@ -181,9 +182,23 @@ const applicationStatusLabels = {
         {
           /* 已认领：SSR 直接渲染本人已验证徽章，无需 JS */
           profile.subject.claimed && (
-            <span class="ja-badge ja-badge--owner" data-testid="claimed-badge">
-              {t('report.claimedBadge')}
-            </span>
+            <>
+              <span class="ja-badge ja-badge--owner" data-testid="claimed-badge">
+                {t('report.claimedBadge')}
+              </span>
+              <UnclaimProfile
+                client:load
+                apiBase={apiBase}
+                profileId={profileId!}
+                subjectPlatform={isFusedProfile ? 'all' : profile.subject.platform}
+                subjectLogin={profile.subject.login}
+                ctaLabel={t('report.unclaim.cta')}
+                confirmMessage={t('report.unclaim.confirm')}
+                unclaimingLabel={t('report.unclaim.unclaiming')}
+                errorLabel={t('report.unclaim.error')}
+                hintLabel={t('report.unclaim.hint')}
+              />
+            </>
           )
         }
         {
