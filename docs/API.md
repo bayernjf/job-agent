@@ -325,6 +325,29 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | 403 `AUTH_NOT_PROFILE_OWNER` | 画像平台登录名与登录账号不一致（响应带画像 `subject`） |
 | 404 `AUTH_PROFILE_NOT_FOUND` | 画像不存在 |
 
+### `POST /profiles/:id/unclaim`
+
+登录用户解除本人画像认领（PRD F8「可解绑」的**非破坏**版本，2026-10-01 落地）。归属判定与认领同口径：仅当画像的 `subject.platform` + `subject.login` 与登录账号一致才放行（`subject.platform='all'` 融合画像按登录名一致放行，跨平台/异名返回 403）。
+
+与 `DELETE /profiles/:id` 的关键区别：解绑**不删任何数据**——只把画像 `subject.claimed` 翻回 `false`、清空账号 `claimedProfileId`；画像快照、证据、投递、面试记录与分享链接全部保留，画像退回公开只读态，投递区随之恢复对所有访客可见（认领即隐私开关随之解除）。操作幂等，再次 `claim` 即可恢复。
+
+```json
+{
+  "profileId": "prof-alice",
+  "claimed": false,
+  "subject": { "platform": "github", "login": "alice" },
+  "claimedProfileId": null
+}
+```
+
+| 码 | 情形 |
+| --- | --- |
+| 200 | 解除成功（幂等，对未认领画像调用仍成功） |
+| 400 | `id` 格式非法 |
+| 401 `AUTH_REQUIRED` | 未登录（匿名/演示会话） |
+| 403 `AUTH_NOT_PROFILE_OWNER` | 画像平台登录名与登录账号不一致（响应带画像 `subject`） |
+| 404 `AUTH_PROFILE_NOT_FOUND` | 画像不存在 |
+
 ### `DELETE /profiles/:id`
 
 登录用户自助解绑并删除本人画像（B2，2026-09-27 落地，PRD「可解绑」验收）。归属判定与认领同口径：仅当画像的 `subject.platform` + `subject.login` 与登录账号完全一致才放行（`subject.platform='all'` 融合画像按登录名一致放行，跨平台/异名返回 403）。删除为**级联**：`evidence` → `applications` → `interviews` 全量删除 → `accounts.claimedProfileId` 置空 → 画像行删除；账号本身保留（仍可登录、可再次分析）。
