@@ -27,6 +27,8 @@ export interface DemoConfig {
   matchRatePerHour: number;
   /** by-subject 公开主体解析的 IP 兜底窗口（防 login 字典枚举，仅防刷） */
   subjectRatePerHour: number;
+  /** 提交移除申请（POST /profiles/:id/removal-request）的 IP 兜底窗口（防滥用，仅防刷） */
+  removalRatePerHour: number;
   /** Worker 同时运行的 demo job 上限 */
   maxConcurrent: number;
   /** demo 并发闸触发后的退避毫秒 */
@@ -51,6 +53,7 @@ export const DEMO_DEFAULTS = {
   analyzeRatePerHour: 10,
   matchRatePerHour: 60,
   subjectRatePerHour: 120,
+  removalRatePerHour: 5,
   maxConcurrent: 1,
   backoffMs: 15_000,
 } as const;
@@ -136,6 +139,12 @@ export function loadDemoConfig(env: NodeJS.ProcessEnv = process.env): DemoConfig
       env.DEMO_SUBJECT_RATE_PER_HOUR,
       DEMO_DEFAULTS.subjectRatePerHour,
       'DEMO_SUBJECT_RATE_PER_HOUR',
+      1,
+    ),
+    removalRatePerHour: positiveInt(
+      env.DEMO_REMOVAL_RATE_PER_HOUR,
+      DEMO_DEFAULTS.removalRatePerHour,
+      'DEMO_REMOVAL_RATE_PER_HOUR',
       1,
     ),
     maxConcurrent: positiveInt(env.DEMO_MAX_CONCURRENT, DEMO_DEFAULTS.maxConcurrent, 'DEMO_MAX_CONCURRENT', 1),

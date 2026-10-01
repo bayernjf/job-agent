@@ -684,6 +684,137 @@ describe('GET /profiles/by-subject/:platform/:login', () => {
   });
 });
 
+describe('POST /profiles/:id/removal-request (S3 按主体撤回)', () => {
+  async function seedProfile(
+    repos: StorageContext,
+    id: string,
+    login: string,
+    platform: 'github' | 'gitee' = 'github',
+    removalRequestedAt: string | null = null,
+  ): Promise<void> {
+    const snapshot = sampleProfile(id, login);
+    await repos.profiles.insert({
+      id,
+      analyzerVersion: snapshot.analyzerVersion,
+      subjectPlatform: platform,
+      subjectLogin: login,
+      subjectClaimed: false,
+      dataWindowSince: snapshot.dataWindow.since,
+      dataWindowUntil: snapshot.dataWindow.until,
+      status: 'complete',
+      snapshot,
+      removalRequestedAt,
+    });
+  }
+
+  it('returns 404 for a non-existent profile', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/profiles/prof-nonexistent/removal-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'not me' }),
+    });
+    expect(res.status).toBe(404);
+    expect((await res.json() as any).code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('accepts a request for an existing profile and soft-holds it (202)', async () => {
+    const repos = await freshRepos();
+    await seedProfile(repos, 'prof-rem-1', 'rem-user');
+    const app = await createApp({ repos });
+
+    const res = await app.request('/profiles/prof-rem-1/removal-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'this is not me', contact: 'a@b.com' }),
+    });
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as any;
+    expect(body.profileId).toBe('prof-rem-1');
+    expect(body.status).toBe('pending');
+    expect(body.requestId).toMatch(/^rem-/);
+
+    // 画像进入挂起态
+    const stored = await repos.profiles.getById('prof-rem-1');
+    expect(stored!.removalRequestedAt).toBeTruthy();
+    // 申请单落库
+    const req = await repos.profileRemovalRequests.latestPendingByProfile('prof-rem-1');
+    expect(req).toBeDefined();
+    expect(req!.reason).toBe('this is not me');
+    expect(req!.contact).toBe('a@b.com');
+  });
+
+  it('is idempotent: a second request returns the existing pending one (200)', async () => {
+    const repos = await freshRepos();
+    await seedProfile(repos, 'prof-rem-2', 'rem-user-2');
+    const app = await createApp({ repos });
+
+    const first = await app.request('/profiles/prof-rem-2/removal-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const firstBody = (await first.json()) as any;
+    expect(first.status).toBe(202);
+
+    const second = await app.request('/profiles/prof-rem-2/removal-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'different reason' }),
+    });
+    const secondBody = (await second.json()) as any;
+    expect(second.status).toBe(200);
+    expect(secondBody.idempotent).toBe(true);
+    expect(secondBody.requestId).toBe(firstBody.requestId);
+    // 不重复创建申请单
+    const all = await repos.profileRemovalRequests.listByStatus('pending');
+    expect(all).toHaveLength(1);
+  });
+
+  it('enforces removalRatePerHour via IP sliding window (429)', async () => {
+    const repos = await freshRepos();
+    await seedProfile(repos, 'prof-rem-rate', 'rem-rate-user');
+    const cfg = { ...loadDemoConfig(), removalRatePerHour: 1, trustProxy: true, ipSalt: 'test-salt' };
+    const app = await createApp({ repos, demoConfig: cfg });
+    const ip = '9.9.9.9';
+    const ipHash = hashIp(ip, 'test-salt');
+    await repos.demoSessions.insertRateEvent(ipHash, 'removal', new Date().toISOString());
+
+    const res = await app.request('/profiles/prof-rem-rate/removal-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as any;
+    expect(body.bucket).toBe('removal');
+    expect(body.code).toBe('DEMO_RATE_LIMITED');
+  });
+
+  it('GET /profiles/by-subject returns 404 for a soft-held profile (S3)', async () => {
+    const repos = await freshRepos();
+    await seedProfile(repos, 'prof-rem-hold', 'held-user', 'github', '2026-10-01T00:00:00.000Z');
+    const app = await createApp({ repos });
+    const res = await app.request('/profiles/by-subject/github/held-user');
+    expect(res.status).toBe(404);
+    expect((await res.json() as any).code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('POST /analyze returns 409 REMOVAL_PENDING for a soft-held subject (S3)', async () => {
+    const repos = await freshRepos();
+    await seedProfile(repos, 'prof-rem-analyze', 'held-analyze-user', 'github', '2026-10-01T00:00:00.000Z');
+    const app = await createApp({ repos });
+    const res = await app.request('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'held-analyze-user', platform: 'github' }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as any;
+    expect(body.code).toBe('REMOVAL_PENDING');
+  });
+});
+
 describe('404 fallback', () => {
   it('returns 404 for unknown routes', async () => {
     const app = await createApp({ repos: await freshRepos() });

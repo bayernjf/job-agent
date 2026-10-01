@@ -62,6 +62,7 @@
 | `DEMO_ANALYZE_RATE_PER_HOUR` | `10` | 单 IP 每小时触发分析上限 |
 | `DEMO_MATCH_RATE_PER_HOUR` | `60` | match 计算 IP 兜底窗口（仅观测/防刷） |
 | `DEMO_SUBJECT_RATE_PER_HOUR` | `120` | `by-subject` 公开主体解析的 IP 兜底窗口（仅防刷，防 login 字典枚举） |
+| `DEMO_REMOVAL_RATE_PER_HOUR` | `5` | 提交移除申请（`POST /profiles/:id/removal-request`）的 IP 兜底窗口（仅防刷） |
 | `DEMO_IP_SALT` | 空（进程内随机） | IP 哈希盐，生产必填 |
 | `DEMO_PRESET_LOGINS` | 空 | 预置示例清单，形如 `github:alice,gitee:bob` |
 | `CORS_ALLOW_ORIGINS` | 空 | 跨域 Origin 白名单（逗号分隔） |
@@ -367,6 +368,22 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | 401 `AUTH_REQUIRED` | 未登录（匿名/演示会话） |
 | 403 `AUTH_NOT_PROFILE_OWNER` | 画像未认领或平台登录名与登录账号不一致（未认领 403 要求先走认领） |
 | 404 `AUTH_PROFILE_NOT_FOUND` | 画像不存在 |
+
+### `POST /profiles/:id/removal-request`
+
+按主体撤回的公开申请通道（审计 S3，2026-10-01 落地）。未认领画像的分享链无法由本人自助撤销（[`DELETE /profiles/:id`](#3-查询画像快照) 只对认领本人开放），而请求者又不可被服务端证明是本人，因此开放「提交申请 + 人工复核」：申请只留痕（理由 / 联系方式 / IP 哈希），由运营在 CLI 的 `removal` 命令组（list/approve/reject）复核后批准（级联删除）或驳回。提交即把画像置**软挂起**（`removal_requested_at` 非空），不再被 `GET /profiles/by-subject/:platform/:login` 与人才库分发；复核批准后才整行删除。端点任何身份放行（匿名即可提），唯一约束是 `DEMO_REMOVAL_RATE_PER_HOUR` 的 IP 滑窗防刷。**幂等**：同一画像已有 pending 申请时直接返回该申请（`idempotent: true`），不重复计数。
+
+```json
+{ "requestId": "rem-<uuid>", "profileId": "prof-alice", "status": "pending" }
+```
+
+| 码 | 情形 |
+| --- | --- |
+| 200 | 已有 pending 申请，直接返回（`idempotent: true`） |
+| 202 | 申请已受理（画像进入挂起态，等待人工复核） |
+| 400 | `id` 格式非法 / 请求体字段超长 |
+| 404 `PROFILE_NOT_FOUND` | 画像不存在 |
+| 429 `DEMO_RATE_LIMITED` | 同 IP 一小时内提交次数超过 `DEMO_REMOVAL_RATE_PER_HOUR`（`bucket: "removal"`，`retryAfterSeconds: 3600`） |
 
 ### 授权分级闸与可见性（报告页，2026-09-19 落地）
 
