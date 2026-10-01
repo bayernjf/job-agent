@@ -22,6 +22,23 @@ describe('createJobHttpClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('getText returns the raw body and requests an XML/RSS Accept header', async () => {
+    let accept = '';
+    const fetchImpl = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      accept = String((init?.headers as Record<string, string>).Accept ?? '');
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '<rss><item/></rss>',
+        headers: { get: () => null },
+      } as unknown as Response;
+    });
+    const http = createJobHttpClient({ fetchImpl, sleep: noSleep });
+    await expect(http.getText('https://x.test/feed.rss')).resolves.toBe('<rss><item/></rss>');
+    expect(accept).toContain('application/rss+xml');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('does not retry on 4xx (except 429)', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(404, { error: 'no' }));
     const http = createJobHttpClient({ fetchImpl, sleep: noSleep, retries: 2 });

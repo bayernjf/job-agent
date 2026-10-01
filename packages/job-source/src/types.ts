@@ -3,6 +3,8 @@ import type { JobSource } from '@jobagent/shared';
 /** 岗位源 HTTP 客户端的最小抽象（测试注入 fake，生产用 createJobHttpClient）。 */
 export interface JobHttpClient {
   getJson<T>(url: string): Promise<T>;
+  /** 拉取文本响应（XML/RSS 等非 JSON 源，如 We Work Remotely RSS）。 */
+  getText(url: string): Promise<string>;
   /** 中止当前全部在途请求（源级预算超时兜底；无在途请求时为 no-op）。 */
   abortAll(): void;
 }
