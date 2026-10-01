@@ -1,6 +1,6 @@
 /**
  * 面试计划（interviews，handoff item45）API 集成测试：
- * - POST /interviews       未登录 401；profile 404；校验 400；创建默认值；关联投递并推进其状态到 interview
+ * - POST /interviews       未登录 401；profile 404；校验 400；创建默认值；关联投递仅推进无主行（有主行不跨主体改写）
  * - GET  /interviews       仅返回本人创建、支持 profileId/status 过滤、按 scheduledStart 倒序
  * - PATCH /interviews/:id  改期/状态/结果录入；非本人资源 404；非法 rating/时间窗/空 patch 400
  * 全部内存 SQLite + FakeAuthProvider（不打网络），Hono app.request。
@@ -265,6 +265,32 @@ describe('POST /interviews', () => {
     expect(linkedBody.applicationId).toBe(application.id);
     const advanced = await repos.applications.getById(application.id);
     expect(advanced?.status).toBe('interview');
+  });
+
+  it('does not advance an application owned by the candidate when a recruiter links it', async () => {
+    const { repos, app } = await harness();
+    await insertProfile(repos, 'p1', 'alice');
+    const recruiterAuth = await loginUser(repos, ALICE, { declareRecruiter: true });
+    // 候选人本人登录后在未认领画像上记一条投递 → created_by_account_id = 候选人
+    const candidateAuth = await loginUser(repos, BOB);
+
+    const appRes = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...candidateAuth },
+      body: JSON.stringify({ targetTitle: 'Backend Engineer', targetCompany: 'Acme' }),
+    });
+    const application = (await appRes.json()) as { id: string; status: string };
+    expect(application.status).toBe('applied');
+
+    // 招聘方排期并关联该投递 → 面试创建成功，但投递状态不被跨主体改写（audit S2）
+    const linked = await app.request('/interviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...recruiterAuth },
+      body: JSON.stringify({ ...validBody, applicationId: application.id }),
+    });
+    expect(linked.status).toBe(201);
+    const after = await repos.applications.getById(application.id);
+    expect(after?.status).toBe('applied');
   });
 });
 
