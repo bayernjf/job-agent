@@ -784,8 +784,8 @@ export const REQUESTER_KINDS = ['anonymous', 'demo', 'user'] as const;
 export const RequesterKindSchema = z.enum(REQUESTER_KINDS);
 export type RequesterKind = z.infer<typeof RequesterKindSchema>;
 
-/** IP 滑动窗口限流的桶类型：建会话 / 触发分析 */
-export const DEMO_RATE_KINDS = ['session', 'analyze'] as const;
+/** IP 滑动窗口限流的桶类型：建会话 / 触发分析 / 岗位匹配 / 公开主体解析 */
+export const DEMO_RATE_KINDS = ['session', 'analyze', 'match', 'subject'] as const;
 export const DemoRateKindSchema = z.enum(DEMO_RATE_KINDS);
 export type DemoRateKind = z.infer<typeof DemoRateKindSchema>;
 

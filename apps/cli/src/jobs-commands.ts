@@ -28,6 +28,7 @@ import type { CliDeps } from './index.js';
 const ENABLED_SOURCES: JobSource[] = [
   'remoteok',
   'remotive',
+  'weworkremotely',
   'greenhouse',
   'lever',
   'hn_whoishiring',

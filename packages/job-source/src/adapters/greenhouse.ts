@@ -10,7 +10,7 @@ import { inferRemote } from '../normalize/remote.js';
 const BOARD_ENDPOINT = (token: string) =>
   `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(token)}/jobs?content=true`;
 const DEFAULT_INTERVAL_MS = 300;
-/** 并发拉取 board 的上限：45 家串行在部分网络（如托管 runner）会被 15s 超时线性放大。 */
+/** 并发拉取 board 的上限：60+ 家串行在部分网络（如托管 runner）会被 15s 超时线性放大。 */
 const DEFAULT_CONCURRENCY = 6;
 const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 

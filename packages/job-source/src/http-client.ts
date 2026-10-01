@@ -6,6 +6,8 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRIES = 2;
 const DEFAULT_UA = 'job-agent/0.1 (+https://github.com/bayernjf/job-agent)';
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const JSON_ACCEPT = 'application/json';
+const TEXT_ACCEPT = 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8';
 
 const realSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -38,11 +40,12 @@ export class JobHttpError extends Error {
 }
 
 /**
- * 岗位源 JSON HTTP 客户端：
+ * 岗位源 HTTP 客户端：
  * - AbortController 单请求超时；
  * - 仅对网络错误 / 5xx / 408/425/429 有限重试（指数退避，429 优先读 Retry-After）；
  * - 其余 4xx 立即失败不重试；
- * - fetch 可注入，测试不打真实网络。
+ * - fetch 可注入，测试不打真实网络；
+ * - getJson 走 JSON 源（Accept: application/json），getText 走 XML/RSS 文本源（如 We Work Remotely RSS）。
  */
 export function createJobHttpClient(options: JobHttpOptions = {}): JobHttpClient {
   const proxy = options.proxy?.trim();
@@ -59,10 +62,15 @@ export function createJobHttpClient(options: JobHttpOptions = {}): JobHttpClient
   // 在途请求的 AbortController 集合：源级预算超时（ingestor withBudget）需要中止所有挂起请求，
   // 否则 Promise.race 放行后底层 socket 仍挂着、Node 进程不退出（runner 上 greenhouse 黑洞即此形态）。
   const activeControllers = new Set<AbortController>();
-  // abortAll 置位后 getJson 的 catch 不再重试（预算已超时，重试只会再造挂起请求）。
+  // abortAll 置位后 request 的 catch 不再重试（预算已超时，重试只会再造挂起请求）。
   let forceStop = false;
 
-  async function getJson<T>(url: string): Promise<T> {
+  // 共享请求：重试 / 退避 / 超时 / 中止语义对 JSON 与文本源一致；body 解析由 parse 回调（进重试循环，解析失败也重试）。
+  async function request<T>(
+    url: string,
+    accept: string,
+    parse: (res: Response) => Promise<T>,
+  ): Promise<T> {
     let lastError: unknown;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       if (forceStop) break;
@@ -72,9 +80,9 @@ export function createJobHttpClient(options: JobHttpOptions = {}): JobHttpClient
       try {
         const res = await fetchImpl(url, {
           signal: ctrl.signal,
-          headers: { 'User-Agent': userAgent, Accept: 'application/json' },
+          headers: { 'User-Agent': userAgent, Accept: accept },
         });
-        if (res.ok) return (await res.json()) as T;
+        if (res.ok) return await parse(res);
 
         const retryAfter = Number(res.headers.get('retry-after') ?? '');
         if (RETRYABLE_STATUS.has(res.status) && attempt < retries) {
@@ -104,7 +112,12 @@ export function createJobHttpClient(options: JobHttpOptions = {}): JobHttpClient
   }
 
   return {
-    getJson,
+    getJson<T>(url: string): Promise<T> {
+      return request<T>(url, JSON_ACCEPT, (res) => res.json() as Promise<T>);
+    },
+    getText(url: string): Promise<string> {
+      return request(url, TEXT_ACCEPT, (res) => res.text());
+    },
     abortAll() {
       forceStop = true;
       for (const ctrl of activeControllers) ctrl.abort();

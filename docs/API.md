@@ -61,6 +61,7 @@
 | `DEMO_SESSION_RATE_PER_HOUR` | `5` | 单 IP 每小时建会话上限 |
 | `DEMO_ANALYZE_RATE_PER_HOUR` | `10` | 单 IP 每小时触发分析上限 |
 | `DEMO_MATCH_RATE_PER_HOUR` | `60` | match 计算 IP 兜底窗口（仅观测/防刷） |
+| `DEMO_SUBJECT_RATE_PER_HOUR` | `120` | `by-subject` 公开主体解析的 IP 兜底窗口（仅防刷，防 login 字典枚举） |
 | `DEMO_IP_SALT` | 空（进程内随机） | IP 哈希盐，生产必填 |
 | `DEMO_PRESET_LOGINS` | 空 | 预置示例清单，形如 `github:alice,gitee:bob` |
 | `CORS_ALLOW_ORIGINS` | 空 | 跨域 Origin 白名单（逗号分隔） |
@@ -491,6 +492,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 ```
 
 - 无可用画像（404）：`{ "error": "no complete profile for subject", "code": "PROFILE_NOT_FOUND" }`（仅在无画像或最新一版为 `error` 时；`partial` 走 200）
+- 超单 IP 滑窗上限（429）：`{ "error": "subject lookup rate limit exceeded", "code": "DEMO_RATE_LIMITED", "bucket": "subject", "retryAfterSeconds": 3600 }`（默认 120 次/小时，`DEMO_SUBJECT_RATE_PER_HOUR` 可调；该端点任何身份放行，此闸仅防 login 字典枚举）
 
 ---
 
@@ -703,7 +705,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | --- | --- |
 | 400 | 非法 JSON；请求体校验失败；`skills` 与 `profileId` 都未提供 |
 | 404 | 传了 `profileId` 但画像不存在或无快照 |
-| 429 | **仅 demo 会话**：按 IP 桶命中 `DEMO_MATCH_RATE_PER_HOUR`（默认 60/小时）时返回 `{code:'RATE_LIMITED', bucket:'match', retryAfterSeconds:3600}`。该旋钮 2026-09-25 前是**死的**（env 与文档都在、无 handler 消费），T27① 才真正接上；IP 桶依赖 `TRUST_PROXY`，而 T27③ 已让生产环境未显式配置时**启动即失败**，不再静默放行 |
+| 429 | **仅 demo 会话**：按 IP 桶命中 `DEMO_MATCH_RATE_PER_HOUR`（默认 60/小时）时返回 `{code:'DEMO_RATE_LIMITED', bucket:'match', retryAfterSeconds:3600}`。该旋钮 2026-09-25 前是**死的**（env 与文档都在、无 handler 消费），T27① 才真正接上；IP 桶依赖 `TRUST_PROXY`，而 T27③ 已让生产环境未显式配置时**启动即失败**，不再静默放行 |
 
 ---
 
@@ -983,6 +985,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 ### `POST /interviews`
 
 为候选人安排一场面试。可关联一条该候选人的投递记录；关联后若该投递仍处于 `saved`/`applied`/`viewed` 早期阶段，会被自动推进到 `interview`（`offer`/`rejected`/`withdrawn` 等终态不回退）。
+
+> **归属边界**：推进只对**无主投递行**（`created_by_account_id` 为空，即匿名/历史写入）生效。已认领画像的投递归候选人本人，招聘方不跨主体改写——此时面试照常创建，但投递状态保持不变，且不报错。
 
 #### 请求体
 

@@ -2,6 +2,7 @@ import type { JobSource } from '@jobagent/shared';
 import type { JobSourceAdapter } from './types.js';
 import { RemoteOkAdapter } from './remoteok.js';
 import { RemotiveAdapter } from './remotive.js';
+import { WeworkRemotelyAdapter } from './weworkremotely.js';
 import { GreenhouseAdapter, type GreenhouseBoard } from './greenhouse.js';
 import { LeverAdapter, type LeverBoard } from './lever.js';
 import { HnWhoIsHiringAdapter, type HnAdapterOptions } from './hn-whoishiring.js';
@@ -57,6 +58,24 @@ export const SEED_GREENHOUSE_BOARDS: GreenhouseBoard[] = [
   { token: 'deliveroo', companyName: 'Deliveroo' },
   { token: 'n26', companyName: 'N26' },
   { token: 'wolt', companyName: 'Wolt' },
+  // T40（2026-10-01）：新增 17 家，全部于当日对 boards-api.greenhouse.io 实测 200 且 jobs>0
+  { token: 'scaleai', companyName: 'Scale AI' },
+  { token: 'asana', companyName: 'Asana' },
+  { token: 'coursera', companyName: 'Coursera' },
+  { token: 'zocdoc', companyName: 'Zocdoc' },
+  { token: 'samsara', companyName: 'Samsara' },
+  { token: 'flexport', companyName: 'Flexport' },
+  { token: 'grafanalabs', companyName: 'Grafana Labs' },
+  { token: 'cockroachlabs', companyName: 'Cockroach Labs' },
+  { token: 'fivetran', companyName: 'Fivetran' },
+  { token: 'launchdarkly', companyName: 'LaunchDarkly' },
+  { token: 'braze', companyName: 'Braze' },
+  { token: 'klaviyo', companyName: 'Klaviyo' },
+  { token: 'planetscale', companyName: 'PlanetScale' },
+  { token: 'drweng', companyName: 'DRW' },
+  { token: 'descript', companyName: 'Descript' },
+  { token: 'togetherai', companyName: 'Together AI' },
+  { token: 'graphcore', companyName: 'Graphcore' },
 ];
 
 /**
@@ -76,10 +95,16 @@ export const SEED_LEVER_BOARDS: LeverBoard[] = [
   { slug: 'zoox', companyName: 'Zoox' },
 ];
 
-export const DEFAULT_SOURCES: JobSource[] = ['remoteok', 'remotive', 'greenhouse', 'lever'];
+export const DEFAULT_SOURCES: JobSource[] = [
+  'remoteok',
+  'remotive',
+  'weworkremotely',
+  'greenhouse',
+  'lever',
+];
 
 export interface DefaultAdapterOptions {
-  /** 只启用指定源，默认四源全启 */
+  /** 只启用指定源，默认五源全启 */
   sources?: JobSource[];
   greenhouseBoards?: GreenhouseBoard[];
   leverBoards?: LeverBoard[];
@@ -97,6 +122,7 @@ export function createDefaultAdapters(options: DefaultAdapterOptions = {}): JobS
 
   if (enabled.has('remoteok')) adapters.push(new RemoteOkAdapter());
   if (enabled.has('remotive')) adapters.push(new RemotiveAdapter());
+  if (enabled.has('weworkremotely')) adapters.push(new WeworkRemotelyAdapter());
   if (enabled.has('greenhouse')) {
     adapters.push(
       new GreenhouseAdapter({

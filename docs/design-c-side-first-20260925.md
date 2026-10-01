@@ -63,7 +63,7 @@
 ### 2.6 第 6 步：供给侧今天不够真
 
 - 5 个适配器（`job-source/src/adapters/registry.ts:60-85`），种子 **8 Greenhouse + 9 Lever = 17 家自选公司**；实测入库量 ~3.9k 条里 ~3.4k 来自这 17 家 —— **是自选清单，不是市场**。
-- AI 岗主战场缺位：YC/Wellfound 反爬暂缓、无 LinkedIn、`weworkremotely` 枚举有值无适配器（`packages/shared/src/index.ts:293`）。
+- AI 岗主战场缺位：YC/Wellfound 反爬暂缓、无 LinkedIn；`weworkremotely` 已于 2026-10-01 补适配器（原先枚举有值无适配器），种子清单 45→62 家。
 - 候选池只取**最新 500 行**再打分（`api/index.ts:1143-1156`，`MAX_LIMIT=500`），推荐无 offset（不能翻页）、无关键词、UI 只发 `limit=10`（`JobRecommendations.tsx:160`）。
 - 跨源重复**只标记不合并**（`job-source/src/normalize/dedupe-key.ts:6-7`）→ 同一岗位多次出现。
 - 时效性是死的：日更 workflow 整个 gated 在 `DATABASE_URL` secret 上（`.github/workflows/jobs-sync.yml:66-86,98-100`），**生产未部署 → 定时同步静默跳过**；`markStale` 无 source 参数（`storage/src/repositories/job-posting.ts:47`），单源同步会误停其他源，靠 `--stale-days 35` 绕过（`jobs-sync.yml:118`）。
@@ -130,7 +130,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 因此第 6 步的真实前置是**部署 + 扩源**，不是代码：
 
 - **前置 A**：P0-3 控制台部署（Runbook/执行单已备齐，只待人工操作）→ Actions secret 配好 → 岗位日更真的跑起来。
-- **前置 B**：AI 岗供给扩源。已实测被拒的路要重开一次判断：YC（406 + HTML 内嵌）、Wellfound（Cloudflare turnstile）、WWR（字段太薄）。可选路径按成本排序：① 补 Greenhouse/Lever 种子（**纯配置**，加 30–50 家真实在招 AI 公司即可入库，复用现适配器）；② `weworkremotely` 补适配器（枚举已在，成本最低）；③ LinkedIn / 国内板块（反爬与合规风险，需单独拍板）。
+- **前置 B**：AI 岗供给扩源。已实测被拒的路要重开一次判断：YC（406 + HTML 内嵌）、Wellfound（Cloudflare turnstile）、WWR（字段太薄）。可选路径按成本排序：① 补 Greenhouse/Lever 种子（**纯配置**，加 30–50 家真实在招 AI 公司即可入库，复用现适配器）；② `weworkremotely` 补适配器（枚举已在，成本最低）；③ LinkedIn / 国内板块（反爬与合规风险，需单独拍板）。**进展（2026-10-01）**：① 种子 45→62 家、② WWR 适配器均已落地（见 `design-job-ingestion-20260913.md` §P2-E）；③ 维持暂缓。
 - **建议**：先做 ①，因为它今天就能把"岗位是不是真的"从 17 家变成 60+ 家，而不动一行匹配逻辑。
 
 ## 6. 明确不做（防止"尽可能全"变成发散）
