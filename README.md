@@ -54,7 +54,7 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/design-gitee-oauth-20260919.md](docs/design-gitee-oauth-20260919.md) | Gitee OAuth 登录与本人画像认领（协议差异 / AuthProvider / /auth/providers） |
 | [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md) | 部署 / 上线 Runbook（形态 A/B、生产 env、迁移、cron、上线 smoke） |
 | [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md) | 形态 C 上线照勾执行单（Vercel 单项目 + Supabase + Cloudflare DNS + Vercel Cron） |
-| [docs/评审-MVP-20260922.md](docs/评审-MVP-20260922.md) | 上线就绪度评审：代码级 MVP 已达成，唯一硬阻塞 P0-3 生产部署 |
+| [docs/评审-MVP-20260922.md](docs/评审-MVP-20260922.md) | 上线就绪度评审：代码级 MVP 已达成，唯一硬阻塞 P0-3 生产部署（**生产已于 2026-09-30 上线，此单为历史基线**） |
 | [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
