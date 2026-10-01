@@ -74,12 +74,12 @@
 
 ### 安全与代码质量线（代码审计未修项）
 
-> 来源：[代码审计与功能全景-20260930.md](代码审计与功能全景-20260930.md) §5 风险登记表。**已修**：S2（投递推进归属，方案 A）、A3（`DemoRateKind` 单一事实源）、S4（`by-subject` IP 滑窗）— 见 handoff item92。下列为**仍未修**项，按审计优先级排列。
+> 来源：[代码审计与功能全景-20260930.md](代码审计与功能全景-20260930.md) §5 风险登记表。**已修**：S2（投递推进归属，方案 A）、A3（`DemoRateKind` 单一事实源）、S3（按主体撤回公开申请 + 人工复核）、S4（`by-subject` IP 滑窗）— 见 handoff item92/item93。下列为**仍未修**项，按审计优先级排列。
 
 | 事项 | 缓做/低优原因 | 触发条件 | 决策详情 |
 | --- | --- | --- | --- |
 | **S1 招聘方闸是"自声明"、强度低**（`PUT /auth/recruiter` 无审核） | 没有任何真实外部招聘方用户前，"审核"没有可核验的对象；自建审核通道成本高于当前风险 | 出现 ≥2 个真实外部账号声明招聘方，或出现冒用身份遍历人才库的实例 | [审计 §3.2 / §5](代码审计与功能全景-20260930.md)、[design-recruiter-roles §2.3](design-recruiter-roles-20260925.md) |
-| **S3 未认领画像的分享链不可撤销** | #14 已拍板"应求撤销"通道（报告页邮件异议），但未认领画像 `DELETE /profiles/:id` 返回 403，缺"按主体撤回"入口 | #14 的应求撤销通道真正落地时；或出现未认领主体要求删除的请求 | [审计 §3.2](代码审计与功能全景-20260930.md)、[待拍板决策清单 #14](待拍板决策清单-20260910.md) |
+| ✅ **已落地 2026-10-01（见 handoff item93、`docs/design-profile-removal-request-20261001.md`）** **S3 未认领画像的分享链不可撤销** | ~~#14 已拍板"应求撤销"通道（报告页邮件异议），但未认领画像 `DELETE /profiles/:id` 返回 403，缺"按主体撤回"入口~~ 已落地"公开申请 + 人工复核"机制：新增公开端点 `POST /profiles/:id/removal-request`（任何身份放行、IP 滑窗 `removal` 桶 + `DEMO_REMOVAL_RATE_PER_HOUR` 默认 5/h 防刷），提交即把画像置软挂起（`removal_requested_at`，不再被 `by-subject` 与人才库分发），由运营在 CLI `removal` 命令组（list/approve/reject）复核——approve 级联删除（evidence→applications→interviews→accounts 认领解绑→profiles），reject 清除挂起；报告页对未认领且未挂起画像挂出 `RemovalRequest` 入口。零数据模型改动（复用 `profiles.removal_requested_at` + 新增 `profile_removal_requests` 表、双方言迁移 016 建表 / 017 加 `profiles.removal_requested_at`）、零内核改动；设计见 [design-profile-removal-request-20261001](design-profile-removal-request-20261001.md) | ~~#14 的应求撤销通道真正落地时；或出现未认领主体要求删除的请求~~ **已落地 2026-10-01** | [审计 §3.2](代码审计与功能全景-20260930.md)、[待拍板决策清单 #14](待拍板决策清单-20260910.md) |
 | **S5 LLM 错误信息可能带出上游响应**（前 300 字符进日志；`extraHeaders` 可覆盖小写 `authorization`） | 仅在自建网关回显请求头时才会泄露密钥；当前用官方兼容端 | 切换到自建/第三方网关，或日志中出现密钥可疑痕迹 | [审计 §3.2](代码审计与功能全景-20260930.md) |
 | **S6 扩展 `host_permissions` 过宽**（`https://*/*careers*`、`https://*/*jobs*`） | 收窄到已知 ATS 域会削减泛化 careers/jobs 页面的面板注入覆盖，与 P1 目标冲突 | CWS 审核要求最小权限，或出现权限相关质疑 | [审计 §3.2 扩展面](代码审计与功能全景-20260930.md)、本表「扩展上架」相关行 |
 | **S7 `onMessageExternal` 不校验 `sender.origin`** | 依赖 `externally_connectable` 白名单兜底，release 构建已剥 localhost 并钉生产域 | release 构建白名单变更，或联调期需放开 localhost 端口 | [审计 §3.2](代码审计与功能全景-20260930.md) |

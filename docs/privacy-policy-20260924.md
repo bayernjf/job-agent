@@ -18,7 +18,7 @@
 
 ### JobAgent Privacy Policy
 
-_Last updated: 2026-09-30_
+_Last updated: 2026-10-01_
 
 This policy covers the JobAgent web service (the ability-report site and its API)
 and the **JobAgent Autofill** browser extension (collectively, "JobAgent", "we",
@@ -121,6 +121,13 @@ applies.
 - Share links do not expire automatically.
 - **On request we will delete a profile/evidence and revoke a share link**, and
   honor other data-subject requests, via **dispute@job-agent.bayjf.com**.
+- For a profile that is **not claimed** by any account, you can also start a
+  removal request **directly from its report page, with no sign-in required**. We
+  place the profile on hold (it is no longer discoverable via username search or
+  the candidate directory) and, after a human review of the request, either delete
+  the profile and revoke its share link or clear the hold. The request records only
+  your reason, an optional contact, and a salted hash of your IP address for abuse
+  prevention.
 - Demo sessions expire after 24 hours; expired sign-in sessions and unclaimed
   accounts are purged by a scheduled cleanup job.
 - On-device contact details and resumes remain until you clear them locally.
@@ -140,7 +147,11 @@ object to, or delete personal data, and to withdraw consent. Because profiles ar
 built from public data and are keyed by username, you can:
 
 - View everything we hold about a username by opening its report page.
-- Request deletion and share-link revocation at dispute@job-agent.bayjf.com.
+- Request deletion and share-link revocation at dispute@job-agent.bayjf.com, or —
+  for an unclaimed profile — submit a self-service removal request from its report
+  page (no sign-in required; the profile is held pending review).
+- Clear all locally stored contact details yourself (extension / browser site
+  data).
 - Clear all locally stored contact details yourself (extension / browser site
   data).
 - Sign out, which ends your session cookie.
@@ -187,7 +198,7 @@ delete interview records you created. For objections, contact
 
 ### JobAgent 隐私政策
 
-_最后更新：2026-09-30_
+_最后更新：2026-10-01_
 
 本政策适用于 JobAgent 网络服务（能力报告站及其 API）与 **JobAgent 自动填充**
 浏览器扩展（合称"JobAgent"或"我们"）。JobAgent 只分析开发者在 GitHub、Gitee
@@ -271,6 +282,10 @@ OAuth 登录后我们设置 HttpOnly 会话 Cookie 以保持登录态。扩展�
 - 分享链接不自动过期。
 - **应你的请求，我们会删除画像/证据并撤销分享链接**，并通过
   **dispute@job-agent.bayjf.com** 处理其他数据主体请求。
+- 对于**未被任何账号认领**的画像，你也可以**无需登录、直接在其报告页发起撤回申请**：
+  我们会先将画像置于挂起态（不再被用户名搜索与人才库检索到），经人工复核后，
+  要么删除画像并撤销其分享链接，要么解除挂起。申请仅记录你的理由、可选的联系方式，
+  以及用于防刷的 IP 加盐哈希。
 - 演示会话 24 小时后过期；过期登录会话与未认领账号由定时清理任务清除。
 - 本机联系方式与简历由你保留，直至你在本地清除。
 
@@ -286,7 +301,8 @@ OAuth 登录后我们设置 HttpOnly 会话 Cookie 以保持登录态。扩展�
 同意的权利。由于画像基于公开数据、以用户名为键，你可以：
 
 - 打开某用户名的报告页，查看我们持有的全部相关内容；
-- 向 dispute@job-agent.bayjf.com 请求删除与撤销分享链接；
+- 向 dispute@job-agent.bayjf.com 请求删除与撤销分享链接；或——针对未认领画像——
+  在其报告页自助提交撤回申请（无需登录，画像挂起等待复核）；
 - 自行清除全部本机联系方式（扩展/浏览器站点数据）；
 - 退出登录以结束会话 Cookie。
 
