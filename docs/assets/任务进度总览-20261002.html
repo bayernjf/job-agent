@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>JobAgent 任务进度总览（截至 2026-10-02）</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    background: #f5f7f6;
+    color: #1f2d27;
+    padding: 40px 44px 36px;
+    width: 1560px;
+  }
+  h1 { font-size: 34px; font-weight: 800; color: #143a2a; letter-spacing: .5px; }
+  .subtitle { margin-top: 12px; font-size: 17px; color: #5a6b63; }
+  .subtitle code { font-family: "SF Mono", Menlo, Consolas, monospace; background: #e9f0ec; padding: 2px 7px; border-radius: 5px; font-size: 15px; color: #2a5a42; }
+
+  .timeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 26px; }
+  .day-card {
+    background: #ffffff;
+    border: 1.5px solid #46a06d;
+    border-radius: 12px;
+    padding: 15px 17px 16px;
+    min-height: 132px;
+  }
+  .day-card .date { font-size: 17px; font-weight: 800; color: #1c7a4b; letter-spacing: .3px; }
+  .day-card .desc { margin-top: 9px; font-size: 15px; line-height: 1.5; color: #24382f; font-weight: 600; }
+  .day-card .mark { margin-top: 11px; font-size: 15px; font-weight: 700; color: #1c7a4b; }
+  .day-card .mark.current { color: #b25c00; }
+
+  .panel {
+    margin-top: 24px;
+    border-radius: 14px;
+    padding: 22px 26px 24px;
+  }
+  .panel.done { background: #ffffff; border: 1.5px solid #46a06d; }
+  .panel.rest  { background: #fffaf0; border: 1.5px solid #e0a94a; }
+  .panel.warn  { background: #fdecec; border: 1.5px solid #d97070; }
+  .panel h2 { font-size: 21px; font-weight: 800; }
+  .panel.done h2 { color: #143a2a; }
+  .panel.rest  h2 { color: #8a5a10; }
+  .panel.warn  h2 { color: #a03434; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 11px; margin-top: 16px; }
+  .chip {
+    background: #e7f4ec;
+    border: 1px solid #bfe0cd;
+    color: #23513b;
+    border-radius: 20px;
+    padding: 7px 15px;
+    font-size: 14.5px;
+    font-weight: 600;
+  }
+
+  .baseline { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  .b-item {
+    background: #143a2a; color: #eaf5ee;
+    border-radius: 8px; padding: 9px 15px; font-size: 14.5px; font-weight: 700;
+  }
+  .b-item b { color: #8fd6ab; font-size: 16px; }
+
+  .rest-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 18px; }
+  .rest-card {
+    background: #fff6e6;
+    border: 1px solid #ecc98a;
+    border-radius: 11px;
+    padding: 16px 19px 18px;
+  }
+  .rest-card.warn {
+    background: #fdecec;
+    border-color: #d97070;
+  }
+  .rest-card h3 { font-size: 16.5px; color: #8a5a10; font-weight: 800; }
+  .rest-card.warn h3 { color: #a03434; }
+  .rest-card ul { margin: 10px 0 0 18px; }
+  .rest-card li { font-size: 14px; line-height: 1.62; color: #4a3c24; }
+  .rest-card.warn li { color: #5a2a2a; }
+  .rest-card li code { font-family: "SF Mono", Menlo, monospace; background: #f3e6cc; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+
+  .source { margin-top: 22px; font-size: 13.5px; color: #8a958f; }
+</style>
+</head>
+<body>
+
+<h1>JobAgent 任务进度总览（截至 2026-10-02）</h1>
+<div class="subtitle">
+  生产形态 C 已上线在线（2026-09-30 实查）；item 1–93 代码侧全部闭环；本日完成生产 smoke J1/J4/J5 + CWS 素材生产域重截；唯一剩余阻塞＝外部人工/控制台项（J2/J3/J6/J7、生产 cron 待确认、CWS 上架）
+</div>
+
+<div class="timeline">
+  <div class="day-card">
+    <div class="date">09-10</div>
+    <div class="desc">脚手架 · 契约 · 工程约定</div>
+    <div class="mark">✅ M1 启动</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-11</div>
+    <div class="desc">W1–W4 · 去风险三轮校准 · 端到端联调</div>
+    <div class="mark">✅ M1 完成</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-12</div>
+    <div class="desc">扩展真实冒烟（GH/Lever） · 工程化 10 项</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-13</div>
+    <div class="desc">P2 五源岗位聚合 · matchJobs 匹配</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-14</div>
+    <div class="desc">匹配端到端接线 · Gitee 双源 · CI Node24</div>
+    <div class="mark">✅</div>
+  </div>
+
+  <div class="day-card">
+    <div class="date">09-15</div>
+    <div class="desc">技能提取 · 双源融合 · 演示模式 · 简历 P-R1</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-16</div>
+    <div class="desc">简历在线/润色 · 在线融合 · 痛点批次 1+2</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-17~18</div>
+    <div class="desc">跨端同步 · 规则 0.3 双源回归 · 配额权重</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-19</div>
+    <div class="desc">账号授权主脊 GitHub/Gitee OAuth · 授权分级闸</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-20</div>
+    <div class="desc">形态 C 部署代码就绪 · 岗位同步 Actions</div>
+    <div class="mark">✅</div>
+  </div>
+
+  <div class="day-card">
+    <div class="date">09-21</div>
+    <div class="desc">P0-1/P0-2 修复 · #14 合规决策 · 部署执行包</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-22</div>
+    <div class="desc">claim 模板英文化 · actionlint · 真机验证批次</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-23</div>
+    <div class="desc">release 一键打包 · CWS 素材重截 · E2E flaky 加固</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-24</div>
+    <div class="desc">最后一公里门禁 · 中英隐私政策 · 总览图/preflight</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-25</div>
+    <div class="desc">#18 C 端优先决策 · 批次 0–6（T01–T27，规则 0.4→0.5）</div>
+    <div class="mark">✅</div>
+  </div>
+
+  <div class="day-card">
+    <div class="date">09-26~27</div>
+    <div class="desc">批次 6/7（T28–T33）· 迁移器事务 · 规则 0.6→0.8</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">09-30</div>
+    <div class="desc">生产实查：形态 C 已上线 · 三预置 ready · F4 勾</div>
+    <div class="mark">✅ 上线</div>
+  </div>
+  <div class="day-card">
+    <div class="date">10-01</div>
+    <div class="desc">MCP 接入面 · T40 岗位池扩容 · 审计修复批次一 · S3 撤回</div>
+    <div class="mark">✅</div>
+  </div>
+  <div class="day-card">
+    <div class="date">10-02</div>
+    <div class="desc">生产 smoke J1/J4/J5 · CWS 素材生产域重截 · release zip 净</div>
+    <div class="mark current">✅ 当前</div>
+  </div>
+</div>
+
+<div class="panel done">
+  <h2>已完成 · 代码侧闭环（item 1–93 全部 ✅）</h2>
+  <div class="chips">
+    <span class="chip">item1–8 M1 全链路</span>
+    <span class="chip">item9 P1 扩展一键填充</span>
+    <span class="chip">item10–13 P2 聚合+工程化</span>
+    <span class="chip">item14–16 Gitee 双源与融合</span>
+    <span class="chip">item17 演示模式</span>
+    <span class="chip">item18–20 定向简历/在线融合</span>
+    <span class="chip">item21–23 痛点批次/融合收尾</span>
+    <span class="chip">item24–27 跨端同步/规则 0.3/配额</span>
+    <span class="chip">item28–33 账号主脊+OAuth+授权闸</span>
+    <span class="chip">item34–36 形态 C 部署代码</span>
+    <span class="chip">item37–40 P0 修复+执行包</span>
+    <span class="chip">item41–52 收尾/总览图/preflight</span>
+    <span class="chip">item53–58 门禁/文档守护/未授权标注</span>
+    <span class="chip">item59–75 #18 C 端优先 T01–T27</span>
+    <span class="chip">item76–85 T28–T33（规则 0.6→0.8）</span>
+    <span class="chip">item86–89 简历侧/解绑/薄画像</span>
+    <span class="chip">item90 MCP 接入面（4 工具）</span>
+    <span class="chip">item91 T40 岗位池扩容（WWR+17 家）</span>
+    <span class="chip">item92 审计修复批次一（A3/S2/S4）</span>
+    <span class="chip">item93 S3 按主体撤回</span>
+  </div>
+  <div class="baseline">
+    <span class="b-item">单测 <b>1040</b> 全绿（14 包）</span>
+    <span class="b-item">check-migrations <b>17 对 / 0 warning</b></span>
+    <span class="b-item">规则版本 <b>0.8</b></span>
+    <span class="b-item">岗位池 <b>active 9862</b></span>
+    <span class="b-item">生产 <b>已上线</b>（09-30）</span>
+    <span class="b-item">生产 smoke <b>J1/J4/J5 ✅</b></span>
+    <span class="b-item">release zip <b>无 localhost</b></span>
+  </div>
+</div>
+
+<div class="panel warn">
+  <h2>⚠️ 需要你处理 / 待确认（阻塞生产闭环）</h2>
+  <div class="rest-grid">
+    <div class="rest-card warn">
+      <h3>生产作业消费通道未生效（F5 待确认，10-02 实查）</h3>
+      <ul>
+        <li>生产 <code>POST /analyze</code> 三平台各一次均 201 入队，但 3 分钟+ 后作业滞留 <code>queued</code>（attempts 0）</li>
+        <li>内部端点 <code>/api/internal/cron/process-job</code> 存在（无 token 401），但无人调用 → Vercel Cron 或 Actions <code>cron-poll.yml</code> 未在消费</li>
+        <li>请确认 Vercel Cron Jobs / Actions 轮询的 <code>CRON_SECRET</code>、<code>DATABASE_URL</code> secret 是否配齐（Hobby 免费层 cron 走 Actions 兜底）</li>
+      </ul>
+    </div>
+    <div class="rest-card">
+      <h3>J 阶段剩余人工项</h3>
+      <ul>
+        <li><b>J2</b> 本人 GitHub 登录认领（生产画像当前 <code>claimed:false</code>）</li>
+        <li><b>J3</b> Gitee OAuth 真实凭证首次冒烟（若配了 D2）</li>
+        <li><b>J6</b> 异议 mailto 邮箱值守确认（<code>PUBLIC_DISPUTE_EMAIL</code>）</li>
+        <li><b>J7</b> 生产 <code>LLM_*</code> 配置（未配则优雅回退规则版）</li>
+        <li><b>B4</b> Supabase 手动备份一次</li>
+      </ul>
+    </div>
+    <div class="rest-card">
+      <h3>CWS 上架与扩展分发</h3>
+      <ul>
+        <li>CWS 开发者账号提交（素材已用生产域重截、zip 已净）</li>
+        <li>扩展真人试用（CRX/unpacked 加载）</li>
+        <li>Workday 直渲染租户端到端（被动等待真实租户）</li>
+      </ul>
+    </div>
+    <div class="rest-card">
+      <h3>待决策 / 外部项</h3>
+      <ul>
+        <li>生产 OAuth 凭证 / 固定 <code>AUTH_STATE_SECRET</code> / <code>DEMO_IP_SALT</code></li>
+        <li>真实 LLM：简历 polish 自配 <code>LLM_*</code> 即启用，默认关闭</li>
+        <li>真人试用 / 招聘方盲看实验 / 法务专业意见</li>
+        <li>代码审计未修项（S1/S5–S8 等）触发条件未到，见 deferred</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="source">事实来源：handoff.md（2026-10-02）、docs/部署执行单-形态C-20260921.md（J1–J8）、docs/deferred-items.md、docs/handoff-archive-2026-10-01.md、docs/代码审计与功能全景-20260930.md</div>
+
+</body>
+</html>

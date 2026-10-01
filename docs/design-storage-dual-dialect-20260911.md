@@ -201,7 +201,7 @@ export function createStorage(config?: StorageConfig): Promise<StorageContext>;
 - 数据从 SQLite 到 Postgres 的迁移/导出工具——触发：出现需要保留的真实线上数据时（MVP 实验数据可丢弃/重跑）。
 - 多区域 PG 部署、读写分离、备份策略——部署期由 §6.11 托管方案承接。
 
-## 10. 待拍板项（不阻塞开工，默认按括号方案执行）
+## 10. 待决策项（不阻塞开工，默认按括号方案执行）
 
 1. **迁移目录形态**：默认 D3 对称双目录 `db/migrations/{sqlite,postgres}/`；若希望最小改动可保留根目录给 SQLite（仅新增 postgres 子目录）。
 2. **PG 实库测试时机**：默认本次只交付静态一致性测试 + 条件跳过用例（本机不要求装 PG/Docker）；若你希望本次就用本机 Docker Postgres 跑通真实 PG 行为测试，请确认本机 Docker 可用。

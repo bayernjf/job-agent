@@ -1,7 +1,7 @@
 # 设计：B 端角色与组织（招聘方声明 + 访问闸）
 
 - 日期：2026-09-25
-- 状态：**已拍板（2026-09-25，决策 [#17](待拍板决策清单-20260910.md) 选 A + 五个子问题全部采纳助手建议）；F10 第一期已落地（2026-09-30，handoff item59），组织/团队/席位缓做**。立场：**分期**——第一期"声明式角色 + 访问闸"，组织/团队/席位缓做；排期按 [#18](design-c-side-first-20260925.md) 的改序结果执行：**F11（投递归属）已提前于 2026-09-25 落地（item61），F10（招聘方声明 + `/candidates` 加闸）于 2026-09-30 落地**。
+- 状态：**已决策（2026-09-25，决策 [#17](待拍板决策清单-20260910.md) 选 A + 五个子问题全部采纳助手建议）；F10 第一期已落地（2026-09-30，handoff item59），组织/团队/席位缓做**。立场：**分期**——第一期"声明式角色 + 访问闸"，组织/团队/席位缓做；排期按 [#18](design-c-side-first-20260925.md) 的改序结果执行：**F11（投递归属）已提前于 2026-09-25 落地（item61），F10（招聘方声明 + `/candidates` 加闸）于 2026-09-30 落地**。
 - 关联：[PRD.md](PRD.md) §3.1/§6、[design-c-side-first-20260925.md](design-c-side-first-20260925.md)（C 端优先，决定本文两半的实施顺序）、[design-auth-gating-20260919.md](design-auth-gating-20260919.md)（两档可见性矩阵）、[proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md) §4（item45 当时的角色取舍）、[design-demo-mode-20260915.md](design-demo-mode-20260915.md)（三态 Principal）、[deferred-items.md](deferred-items.md)
 - 登记：本文是 handoff item59 的设计全文。
 
@@ -17,7 +17,7 @@
 | 身份 | `Principal` 只有 `anonymous \| demo \| user` 三态，**没有角色概念**；报告页 `resolveViewer` 只有两档 | `apps/api/src/principal.ts`、`apps/report/src/lib/auth.ts` |
 | 数据 | `accounts`（010）无角色列；`applications`（009）注释自陈 "No accounts yet"、只按 `profile_id` 归属；`interviews`（012）有 `created_by_account_id` 但归属者只是"某个登录用户" | `db/migrations/{sqlite,postgres}/009~012` |
 
-item45 落地面试计划表时**明确选择**了"个人效率工具最小做法：不引入 recruiter 角色 / 组织实体"（见该提案 §4 与 §7 拍板记录、`packages/shared/src/index.ts` 注释），所以"没有角色"是当时的有意取舍，不是遗漏。本设计是在它之上补第二刀，不推翻它。
+item45 落地面试计划表时**明确选择**了"个人效率工具最小做法：不引入 recruiter 角色 / 组织实体"（见该提案 §4 与 §7 决策记录、`packages/shared/src/index.ts` 注释），所以"没有角色"是当时的有意取舍，不是遗漏。本设计是在它之上补第二刀，不推翻它。
 
 ### 1.1 两侧到底分在哪：**四个判据互不一致的机制**
 
@@ -60,7 +60,7 @@ item45 落地面试计划表时**明确选择**了"个人效率工具最小做�
 | --- | --- | --- |
 | 权限表 / RBAC 矩阵 | 两态布尔即可表达，且能被"离职撤权后还能读什么"这种问题直接证伪 | 出现第三种独立权限面 |
 | 组织（公司实体） | 无数据源可验证归属；接进来会把猜测当事实入库 | 招聘方出现真实协作或发票需求 |
-| 席位 / 计费 | 依赖 #9 商业模式与真实成本计量 | #9 拍板且成本回采到位 |
+| 席位 / 计费 | 依赖 #9 商业模式与真实成本计量 | #9 决策且成本回采到位 |
 | 多人共享面试数据 | 会把 012 的 `created_by_account_id` 行级归属语义改深 | 组织就位后 |
 
 ### 2.4 为什么不干脆只做访问闸、连角色都不提
@@ -72,13 +72,13 @@ item45 落地面试计划表时**明确选择**了"个人效率工具最小做�
 双方言、编号与文件名对齐（`bash tools/check-migrations.sh` 校验）。类型沿用双方言约定：时间戳两版都是 `TEXT`（见 010 PG 迁移注记：不引入 `TIMESTAMPTZ`）。
 
 ```sql
--- 013_add_application_ownership.sql · 两侧各一份（**随 C 端 C-A 同期落地**，#18 已拍板把 F11 提前）
+-- 013_add_application_ownership.sql · 两侧各一份（**随 C 端 C-A 同期落地**，#18 已决策把 F11 提前）
 ALTER TABLE applications ADD COLUMN created_by_account_id TEXT;  -- 存量行为 NULL，语义见 §5
 -- 015_add_recruiter_declaration.sql（014 已被 2026-09-25 晚的证据主键修复占用） · 两侧各一份（F10，维持"上线后第一迭代"原序）
 ALTER TABLE accounts     ADD COLUMN recruiter_declared_at TEXT;  -- NULL=未声明；UTC ISO8601=声明时刻
 ```
 
-> **编号拆开是刻意的**（2026-09-25 #18 拍板结果）：投递归属（F11）保护的是求职者自己的数据，与 B 端声明（F10）不必同期。F11 先以"仅登录、不分角色"的形态落地，补 F10 时只把闸的判据从 `user` 换成 `user && declared`，**不回头改归属列**。原稿把两列塞进同一份 013，那会把 B 端排期变成隐私修复的阻塞项。
+> **编号拆开是刻意的**（2026-09-25 #18 决策结果）：投递归属（F11）保护的是求职者自己的数据，与 B 端声明（F10）不必同期。F11 先以"仅登录、不分角色"的形态落地，补 F10 时只把闸的判据从 `user` 换成 `user && declared`，**不回头改归属列**。原稿把两列塞进同一份 013，那会把 B 端排期变成隐私修复的阻塞项。
 
 - 不加索引：`GET /interviews` 按 `created_by_account_id` 过滤走的是 012 已建的 `idx_interviews_owner_status`（`(created_by_account_id, status, scheduled_start)`），本设计不动它；`applications` 侧本设计只按主键 `id` 做 PATCH 归属校验，不新增列表查询，故不加索引。
 - **不给 `recruiter_declared_at` 加 CHECK 约束**：`TEXT` 可空、值域由应用层 Zod 与仓储方法保证；ALTER 加 CHECK 在 SQLite 上需重建表，代价远大于收益。
@@ -113,7 +113,7 @@ ALTER TABLE accounts     ADD COLUMN recruiter_declared_at TEXT;  -- NULL=未声�
 
 ### 5.1 PATCH 的 NULL 归属可改是安全洞还是兼容包袱
 
-现状是"任何人都能改任何人那条记录"，改后是"无主记录仍可改、有主记录只有主能改"。**非归属方返回 404 而非 403**，与 `PATCH /interviews/:id` 既有约定一致（代码注释原话："非本人资源一律 404（不泄露存在），不物理删除"）——同一仓库里两类行级归属资源应给爬虫相同的探测反馈。**不回改历史行**：投递记录无删除面（`withdrawn` 是状态而非删除），猜 `app-<uuid>` 理论可撞但实际不可枚举。若要更严，选项是"NULL 行只允许登录用户改"——代价是老用户在登录设备上的记录变成只读。**这条列为 §8 待拍板问题 3**，不在此替你定。
+现状是"任何人都能改任何人那条记录"，改后是"无主记录仍可改、有主记录只有主能改"。**非归属方返回 404 而非 403**，与 `PATCH /interviews/:id` 既有约定一致（代码注释原话："非本人资源一律 404（不泄露存在），不物理删除"）——同一仓库里两类行级归属资源应给爬虫相同的探测反馈。**不回改历史行**：投递记录无删除面（`withdrawn` 是状态而非删除），猜 `app-<uuid>` 理论可撞但实际不可枚举。若要更严，选项是"NULL 行只允许登录用户改"——代价是老用户在登录设备上的记录变成只读。**这条列为 §8 待决策问题 3**，不在此替你定。
 
 ## 6. 端点、storage 与 UI
 
@@ -168,7 +168,7 @@ DELETE /auth/recruiter   撤销 → 204（无版本、无 if-match：声明是�
 
 若按"访问过人才库即视为招聘方"来自动打标，会立刻撞上 §6.2 的合规前提：候选人侧的可见性依赖"招聘方是显式声明的一群人"，自动打标等于把所有人都算进去。显式声明同时是审计事件的唯一来源。
 
-## 8. 待拍板问题（决策 #17）
+## 8. 待决策问题（决策 #17）
 
 | # | 问题 | 助手建议 |
 | --- | --- | --- |

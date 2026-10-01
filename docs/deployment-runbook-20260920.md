@@ -1,8 +1,8 @@
 # JobAgent 部署 / 上线 Runbook
 
-> 状态：**现行（运维操作手册）**，2026-09-20（2026-09-21 随 #14/配额拍板更新）。本文档只讲"怎么部署、上线前要准备什么、上线后怎么验"。部署形态 C、demo 配额 3/24h、#14 产品侧姿态均已拍板（见 [待拍板决策清单 #14](待拍板决策清单-20260910.md) 与 [handoff](../handoff.md) item37）；生产域名最终确认、LLM 厂商、法务最终意见仍为外部项，文中显式标注。
+> 状态：**现行（运维操作手册）**，2026-09-20（2026-09-21 随 #14/配额决策更新）。本文档只讲"怎么部署、上线前要准备什么、上线后怎么验"。部署形态 C、demo 配额 3/24h、#14 产品侧姿态均已决策（见 [待拍板决策清单 #14](待拍板决策清单-20260910.md) 与 [handoff](../handoff.md) item37）；生产域名最终确认、LLM 厂商、法务最终意见仍为外部项，文中显式标注。
 >
-> **部署形态已拍板为形态 C（Vercel + Supabase + Cloudflare，见 §4-C，2026-09-20）**；形态 A/B（Docker 自托管）保留为自托管备选。形态 C 的代码改造已完成并通过本地 Vercel 构建验证，但**尚未在真实 Vercel/Supabase 项目上部署实测**。
+> **部署形态已决策为形态 C（Vercel + Supabase + Cloudflare，见 §4-C，2026-09-20）**；形态 A/B（Docker 自托管）保留为自托管备选。形态 C 的代码改造已完成并通过本地 Vercel 构建验证，但**尚未在真实 Vercel/Supabase 项目上部署实测**。
 >
 > 已验证 / 未验证边界（重要）：
 > - ✅ 已在本机用 Docker 实测：三镜像（api/worker/report）构建、SQLite 与 Postgres 双栈运行时、worker 轮询、demo 闸、真实分析、共享卷、空 PG 并发首迁移（advisory lock 串行化），arm64（Apple Silicon）与 amd64 均跑过（见 handoff item13/已知限制）。
@@ -23,11 +23,11 @@
 - SQLite 数据落在容器 `/app/data`（compose 命名卷 `appdata`）；node-runtime 镜像已 `mkdir -p /app/data`。
 - CLI（`jobagent`）在 api/worker 镜像内可用：node-runtime 阶段 `COPY` 了整个 `apps/`，`pnpm -r build` 已构建 `apps/cli/dist`，容器内入口为 `node apps/cli/dist/index.js`。
 
-## 2. 上线前必须准备 / 拍板的清单
+## 2. 上线前必须准备 / 决策的清单
 
 | # | 事项 | 说明 | 现状 |
 | --- | --- | --- | --- |
-| 1 | **部署形态** | ✅ 已拍板：**形态 C（Vercel + Supabase + Cloudflare，§4-C）**；A/B 为自托管备选 | 形态 C 代码就绪，未真实部署 |
+| 1 | **部署形态** | ✅ 已决策：**形态 C（Vercel + Supabase + Cloudflare，§4-C）**；A/B 为自托管备选 | 形态 C 代码就绪，未真实部署 |
 | 1b | **Vercel 计划** | 每分钟消费分析任务依赖 per-minute cron——**Hobby 计划 cron 每天只能跑 1 次（更频繁表达式直接部署失败），需 Pro（$20/月）**；函数时长两档均为 300s 上限，够用 | ⏳ 待开通/确认 |
 | 2 | **生产域名 + HTTPS 证书** | 形态 C 占位 `app.job-agent.bayjf.com`（Vercel 自动签证书）；落地页继续在 Cloudflare Pages `job-agent.bayjf.com` | ⏳ 域名占位，待绑定 |
 | 3 | **Supabase Postgres** | 建项目（区域建议与 Vercel region `hnd1` 东京一致）；函数用 6543 事务池化串，迁移走 5432 | 代码就绪，项目未建 |
@@ -36,10 +36,10 @@
 | 6 | **`AUTH_STATE_SECRET`** | 生产多实例必须固定一个随机 HMAC 密钥；留空则进程内随机、重启使进行中登录失效 | 未生成 |
 | 7 | **`GITHUB_TOKEN` / `GITEE_TOKEN`** | worker 必需 GitHub 凭证（生产建议 GitHub App）；Gitee 匿名可读公开数据、token 仅提额 | 本地 `.env`，不入库 |
 | 8 | **`DEMO_IP_SALT`** | 生产固定随机盐，否则重启后 IP 限流窗口失效 | 未生成 |
-| 9 | **demo 配额 / TTL 数值** | ✅ 2026-09-21 已拍板：每会话 3 次分析、TTL 24h（融合扣 2）；代码默认值已对齐 | ✅ 已落地 |
+| 9 | **demo 配额 / TTL 数值** | ✅ 2026-09-21 已决策：每会话 3 次分析、TTL 24h（融合扣 2）；代码默认值已对齐 | ✅ 已落地 |
 | 10 | **LLM（可选）** | 不填则简历走纯规则版；启用需 OpenAI 兼容端点 + `LLM_API_KEY`/`LLM_MODEL`，费用与厂商自定 | 默认关闭 |
 | 11 | **镜像 registry** | 镜像目前未推任何 registry；要么服务器本地 build，要么先推 registry | 未做 |
-| 12 | **合规（#14）** | ✅ 产品侧姿态 2026-09-21 已拍板：长期留存+应求删除、链接不自动过期+应求撤销（异议 mailto，上线前须有人值守该邮箱）；法务最终意见仍待外部 | ✅ 产品侧已定 |
+| 12 | **合规（#14）** | ✅ 产品侧姿态 2026-09-21 已决策：长期留存+应求删除、链接不自动过期+应求撤销（异议 mailto，上线前须有人值守该邮箱）；法务最终意见仍待外部 | ✅ 产品侧已定 |
 
 > 密钥只存在于服务端环境变量 / 密钥管理，**绝不入 Git、构建产物或前端**；仓库根 `.env` 已被 gitignore。
 
@@ -62,13 +62,13 @@
 | `CORS_ALLOW_ORIGINS` | 形态 B 必需 | 报告站精确来源白名单（逗号分隔）；**留空则 `origin:'*'` 且不发凭证，与登录 Cookie 不兼容** |
 | `TRUST_PROXY` | 反代后**必需 `true`** | 才采信 `X-Forwarded-For` 首段做 IP 限流 |
 | `DEMO_IP_SALT` | **生产必需** | 固定随机盐 |
-| `DEMO_*`（配额/TTL/并发） | 用默认或拍板值 | 数值未拍板前是建议默认；`DEMO_FUSION_QUOTA_COST` 默认 2 |
+| `DEMO_*`（配额/TTL/并发） | 用默认或决策值 | 数值未决策前是建议默认；`DEMO_FUSION_QUOTA_COST` 默认 2 |
 | `JOB_HTTP_PROXY` | 视网络 | 服务端换 OAuth token / 岗位采集走代理；也回退 `HTTPS_PROXY/HTTP_PROXY` |
 | `LLM_*` | 可选 | 不填=纯规则简历；填了才启用润色 |
 | `PUBLIC_API_BASE` | **构建期**变量 | 见 §4，极易踩坑：它在 `docker build` 时固化，不是运行时；**形态 C 不用设**（自动回退同域 `/api`） |
 | `CRON_SECRET` | 形态 C **生产必需** | serverless 内部 cron 端点（`/api/internal/cron/*`）的共享密钥；配了就要求 cron 路径带 `?token=`（常量时间比较），不配仅信任 Vercel 的 `x-vercel-cron` 头。生成：`openssl rand -hex 32` |
 
-## 4. 两种部署形态（A/B 未拍板，并列给出）
+## 4. 两种部署形态（A/B 未决策，并列给出）
 
 报告站对 api 有两类调用，配置时都要满足：
 1. **浏览器 fetch**（AccountMenu、Analyze、认领、推荐、简历、demo 等）：路径前缀 `/auth/*`、`/analyze`、`/profiles/*`、`/job-postings/*`、`/jobs/*`、`/resumes/*`、`/demo/*`、`/candidates`、`/applications`。
@@ -89,9 +89,9 @@
 - `PUBLIC_API_BASE=https://api.example.com` 必须在**构建 report 镜像时**作为 build arg 传入（`import.meta.env.PUBLIC_*` 构建期固化，运行时改 env 无效）。
 - `TRUST_PROXY=true`。
 
-> 形态 A/B 都要求 HTTPS（登录会话是 HttpOnly Cookie），属自托管备选；**生产已拍板走形态 C**。
+> 形态 A/B 都要求 HTTPS（登录会话是 HttpOnly Cookie），属自托管备选；**生产已决策走形态 C**。
 
-### 形态 C：Vercel（报告页 + API 同域）+ Supabase（Postgres）+ Cloudflare（落地页/DNS）—— ✅ 已拍板
+### 形态 C：Vercel（报告页 + API 同域）+ Supabase（Postgres）+ Cloudflare（落地页/DNS）—— ✅ 已决策
 
 **拓扑**
 
@@ -199,7 +199,7 @@ services:
 ```
 
 用法：`docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile with-pg up -d`。
-（是否把该 override 文件作为 `*.example.yml` 入库，待形态拍板后再定，避免固化未决拓扑。）
+（是否把该 override 文件作为 `*.example.yml` 入库，待形态决策后再定，避免固化未决拓扑。）
 
 ## 7. 定时任务（cron）
 
@@ -221,9 +221,9 @@ services:
 47 4 * * *  cd /opt/jobagent && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm --no-deps worker node apps/cli/dist/index.js auth cleanup --retain-hours 24 --account-retain-hours 720
 ```
 
-> 清理本体（`demo cleanup` / `auth cleanup`）代码已落地并测试；**生产 cron 的实际调度随部署补**（handoff 已知限制）。频率是建议默认，非拍板值。
+> 清理本体（`demo cleanup` / `auth cleanup`）代码已落地并测试；**生产 cron 的实际调度随部署补**（handoff 已知限制）。频率是建议默认，非决策值。
 
-**形态 C（Vercel，已拍板）的调度映射**：
+**形态 C（Vercel，已决策）的调度映射**：
 
 | 任务 | 形态 C 调度方式 | 端点 / 命令 |
 | --- | --- | --- |
@@ -267,7 +267,7 @@ services:
 ## 11. 仍未决 / 本手册不替你决定的事
 
 - **形态 C 上线前待办（需真人在控制台操作）**：建 Supabase 项目并跑首次 5432 迁移；Vercel 建项目（Root Directory=`apps/report`）并填环境变量；确认 **Pro 计划**（每分钟 cron 的硬前提）；生成并替换 `CRON_SECRET`；生产 GitHub/Gitee OAuth App 回调登记为 `/api/auth/*`；Cloudflare DNS 绑定最终生产域名（占位 `app.job-agent.bayjf.com`）；真实部署后跑 §10 的 9–10 项 smoke。
-- 自托管形态 A/B 的生产域名与证书、镜像 registry（形态 C 已拍板，A/B 仅备选）。
+- 自托管形态 A/B 的生产域名与证书、镜像 registry（形态 C 已决策，A/B 仅备选）。
 - demo 配额 / TTL / 并发的正式数值、cleanup cron 频率最终值。
 - 岗位日更/HN 月更的 GitHub Actions workflow 已落地（`.github/workflows/jobs-sync.yml`），上线前需在仓库 Actions secrets 配生产 `DATABASE_URL`（5432 Session pooler 串）并在 Actions 面板手动跑一次 daily 验证。
 - 真实 LLM 厂商 / 单价 / 预算。

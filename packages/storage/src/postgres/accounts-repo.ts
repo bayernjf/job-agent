@@ -97,6 +97,15 @@ export class PgAccountsRepository implements IAccountsRepository {
     return this.getById(accountId);
   }
 
+  async clearClaimedProfileByProfileId(profileId: string): Promise<number> {
+    const rows = await this.db
+      .update(t)
+      .set({ claimedProfileId: null, updatedAt: new Date().toISOString() })
+      .where(eq(t.claimedProfileId, profileId))
+      .returning({ id: t.id });
+    return rows.length;
+  }
+
   async declareRecruiter(
     accountId: string,
     nowIso: string,

@@ -1,5 +1,5 @@
 /**
- * MCP 接入面配置（决策 #19 已拍板 2026-10-01）。
+ * MCP 接入面配置（决策 #19 已决策 2026-10-01）。
  *
  * 三条已定纪律（见 docs/design-mcp-surface-20260928.md §5/§7）：
  *  - fail-closed：未配置 MCP_API_KEY 时，画像类工具一律拒绝（401 MCP_KEY_REQUIRED），

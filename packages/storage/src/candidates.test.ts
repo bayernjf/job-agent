@@ -84,6 +84,7 @@ function stored(id: string, login: string, opts: StoredOpts = {}): StoredProfile
     analysisLayers: ['L0', 'L1'],
     status: dbStatus,
     snapshot: snap,
+    removalRequestedAt: null,
     createdAt: updatedAt,
     updatedAt,
   };

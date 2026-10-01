@@ -30,5 +30,11 @@
     "husky": "^9.1.7",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "overrides": {
+      "devalue": ">=5.9.3",
+      "fast-uri": ">=3.1.8"
+    }
   }
 }

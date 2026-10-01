@@ -8,6 +8,7 @@ import type {
   IInterviewsRepository,
   IJobPostingsRepository,
   IProfilesRepository,
+  IProfileRemovalRequestsRepository,
   IWaitlistRepository,
 } from './repositories/index.js';
 import type { RunMigrationsResult } from './migrations-fs.js';
@@ -44,6 +45,8 @@ export interface StorageContext {
   accounts: IAccountsRepository;
   /** 登录用户不透明会话（迁移 011） */
   authSessions: IAuthSessionsRepository;
+  /** 画像移除申请单（审计 S3，迁移 016；按主体撤回的人工复核通道） */
+  profileRemovalRequests: IProfileRemovalRequestsRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /**

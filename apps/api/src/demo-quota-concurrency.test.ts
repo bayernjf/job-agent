@@ -29,6 +29,7 @@ function makeConfig(overrides: Partial<DemoConfig> = {}): DemoConfig {
     analyzeRatePerHour: 10, // 单 IP 每小时 10 次；本文件并发量均低于此，专注验证会话硬配额
     matchRatePerHour: 60,
     subjectRatePerHour: 120,
+    removalRatePerHour: 5,
     maxConcurrent: 1,
     backoffMs: 15_000,
     ipSalt: 'fixed-concurrency-salt',

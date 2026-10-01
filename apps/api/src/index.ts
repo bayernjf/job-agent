@@ -98,6 +98,7 @@ import {
   type IAuthSessionsRepository,
   type IDemoSessionsRepository,
   type IProfilesRepository,
+  type IProfileRemovalRequestsRepository,
   type IJobPostingsRepository,
   type IEvidenceRepository,
   type ApplicationOrigin,
@@ -161,6 +162,8 @@ export interface ApiRepos {
   interviews: IInterviewsRepository;
   accounts: IAccountsRepository;
   authSessions: IAuthSessionsRepository;
+  /** 画像移除申请单（审计 S3，按主体撤回的公开申请通道） */
+  profileRemovalRequests: IProfileRemovalRequestsRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
 }
@@ -963,6 +966,18 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     // 画像缓存：命中未过期的完整画像则直接返回，避免重复分析（PRD 运行架构第 1 步）
     const cacheTtlMs = Number(process.env.PROFILE_CACHE_TTL_MS ?? 24 * 60 * 60 * 1000);
     const latestProfile = await repos.profiles.latestBySubject(platform, username);
+    // S3 软挂起：目标主体有未决移除申请（removal_requested_at 非空）时，禁止当作缓存命中、
+    // 也禁止再触发新分析——该画像正处在「按主体撤回」处理中，不应继续分发。复核批准后会整行删除。
+    if (latestProfile && latestProfile.removalRequestedAt) {
+      console.info(`[analyze] result=blocked reason=removal_pending platform=${platform} login=${username}`);
+      return c.json(
+        {
+          error: 'a profile removal request is pending for this subject',
+          code: 'REMOVAL_PENDING',
+        },
+        409,
+      );
+    }
     if (
       latestProfile &&
       latestProfile.status === 'complete' &&
@@ -1196,8 +1211,13 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     }
     const latest = await repos.profiles.latestBySubject(platform, login);
     // T25：partial 也视为可用（L1 失败/限频降级的 L0-only 画像仍可看报告页，
-    // 扩展一键填充依赖此解析；页面会标注"部分数据"）。只有 error/不存在才 404。
-    if (latest && (latest.status === 'complete' || latest.status === 'partial')) {
+    // 扩展一键填充依赖此解析；页面会标注"部分数据"）。只有 error/不存在/已挂起才 404。
+    // S3 软挂起：有未决移除申请的画像不再被主体解析分发（按主体撤回处理中）。
+    if (
+      latest &&
+      (latest.status === 'complete' || latest.status === 'partial') &&
+      !latest.removalRequestedAt
+    ) {
       return c.json({
         profileId: latest.id,
         status: latest.status,
@@ -1361,9 +1381,13 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       return c.json({ error: 'profile not found', code: AUTH_ERROR_CODES.profileNotFound }, 404);
     }
     if (!profile.subjectClaimed) {
-      // 未认领画像没有「本人」可验证：不允许自助删除（也不区分 403/404 语义，统一拒）
+      // 未认领画像没有「本人」可验证：不允许自助删除（也不区分 403/404 语义，统一拒）。
+      // 数据主体如需撤回，走公开申请通道 POST /profiles/:id/removal-request（S3 按主体撤回）。
       return c.json(
-        { error: 'profile is not claimed; self-delete requires claiming it first', code: AUTH_ERROR_CODES.notProfileOwner },
+        {
+          error: 'profile is not claimed; claim it first, or file a removal request via POST /profiles/:id/removal-request',
+          code: AUTH_ERROR_CODES.notProfileOwner,
+        },
         403,
       );
     }
@@ -1390,6 +1414,90 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
     await repos.accounts.clearClaimedProfile(principal.accountId);
     const existed = await repos.profiles.deleteById(profile.id);
     return c.json({ deleted: existed, profileId: profile.id });
+  });
+
+  // POST /profiles/:id/removal-request：按主体撤回的公开申请通道（审计 S3）。
+  // 未认领画像分享链无法由本人自助撤销（DELETE 只对认领本人开放），数据主体又不可被服务端
+  // 证明身份，故开放「提交申请 + 人工复核」：申请只留痕（理由/联系方式/IP 哈希），由运营在
+  // CLI 复核后批准（级联删除）或驳回。提交即把画像置软挂起（removal_requested_at），
+  // 不再被 by-subject 解析与人才库分发；复核批准后才整行删除。幂等：已有 pending 申请直接返回。
+  // 端点任何身份放行（匿名即可提交），唯一约束是 IP 滑窗防刷。
+  const RemovalRequestBodySchema = z.object({
+    reason: z.string().trim().max(2000).optional(),
+    contact: z.string().trim().max(500).optional(),
+  });
+  app.post('/profiles/:id/removal-request', async (c) => {
+    const parsedId = ProfileIdParamSchema.safeParse(c.req.param());
+    if (!parsedId.success) return c.json({ error: 'invalid profile id' }, 400);
+    const profileId = parsedId.data.id;
+
+    const profile = await repos.profiles.getById(profileId);
+    if (!profile) {
+      return c.json({ error: 'profile not found', code: 'PROFILE_NOT_FOUND' }, 404);
+    }
+
+    // 幂等：已有 pending 申请则直接返回，不重复提单、不重复计数
+    const existing = await repos.profileRemovalRequests.latestPendingByProfile(profileId);
+    if (existing) {
+      return c.json(
+        { requestId: existing.id, profileId, status: 'pending', idempotent: true },
+        200,
+      );
+    }
+
+    // IP 滑窗防刷（与 demo 限流同机制，不设会话硬配额，只按 IP 计数）
+    const nowIso = now();
+    const ipHash = ipHashOf(c);
+    if (ipHash) {
+      const recent = await repos.demoSessions.countRateEvents(
+        ipHash,
+        'removal',
+        oneHourAgo(nowIso),
+      );
+      if (recent >= cfg.removalRatePerHour) {
+        console.info(`[removal-request] result=blocked reason=ip_rate_limited profile=${profileId}`);
+        return c.json(
+          {
+            error: 'removal request rate limit exceeded',
+            code: DEMO_ERROR_CODES.rateLimited,
+            bucket: 'removal',
+            retryAfterSeconds: 3600,
+          },
+          429,
+        );
+      }
+    }
+
+    let body: z.infer<typeof RemovalRequestBodySchema> = {};
+    try {
+      const raw = await c.req.json().catch(() => ({}));
+      const parsed = RemovalRequestBodySchema.safeParse(raw);
+      if (!parsed.success) {
+        return c.json({ error: 'invalid request body', details: parsed.error.flatten() }, 400);
+      }
+      body = parsed.data;
+    } catch {
+      // 无 body 视为空申请，仍接受
+    }
+
+    const requestId = `rem-${randomUUID()}`;
+    await repos.profileRemovalRequests.insert({
+      id: requestId,
+      profileId,
+      status: 'pending',
+      reason: body.reason ?? null,
+      contact: body.contact ?? null,
+      ipHash,
+      createdAt: nowIso,
+    });
+    // 置软挂起（仅当尚未置位，避免覆盖更早时间）
+    if (!profile.removalRequestedAt) {
+      await repos.profiles.setRemovalRequestedAt(profileId, nowIso);
+    }
+    if (ipHash) await repos.demoSessions.insertRateEvent(ipHash, 'removal', nowIso);
+
+    console.info(`[removal-request] result=queued profile=${profileId} request=${requestId}`);
+    return c.json({ requestId, profileId, status: 'pending' }, 202);
   });
 
   // GET /profiles/:id/job-recommendations：画像技能 → 岗位匹配推荐（第一档①，报告页消费）
@@ -1905,7 +2013,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // POST /interviews：为候选人安排面试（可关联一条投递；关联后把早期阶段投递推进到 interview）
   app.post('/interviews', async (c) => {
-    // F10（#17 第一期）：面试计划写侧只对已声明招聘方开放（§8 子问题 1 已拍板收紧）。
+    // F10（#17 第一期）：面试计划写侧只对已声明招聘方开放（§8 子问题 1 已决策收紧）。
     const recruiter = await requireRecruiter(c, repos.accounts);
     if (recruiter instanceof Response) return recruiter;
     const principal = recruiter.principal;

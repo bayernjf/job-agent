@@ -12,3 +12,4 @@ export type { IApplicationsRepository } from './applications.js';
 export type { IInterviewsRepository, InterviewListFilter } from './interviews.js';
 export type { IAccountsRepository } from './accounts.js';
 export type { IAuthSessionsRepository } from './auth-sessions.js';
+export type { IProfileRemovalRequestsRepository } from './profile-removal-requests.js';

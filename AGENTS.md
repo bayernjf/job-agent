@@ -14,7 +14,7 @@
 
 ## 项目概览
 
-JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**（阶段与待办以 handoff.md 为准）。
+JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`，剩 J 阶段人工 smoke 与生产 cron/轮询待确认；阶段与待办以 handoff.md 为准）。
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
@@ -27,7 +27,7 @@ JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项�
 - 测试：Vitest（就近单元）+ Playwright（E2E）
 - 分析深度：MVP 仅 **L0 元数据 + L1 行为时序**，**不 clone 仓库**（L2/L3/L4 见 docs/deferred-items）
 
-> 选型理由、备选方案与待核实项见 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)；产品范围以 [docs/PRD.md](docs/PRD.md) 为准；未拍板事项见 [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md)，**不得把"建议"当作"已决策"直接实现**。
+> 选型理由、备选方案与待核实项见 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)；产品范围以 [docs/PRD.md](docs/PRD.md) 为准；未决策事项见 [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md)，**不得把"建议"当作"已决策"直接实现**。
 
 ## 项目结构（已按技术选型文档第 7 章落地，2026-09-10 脚手架）
 
@@ -55,7 +55,7 @@ job-agent/
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
 ```
 
-> 结构已按技术选型文档第 7 章落地；M1 完成 `packages/shared`（Zod 契约）、`packages/storage`（持久化层 + 迁移）、`github-source`/`analyzer-core`/`cli` 与三应用；P1（2026-09-11 拍板）新增 `apps/extension`（真实环境冒烟：Greenhouse/Lever 通过，Workday 平台受限见 handoff）。
+> 结构已按技术选型文档第 7 章落地；M1 完成 `packages/shared`（Zod 契约）、`packages/storage`（持久化层 + 迁移）、`github-source`/`analyzer-core`/`cli` 与三应用；P1（2026-09-11 决策）新增 `apps/extension`（真实环境冒烟：Greenhouse/Lever 通过，Workday 平台受限见 handoff）。
 
 ## 常用命令
 
@@ -93,10 +93,10 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 4. `analyzer-core`（**纯函数、带版本、无 I/O**）计算真实性信号、能力标签、规则化面试题，产出完整 `AbilityProfile`。
 5. 画像以**不可变快照**写入 `profiles`，证据写入 `evidence`；分享链接永远指向生成时版本。
 6. 任一层失败必须显式标注缺失，**禁止输出"看似完整"的报告**。
-7. **演示模式三态身份（anonymous/demo/user，设计见 docs/design-demo-mode-20260915.md）**：只读公开端点全放行；唯一受限是"触发新分析"，画像缓存命中先于权限检查、任何身份放行且不扣配额；demo（HttpOnly Cookie `jobagent_demo`）经受三道闸——会话单条条件 UPDATE 原子扣减、IP 加盐哈希滑窗、Worker demo 并发闸（formal 永不被闸）。**扣减按作业成本权重（2026-09-18 拍板）**：单源 github/gitee 扣 1，`platform=all` 双源融合作业扣 `fusionAnalyzeCost`（默认 2，env `DEMO_FUSION_QUOTA_COST`，最小 1）；条件 UPDATE 用 `analyze_count + cost <= quota`，**剩余不足 cost 整单影响 0 行、绝不部分扣减**，`jobs.create` 失败在 catch 按原 cost 补偿（SQLite `MAX`/PG `GREATEST` 兜底不为负）；IP 滑窗按请求数计 1、Worker 并发闸不按 cost（all 只占一个 job 槽）。改 `/analyze`、Worker 认领或配额逻辑时必须保持这些顺序与错误码（DEMO_REQUIRED/QUOTA_EXCEEDED/RATE_LIMITED），且**不得把 analyzer-core 拖入身份/配额逻辑**。**会话配额与 TTL（2026-09-21 拍板，#14 同批）**：每会话 3 次新分析、有效期 24h（`DEMO_SESSION_TTL_MS=86400000`，代码默认值已对齐）。
+7. **演示模式三态身份（anonymous/demo/user，设计见 docs/design-demo-mode-20260915.md）**：只读公开端点全放行；唯一受限是"触发新分析"，画像缓存命中先于权限检查、任何身份放行且不扣配额；demo（HttpOnly Cookie `jobagent_demo`）经受三道闸——会话单条条件 UPDATE 原子扣减、IP 加盐哈希滑窗、Worker demo 并发闸（formal 永不被闸）。**扣减按作业成本权重（2026-09-18 决策）**：单源 github/gitee 扣 1，`platform=all` 双源融合作业扣 `fusionAnalyzeCost`（默认 2，env `DEMO_FUSION_QUOTA_COST`，最小 1）；条件 UPDATE 用 `analyze_count + cost <= quota`，**剩余不足 cost 整单影响 0 行、绝不部分扣减**，`jobs.create` 失败在 catch 按原 cost 补偿（SQLite `MAX`/PG `GREATEST` 兜底不为负）；IP 滑窗按请求数计 1、Worker 并发闸不按 cost（all 只占一个 job 槽）。改 `/analyze`、Worker 认领或配额逻辑时必须保持这些顺序与错误码（DEMO_REQUIRED/QUOTA_EXCEEDED/RATE_LIMITED），且**不得把 analyzer-core 拖入身份/配额逻辑**。**会话配额与 TTL（2026-09-21 决策，#14 同批）**：每会话 3 次新分析、有效期 24h（`DEMO_SESSION_TTL_MS=86400000`，代码默认值已对齐）。
 8. **报告页授权分级闸与登录回跳（2026-09-19 落地，设计见 [docs/design-auth-gating-20260919.md](docs/design-auth-gating-20260919.md)）**：报告页是 Astro SSR **直读只读 storage（不走 API）**，身份由 `apps/report/src/lib/auth.ts` 的 `resolveViewer` 解析（只读、不 `touch`、坏/过期会话静默降级匿名）。两档可见性——未登录（anonymous/demo）可见结论/技能/匹配/简历/投递与匹配理由证据（决策 #10 要求可回溯），登录 `user` 才可见招聘方三视图**原始证据外链、面试题、`interview-kit.md`**（该端点未登录 `401`）；登录墙用纯 SSR `GateCard`，登录链接必须带同源 `return_to`（API 侧 `sanitizeReturnTo` 白名单防开放重定向）。**JSON API `GET /profiles/:id` 与 `/exportable` 保持公开**（扩展一键填充依赖 exportable，其投影无证据 URL/面试题），字段级 API 裁剪缓做（见 deferred）。
 
-9. **两侧分工的硬事实（改 B/C 任何表面前先读，全量见 [docs/design-recruiter-roles-20260925.md](docs/design-recruiter-roles-20260925.md) §1.1）**：项目**没有** B/C 两套账号，只有四条判据互不一致的机制——① 报告页 `?view=recruiter`（纯 query，无身份判断）② 内容分级闸（判据是"已登录"，与招聘方无关）③ `/[locale]/recruit` 工作台（SSR 直出）④ 端点闸（只有 `/interviews` 要求登录；`/candidates` 不查身份；`/applications` 自 2026-09-25 起**按画像认领状态**设闸——未认领画像沿用公开读写，已认领画像读与写只认本人 401/403，投递 PATCH 对有主行非主一律 404）。**不得把 ②④ 描述成"招聘方角色机制"**，全仓今天唯一的角色墙尚不存在（#17 已拍板 2026-09-25、代码未开工）；数据模型上**没有 `role` 列**，也不得建 `teams`/`memberships`/席位表——那是 #17 第二期（触发条件见 deferred）；实施顺序：投递归属（#17-F11 / 任务 T01–T03b）**已于 2026-09-25 落地**，招聘方声明（F10）留后。**主力功能是应聘方（C）**：`accounts` 的语义即"通过 OAuth 登录的开发者"，招聘侧无独立身份线。改报告页/认证时保持「结论公开、证据原文登录可见」矩阵，勿把 analyzer-core 拖入身份逻辑。
+9. **两侧分工的硬事实（改 B/C 任何表面前先读，全量见 [docs/design-recruiter-roles-20260925.md](docs/design-recruiter-roles-20260925.md) §1.1）**：项目**没有** B/C 两套账号，只有四条判据互不一致的机制——① 报告页 `?view=recruiter`（纯 query，无身份判断）② 内容分级闸（判据是"已登录"，与招聘方无关）③ `/[locale]/recruit` 工作台（SSR 直出）④ 端点闸（只有 `/interviews` 要求登录；`/candidates` 不查身份；`/applications` 自 2026-09-25 起**按画像认领状态**设闸——未认领画像沿用公开读写，已认领画像读与写只认本人 401/403，投递 PATCH 对有主行非主一律 404）。**不得把 ②④ 描述成"招聘方角色机制"**，全仓今天唯一的角色墙尚不存在（#17 已决策 2026-09-25、代码未开工）；数据模型上**没有 `role` 列**，也不得建 `teams`/`memberships`/席位表——那是 #17 第二期（触发条件见 deferred）；实施顺序：投递归属（#17-F11 / 任务 T01–T03b）**已于 2026-09-25 落地**，招聘方声明（F10）留后。**主力功能是应聘方（C）**：`accounts` 的语义即"通过 OAuth 登录的开发者"，招聘侧无独立身份线。改报告页/认证时保持「结论公开、证据原文登录可见」矩阵，勿把 analyzer-core 拖入身份逻辑。
 
 ### 内核与 I/O 分离（硬约束）
 

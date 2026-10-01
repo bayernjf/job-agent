@@ -36,6 +36,7 @@ export class SqliteProfilesRepository implements IProfilesRepository {
         analysisLayers: JSON.stringify(profile.analysisLayers ?? ['L0', 'L1']),
         status: profile.status ?? 'partial',
         snapshot: JSON.stringify(profile.snapshot),
+        removalRequestedAt: profile.removalRequestedAt ?? null,
       })
       .run();
   }
@@ -92,6 +93,14 @@ export class SqliteProfilesRepository implements IProfilesRepository {
     this.db
       .update(profilesTable)
       .set({ subjectClaimed: false, updatedAt: new Date().toISOString() })
+      .where(eq(profilesTable.id, id))
+      .run();
+  }
+
+  async setRemovalRequestedAt(id: string, requestedAt: string | null): Promise<void> {
+    this.db
+      .update(profilesTable)
+      .set({ removalRequestedAt: requestedAt, updatedAt: new Date().toISOString() })
       .where(eq(profilesTable.id, id))
       .run();
   }
