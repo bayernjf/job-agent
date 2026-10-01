@@ -22,11 +22,13 @@ describe('RequesterKindSchema', () => {
 });
 
 describe('DemoRateKindSchema', () => {
-  it('accepts session and analyze buckets only', () => {
-    expect(DEMO_RATE_KINDS).toEqual(['session', 'analyze']);
+  it('accepts the session / analyze / match / subject buckets', () => {
+    expect(DEMO_RATE_KINDS).toEqual(['session', 'analyze', 'match', 'subject']);
     expect(DemoRateKindSchema.safeParse('session').success).toBe(true);
     expect(DemoRateKindSchema.safeParse('analyze').success).toBe(true);
-    expect(DemoRateKindSchema.safeParse('match').success).toBe(false);
+    expect(DemoRateKindSchema.safeParse('match').success).toBe(true);
+    expect(DemoRateKindSchema.safeParse('subject').success).toBe(true);
+    expect(DemoRateKindSchema.safeParse('unknown').success).toBe(false);
   });
 });
 

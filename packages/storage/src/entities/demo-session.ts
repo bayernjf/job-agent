@@ -5,11 +5,14 @@
 import type { SupportedPlatform } from '@jobagent/shared';
 import { parseJson } from './analysis-job.js';
 
+// DemoRateKind / DEMO_RATE_KINDS 的单一事实源在 @jobagent/shared；本地仅再导出，
+// 保持 storage 既有导入路径不变（审计 A3：此处曾重复定义且漏了 'match' 桶）。
+export type { DemoRateKind } from '@jobagent/shared';
+export { DEMO_RATE_KINDS } from '@jobagent/shared';
+
 export type DemoSessionStatus = 'active' | 'exited';
-export type DemoRateKind = 'session' | 'analyze' | 'match';
 
 export const DEMO_SESSION_STATUSES: readonly DemoSessionStatus[] = ['active', 'exited'];
-export const DEMO_RATE_KINDS: readonly DemoRateKind[] = ['session', 'analyze', 'match'];
 
 /** 本会话触发过新分析的公开平台账号（审计/UI 用，非用户自身 PII） */
 export interface AnalyzedLogin {
