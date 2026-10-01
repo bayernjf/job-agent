@@ -303,3 +303,25 @@ describe('SqliteProfilesRepository.markClaimed', () => {
     ctx.close();
   });
 });
+
+describe('SqliteProfilesRepository.unmarkClaimed', () => {
+  it('flips a claimed profile back to false without deleting the row', async () => {
+    const ctx = fresh();
+    insertMinimalProfile(ctx.client, 'prof-1', 'alice');
+    await ctx.profiles.markClaimed('prof-1');
+    expect(claimedValue(ctx.client, 'prof-1')).toBe(1);
+
+    await ctx.profiles.unmarkClaimed('prof-1');
+    expect(claimedValue(ctx.client, 'prof-1')).toBe(0);
+    // 画像行仍在（unclaim 只解除归属，不删快照）
+    expect(await ctx.profiles.getById('prof-1')).toBeDefined();
+
+    // 幂等：已是 false 再调一次不报错
+    await ctx.profiles.unmarkClaimed('prof-1');
+    expect(claimedValue(ctx.client, 'prof-1')).toBe(0);
+
+    // 不存在的 id 静默无操作
+    await ctx.profiles.unmarkClaimed('does-not-exist');
+    ctx.close();
+  });
+});
