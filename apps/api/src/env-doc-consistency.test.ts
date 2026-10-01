@@ -27,6 +27,7 @@ const SCAN_DIRS = [
   'apps/cli/src',
   'apps/report/src',
   'apps/extension/src',
+  'apps/mcp/src',
   ...readdirSync(join(REPO_ROOT, 'packages'))
     .map((name) => `packages/${name}/src`)
     .filter((rel) => statSync(join(REPO_ROOT, rel), { throwIfNoEntry: false })?.isDirectory()),
