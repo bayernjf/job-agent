@@ -891,6 +891,18 @@ export const ClaimResultSchema = z.object({
 });
 export type ClaimResult = z.infer<typeof ClaimResultSchema>;
 
+/** POST /profiles/:id/unclaim 响应体：解除认领后回画像主体与认领标记 */
+export const UnclaimResultSchema = z.object({
+  profileId: z.string().min(1),
+  claimed: z.literal(false),
+  subject: z.object({
+    platform: PlatformSchema.or(z.literal('all')),
+    login: z.string().min(1),
+  }),
+  claimedProfileId: z.string().nullable(),
+});
+export type UnclaimResult = z.infer<typeof UnclaimResultSchema>;
+
 /** 账号体系结构化错误码（前后端共用单一事实源） */
 export const AUTH_ERROR_CODES = {
   authRequired: 'AUTH_REQUIRED', // 401：未登录却调用需登录端点
