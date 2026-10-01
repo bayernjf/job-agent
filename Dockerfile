@@ -26,6 +26,7 @@ COPY apps/worker/package.json apps/worker/
 COPY apps/cli/package.json apps/cli/
 COPY apps/report/package.json apps/report/
 COPY apps/extension/package.json apps/extension/
+COPY apps/mcp/package.json apps/mcp/
 RUN pnpm install --frozen-lockfile
 
 # ---- Build all workspace packages ----
