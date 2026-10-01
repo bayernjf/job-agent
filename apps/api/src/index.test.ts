@@ -663,6 +663,25 @@ describe('GET /profiles/by-subject/:platform/:login', () => {
     const res = await app.request('/profiles/by-subject/github/-bad');
     expect(res.status).toBe(400);
   });
+
+  it('enforces subjectRatePerHour via IP sliding window for any identity (429)', async () => {
+    const repos = await freshRepos();
+    const cfg = { ...loadDemoConfig(), subjectRatePerHour: 1, trustProxy: true, ipSalt: 'test-salt' };
+    const app = await createApp({ repos, demoConfig: cfg });
+    await seedProfile(repos, 'prof-gh-rate', 'torvalds', 'github');
+    const ip = '5.6.7.8';
+    const ipHash = hashIp(ip, 'test-salt');
+    // 窗口内已有一条 subject 事件 → 匿名请求也触发 429（防 login 字典枚举）
+    await repos.demoSessions.insertRateEvent(ipHash, 'subject', new Date().toISOString());
+
+    const res = await app.request('/profiles/by-subject/github/torvalds', {
+      headers: { 'x-forwarded-for': ip },
+    });
+    expect(res.status).toBe(429);
+    const body = await res.json() as any;
+    expect(body.bucket).toBe('subject');
+    expect(body.code).toBe('DEMO_RATE_LIMITED');
+  });
 });
 
 describe('404 fallback', () => {

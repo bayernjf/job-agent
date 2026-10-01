@@ -1170,6 +1170,30 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       return c.json({ error: 'invalid platform or login' }, 400);
     }
     const { platform, login } = parsed.data;
+    // IP 滑窗兜底：端点任何身份放行，唯一风险是拿不同 login 做字典枚举（探测哪些
+    // 主体已有画像）。与 demo 限流同机制（不设会话硬配额，只按 IP 计数防刷）。
+    const subjectNow = now();
+    const subjectIpHash = ipHashOf(c);
+    if (subjectIpHash) {
+      const recentSubject = await repos.demoSessions.countRateEvents(
+        subjectIpHash,
+        'subject',
+        oneHourAgo(subjectNow),
+      );
+      if (recentSubject >= cfg.subjectRatePerHour) {
+        console.info(`[subject] result=blocked reason=ip_rate_limited platform=${platform}`);
+        return c.json(
+          {
+            error: 'subject lookup rate limit exceeded',
+            code: DEMO_ERROR_CODES.rateLimited,
+            bucket: 'subject',
+            retryAfterSeconds: 3600,
+          },
+          429,
+        );
+      }
+      await repos.demoSessions.insertRateEvent(subjectIpHash, 'subject', subjectNow);
+    }
     const latest = await repos.profiles.latestBySubject(platform, login);
     // T25：partial 也视为可用（L1 失败/限频降级的 L0-only 画像仍可看报告页，
     // 扩展一键填充依赖此解析；页面会标注"部分数据"）。只有 error/不存在才 404。

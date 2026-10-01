@@ -11,6 +11,7 @@ describe('loadDemoConfig', () => {
     expect(cfg.sessionRatePerHour).toBe(5);
     expect(cfg.analyzeRatePerHour).toBe(10);
     expect(cfg.matchRatePerHour).toBe(60);
+    expect(cfg.subjectRatePerHour).toBe(120);
     expect(cfg.maxConcurrent).toBe(1);
     expect(cfg.backoffMs).toBe(15_000);
     expect(cfg.ipSalt).toBe('');

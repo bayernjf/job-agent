@@ -21,6 +21,7 @@ function makeConfig(overrides: Partial<DemoConfig> = {}): DemoConfig {
     sessionRatePerHour: 5,
     analyzeRatePerHour: 10,
     matchRatePerHour: 60,
+    subjectRatePerHour: 120,
     maxConcurrent: 1,
     backoffMs: 15_000,
     ipSalt: 'fixed-test-salt',
