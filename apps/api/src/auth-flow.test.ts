@@ -275,6 +275,94 @@ describe('POST /profiles/:id/claim', () => {
   });
 });
 
+describe('POST /profiles/:id/unclaim', () => {
+  it('requires authentication for anonymous callers', async () => {
+    const repos = await freshRepos();
+    await insertProfile(repos, 'prof-1', 'alice');
+    await repos.profiles.markClaimed('prof-1');
+    const app = await createApp({ repos, githubAuthProvider: null });
+    const res = await app.request('/profiles/prof-1/unclaim', { method: 'POST' });
+    expect(res.status).toBe(401);
+    expect((await res.json() as { code: string }).code).toBe('AUTH_REQUIRED');
+  });
+
+  it('rejects non-owners and missing profiles, but lets the owner unclaim without deleting data', async () => {
+    const { repos, cookies } = await loginAs();
+    await insertProfile(repos, 'prof-alice', 'alice');
+    await insertProfile(repos, 'prof-bob', 'bob');
+    await repos.profiles.markClaimed('prof-alice');
+    await repos.accounts.setClaimedProfile(
+      (await repos.accounts.getByProvider('github', '101'))!.id,
+      'prof-alice',
+    );
+    // 先放一条投递记录，验证解绑不级联删数据
+    await repos.applications.insert({
+      id: 'app-1',
+      profileId: 'prof-alice',
+      jobId: null,
+      source: null,
+      targetTitle: 'Backend Engineer',
+      targetCompany: 'Acme',
+      targetUrl: null,
+      status: 'applied',
+      note: null,
+      origin: 'manual',
+      appliedAt: '2026-09-01T00:00:00.000Z',
+      createdByAccountId: null,
+    });
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+    });
+    const auth = { Cookie: cookieHeader(cookies, 'jobagent_session') };
+
+    // 别人的画像 → 403
+    const forbidden = await app.request('/profiles/prof-bob/unclaim', { method: 'POST', headers: auth });
+    expect(forbidden.status).toBe(403);
+    expect((await forbidden.json() as { code: string }).code).toBe('AUTH_NOT_PROFILE_OWNER');
+
+    // 不存在 → 404
+    const missing = await app.request('/profiles/nope/unclaim', { method: 'POST', headers: auth });
+    expect(missing.status).toBe(404);
+    expect((await missing.json() as { code: string }).code).toBe('AUTH_PROFILE_NOT_FOUND');
+
+    // 本人 → 200
+    const ok = await app.request('/profiles/prof-alice/unclaim', { method: 'POST', headers: auth });
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as Record<string, unknown>;
+    expect(body.claimed).toBe(false);
+    expect(body.profileId).toBe('prof-alice');
+
+    // 画像认领态解除、账号指针清空，但画像与投递数据仍在
+    const profile = await repos.profiles.getById('prof-alice');
+    expect(profile?.subjectClaimed).toBe(false);
+    expect((await repos.accounts.getByProvider('github', '101'))?.claimedProfileId).toBeNull();
+    expect(await repos.profiles.getById('prof-alice')).toBeDefined();
+    expect((await repos.applications.listByProfile('prof-alice'))).toHaveLength(1);
+
+    // 幂等：再次解绑同一画像仍 200
+    const again = await app.request('/profiles/prof-alice/unclaim', { method: 'POST', headers: auth });
+    expect(again.status).toBe(200);
+  });
+
+  it('lets either source unclaim a fused platform=all profile with the same login', async () => {
+    const { repos, cookies } = await loginAs();
+    await insertProfile(repos, 'prof-fused', 'alice', 'all');
+    await repos.profiles.markClaimed('prof-fused');
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+    });
+    const auth = { Cookie: cookieHeader(cookies, 'jobagent_session') };
+    const res = await app.request('/profiles/prof-fused/unclaim', { method: 'POST', headers: auth });
+    expect(res.status).toBe(200);
+    expect((await res.json() as { subject?: { platform: string } }).subject?.platform).toBe('all');
+    expect((await repos.profiles.getById('prof-fused'))?.subjectClaimed).toBe(false);
+  });
+});
+
 describe('POST /auth/logout', () => {
   it('revokes the session so /auth/me falls back to anonymous', async () => {
     const { repos, cookies } = await loginAs();
