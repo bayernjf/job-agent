@@ -13,7 +13,7 @@
 - **T7**：文档过时扫描修正 4 处（README workspace 13→14 并补 release 命令、CONTRIBUTING 布局更新为 9+5、扩展 README 图标/分发/cover_letter 状态、store-assets README 一键打包段）。
 - **T1**：handoff Git 状态段滞后修正。
 - **T2/T3/T8 零改动验证通过**：jobs-sync secret guard 早已在（actionlint 1.7.12 exit 0）、`ASTRO_ADAPTER=vercel` report 构建 exit 0（item49 credentials 修复后 Vercel 不挂）、三个 tools 脚本在 macOS GNU bash 3.2 下 `bash -n` 与实跑行为正确。
-- 剩余外部项：P0-3 形态 C 控制台部署、CWS 开发者账号与真实生产域重截、item45 待拍板。
+- 剩余外部项：P0-3 形态 C 控制台部署、CWS 开发者账号与真实生产域重截、item45 待决策。
 
 ## 2. item51：部署前最后一公里验证 + CWS 上架前准备（2026-09-24，macOS）
 
@@ -51,7 +51,7 @@
 
 ## 4. item45：面试计划表 Interviews（2026-09-24）
 
-**拍板与默认决策**：用户「好的，你一口气搞了」即对 handoff item45 拍板，按提案 `docs/proposal-interview-planner-20260922.md` §6 顺序一口气落地。提案 §5 五个待拍板问题未逐条答复，按推荐默认值实施：
+**决策与默认决策**：用户「好的，你一口气搞了」即对 handoff item45 决策，按提案 `docs/proposal-interview-planner-20260922.md` §6 顺序一口气落地。提案 §5 五个待决策问题未逐条答复，按推荐默认值实施：
 
 1. 现在做（不等到上线后）；
 2. 角色采「个人效率工具」最小做法——不引入 recruiter 角色 / 组织实体，任何登录用户管理自己创建的面试，行级归属 `created_by_account_id`；
@@ -102,8 +102,8 @@ handoff「Git 状态」写「本地 `dev` 领先 15 个提交均未 push（`orig
 
 实查发现三处真实漂移（不是风格问题，是会误导操作者的错值）：
 
-1. `docs/API.md` env 表把 `DEMO_SESSION_TTL_MS` 默认写成 `604800000`（7d），而 `DEMO_DEFAULTS.sessionTtlMs` 自 2026-09-21 拍板起是 24h——按文档填 env 的操作者会以为会话管 7 天。
-2. 表里缺 API 真实读取的 4 个变量：`DEMO_FUSION_QUOTA_COST`（2026-09-18 拍板的 all 扣 2）、`GITHUB_TOKEN`、`GITEE_TOKEN`、`JOB_HTTP_PROXY`（OAuth 换 token 走出站代理，item30 的根因修复）。
+1. `docs/API.md` env 表把 `DEMO_SESSION_TTL_MS` 默认写成 `604800000`（7d），而 `DEMO_DEFAULTS.sessionTtlMs` 自 2026-09-21 决策起是 24h——按文档填 env 的操作者会以为会话管 7 天。
+2. 表里缺 API 真实读取的 4 个变量：`DEMO_FUSION_QUOTA_COST`（2026-09-18 决策的 all 扣 2）、`GITHUB_TOKEN`、`GITEE_TOKEN`、`JOB_HTTP_PROXY`（OAuth 换 token 走出站代理，item30 的根因修复）。
 3. `.env.example` 缺 3 个构建期变量：`ASTRO_ADAPTER`（`apps/report/astro.config.mjs` 切适配器）、`EXTENSION_RELEASE` 与 `EXTENSION_SITE_ORIGIN`（扩展 release 打包必需，release 脚本缺 `EXTENSION_SITE_ORIGIN` 只 warn、缺生产 `EXTENSION_API_BASE` 直接失败）。AGENTS 规定新增环境变量必须同步 `.env.example`，此前这三条一直没补。
 
 补完后新增 `apps/api/src/env-doc-consistency.test.ts`（5 用例，纯读文件、零网络、零副作用），把四处对齐钉死：

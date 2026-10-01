@@ -55,7 +55,7 @@
 | `GITHUB_TOKEN` | 空 | 采集凭证（PAT / GitHub App installation token），只在服务端读取；未配置时分析作业会在采集阶段失败 |
 | `GITEE_TOKEN` | 空 | 可选，仅用于提高 Gitee 匿名约 60 次/分的限额；匿名即可读公开数据 |
 | `JOB_HTTP_PROXY` | 空 | 出站 HTTP(S) 代理；API 启动时按此值安装 undici 全局 ProxyAgent（`src/proxy-bootstrap.ts`），用于 OAuth token 交换与拉用户资料。未设时回退标准 `HTTPS_PROXY`/`HTTP_PROXY` |
-| `DEMO_SESSION_TTL_MS` | `86400000`（24h，2026-09-21 拍板） | 演示会话有效期 / Cookie Max-Age |
+| `DEMO_SESSION_TTL_MS` | `86400000`（24h，2026-09-21 决策） | 演示会话有效期 / Cookie Max-Age |
 | `DEMO_ANALYZE_QUOTA` | `3` | 单会话可触发的新分析次数 |
 | `DEMO_FUSION_QUOTA_COST` | `2` | `platform=all` 双源融合作业一次扣减的会话配额（单源扣 1，最小 1；剩余不足整单拒绝，不部分扣减） |
 | `DEMO_SESSION_RATE_PER_HOUR` | `5` | 单 IP 每小时建会话上限 |

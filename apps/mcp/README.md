@@ -2,7 +2,7 @@
 
 只读的 [Model Context Protocol](https://modelcontextprotocol.io/) server，让别的 agent / IDE / CLI 通过标准 MCP 读取 JobAgent 的**公开画像投影**与**岗位池**。
 
-决策 #19（2026-10-01 拍板并落地）。设计与边界见 [../../docs/design-mcp-surface-20260928.md](../../docs/design-mcp-surface-20260928.md)。
+决策 #19（2026-10-01 决策并落地）。设计与边界见 [../../docs/design-mcp-surface-20260928.md](../../docs/design-mcp-surface-20260928.md)。
 
 ## 三条硬边界
 

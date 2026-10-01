@@ -1,5 +1,5 @@
 /**
- * MCP v0 只读工具面（决策 #19，2026-10-01 拍板）。
+ * MCP v0 只读工具面（决策 #19，2026-10-01 决策）。
  *
  * 硬原则（违反任一条都不该存在这个面，见 docs/design-mcp-surface-20260928.md §2）：
  *  1. 只做 @jobagent/api 的薄壳——进程内 createApp() + app.request() 自调，绝不 import storage 直读。

@@ -1,6 +1,6 @@
 # 演示模式（Demo Mode）设计：免注册临时身份、真实产品体验与配额闸
 
-> 状态：现行（2026-09-15 设计；**步骤 1–9 已全部落地，见 handoff item17**）。§16 开放项中「`platform=all` 融合作业配额权重」已于 2026-09-18 拍板落地（默认扣 2，见 §3.1/§13/§16）；**会话配额 3 次与 TTL 24h 已于 2026-09-21 拍板（#14 同批），代码默认值已对齐**；部署形态 C 已拍板（见 deployment-runbook），预置账号仍为可配项。
+> 状态：现行（2026-09-15 设计；**步骤 1–9 已全部落地，见 handoff item17**）。§16 开放项中「`platform=all` 融合作业配额权重」已于 2026-09-18 决策落地（默认扣 2，见 §3.1/§13/§16）；**会话配额 3 次与 TTL 24h 已于 2026-09-21 决策（#14 同批），代码默认值已对齐**；部署形态 C 已决策（见 deployment-runbook），预置账号仍为可配项。
 > 关联：[deferred-items.md](deferred-items.md) 平台与工程线「账号体系 / 本人认领头表」、[design-storage-dual-dialect-20260911.md](design-storage-dual-dialect-20260911.md)、[API.md](API.md)、[design-i18n-20260910.md](design-i18n-20260910.md)、[design-tokens-20260910.md](design-tokens-20260910.md)
 
 ## 0. 背景、目标与非目标
@@ -83,7 +83,7 @@ export type Principal =
 | `GET /health` | ✅ | ✅ | 不变 |
 | 看公开画像 `GET /profiles/:id`、`/exportable`、`/job-recommendations` | ✅ | ✅ | 公开只读分享链路，**永不加限** |
 | 岗位检索 `GET /job-postings*` | ✅ | ✅ | 只读本地库，公开数据聚合 |
-| `POST /job-postings/match` | ✅ | ✅（计数观测） | 纯本地计算、无外部配额成本；仅 IP 窗口兜底，不设会话硬配额（2026-09-21 随 §16-#1 拍板确认，见 §7.4） |
+| `POST /job-postings/match` | ✅ | ✅（计数观测） | 纯本地计算、无外部配额成本；仅 IP 窗口兜底，不设会话硬配额（2026-09-21 随 §16-#1 决策确认，见 §7.4） |
 | `GET /jobs/:id` 轮询任务状态 | ✅ | ✅ | 任务状态不含隐私，分享/轮询链路依赖其公开 |
 | **`POST /analyze` 且命中未过期画像缓存** | ✅ | ✅，**不扣次数** | 缓存检查先于权限检查（§7.3），预置示例秒进靠它 |
 | **`POST /analyze` 需新建分析任务** | ❌ 403 `DEMO_REQUIRED` | ✅，过三道配额闸后放行 | 唯一被身份限制的动作 |
@@ -103,8 +103,8 @@ export type Principal =
 
 ### 3.1 第一道：会话级原子扣减（硬配额）
 
-- 每个 `demo_sessions` 行有 `analyze_count`，上限 **3 次/会话**（2026-09-21 已拍板，§16-#1）。
-- **扣减权重（2026-09-18 拍板落地）**：单源 github/gitee 一次作业 `cost=1`；`platform=all` 一次作业双源采集、约 2x 外部配额成本，`cost=fusionAnalyzeCost`（默认 **2**，env `DEMO_FUSION_QUOTA_COST`，positiveInt 最小 1）。API `/analyze` 据 `platform==='all'` 算出 `analyzeCost` 传入扣减与补偿。IP 速率滑窗仍按请求数计 1（防刷的是请求频次，与成本无关）；Worker 并发闸不按 cost（`all` 只是一个 job 占一个并发槽）。
+- 每个 `demo_sessions` 行有 `analyze_count`，上限 **3 次/会话**（2026-09-21 已决策，§16-#1）。
+- **扣减权重（2026-09-18 决策落地）**：单源 github/gitee 一次作业 `cost=1`；`platform=all` 一次作业双源采集、约 2x 外部配额成本，`cost=fusionAnalyzeCost`（默认 **2**，env `DEMO_FUSION_QUOTA_COST`，positiveInt 最小 1）。API `/analyze` 据 `platform==='all'` 算出 `analyzeCost` 传入扣减与补偿。IP 速率滑窗仍按请求数计 1（防刷的是请求频次，与成本无关）；Worker 并发闸不按 cost（`all` 只是一个 job 占一个并发槽）。
 - 扣减必须是**单条条件 UPDATE**，看影响行数判定是否拿到名额，**严禁 select-then-update**（两个并发请求会同时读到旧值而双超）。WHERE 用 `analyze_count + :cost <= :quota`，**剩余额度不足 cost 时整单不匹配（影响 0 行），杜绝部分扣减导致的超用**：
 
   ```sql
@@ -124,7 +124,7 @@ export type Principal =
 
 清掉 Cookie 就能无限开新会话，因此叠加按 IP 的窗口限流。**只存加盐哈希、不存明文 IP**（§12）。窗口计数落 `demo_rate_events` 表（MVP 不引 Redis）：
 
-| 窗口（§16 已拍板项之外为建议值） | 阈值 | 作用端点 |
+| 窗口（§16 已决策项之外为建议值） | 阈值 | 作用端点 |
 | --- | --- | --- |
 | 建会话 1 小时滚动窗 | 5 个/IP/h | `POST /demo/sessions` |
 | 触发分析 1 小时滚动窗 | 10 次/IP/h | `POST /analyze`（会话闸通过后再查） |
@@ -554,7 +554,7 @@ app.use('*', async (c, next) => {
       → 200 { jobId, dedup:true }（不扣任何配额，直接复用）
    b. IP analyze 窗口：countRateEvents(ip,'analyze',1h) ≥ 阈值
       → 429 DEMO_RATE_LIMITED
-   c. analyzeCost = (platform === 'all' ? cfg.fusionAnalyzeCost : 1)  // 融合默认 2、单源 1（2026-09-18 拍板）
+   c. analyzeCost = (platform === 'all' ? cfg.fusionAnalyzeCost : 1)  // 融合默认 2、单源 1（2026-09-18 决策）
       acquireAnalyzeSlot(sessionId, quota, now, analyzeCost)
       granted=false(quota_exceeded，含剩余不足 cost 的整单拒绝) → 429 DEMO_QUOTA_EXCEEDED
         body: { code, analyzeQuota, analyzeUsed, analyzeRemaining:0, resetAt: session.expiresAt }
@@ -575,7 +575,7 @@ app.use('*', async (c, next) => {
 
 ### 7.4 其他端点策略
 
-- `POST /job-postings/match`：保持公开可用（anonymous 放行）。demo 调用时 `incrementMatch` 仅观测、不拦截。IP 窗口统一兜底（60 次/h/IP，2026-09-21 随 §16-#1 拍板，远高于正常使用，只挡脚本刷库）。**不设会话硬配额（同日拍板确认）**，仓储已预留 `acquireMatchSlot` 的对称扩展位，当前只做 `incrementMatch`。
+- `POST /job-postings/match`：保持公开可用（anonymous 放行）。demo 调用时 `incrementMatch` 仅观测、不拦截。IP 窗口统一兜底（60 次/h/IP，2026-09-21 随 §16-#1 决策，远高于正常使用，只挡脚本刷库）。**不设会话硬配额（同日决策确认）**，仓储已预留 `acquireMatchSlot` 的对称扩展位，当前只做 `incrementMatch`。
 - 全部 GET 只读端点（profiles/exportable/job-recommendations/job-postings/jobs 轮询/health）**不加身份、不加配额**。
 - `formatJob` 可附带 `requester: { kind: job.requesterKind }`（不带 sessionId 出站，避免会话 token 出现在日志/响应里——sessionId 本身就是 Cookie 凭证，响应只回当前用户自己的 /demo/me，不回在 job 对象上）。
 
@@ -589,7 +589,7 @@ app.use('*', async (c, next) => {
 
 错误响应沿用现有 `{ error, ... }` 形态并增加稳定的 `code` 字段（既有 400/404 不变）；docs/API.md 实现时补这三个端点与错误码章节。
 
-### 7.6 Cookie 属性、CORS 与部署形态（关联待拍板 #4）
+### 7.6 Cookie 属性、CORS 与部署形态（关联待决策 #4）
 
 Cookie 统一属性：
 
@@ -606,7 +606,7 @@ Max-Age = TTL     （与 expires_at 一致，建议 7d）
 - **形态 A（推荐）：同域反向代理**。报告页与 API 部署在同一站点（如 `app.example.com/` 页面、`app.example.com/api/*` 反代到 API 服务），前端用相对路径同源请求，Cookie 天然携带，无需改 CORS。落地页静态站若也同域更佳。
 - **形态 B：跨子域/跨域**（如页面 `*.bayjf.com`、API 独立域）：必须把 `cors()` 改为 origin 白名单函数（回显具体 Origin 而非 `*`）+ `credentials:true`，前端所有对 API 的 fetch 加 `credentials:'include'`；Cookie 的 `Domain` 按是否跨子域设置（同父域可设 `Domain=.example.com`，跨站则完全无法共享 Cookie，只能走形态 A）。
 
-本设计代码按"同源可用、跨域可配"写：cookie 逻辑不依赖形态，CORS 白名单从环境变量 `CORS_ALLOW_ORIGINS`（逗号分隔）读取，缺省保持现状宽松但**不发 Cookie 凭证**；部署形态已拍板为形态 C（§16-#4，2026-09-20，见 [deployment-runbook](deployment-runbook-20260920.md)），生产域名最终确认仍为外部项。
+本设计代码按"同源可用、跨域可配"写：cookie 逻辑不依赖形态，CORS 白名单从环境变量 `CORS_ALLOW_ORIGINS`（逗号分隔）读取，缺省保持现状宽松但**不发 Cookie 凭证**；部署形态已决策为形态 C（§16-#4，2026-09-20，见 [deployment-runbook](deployment-runbook-20260920.md)），生产域名最终确认仍为外部项。
 
 ---
 
@@ -748,9 +748,9 @@ demo.establishing        正在进入演示… / Starting demo…
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `DEMO_SESSION_TTL_MS` | `86400000`（**2026-09-21 已拍板**，24 小时） | 演示会话有效期，同时是 Cookie Max-Age |
-| `DEMO_ANALYZE_QUOTA` | `3`（**2026-09-21 已拍板**） | 单会话可触发的新分析次数 |
-| `DEMO_FUSION_QUOTA_COST` | `2`（**2026-09-18 已拍板**） | 一次 `platform=all` 双源融合作业扣减的配额权重（约 2x 采集成本）；单源 github/gitee 扣 1；positiveInt、最小 1，剩余不足整单拒绝 |
+| `DEMO_SESSION_TTL_MS` | `86400000`（**2026-09-21 已决策**，24 小时） | 演示会话有效期，同时是 Cookie Max-Age |
+| `DEMO_ANALYZE_QUOTA` | `3`（**2026-09-21 已决策**） | 单会话可触发的新分析次数 |
+| `DEMO_FUSION_QUOTA_COST` | `2`（**2026-09-18 已决策**） | 一次 `platform=all` 双源融合作业扣减的配额权重（约 2x 采集成本）；单源 github/gitee 扣 1；positiveInt、最小 1，剩余不足整单拒绝 |
 | `DEMO_SESSION_RATE_PER_HOUR` | `5` | 单 IP 每小时建会话上限 |
 | `DEMO_ANALYZE_RATE_PER_HOUR` | `10` | 单 IP 每小时触发分析上限 |
 | `DEMO_MATCH_RATE_PER_HOUR` | `60` | match 只读计算的 IP 兜底窗口 |
@@ -800,7 +800,7 @@ demo.establishing        正在进入演示… / Starting demo…
 
 ## 15. 原子提交规划（实现阶段，Conventional Commits 英文，一提交一事）
 
-> 设计文档本身先行单独提交（`docs`）。以下为拍板后的实现顺序，每步独立可回滚、每步结束三件套全绿；严格不在前一步缺失时跳步。
+> 设计文档本身先行单独提交（`docs`）。以下为决策后的实现顺序，每步独立可回滚、每步结束三件套全绿；严格不在前一步缺失时跳步。
 
 1. `feat(shared): add requester principal and demo contracts` — §6 全部 schema/类型/错误码 + 单测。
 2. `feat(db): add demo mode migrations 006-008 in both dialects` — 6 个 SQL 文件（3×2 方言），migrations/parity 测试先适配到红，下一步转绿。
@@ -814,24 +814,24 @@ demo.establishing        正在进入演示… / Starting demo…
 
 ---
 
-## 16. 待拍板开放项（以下均为**建议值**，不是已决策；拍板前不得按既定值写死）
+## 16. 待决策开放项（以下均为**建议值**，不是已决策；决策前不得按既定值写死）
 
 | # | 开放项 | 助手建议 | 影响面 |
 | --- | --- | --- | --- |
-| 1 | 配额数值：会话分析次数、IP 建会话/分析/match 窗口 | ✅ **已拍板 2026-09-21：3 次/会话**；5 建会话/h/IP；10 分析/h/IP；match 60/h/IP 仅兜底、**不设会话硬配额**。上线后按真实 GitHub 消耗日志调整 IP 窗口 | demo-config 默认值、§14 测试断言 |
+| 1 | 配额数值：会话分析次数、IP 建会话/分析/match 窗口 | ✅ **已决策 2026-09-21：3 次/会话**；5 建会话/h/IP；10 分析/h/IP；match 60/h/IP 仅兜底、**不设会话硬配额**。上线后按真实 GitHub 消耗日志调整 IP 窗口 | demo-config 默认值、§14 测试断言 |
 | 2 | 是否允许自选真实用户名（还是只给预置快照） | ✅ **已按建议落地（2026-09-15）：允许**（这是"进入真实产品"的核心感知；预置负责秒进、自选负责真实感） | §7.3 完整链路、§9.3 自动建会话逻辑 |
-| 3 | 会话 TTL | ✅ **已拍板 2026-09-21：24 小时**；cleanup 保留期仍 24h | Cookie Max-Age、demo_sessions.expires_at |
-| 4 | 部署形态：同域反代（A）还是跨子域（B） | ✅ **已拍板：形态 C**（Vercel+Supabase 同域，2026-09-20，见 [deployment-runbook](deployment-runbook-20260920.md) §4-C；A/B 保留为自托管备选）；Cookie 最简、不碰 CORS 凭证问题 | §7.6 Cookie、CORS_ALLOW_ORIGINS、TRUST_PROXY |
+| 3 | 会话 TTL | ✅ **已决策 2026-09-21：24 小时**；cleanup 保留期仍 24h | Cookie Max-Age、demo_sessions.expires_at |
+| 4 | 部署形态：同域反代（A）还是跨子域（B） | ✅ **已决策：形态 C**（Vercel+Supabase 同域，2026-09-20，见 [deployment-runbook](deployment-runbook-20260920.md) §4-C；A/B 保留为自托管备选）；Cookie 最简、不碰 CORS 凭证问题 | §7.6 Cookie、CORS_ALLOW_ORIGINS、TRUST_PROXY |
 | 5 | 3 个预置示例账号具体选谁 | ✅ 已在 `.env.example` 给出建议清单（`DEMO_PRESET_LOGINS`，likely/mixed/suspicious 各一，需先预热入库）；seed 时复跑验证、只展示 ready 项 | `DEMO_PRESET_LOGINS`、seed 清单 |
-| 6 | `platform=all` 融合作业的配额权重 | ✅ **已拍板 2026-09-18：一次扣 2**（单源 github/gitee 扣 1；约 2x 采集成本）。env `DEMO_FUSION_QUOTA_COST`（默认 2、最小 1），剩余不足整单拒绝、不部分扣，`jobs.create` 失败按原权重补偿；IP 窗按请求计 1、Worker 并发闸不按 cost | demo-config `fusionAnalyzeCost`、§3.1/§5.4、storage 双方言仓储、API `/analyze`、[design-cross-source-fusion §8.5/§8.7](design-cross-source-fusion-20260915.md) |
+| 6 | `platform=all` 融合作业的配额权重 | ✅ **已决策 2026-09-18：一次扣 2**（单源 github/gitee 扣 1；约 2x 采集成本）。env `DEMO_FUSION_QUOTA_COST`（默认 2、最小 1），剩余不足整单拒绝、不部分扣，`jobs.create` 失败按原权重补偿；IP 窗按请求计 1、Worker 并发闸不按 cost | demo-config `fusionAnalyzeCost`、§3.1/§5.4、storage 双方言仓储、API `/analyze`、[design-cross-source-fusion §8.5/§8.7](design-cross-source-fusion-20260915.md) |
 
-拍板方式：在本表把选定值标注为"已拍板（日期）"，再按 §15 启动实现；未拍板字段在代码中一律走 demo-config 的可配置默认，不出现隐藏假设。
+决策方式：在本表把选定值标注为"已决策（日期）"，再按 §15 启动实现；未决策字段在代码中一律走 demo-config 的可配置默认，不出现隐藏假设。
 
 ---
 
 ## 17. 与缓做项 / 既有设计的关系
 
-- **账号体系 / OAuth / 本人认领**：继续缓做（[deferred-items.md](deferred-items.md) 平台与工程线，触发条件=决策 #1/#6 拍板）。演示模式不是账号体系的第一期，不建 accounts 表、不做登录；`user` 仅为编译期预留。账号体系立项时，本设计的 Principal/配额闸可平滑收编（demo→user 升级、CSRF 升级按 §12-5 重估）。
+- **账号体系 / OAuth / 本人认领**：继续缓做（[deferred-items.md](deferred-items.md) 平台与工程线，触发条件=决策 #1/#6 决策）。演示模式不是账号体系的第一期，不建 accounts 表、不做登录；`user` 仅为编译期预留。账号体系立项时，本设计的 Principal/配额闸可平滑收编（demo→user 升级、CSRF 升级按 §12-5 重估）。
 - **双方言持久化**：完全遵循 [design-storage-dual-dialect-20260911.md](design-storage-dual-dialect-20260911.md)——方言差异只在 storage 内部，API/Worker 只依赖 `IDemoSessionsRepository` 与 `createStorage()`。
 - **画像缓存语义**：复用 POST /analyze 既有 `PROFILE_CACHE_TTL_MS` 缓存分支并把顺序提到权限之前，不新增缓存机制。
 - **i18n / 设计 token**：遵循 [design-i18n-20260910.md](design-i18n-20260910.md)（先中文 key 再同构英文 key、守护测试）与 [design-tokens-20260910.md](design-tokens-20260910.md)（共享 `packages/ui-tokens`，禁硬编码颜色尺寸）。

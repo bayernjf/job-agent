@@ -7,7 +7,7 @@
 
 ## §1 item86 补录：T13 项目条目抽象 + T14 量化行进交付物 + T16 岗位定向面试准备单（2026-09-26）
 
-评审 §9 批次 3「C-C 交得出东西」收尾。用户拍板推进 T13→T14→T16 链。
+评审 §9 批次 3「C-C 交得出东西」收尾。用户决策推进 T13→T14→T16 链。
 
 - **T13 项目条目抽象**：`shared` 增 `ProjectEntrySchema`（project/action/title/scale/url/occurredAt/evidenceRefs，superRefine 强制 refs 非空＝no-fabrication 结构化抓手）；`resume-core` 新 `project-entries.ts` 只解析两源自产稳定 claim 格式（PR 含 T06 `+A/-D across N files` 后缀 / Issue / Commit fallback / Repo stars-forks），解析不出跳过不猜；`ResumeDraft.projectEntries` 默认 `[]` 兼容旧草稿；md/html 增「项目经历」区块（PR 带规模、Issue/Commit/Repo 各一行，均挂可点击证据链接）。
 - **T14 量化行进交付物**：`buildSummary` 增量化句（mergedPullRequests/commitRepoCount/activeMonths 三键齐全才写，缺任一整句省略、不写半句不猜数，旧快照天然兼容）；`interview-kit` 增「量化概览」小节同口径；数字全部直取快照 `activity.metrics` 可回溯。

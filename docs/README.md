@@ -13,21 +13,21 @@
 | 登录后回到原页面（return_to 深链）/ 未登录为何看到登录墙、哪些内容要登录（授权分级闸、证据外链/面试题/面试包 401） | [design-auth-gating-20260919.md](design-auth-gating-20260919.md) ★ + [API.md](API.md) §1.2 可见性矩阵（handoff item31/32） |
 | 理解产品初衷、要解决的根本问题 | [产品构想-以GitHub为桥梁的招聘系统.md](产品构想-以GitHub为桥梁的招聘系统.md) |
 | **问"这项目怎么分应聘者/招聘方、主力是哪边"** | **一句话答案**：没有 B/C 两套账号，只有**四条判据互不一致的机制**——`?view=recruiter`（纯 query）/ 内容分级闸（判据是"已登录"）/ `/[locale]/recruit`（SSR 直出）/ 端点闸（只有 `/interviews` 要登录，`/candidates`·`/applications` 不查身份）；**主力是应聘方**（招聘侧无独立身份线）。全文见 [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) §1.1，工程硬约束见 [../AGENTS.md](../AGENTS.md) 运行架构第 9 条 |
-| **问"C 端下一步做什么 / 为什么我的简历说不清我做 AI Agent"** | [design-c-side-first-20260925.md](design-c-side-first-20260925.md) ★（#18 已拍板 2026-09-25、批次 0 已落地＝handoff item61：六步求职判据 + 逐条 `file:line` 断点 + C-A~C-D 四期 + 与 #17 的改序 + "岗位池今天是死的"这个非代码阻塞）；**批次 6（T24–T27/T17/T09）与批次 7（T28 单一发布 / T31 证据按画像隔离 / T32 迁移原子性 / T10 下一步动作区块 / T12+T23 交付物成色）均已落地**，未做＝T13–T16、T18–T20、T21/T22、T29/T30、**T33（内核散文剩余面，要先给快照补 facts 并升规则 0.7）**） |
+| **问"C 端下一步做什么 / 为什么我的简历说不清我做 AI Agent"** | [design-c-side-first-20260925.md](design-c-side-first-20260925.md) ★（#18 已决策 2026-09-25、批次 0 已落地＝handoff item61：六步求职判据 + 逐条 `file:line` 断点 + C-A~C-D 四期 + 与 #17 的改序 + "岗位池今天是死的"这个非代码阻塞）；**批次 6（T24–T27/T17/T09）与批次 7（T28 单一发布 / T31 证据按画像隔离 / T32 迁移原子性 / T10 下一步动作区块 / T12+T23 交付物成色）均已落地**，未做＝T13–T16、T18–T20、T21/T22、T29/T30、**T33（内核散文剩余面，要先给快照补 facts 并升规则 0.7）**） |
 | 想让**别的系统/agent** 接进来（MCP 或 HTTP），先搞清能看见什么 | [design-mcp-surface-20260928.md](design-mcp-surface-20260928.md)（决策 #19 **已落地 2026-10-01**：`apps/mcp` stdio server，四只读工具＝`search_jobs` 公开 / `get_profile`·`lookup_profile_by_subject`·`match_profile_to_job` 需 `MCP_API_KEY`；三条硬原则=薄壳不直读 storage / 服务账号不是人给密钥也不解锁证据与面试题 / 只读且绝不触发分析；fail-closed＋固定窗限流；配置与试用见 `apps/mcp/README.md`）+ [API.md](API.md)（现行 HTTP 路由契约） |
 | 看产品范围、功能 F1–F11、画像契约、指标与风险 | [PRD.md](PRD.md) ★ |
-| 搞清楚"项目怎么分应聘者/招聘方"、B 端要不要角色与组织、为什么 `/candidates` 今天匿名可读、F10/F11 与决策 #17 的范围 | [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) ★（#17 已拍板 2026-09-25、未实施：两侧共用账号无角色的现状表、声明式角色立场、迁移 013 草案、A/D/U/R 权限矩阵、`auth cleanup` 会删掉招聘方账号这条坑、5 个待勾子问题） |
+| 搞清楚"项目怎么分应聘者/招聘方"、B 端要不要角色与组织、为什么 `/candidates` 今天匿名可读、F10/F11 与决策 #17 的范围 | [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) ★（#17 已决策 2026-09-25、未实施：两侧共用账号无角色的现状表、声明式角色立场、迁移 013 草案、A/D/U/R 权限矩阵、`auth cleanup` 会删掉招聘方账号这条坑、5 个待勾子问题） |
 | 回看"为什么从分析 GitHub 切入、MVP 如何收敛"的讨论过程 | [讨论记录-01-切入口与MVP收敛-20260910.md](讨论记录-01-切入口与MVP收敛-20260910.md) |
 | 了解投递功能方向、Jobright 竞品深度分析、四种技术路径对比 | [讨论记录-02-投递功能与竞品分析-20260911.md](讨论记录-02-投递功能与竞品分析-20260911.md) |
 | 看技术栈选型、运行架构、目录规划、M1 排期与 Spike | [技术选型-MVP-20260910.md](技术选型-MVP-20260910.md) |
 | 一页看懂当前技术栈分层（客户端/服务/内核/采集/持久化五层 + 各包职责 + 数据流） | [技术栈总览-分层架构-20260916.md](技术栈总览-分层架构-20260916.md) |
-| 逐条看待拍板事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已拍板，#9–#13 延后，#14 2026-09-21 已拍板，#15/#16 2026-09-11 已拍板：扩展一键填充 P1 做、职位聚合按 P2 启动；**#17 B 端角色、#18 C 端优先重排 均已于 2026-09-25 拍板（选 A + 采纳子问建议）**） |
+| 逐条看待决策事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已决策，#9–#13 延后，#14 2026-09-21 已决策，#15/#16 2026-09-11 已决策：扩展一键填充 P1 做、职位聚合按 P2 启动；**#17 B 端角色、#18 C 端优先重排 均已于 2026-09-25 决策（选 A + 采纳子问建议）**） |
 | 看哪些事被刻意缓做、什么条件下重启 | [deferred-items.md](deferred-items.md) |
 | 接手写代码 / 了解工程硬约束 | [../AGENTS.md](../AGENTS.md) + [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
 | 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
 | 处理 CI 密钥扫描（gitleaks）误报 / 增删 allowlist | [../AGENTS.md](../AGENTS.md)（工程化门禁）+ [../.gitleaks.toml](../.gitleaks.toml) |
-| 部署 / 上线（形态 A/B 反代、生产 env、自动迁移、jobs/demo/auth 定时任务、上线 smoke） | [deployment-runbook-20260920.md](deployment-runbook-20260920.md) ★（形态 C 与 demo 配额已拍板，生产反代拓扑待 staging 实测） |
+| 部署 / 上线（形态 A/B 反代、生产 env、自动迁移、jobs/demo/auth 定时任务、上线 smoke） | [deployment-runbook-20260920.md](deployment-runbook-20260920.md) ★（形态 C 与 demo 配额已决策，生产反代拓扑待 staging 实测） |
 | 真正动手上线形态 C（照勾的分阶段操作序列：Supabase→密钥→OAuth→Vercel→DNS→Actions→预热→落地页→smoke） | [部署执行单-形态C-20260921.md](部署执行单-形态C-20260921.md) ★（配 `tools/gen-deploy-secrets.sh`、`tools/smoke-deploy.sh`；控制台步骤只能本人操作） |
 | 上线前最后核对一遍门禁实测结果（基线/PG 方言/Vercel 产物/smoke/审计/密钥扫描/CWS 素材） | [部署前就绪确认单-20260924.md](部署前就绪确认单-20260924.md) ★（A1–A7 实测记录与两个 smoke 发现的处置） |
 | 查隐私政策 / Chrome Web Store 隐私声明（收集什么、不收集什么、用途、受托方、留存删除、国际传输、用户权利） | [privacy-policy-20260924.md](privacy-policy-20260924.md) ★（中英双语权威源；在线页 `/[locale]/privacy`，CWS 上架填 `https://<app-origin>/en/privacy`） |
@@ -35,7 +35,7 @@
 | 看 AI 求职赛道的竞品认知、机会与跟进清单 | [市场调研-AI求职赛道-20260910.md](市场调研-AI求职赛道-20260910.md) |
 | 看中国招聘市场企业端/求职者端双方痛点与共同根源（量化证据 + 对产品启示） | [市场调研-招聘市场痛点-20260916.md](市场调研-招聘市场痛点-20260916.md) |
 | 看痛点对应解决方案、已覆盖/需新增对位与实施批次（批1 产品化 + 批2 新接口已落地见 handoff item21；批3 待外部条件） | [设计-痛点解决方案-20260916.md](设计-痛点解决方案-20260916.md) |
-| 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（待拍板，handoff item45） |
+| 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（待决策，handoff item45） |
 | 用招聘方核验视图 / 企业人才库 / 投递追踪 / 面试准备包（`?view=recruiter`、`/[locale]/recruit`、`interview-kit.md`、`/candidates` 与 `/applications` 端点） | [API.md](API.md) §3.5/§3.6 + [../handoff.md](../handoff.md) item21 |
 | 写用户可见文案 / 加双语 / 处理语言与分享链接（含扩展面板、MV3 _locales） | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
 | 定颜色、间距、圆角、字号 / 改主题（共享 token 包、Shadow DOM 接入） | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
@@ -47,7 +47,7 @@
 | 改技能标签提取（技术词典 / topics·commit·PR 多信号 / 词边界防误匹配 / 深度与置信度） | [design-skill-extraction-20260915.md](design-skill-extraction-20260915.md) ★ |
 | 融合 GitHub+Gitee 双源（共享 commit oid 识别镜像去重 / fuseInputs 纯函数 / CLI `--platform all` / 在线 `platform=all` 作业与报告页第三平台入口见 §8） | [design-cross-source-fusion-20260915.md](design-cross-source-fusion-20260915.md) ★ |
 | 免注册"试用演示"进入真实产品（已落地：三态身份 / 会话+IP+Worker 三道配额闸 / 预置示例 / 006–008 迁移 / API·report·extension·CLI；上线外部项见 handoff item17） | [design-demo-mode-20260915.md](design-demo-mode-20260915.md) ★ |
-| 针对岗位生成定制简历（已落地 P-R1/P-R2 + P-R3 可闭环子项：resume-core 纯函数 + polish 安全层、CLI build/batch、POST /resumes/build、报告页 ResumeBuilder、扩展深链、本地补填 canonical 统一与跨端自动同步 §5.4.1；真实 LLM/服务端持久化/PDF/版本管理仍待拍板，见 handoff item18/19/24） | [design-targeted-resume-20260915.md](design-targeted-resume-20260915.md) ★ |
+| 针对岗位生成定制简历（已落地 P-R1/P-R2 + P-R3 可闭环子项：resume-core 纯函数 + polish 安全层、CLI build/batch、POST /resumes/build、报告页 ResumeBuilder、扩展深链、本地补填 canonical 统一与跨端自动同步 §5.4.1；真实 LLM/服务端持久化/PDF/版本管理仍待决策，见 handoff item18/19/24） | [design-targeted-resume-20260915.md](design-targeted-resume-20260915.md) ★ |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 装 / 试用浏览器扩展，一键填充 ATS 表单（含真机故障排查：SW 代发、host_permissions 重载、缓存画像 by-subject、跨端同步） | [../apps/extension/README.md](../apps/extension/README.md) + [../apps/extension/INSTALL.md](../apps/extension/INSTALL.md)（真机试用/跨端同步详细步骤，handoff item46） |
