@@ -81,6 +81,13 @@ export class PgProfilesRepository implements IProfilesRepository {
       .where(eq(profilesTable.id, id));
   }
 
+  async unmarkClaimed(id: string): Promise<void> {
+    await this.db
+      .update(profilesTable)
+      .set({ subjectClaimed: false, updatedAt: new Date().toISOString() })
+      .where(eq(profilesTable.id, id));
+  }
+
   async deleteById(id: string): Promise<boolean> {
     const rows = await this.db
       .delete(profilesTable)

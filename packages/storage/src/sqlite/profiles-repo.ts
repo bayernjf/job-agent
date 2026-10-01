@@ -88,6 +88,14 @@ export class SqliteProfilesRepository implements IProfilesRepository {
       .run();
   }
 
+  async unmarkClaimed(id: string): Promise<void> {
+    this.db
+      .update(profilesTable)
+      .set({ subjectClaimed: false, updatedAt: new Date().toISOString() })
+      .where(eq(profilesTable.id, id))
+      .run();
+  }
+
   async deleteById(id: string): Promise<boolean> {
     const info = this.db.delete(profilesTable).where(eq(profilesTable.id, id)).run();
     return Number(info.changes) > 0;
