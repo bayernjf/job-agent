@@ -382,7 +382,7 @@ P2 的目标是**先把库建起来、尽早积累数据**（岗位有时效，�
 
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
-| `JOB_SYNC_SOURCES` | `remoteok,remotive`（P2-A） | 启用源，逗号分隔；P2-B 后加 greenhouse,lever |
+| `JOB_SYNC_SOURCES` | `remoteok,remotive,weworkremotely,greenhouse,lever` | 启用源，逗号分隔（P2-A 两源 → P2-B 加 greenhouse,lever → 2026-10-01 加 weworkremotely） |
 | `JOB_HTTP_TIMEOUT_MS` | `15000` | 单请求超时 |
 | `JOB_HTTP_RETRIES` | `2` | 网络错误/5xx/429 重试次数 |
 | `JOB_STALE_DAYS` | `7` | 连续多少天未再出现置 inactive |
@@ -487,14 +487,14 @@ Greenhouse board / Lever slug 清单：MVP 放 `packages/job-source/src/adapters
 - [x] `packages/storage/src/sqlite/job-postings-repo.ts`
 - [x] `packages/storage/src/postgres/job-postings-repo.ts`
 - [x] `packages/job-source/`（package.json/tsconfig + src 全套，见 §6.1）
-- [x] `tests/fixtures/jobs/*.sample.json`（四源 + HN search/thread 黄金样本）
+- [x] `tests/fixtures/jobs/*.sample.json`（四源 + HN search/thread 黄金样本）；2026-10-01 补 `weworkremotely.sample.rss`（XML 黄金样本）
 - [x] apps/cli 内 `jobs` 命令组（sync/search/stats/match）
 
 **P2-C 新增（HN 自由文本，已落地 2026-09-13）**
 
 - [x] `packages/job-source/src/adapters/hn-whoishiring.ts` + 单测（Algolia 两阶段、header ≥3 段门槛、保守规则解析）
 - [x] `tests/fixtures/jobs/hn-search.sample.json` / `hn-thread.sample.json`
-- [x] registry 条件挂载 HN（默认日更四源不含 HN，仅显式 --source hn_whoishiring 触发）
+- [x] registry 条件挂载 HN（默认日更源不含 HN，仅显式 --source hn_whoishiring 触发）
 
 **P2-D 新增（消费侧，已落地 2026-09-13）**
 
@@ -503,6 +503,15 @@ Greenhouse board / Lever slug 清单：MVP 放 `packages/job-source/src/adapters
 - [x] `apps/api/src/job-postings.test.ts`（端点集成测试）
 - [x] apps/cli `jobs match --skills` + `apps/cli/src/jobs-match.test.ts`
 - [x] `docs/API.md` §3.2 岗位端点契约
+
+**P2-E 新增（We Work Remotely RSS，已落地 2026-10-01）**
+
+- [x] `packages/job-source/src/adapters/weworkremotely.ts` + 单测（官方 RSS/XML，title 按首个冒号拆 `Company: Job Title`，region→location，category/type→tags，pubDate RFC822→ISO）
+- [x] `packages/job-source/src/types.ts` + `http-client.ts`：`JobHttpClient` 增 `getText`（与 `getJson` 共享重试/退避/超时/中止语义，Accept 头区分 JSON 与 XML）
+- [x] `tests/fixtures/jobs/weworkremotely.sample.rss`（真实录制 3 条，描述截断）
+- [x] registry `DEFAULT_SOURCES` 增 `weworkremotely`（整站 feed，排在多 board 源之前）+ CLI `ENABLED_SOURCES` 白名单
+- [x] 备注：WWR 受 Cloudflare 保护，直连可能返回挑战页，生产需 `JOB_HTTP_PROXY`
+- [x] 种子扩充：`SEED_GREENHOUSE_BOARDS` 45→62 家（2026-10-01 对 boards-api 实测 200 且 jobs>0）
 
 **修改（装配点，缺一不可）**
 

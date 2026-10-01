@@ -207,7 +207,7 @@ services:
 
 | 任务 | 命令（容器内） | 建议频率 | 说明 |
 | --- | --- | --- | --- |
-| 岗位日更同步 | `node apps/cli/dist/index.js jobs sync` | 每天 1 次 | 默认四源 remoteok/remotive/greenhouse/lever，`JOB_SYNC_SOURCES` 可调 |
+| 岗位日更同步 | `node apps/cli/dist/index.js jobs sync` | 每天 1 次 | 默认五源 remoteok/remotive/weworkremotely/greenhouse/lever，`JOB_SYNC_SOURCES` 可调 |
 | HN「Who is hiring」 | `node apps/cli/dist/index.js jobs sync --source hn_whoishiring --stale-days 35` | 每月 1 次 | 月度自由文本源，markStale 用 35 天阈值 |
 | demo 数据清理 | `node apps/cli/dist/index.js demo cleanup --retain-hours 24` | 每天 1 次 | 清过期/退出超期演示会话与限流事件 |
 | 认证数据清理 | `node apps/cli/dist/index.js auth cleanup --retain-hours 24 --account-retain-hours 720` | 每天 1 次 | 清过期会话（留 24h）与无活会话的未认领账号（留 30d） |
