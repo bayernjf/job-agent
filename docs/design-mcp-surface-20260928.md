@@ -1,6 +1,6 @@
-# MCP 接入面设计提案（v0，2026-09-28）
+# MCP 接入面设计（v0，2026-09-28 提案 / 2026-10-01 落地）
 
-- 状态：**提案，未开工**。等三件事定下来（§7）才进入实施。
+- 状态：**已落地（2026-10-01，决策 #19 三个子问按建议拍板）**。实现见 `apps/mcp`：stdio server + 四个只读工具（`search_jobs` 公开；`get_profile`/`lookup_profile_by_subject`/`match_profile_to_job` 需 `MCP_API_KEY`），fail-closed、固定窗限流、模块图守护（不直读 storage）、零迁移零内核改动，契约/负向可见性/限流测试共 24 个。§7 三问决策＝① 引 `@modelcontextprotocol/sdk`（仅装 `apps/mcp`，stdio only）② 未配 key fail-closed、生产缺 key 启动即失败 ③ v0 不给证据外链（只留内部 evidenceRefs）。
 - 定位：回答"别的系统（agent / IDE / CLI 工具）要通过 MCP 用 JobAgent，接口长什么样、能看见什么、谁付配额"。
 - 关联：HTTP 契约 [API.md](API.md)、可见性矩阵 [design-auth-gating-20260919.md](design-auth-gating-20260919.md)、画像契约 `packages/shared`、C 端方向 [design-c-side-first-20260925.md](design-c-side-first-20260925.md)。
 

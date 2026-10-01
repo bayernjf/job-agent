@@ -72,6 +72,8 @@
 | `AUTH_CALLBACK_BASE_URL` | 空（按请求推导） | OAuth 回调基址，不带尾斜杠；生产反代/跨子域时显式填域名 |
 | `AUTH_AFTER_LOGIN_URL` | `/` | 登录成功后跳转地址 |
 
+> MCP 接入面（独立 stdio 进程 `apps/mcp`，决策 #19，2026-10-01）另读：`MCP_API_KEY`（默认空＝fail-closed，画像类工具返回 MCP_KEY_REQUIRED 错误码、仅 `search_jobs` 可用；生产缺 key 启动即失败）、`MCP_RATE_WINDOW_MS`（默认 `60000`）、`MCP_RATE_LIMIT_PER_WINDOW`（默认 `60`），IP 哈希复用 `DEMO_IP_SALT`。
+
 > Worker 侧另有 `DEMO_MAX_CONCURRENT`（默认 1）、`DEMO_BACKOFF_MS`（默认 15000），全部演示变量的权威表见设计文档 §13。
 
 ---
