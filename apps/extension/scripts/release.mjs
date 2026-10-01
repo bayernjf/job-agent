@@ -22,7 +22,7 @@
  * Output: release/jobagent-extension-v<version>.zip (gitignored, never committed).
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -72,13 +72,26 @@ const build = spawnSync(process.execPath, [path.join(extRoot, 'build.mjs')], {
 });
 if (build.status !== 0) fail('release build failed.');
 
-// 2. Assert the baked manifest contains no local grants (defense in depth;
-//    build.mjs already filters them, but a CWS zip with localhost is unrecoverable).
+// 2. Assert the release bundle contains no localhost/127.0.0.1 strings anywhere
+//    (defense in depth; build.mjs already filters manifest grants, but a CWS zip
+//    with localhost — e.g. in i18n placeholder text — is a review blocker and is
+//    unrecoverable once submitted).
 const manifestPath = path.join(distDir, 'manifest.json');
 if (!existsSync(manifestPath)) fail(`dist/manifest.json not found after build at ${manifestPath}.`);
-const manifestText = readFileSync(manifestPath, 'utf8');
-if (/(localhost|127\.0\.0\.1)/.test(manifestText)) {
-  fail('dist/manifest.json still contains a localhost/127.0.0.1 entry:\n' + manifestText);
+const textExts = new Set(['.js', '.json', '.html', '.css']);
+const localMatches = [];
+for (const name of readdirSync(distDir)) {
+  const ext = path.extname(name);
+  if (!textExts.has(ext)) continue;
+  const lines = readFileSync(path.join(distDir, name), 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    if (/(localhost|127\.0\.0\.1)/.test(line)) {
+      localMatches.push(`${name}:${i + 1}: ${line.trim().slice(0, 120)}`);
+    }
+  });
+}
+if (localMatches.length > 0) {
+  fail('release bundle still contains localhost/127.0.0.1 strings:\n' + localMatches.join('\n'));
 }
 
 // 3. Zip with manifest.json at the archive root (CWS requirement: no dist/ prefix).
