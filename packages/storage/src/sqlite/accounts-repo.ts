@@ -101,6 +101,15 @@ export class SqliteAccountsRepository implements IAccountsRepository {
     return this.getById(accountId);
   }
 
+  async clearClaimedProfileByProfileId(profileId: string): Promise<number> {
+    const result = this.db
+      .update(t)
+      .set({ claimedProfileId: null, updatedAt: new Date().toISOString() })
+      .where(eq(t.claimedProfileId, profileId))
+      .run();
+    return result.changes ?? 0;
+  }
+
   async declareRecruiter(
     accountId: string,
     nowIso: string,

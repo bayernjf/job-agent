@@ -105,3 +105,16 @@ export type {
   RawAuthSessionRow,
 } from './auth-session.js';
 export { AUTH_SESSION_STATUSES, toStoredAuthSession } from './auth-session.js';
+
+export type {
+  RemovalRequestStatus,
+  RemovalDecision,
+  StoredProfileRemovalRequest,
+  NewProfileRemovalRequest,
+  RawProfileRemovalRequestRow,
+} from './profile-removal-request.js';
+export {
+  REMOVAL_REQUEST_STATUSES,
+  REMOVAL_DECISIONS,
+  toStoredProfileRemovalRequest,
+} from './profile-removal-request.js';

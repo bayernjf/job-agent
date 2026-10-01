@@ -43,6 +43,7 @@ const TABLES = [
   'interviews',
   'accounts',
   'authSessions',
+  'profileRemovalRequests',
 ] as const;
 
 describe('sqlite/postgres schema parity', () => {

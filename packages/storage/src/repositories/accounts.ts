@@ -20,6 +20,11 @@ export interface IAccountsRepository {
   /** 撤销认领（B2 自助删除画像时把 claimed_profile_id 置空）；账号不存在返回 undefined */
   clearClaimedProfile(accountId: string): Promise<StoredAccount | undefined>;
   /**
+   * 按画像撤销认领指针（S3 复核批准走 CLI，拿不到 accountId）：把
+   * claimed_profile_id 等于该画像的账号一律置空，返回被清理的账号数。
+   */
+  clearClaimedProfileByProfileId(profileId: string): Promise<number>;
+  /**
    * F10 招聘方显式自声明（决策 #17 第一期）：把 recruiter_declared_at 置为当前
    * UTC ISO8601；幂等（已声明则保留原时刻），账号不存在返回 undefined。
    */

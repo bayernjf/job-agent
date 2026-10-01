@@ -31,6 +31,8 @@ export const profiles = pgTable(
     analysisLayers: text('analysis_layers').notNull().default('["L0","L1"]'),
     status: text('status').notNull().default('partial'),
     snapshot: text('snapshot').notNull(),
+    /** S3 软挂起标记：UTC ISO8601 首个 pending 移除申请的提交时刻；NULL = 无未决申请 */
+    removalRequestedAt: text('removal_requested_at'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -368,3 +370,27 @@ export const interviews = pgTable(
 
 export type InterviewInsert = typeof interviews.$inferInsert;
 export type InterviewSelect = typeof interviews.$inferSelect;
+
+/** profile_removal_requests 表——画像移除申请单（迁移 016，审计 S3）；列集合与 sqlite 对齐。 */
+export const profileRemovalRequests = pgTable(
+  'profile_removal_requests',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    status: text('status').notNull().default('pending'),
+    reason: text('reason'),
+    contact: text('contact'),
+    ipHash: text('ip_hash'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    decidedAt: text('decided_at'),
+  },
+  (table) => [
+    index('idx_prr_profile_status').on(table.profileId, table.status),
+    index('idx_prr_status_created').on(table.status, table.createdAt),
+  ],
+);
+
+export type ProfileRemovalRequestInsert = typeof profileRemovalRequests.$inferInsert;
+export type ProfileRemovalRequestSelect = typeof profileRemovalRequests.$inferSelect;

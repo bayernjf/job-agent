@@ -263,6 +263,33 @@ describe('migrations', () => {
     expect(interviewIndexes.map((i) => i.name)).toContain('idx_interviews_profile_start');
     expect(interviewIndexes.map((i) => i.name)).toContain('idx_interviews_application');
 
+    // 016/017（S3 按主体撤回）：申请单表 + profiles 挂起标记
+    expect(tables.map((t) => t.name)).toContain('profile_removal_requests');
+    const removalColumns = db
+      .prepare('PRAGMA table_info(profile_removal_requests)')
+      .all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'profile_id',
+      'status',
+      'reason',
+      'contact',
+      'ip_hash',
+      'created_at',
+      'decided_at',
+    ]) {
+      expect(removalColumns.map((c) => c.name)).toContain(expected);
+    }
+    const removalIndexes = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='profile_removal_requests'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(removalIndexes.map((i) => i.name)).toContain('idx_prr_profile_status');
+    expect(removalIndexes.map((i) => i.name)).toContain('idx_prr_status_created');
+    const profileRemovalCols = db.prepare('PRAGMA table_info(profiles)').all() as Array<{ name: string }>;
+    expect(profileRemovalCols.map((c) => c.name)).toContain('removal_requested_at');
+
     db.close();
   });
 
@@ -314,6 +341,28 @@ describe('migrations', () => {
   it('rolls back migrations in reverse order with their down scripts', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
+
+    // 回滚 017（profiles 去掉 removal_requested_at 挂起标记，表本身仍在）
+    const profileColsBefore17 = db.prepare('PRAGMA table_info(profiles)').all() as Array<{ name: string }>;
+    expect(profileColsBefore17.map((c) => c.name)).toContain('removal_requested_at');
+    const result17 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result17.version).toBe('017');
+    const profileColsAfter17 = db.prepare('PRAGMA table_info(profiles)').all() as Array<{ name: string }>;
+    expect(profileColsAfter17.map((c) => c.name)).not.toContain('removal_requested_at');
+    expect(profileColsAfter17.map((c) => c.name)).toContain('subject_login'); // 只丢列，不丢表
+
+    // 回滚 016（profile_removal_requests 整表）
+    const remTablesBefore16 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(remTablesBefore16.map((t) => t.name)).toContain('profile_removal_requests');
+    const result16 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result16.version).toBe('016');
+    const remTablesAfter16 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(remTablesAfter16.map((t) => t.name)).not.toContain('profile_removal_requests');
+    expect(remTablesAfter16.map((t) => t.name)).toContain('accounts'); // 015 还在
 
     // 回滚 015（accounts 去掉 recruiter_declared_at，表本身仍在）
     const accountColsBefore15 = db.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>;

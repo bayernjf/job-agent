@@ -33,6 +33,7 @@ export class PgProfilesRepository implements IProfilesRepository {
         analysisLayers: JSON.stringify(profile.analysisLayers ?? ['L0', 'L1']),
         status: profile.status ?? 'partial',
         snapshot: JSON.stringify(profile.snapshot),
+        removalRequestedAt: profile.removalRequestedAt ?? null,
       });
   }
 
@@ -85,6 +86,13 @@ export class PgProfilesRepository implements IProfilesRepository {
     await this.db
       .update(profilesTable)
       .set({ subjectClaimed: false, updatedAt: new Date().toISOString() })
+      .where(eq(profilesTable.id, id));
+  }
+
+  async setRemovalRequestedAt(id: string, requestedAt: string | null): Promise<void> {
+    await this.db
+      .update(profilesTable)
+      .set({ removalRequestedAt: requestedAt, updatedAt: new Date().toISOString() })
       .where(eq(profilesTable.id, id));
   }
 
