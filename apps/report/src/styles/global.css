@@ -160,6 +160,40 @@ h4 { font-size: var(--ja-text-lg); }
   max-width: none;
   margin-bottom: var(--ja-space-4);
 }
+.ja-alert--removal {
+  background: var(--ja-color-neutral-100);
+  color: var(--ja-color-info);
+  border-color: var(--ja-color-info);
+  max-width: none;
+  margin-bottom: var(--ja-space-4);
+}
+
+/* S3 按主体撤回：未认领画像公开申请入口 */
+.removal-request {
+  display: inline-block;
+  margin-top: var(--ja-space-3);
+}
+.removal-request > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.removal-request__hint {
+  margin: var(--ja-space-2) 0;
+}
+.removal-request__field {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  margin-top: var(--ja-space-2);
+  padding: var(--ja-space-2);
+  border: 1px solid var(--ja-color-neutral-300);
+  border-radius: var(--ja-radius-sm);
+  font: inherit;
+}
+.removal-request__error {
+  color: var(--ja-color-danger-fg);
+  margin-top: var(--ja-space-2);
+}
 
 /* ─── AccountMenu / ClaimProfile 认证 islands ─────────────────────── */
 

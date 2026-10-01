@@ -7,6 +7,7 @@ import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
 import ClaimProfile from '../../../components/ClaimProfile.tsx';
 import UnclaimProfile from '../../../components/UnclaimProfile.tsx';
+import RemovalRequest from '../../../components/RemovalRequest.tsx';
 import GateCard from '../../../components/GateCard.astro';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
@@ -68,6 +69,9 @@ const isPartialProfile = profileRecord.status === 'partial';
 
 // 融合画像标识只存在于存储行 subjectPlatform 列（snapshot.subject.platform 恒为主源 github）
 const isFusedProfile = profileRecord?.subjectPlatform === 'all';
+
+// S3 软挂起：画像已收到未决移除申请（removal_requested_at 非空）时，SSR 顶部标注「处理中」
+const isHeldForRemoval = Boolean(profileRecord?.removalRequestedAt);
 
 // headline 按读者语言现拼（T07）：快照里的 summary.headline 是数据层英文原文，
 // 中文报告页不该露一句英文；组装只读快照已有事实，不新增结论。
@@ -158,6 +162,12 @@ const applicationStatusLabels = {
         {t('report.partialNotice')}
       </div>
     )}
+    <!-- S3 软挂起：画像已收到移除申请、处理中（不再被公开分发） -->
+    {isHeldForRemoval && (
+      <div class="ja-alert ja-alert--removal" data-testid="removal-notice" role="status">
+        {t('report.removal.notice')}
+      </div>
+    )}
     <!-- 头部：账号信息 + 真实性徽章 + 分享 -->
     <section class="ja-card profile-header">
       <div class="profile-id">
@@ -218,7 +228,25 @@ const applicationStatusLabels = {
               hintLabel={t('report.claim.hint')}
               unclaimedNoticeTestId="unclaimed-notice"
             />
-          )
+          )}
+          {
+            /* S3 按主体撤回：未认领且尚未软挂起的画像，挂载公开申请入口；
+               已挂起（isHeldForRemoval）由顶部标注条接管，不再重复展示表单。 */
+            !profile.subject.claimed && !isHeldForRemoval && (
+              <RemovalRequest
+                client:load
+                apiBase={apiBase}
+                profileId={profileId!}
+                ctaLabel={t('report.removal.cta')}
+                submittingLabel={t('report.removal.submitting')}
+                submittedLabel={t('report.removal.submitted')}
+                errorLabel={t('report.removal.error')}
+                reasonPlaceholder={t('report.removal.reasonPlaceholder')}
+                contactPlaceholder={t('report.removal.contactPlaceholder')}
+                hintLabel={t('report.removal.hint')}
+              />
+            )
+          }
         }
         <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
         <a
