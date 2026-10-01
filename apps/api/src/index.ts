@@ -2013,7 +2013,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // POST /interviews：为候选人安排面试（可关联一条投递；关联后把早期阶段投递推进到 interview）
   app.post('/interviews', async (c) => {
-    // F10（#17 第一期）：面试计划写侧只对已声明招聘方开放（§8 子问题 1 已拍板收紧）。
+    // F10（#17 第一期）：面试计划写侧只对已声明招聘方开放（§8 子问题 1 已决策收紧）。
     const recruiter = await requireRecruiter(c, repos.accounts);
     if (recruiter instanceof Response) return recruiter;
     const principal = recruiter.principal;

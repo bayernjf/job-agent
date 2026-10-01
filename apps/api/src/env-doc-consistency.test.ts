@@ -4,7 +4,7 @@
  *
  * 路由面已有 api-doc-consistency.test.ts 双向守护，env 面此前只靠人工对齐：
  * 漏配 `API_MOUNT_PREFIX` 会让生产 OAuth 回调 404（真实踩过，见
- * docs/handoff-archive-2026-09-20.md §3），文档里的默认值也会随拍板漂移
+ * docs/handoff-archive-2026-09-20.md §3），文档里的默认值也会随决策漂移
  * （`DEMO_SESSION_TTL_MS` 曾长期写着已废弃的 7 天）。这里把 key 集合与
  * 可机读的数值默认值钉成测试，只读文件、零副作用、不打网络。
  */

@@ -461,7 +461,7 @@ Greenhouse board / Lever slug 清单：MVP 放 `packages/job-source/src/adapters
 
 ---
 
-## 13. 开放项（落代码前/中需拍板，先给推荐，不臆断）
+## 13. 开放项（落代码前/中需决策，先给推荐，不臆断）
 
 | # | 开放项 | 本设计推荐（MVP） | 待确认点 |
 | --- | --- | --- | --- |

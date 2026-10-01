@@ -3,8 +3,8 @@
  *
  * 单一事实源：所有 DEMO_* / CORS / TRUST_PROXY 环境变量只在这里读取一次，
  * 非法值回退默认并 warn，不在各端点散落 process.env。纯函数便于单测。
- * 融合作业权重 fusionAnalyzeCost 已于 2026-09-18 拍板（all 扣 2，可经 DEMO_FUSION_QUOTA_COST 调）；
- * 其余配额仍为待拍板建议值（§16-#1/#3），代码走可配默认、不写死业务决策。
+ * 融合作业权重 fusionAnalyzeCost 已于 2026-09-18 决策（all 扣 2，可经 DEMO_FUSION_QUOTA_COST 调）；
+ * 其余配额仍为待决策建议值（§16-#1/#3），代码走可配默认、不写死业务决策。
  */
 
 export interface DemoPresetLogin {
@@ -35,7 +35,7 @@ export interface DemoConfig {
   backoffMs: number;
   /** IP 哈希盐；空串=进程内随机（生产必须显式配置，否则重启后旧窗口失效） */
   ipSalt: string;
-  /** 预置示例账号清单（DEMO_PRESET_LOGINS 覆盖；默认空，待拍板 §16-#5，不写死） */
+  /** 预置示例账号清单（DEMO_PRESET_LOGINS 覆盖；默认空，待决策 §16-#5，不写死） */
   presetLogins: ReadonlyArray<DemoPresetLogin>;
   /** 跨域部署形态 B 的 Origin 白名单（空=保持现状宽松、不发凭证 Cookie） */
   corsAllowOrigins: ReadonlyArray<string>;
@@ -46,9 +46,9 @@ export interface DemoConfig {
 }
 
 export const DEMO_DEFAULTS = {
-  sessionTtlMs: 24 * 60 * 60 * 1000, // 86400000，24 小时（2026-09-21 拍板，#14 同批）
+  sessionTtlMs: 24 * 60 * 60 * 1000, // 86400000，24 小时（2026-09-21 决策，#14 同批）
   analyzeQuota: 3,
-  fusionAnalyzeCost: 2, // platform=all 双源融合约 2x 成本，一次扣 2（2026-09-18 拍板）
+  fusionAnalyzeCost: 2, // platform=all 双源融合约 2x 成本，一次扣 2（2026-09-18 决策）
   sessionRatePerHour: 5,
   analyzeRatePerHour: 10,
   matchRatePerHour: 60,

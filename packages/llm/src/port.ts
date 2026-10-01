@@ -2,8 +2,8 @@
  * LLM 客户端端口（provider-agnostic）。
  *
  * 内核（analyzer-core / resume-core 的 polishResume 安全层）不直接依赖任何厂商 SDK，
- * 只依赖此接口；真实厂商 adapter（OpenAI / AnthropIC / 国内厂商等）在**用户拍板
- * 厂商、单价与预算后**（简历设计 §10 待拍板 #4）再新增，当前仓库不接真实密钥、不发外网请求。
+ * 只依赖此接口；真实厂商 adapter（OpenAI / AnthropIC / 国内厂商等）在**用户决策
+ * 厂商、单价与预算后**（简历设计 §10 待决策 #4）再新增，当前仓库不接真实密钥、不发外网请求。
  *
  * 接入真实厂商时新增 `createXxxClient(env)`：
  *  - 凭证只从服务端环境变量读取：`LLM_API_KEY`（必填）、`LLM_BASE_URL`、`LLM_MODEL`，

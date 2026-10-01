@@ -146,7 +146,7 @@ ATS `FillValue` 联合类型与 `LocalAtsFieldsSchema` 都没有 website/persona
 
 ## 7. 未决产品 / 外部项（本批发现，未擅自扩范围）
 
-1. **两端本地档案字段不对称**：报告页 ResumeBuilder 表单有 fullName/email/phone/location/**personalSite**（**无 linkedinUrl**）；扩展面板 Local details 有 email/phone/location/**linkedin**（**无 personalSite**）。于是 LinkedIn 只能在面板补、personalSite 只能在报告页补（#57 真机的 Website 值即来自报告页推送、面板无输入框）。是否两端对齐（报告页补 LinkedIn、面板补 personalSite）待拍板。
+1. **两端本地档案字段不对称**：报告页 ResumeBuilder 表单有 fullName/email/phone/location/**personalSite**（**无 linkedinUrl**）；扩展面板 Local details 有 email/phone/location/**linkedin**（**无 personalSite**）。于是 LinkedIn 只能在面板补、personalSite 只能在报告页补（#57 真机的 Website 值即来自报告页推送、面板无输入框）。是否两端对齐（报告页补 LinkedIn、面板补 personalSite）待决策。
 2. **生产占位域**：`manifest.json` 的 `host_permissions` 与 `externally_connectable` 白名单仍含占位 `https://job-agent.bayjf.com/*`，形态 C 确定真实 API/报告页域后必须改域并重建 dist（deferred「生产报告页域名与扩展白名单」在册）。`optional_host_permissions` 运行时扩域未做，可入 deferred。
 3. **Workday 端到端仍待验证**：未改 workday 适配器（骨架），待找到直渲染 `data-automation-id` 表单且 API 可访问的真实租户页（触发条件沿用既有已知限制）。
 4. 真实 CWS 上架、生产 API 构建重截（去 localhost 占位）、真人试用仍为外部项。

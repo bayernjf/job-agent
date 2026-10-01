@@ -18,7 +18,7 @@ AuthMe 返回约定：匿名/演示只回 `{kind}`；user 回 `{kind:'user',acco
 
 ## 2. item29 账号主脊前端接线 + 认证数据运维清理（2026-09-19，3 个代码原子提交）
 
-> 用户拍板「搞 1 和 2」：①把已落地的认证后端接到报告页前端（item28-⑤）；②照 `demo cleanup` 给 CLI 加 `auth cleanup`（item28-④ 本体，cron 调度随部署）。**未授权**「授权分级闸（未登录看他人画像折叠哪些模块）」，本批不做。3 个代码提交：`d88328a` feat(db) → `c6492ab` feat(cli) → `a914500` feat(report)；文档随末个 docs 提交。
+> 用户决策「搞 1 和 2」：①把已落地的认证后端接到报告页前端（item28-⑤）；②照 `demo cleanup` 给 CLI 加 `auth cleanup`（item28-④ 本体，cron 调度随部署）。**未授权**「授权分级闸（未登录看他人画像折叠哪些模块）」，本批不做。3 个代码提交：`d88328a` feat(db) → `c6492ab` feat(cli) → `a914500` feat(report)；文档随末个 docs 提交。
 
 ### 2.1 storage 清理方法（`d88328a`，双方言）
 
