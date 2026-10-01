@@ -6,6 +6,7 @@ import { parseRemoteOkPosts } from './remoteok.js';
 import { parseRemotiveJobs } from './remotive.js';
 import { parseGreenhouseJobs } from './greenhouse.js';
 import { parseLeverPostings } from './lever.js';
+import { parseWwrRss } from './weworkremotely.js';
 
 const FIXTURES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -13,6 +14,9 @@ const FIXTURES_DIR = path.resolve(
 );
 function load(name: string): unknown {
   return JSON.parse(readFileSync(path.join(FIXTURES_DIR, name), 'utf8'));
+}
+function loadText(name: string): string {
+  return readFileSync(path.join(FIXTURES_DIR, name), 'utf8');
 }
 
 const FETCHED = '2026-09-13T00:00:00.000Z';
@@ -125,5 +129,52 @@ describe('Lever adapter parse (real fixture)', () => {
     const b = result.postings[1]!;
     expect(b.description).not.toBeNull();
     expect(b.description).toContain('Senior Software Engineer');
+  });
+});
+
+describe('We Work Remotely adapter parse (real RSS fixture)', () => {
+  const result = parseWwrRss(loadText('weworkremotely.sample.rss'), FETCHED);
+
+  it('maps 3 items with no invalid rows', () => {
+    expect(result.postings).toHaveLength(3);
+    expect(result.invalid).toBe(0);
+  });
+
+  it('splits "Company: Job Title" and decodes entities in the title', () => {
+    const a = result.postings[0]!;
+    expect(a.source).toBe('weworkremotely');
+    expect(a.company).toBe('Limitless Technology');
+    expect(a.title).toBe('Japanese Speaking Customer Service Agent - for Netflix Japan');
+    expect(a.jobId).toBe('limitless-technology-japanese-speaking-customer-service-agent-for-netflix-japan');
+    expect(a.sourceUrl).toBe(
+      'https://weworkremotely.com/remote-jobs/limitless-technology-japanese-speaking-customer-service-agent-for-netflix-japan',
+    );
+
+    const b = result.postings[1]!;
+    expect(b.company).toBe('Melio');
+    expect(b.title).toBe('Senior Account Executive, Strategic Partnerships & Affiliates'); // &amp; decoded
+  });
+
+  it('marks every item remote and maps region/category/type', () => {
+    const a = result.postings[0]!;
+    expect(a.remote).toBe(true);
+    expect(a.location).toBe('Anywhere in the World');
+    expect(a.tags).toContain('Customer Support');
+    expect(a.tags).toContain('Full-Time');
+  });
+
+  it('parses RFC822 pubDate and strips escaped HTML from description', () => {
+    const a = result.postings[0]!;
+    expect(a.postedAt).toBe('2026-10-01T08:39:07.000Z');
+    expect(a.description).toContain('Headquarters:');
+    expect(a.description).not.toContain('&lt;');
+    expect(a.description).not.toContain('<p>');
+  });
+
+  it('captures the media:content logo only when present', () => {
+    expect(result.postings[0]!.companyLogoUrl).toBe(
+      'https://wwr-pro.s3.amazonaws.com/logos/0171/6502/logo.gif',
+    );
+    expect(result.postings[2]!.companyLogoUrl).toBeUndefined();
   });
 });

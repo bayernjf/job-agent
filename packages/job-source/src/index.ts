@@ -22,6 +22,11 @@ export {
   type RemotiveRawJob,
 } from './adapters/remotive.js';
 export {
+  WeworkRemotelyAdapter,
+  parseWwrRss,
+  WWR_ENDPOINT,
+} from './adapters/weworkremotely.js';
+export {
   GreenhouseAdapter,
   parseGreenhouseJobs,
   type GreenhouseBoard,
