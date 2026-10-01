@@ -434,7 +434,7 @@ export const RequesterKindSchema = z.enum(REQUESTER_KINDS);
 export type RequesterKind = z.infer<typeof RequesterKindSchema>;
 // 'user' is reserved for the future accounts milestone and is never produced today.
 
-export const DEMO_RATE_KINDS = ['session', 'analyze'] as const;
+export const DEMO_RATE_KINDS = ['session', 'analyze', 'match', 'subject'] as const;
 export const DemoRateKindSchema = z.enum(DEMO_RATE_KINDS);
 
 /** GET /demo/me 响应体契约 */
@@ -754,6 +754,7 @@ demo.establishing        正在进入演示… / Starting demo…
 | `DEMO_SESSION_RATE_PER_HOUR` | `5` | 单 IP 每小时建会话上限 |
 | `DEMO_ANALYZE_RATE_PER_HOUR` | `10` | 单 IP 每小时触发分析上限 |
 | `DEMO_MATCH_RATE_PER_HOUR` | `60` | match 只读计算的 IP 兜底窗口 |
+| `DEMO_SUBJECT_RATE_PER_HOUR` | `120` | `GET /profiles/by-subject/:platform/:login` 公开主体解析的 IP 兜底窗口（任何身份放行，仅防 login 字典枚举） |
 | `DEMO_MAX_CONCURRENT` | `1` | Worker 同时运行的 demo job 上限 |
 | `DEMO_BACKOFF_MS` | `15000` | demo 并发闸触发后的退避毫秒 |
 | `DEMO_IP_SALT` | 空（进程内随机，生产必填） | IP 哈希盐，见 §12-2 |
