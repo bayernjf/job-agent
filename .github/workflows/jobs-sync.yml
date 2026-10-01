@@ -12,7 +12,7 @@ name: Jobs sync
 #                 multi-statement batches).
 # Optional secrets:
 #   JOB_HTTP_PROXY  Outbound proxy if the runner network needs one.
-# No GitHub/Gitee token is needed: the five job sources are public APIs.
+# No GitHub/Gitee token is needed: the six job sources are public APIs.
 #
 # Manual runs: Actions → Jobs sync → Run workflow, pick daily or hn-monthly.
 #
@@ -22,7 +22,7 @@ name: Jobs sync
 
 on:
   schedule:
-    # Daily sources (RemoteOK/Remotive/Greenhouse/Lever), mark stale after 7d.
+    # Daily sources (RemoteOK/Remotive/WeWorkRemotely/Greenhouse/Lever), mark stale after 7d.
     # Off the top of the hour; UTC (18:17 UTC ≈ next-morning Asia time).
     - cron: '17 18 * * *'
     # HN "Who is hiring" is a monthly free-text thread; day 1, 18:42 UTC.
