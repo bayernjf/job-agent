@@ -186,7 +186,9 @@ export function searchCandidates(
   query: CandidateSearchQuery,
 ): CandidateSearchResult {
   const sortBy: CandidateSortBy = query.sortBy ?? 'confidence_desc';
-  const matched = rows
+  // S3 软挂起：有未决移除申请的画像不再被人才库分发（复核批准后会整行删除）
+  const eligible = rows.filter((row) => !row.removalRequestedAt);
+  const matched = eligible
     .map(toCandidateSummary)
     .filter((c): c is CandidateSummary => c !== null)
     .map((c) => evaluate(c, query))

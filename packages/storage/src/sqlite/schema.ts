@@ -29,6 +29,8 @@ export const profiles = sqliteTable(
     analysisLayers: text('analysis_layers').notNull().default('["L0","L1"]'),
     status: text('status').notNull().default('partial'),
     snapshot: text('snapshot').notNull(),
+    /** S3 软挂起标记：UTC ISO8601 首个 pending 移除申请的提交时刻；NULL = 无未决申请 */
+    removalRequestedAt: text('removal_requested_at'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
@@ -407,3 +409,31 @@ export const interviews = sqliteTable(
 
 export type InterviewInsert = typeof interviews.$inferInsert;
 export type InterviewSelect = typeof interviews.$inferSelect;
+
+/**
+ * profile_removal_requests 表——画像移除申请单（迁移 016，审计 S3）。
+ * 未认领画像的分享链无法由本人自助撤销，故开放「提交申请 + 人工复核」通道：
+ * 请求者不可被认证，申请只留痕（理由/联系方式/IP 哈希），由运营在 CLI 结单。
+ */
+export const profileRemovalRequests = sqliteTable(
+  'profile_removal_requests',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    status: text('status').notNull().default('pending'),
+    reason: text('reason'),
+    contact: text('contact'),
+    ipHash: text('ip_hash'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    decidedAt: text('decided_at'),
+  },
+  (table) => [
+    index('idx_prr_profile_status').on(table.profileId, table.status),
+    index('idx_prr_status_created').on(table.status, table.createdAt),
+  ],
+);
+
+export type ProfileRemovalRequestInsert = typeof profileRemovalRequests.$inferInsert;
+export type ProfileRemovalRequestSelect = typeof profileRemovalRequests.$inferSelect;

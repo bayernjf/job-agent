@@ -21,6 +21,11 @@ export interface StoredProfile {
   analysisLayers: string[];
   status: ProfileStatus;
   snapshot: AbilityProfile | null;
+  /**
+   * S3 软挂起标记：UTC ISO8601——首个 pending 移除申请的提交时刻；null = 无未决申请。
+   * 挂起期间画像不再被 by-subject 解析与人才库检索分发，报告页显示「已收到移除申请」。
+   */
+  removalRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +41,8 @@ export interface NewProfile {
   analysisLayers?: string[];
   status?: ProfileStatus;
   snapshot: AbilityProfile;
+  /** S3 软挂起标记：插入时可直接带值（默认 null）；详见 StoredProfile.removalRequestedAt */
+  removalRequestedAt?: string | null;
 }
 
 /** Drizzle 查询返回的原始行（camelCase），两方言结构一致 */
@@ -50,6 +57,8 @@ export interface RawProfileRow {
   analysisLayers: string;
   status: string;
   snapshot: string;
+  /** 017 之前写入的旧行没有这一列（Drizzle 返回 undefined），归一为 null */
+  removalRequestedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,6 +93,7 @@ export function toStoredProfile(row: RawProfileRow): StoredProfile {
       ? (row.status as ProfileStatus)
       : 'error',
     snapshot: parseSnapshot(row.snapshot),
+    removalRequestedAt: row.removalRequestedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

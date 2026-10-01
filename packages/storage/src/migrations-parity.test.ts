@@ -44,6 +44,7 @@ const TABLES = [
   'demo_sessions',
   'demo_rate_events',
   'applications',
+  'profile_removal_requests',
 ];
 
 describe('sqlite/postgres migration parity', () => {

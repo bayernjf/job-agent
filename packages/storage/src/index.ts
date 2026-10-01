@@ -28,6 +28,7 @@ export type { IApplicationsRepository } from './repositories/applications.js';
 export type { IInterviewsRepository, InterviewListFilter } from './repositories/interviews.js';
 export type { IAccountsRepository } from './repositories/accounts.js';
 export type { IAuthSessionsRepository } from './repositories/auth-sessions.js';
+export type { IProfileRemovalRequestsRepository } from './repositories/profile-removal-requests.js';
 
 // 实体领域类型
 export type {
@@ -86,6 +87,11 @@ export type {
   StoredAuthSession,
   NewAuthSession,
 } from './entities/auth-session.js';
+export type {
+  RemovalRequestStatus,
+  StoredProfileRemovalRequest,
+  NewProfileRemovalRequest,
+} from './entities/profile-removal-request.js';
 export type {
   CandidateSkill,
   CandidateSummary,

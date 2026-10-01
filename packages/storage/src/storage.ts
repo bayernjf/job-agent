@@ -12,6 +12,7 @@ import { SqliteApplicationsRepository } from './sqlite/applications-repo.js';
 import { SqliteInterviewsRepository } from './sqlite/interviews-repo.js';
 import { SqliteAccountsRepository } from './sqlite/accounts-repo.js';
 import { SqliteAuthSessionsRepository } from './sqlite/auth-sessions-repo.js';
+import { SqliteProfileRemovalRequestsRepository } from './sqlite/profile-removal-requests-repo.js';
 import { openPostgres } from './postgres/connection.js';
 import { runPgMigrations } from './postgres/migrator.js';
 import { PgProfilesRepository } from './postgres/profiles-repo.js';
@@ -24,6 +25,7 @@ import { PgApplicationsRepository } from './postgres/applications-repo.js';
 import { PgInterviewsRepository } from './postgres/interviews-repo.js';
 import { PgAccountsRepository } from './postgres/accounts-repo.js';
 import { PgAuthSessionsRepository } from './postgres/auth-sessions-repo.js';
+import { PgProfileRemovalRequestsRepository } from './postgres/profile-removal-requests-repo.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -74,6 +76,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       interviews: new PgInterviewsRepository(db),
       accounts: new PgAccountsRepository(db),
       authSessions: new PgAuthSessionsRepository(db),
+      profileRemovalRequests: new PgProfileRemovalRequestsRepository(db),
       migrate: async () => runPgMigrations(client, migrationsDir),
       ping: async () => {
         await client.unsafe('SELECT 1');
@@ -102,6 +105,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     interviews: new SqliteInterviewsRepository(db),
     accounts: new SqliteAccountsRepository(db),
     authSessions: new SqliteAuthSessionsRepository(db),
+    profileRemovalRequests: new SqliteProfileRemovalRequestsRepository(db),
     migrate: async () => runMigrations(client, migrationsDir),
     ping: async () => {
       client.prepare('SELECT 1 AS ok').get();
