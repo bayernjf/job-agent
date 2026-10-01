@@ -1924,10 +1924,17 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
       if (application.profileId !== data.profileId) {
         return c.json({ error: 'application does not belong to the given profile' }, 400);
       }
-      // 仅在投递尚处早期阶段时推进到 interview；offer/rejected/withdrawn 等终态不回退
+      // 仅在投递尚处早期阶段时推进到 interview；offer/rejected/withdrawn 等终态不回退。
+      // 必须传 principal.accountId 启用行级归属校验（audit S2）：已认领画像的投递归候选人
+      // 本人，招聘方不跨主体改写（有主行非主时仓储返回 undefined，此处静默 no-op，面试照常
+      // 创建）；只有无主行（匿名/历史写入）才被推进。
       const earlyStages: ApplicationStatus[] = ['saved', 'applied', 'viewed'];
       if (earlyStages.includes(application.status)) {
-        await repos.applications.update(application.id, { status: 'interview' });
+        await repos.applications.update(
+          application.id,
+          { status: 'interview' },
+          principal.accountId,
+        );
       }
     }
 
