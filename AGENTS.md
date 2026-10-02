@@ -14,7 +14,7 @@
 
 ## 项目概览
 
-JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`，剩 J 阶段人工 smoke 与生产 cron/轮询待确认；阶段与待办以 handoff.md 为准）；**求职 Agent 阶段 1「求职工作台」代码已落地（2026-10-03，见运行架构第 10 条；未部署到生产）**，阶段 2（半自动投递）待拍板。
+JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`，剩 J 阶段人工 smoke 与生产 cron/轮询待确认；阶段与待办以 handoff.md 为准）；**求职 Agent 阶段 1「求职工作台」代码已落地（2026-10-03，见运行架构第 10 条；未部署到生产）**；阶段 2/3 的边界已由决策 #20 拍板（2026-10-03：**填完等用户点提交**／快照暂不落库／复盘人工确认且样本 ≥20／对招聘方披露「AI 辅助投递」），待开工。
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
