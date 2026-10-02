@@ -21,18 +21,30 @@ function read(file: string): string {
   return fs.readFileSync(file, 'utf8');
 }
 
+/**
+ * 去掉整行 `--` 注释：列注释里可能出现 `(UTC ISO8601);` 这类文本，
+ * 会让非贪婪的 CREATE TABLE 块匹配在注释中的 `);` 处提前截断。
+ */
+function stripComments(sql: string): string {
+  return sql
+    .split('\n')
+    .filter((line) => !/^\s*--/.test(line))
+    .join('\n');
+}
+
 /** 提取 CREATE TABLE (...) 块内定义的列名（两空格缩进起手的标识符行） */
 function columnNames(sql: string, table: string): string[] {
-  const block = new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\s*\\(([\\s\\S]*?)\\);`).exec(sql);
+  const clean = stripComments(sql);
+  const block = new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\s*\\(([\\s\\S]*?)\\);`).exec(clean);
   if (!block) throw new Error(`cannot locate CREATE TABLE ${table}`);
   return Array.from(block[1]!.matchAll(/^\s{2}([a-z_][a-z0-9_]*)\s+/gm)).map((m) => m[1]!);
 }
 
 /** 提取 CREATE INDEX 名 */
 function indexNames(sql: string): string[] {
-  return Array.from(sql.matchAll(/CREATE INDEX IF NOT EXISTS\s+([a-z_][a-z0-9_]*)/gi)).map(
-    (m) => m[1]!,
-  );
+  return Array.from(stripComments(sql).matchAll(
+    /CREATE INDEX IF NOT EXISTS\s+([a-z_][a-z0-9_]*)/gi,
+  )).map((m) => m[1]!);
 }
 
 const TABLES = [
@@ -49,6 +61,10 @@ const TABLES = [
   'job_runs',
   'job_run_events',
   'submit_intents',
+  // auth/ownership tables (migrations 010-012), added by audit item T4
+  'accounts',
+  'auth_sessions',
+  'interviews',
 ];
 
 describe('sqlite/postgres migration parity', () => {
