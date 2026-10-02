@@ -48,7 +48,8 @@ export default defineConfig({
     // 里以 <code> 渲染各 island 的 props（含全部 i18n 文案），会干扰文本定位。
     command: 'pnpm --filter @jobagent/report dev --port 4321 --host 127.0.0.1 --no-toolbar',
     url: 'http://127.0.0.1:4321/en/',
-    timeout: 120000,
+    // 冷启动 + Vite 依赖重优化（lockfile 变更后偶发）可能超过 120s，放宽到 180s。
+    timeout: 180000,
     reuseExistingServer: false,
     env: {
       DB_DRIVER: 'sqlite',
