@@ -20,9 +20,9 @@ const outdir = path.join(root, 'dist');
 const apiBase = process.env.EXTENSION_API_BASE ?? 'http://localhost:3000';
 // Release build (CWS): EXTENSION_RELEASE=1 strips every localhost/127.0.0.1
 // grant and bakes the final report-site origin (set EXTENSION_SITE_ORIGIN to
-// the decided production domain; defaults to the current placeholder).
+// override; defaults to the production report origin).
 const release = process.env.EXTENSION_RELEASE === '1';
-const siteOrigin = process.env.EXTENSION_SITE_ORIGIN ?? 'https://job-agent.bayjf.com';
+const siteOrigin = process.env.EXTENSION_SITE_ORIGIN ?? 'https://app.job-agent.bayjf.com';
 
 if (release && /^https?:\/\/(localhost|127\.0\.0\.1)/.test(apiBase)) {
   console.error(
@@ -43,14 +43,14 @@ async function emitManifest() {
   const src = JSON.parse(await readFile(path.join(root, 'src/manifest.json'), 'utf8'));
   const manifest = structuredClone(src);
   const isLocal = (m) => /^https?:\/\/(localhost|127\.0\.0\.1)/.test(m);
-  const isPlaceholderSite = (m) => /^https?:\/\/[^/]*job-agent\.bayjf\.com/.test(m);
+  const isReportSite = (m) => /^https?:\/\/app\.job-agent\.bayjf\.com/.test(m);
 
   manifest.externally_connectable.matches = manifest.externally_connectable.matches
     .filter((m) => !(release && isLocal(m)))
-    .map((m) => (isPlaceholderSite(m) ? `${siteOrigin}/*` : m));
+    .map((m) => (isReportSite(m) ? `${siteOrigin}/*` : m));
   manifest.host_permissions = manifest.host_permissions
     .filter((m) => !(release && isLocal(m)))
-    .map((m) => (isPlaceholderSite(m) ? `${siteOrigin}/*` : m));
+    .map((m) => (isReportSite(m) ? `${siteOrigin}/*` : m));
 
   await writeFile(path.join(outdir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 }
