@@ -2,6 +2,9 @@
 /**
  * 报告页 /[locale]/report/[profileId]——SSR 读取画像快照并渲染。
  * 分享链接固定指向此路由，语言段随链接固定（i18n 设计第 4 节）。
+ *
+ * Q2 拆分后：数据装配（加载画像/派生展示数据/授权分级）抽到 lib/report-page.ts，
+ * 页面专属样式抽到 styles/report-page.css；本文件只保留参数处理、redirect 与模板。
  */
 import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
@@ -12,146 +15,62 @@ import GateCard from '../../../components/GateCard.astro';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
 import ApplicationTracker from '../../../components/ApplicationTracker.tsx';
-import { loadProfileRecord, loadEvidence } from '../../../lib/db';
-import { resolveViewer, canViewGatedContent, canViewApplications } from '../../../lib/auth';
-import { isLocale, createTranslator, type Locale, type MessageKey } from '../../../i18n/index.js';
-import { formatDateTime, formatPercent, formatNumber, authenticityClass } from '../../../lib/format';
-import { browserApiBase } from '../../../lib/api-base.js';
+import '../../../styles/report-page.css';
+import { formatNumber, formatPercent } from '../../../lib/format';
 import {
-  composeHeadline,
-  composeImprovementSuggestion,
-  composeSignalLabel,
-  composeSignalDetail,
-  composeInterviewIntent,
+  loadReportPageData,
   composeCadenceSummary,
+  composeImprovementSuggestion,
+  composeInterviewIntent,
   composePrSummary,
+  composeSignalDetail,
+  composeSignalLabel,
   prSummaryFactsFromProfile,
-  headlineFactsFromProfile,
-} from '@jobagent/shared';
-import type { EvidenceItem, SkillTagKind } from '@jobagent/shared';
+} from '../../../lib/report-page';
+import type { MessageKey, SkillTagKind } from '@jobagent/shared';
 
 const { locale: rawLocale, profileId } = Astro.params;
-if (!isLocale(rawLocale)) {
-  return Astro.redirect('/en/');
+const pageData = await loadReportPageData({
+  rawLocale,
+  profileId,
+  url: Astro.url,
+  cookieHeader: Astro.request.headers.get('cookie'),
+});
+if (pageData.kind === 'redirect') {
+  return Astro.redirect(pageData.to);
 }
-const locale: Locale = rawLocale;
-const t = createTranslator(locale);
-
-// API 地址：显式 PUBLIC_API_BASE 优先；Vercel 同域为 /api；本地默认同源
-const apiBase = browserApiBase();
-
-const disputeEmail =
-  (import.meta.env.PUBLIC_DISPUTE_EMAIL as string | undefined) ?? 'dispute@job-agent.bayjf.com';
-
-// T25 失败显式化：DB 查询异常与"画像不存在"分开处理——
-// 拔掉数据库时报告页说"暂时不可用"而不是"画像不存在"（NFR-6 不向用户暴露原始报错）。
-let dbUnavailable = false;
-let profileRecord: import('@jobagent/storage').StoredProfile | null = null;
-if (profileId) {
-  try {
-    profileRecord = await loadProfileRecord(profileId);
-  } catch {
-    dbUnavailable = true;
-  }
-}
-const profile = profileRecord?.snapshot ?? null;
-
-if (dbUnavailable) {
-  return Astro.redirect(`/${locale}/?unavailable=1`);
-}
-// 画像不存在：渲染 404 状态页（profile 由 profileRecord 解出，两者同生同灭；一并判空以便下游收窄类型）
-if (!profile || !profileRecord) {
-  return Astro.redirect(`/${locale}/?notfound=1`);
-}
-
-// 采集/分析有缺失时画像落库为 partial（T25）：页面顶部显示"部分数据"标注条
-const isPartialProfile = profileRecord.status === 'partial';
-
-// 融合画像标识只存在于存储行 subjectPlatform 列（snapshot.subject.platform 恒为主源 github）
-const isFusedProfile = profileRecord?.subjectPlatform === 'all';
-
-// S3 软挂起：画像已收到未决移除申请（removal_requested_at 非空）时，SSR 顶部标注「处理中」
-const isHeldForRemoval = Boolean(profileRecord?.removalRequestedAt);
-
-// headline 按读者语言现拼（T07）：快照里的 summary.headline 是数据层英文原文，
-// 中文报告页不该露一句英文；组装只读快照已有事实，不新增结论。
-const headline = composeHeadline(headlineFactsFromProfile(profile), locale);
-
-// 双源融合去重统计：仅当快照带 fusion 报告且确有镜像合并/去重时展示，全 0 则不渲染
-const fusion = profile.fusion;
-const fusionStats: { n: number; labelKey: MessageKey }[] = fusion
-  ? [
-      { n: fusion.mergedMirrors.length, labelKey: 'report.fusion.statMirrors' },
-      { n: fusion.dedupedCommitCount, labelKey: 'report.fusion.statCommits' },
-      { n: fusion.dedupedPullRequestCount, labelKey: 'report.fusion.statPrs' },
-      { n: fusion.dedupedIssueCount, labelKey: 'report.fusion.statIssues' },
-    ].filter((s) => s.n > 0)
-  : [];
-
-// 视角：默认求职者；?view=recruiter 为招聘方核验视图（只看可核验证据，隐藏求职建议）
-const isRecruiter = Astro.url.searchParams.get('view') === 'recruiter';
-const pathname = Astro.url.pathname;
-const recruiterUrl = `${pathname}?view=recruiter`;
-const candidateUrl = pathname;
-
-// 授权分级闸（2026-09-19）：SSR 解析登录态。未登录（anonymous/demo）看公开门面，
-// 完整证据外链与面试题/面试准备包折叠为登录墙；任何已登录 user（含招聘方）解锁。
-const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
-const canViewGated = canViewGatedContent(viewer);
-// 投递管道隐私（#17-F11）：画像一经认领即收归本人，判据与 API requireProfileOwner 一致
-const canUseApplications = canViewApplications(viewer, profileRecord);
-// 登录后回跳当前页（含 ?view=recruiter）；return_to 为同源相对路径，后端再做一次白名单校验。
-// 登录墙按画像主体平台选登录方式：Gitee 画像引导 Gitee 登录，其余（含双源融合，主源 GitHub）走 GitHub。
-const loginPlatform: 'github' | 'gitee' = profile.subject.platform === 'gitee' ? 'gitee' : 'github';
-const loginHref = `${apiBase}/auth/${loginPlatform}/login?return_to=${encodeURIComponent(
-  `${pathname}${Astro.url.search}`,
-)}`;
-const gateLoginLabel =
-  loginPlatform === 'gitee' ? t('report.gate.loginButtonGitee') : t('report.gate.loginButton');
-const gateEvidenceBody =
-  loginPlatform === 'gitee' ? t('report.gate.evidenceBodyGitee') : t('report.gate.evidenceBody');
-const gateInterviewBody =
-  loginPlatform === 'gitee'
-    ? t('report.gate.interviewBodyGitee', { count: profile.interviewQuestions.length })
-    : t('report.gate.interviewBody', { count: profile.interviewQuestions.length });
-
-// 证据明细（含完整外链 URL）：画像快照里只有 evidenceId，核验视图/面试准备包需要可点击链接
-const evidenceList = profileId ? await loadEvidence(profileId) : [];
-const evidenceById = new Map(evidenceList.map((e) => [e.evidenceId, e]));
-const resolveEvidence = (refs: string[] | undefined | null): EvidenceItem[] =>
-  (refs ?? [])
-    .map((ref) => evidenceById.get(ref))
-    .filter((e): e is EvidenceItem => Boolean(e && e.url));
-
-// 真实性状态文案 key
-const authLabelKey = `report.authenticity.${profile.authenticity.status}` as MessageKey;
-const authClass = authenticityClass(profile.authenticity.status);
-
-// 能力标签按 kind 分组
-const skillGroups: Record<SkillTagKind, typeof profile.skillTags> = {
-  language: profile.skillTags.filter((s) => s.kind === 'language'),
-  framework: profile.skillTags.filter((s) => s.kind === 'framework'),
-  domain: profile.skillTags.filter((s) => s.kind === 'domain'),
-};
-
-const shareUrl = Astro.url.href;
-// 扩展面板"生成简历"深链：?resumeJob=<jobId>，ResumeBuilder mount 后自动生成
-const resumeJobId = Astro.url.searchParams.get('resumeJob') ?? undefined;
-const generatedAt = formatDateTime(profile.generatedAt, locale);
-const since = formatDateTime(profile.dataWindow.since, locale);
-const until = formatDateTime(profile.dataWindow.until, locale);
-const interviewKitUrl = `${pathname}/interview-kit.md`;
-
-// 投递状态文案映射（传给 ApplicationTracker island）
-const applicationStatusLabels = {
-  saved: t('applications.status.saved'),
-  applied: t('applications.status.applied'),
-  viewed: t('applications.status.viewed'),
-  interview: t('applications.status.interview'),
-  offer: t('applications.status.offer'),
-  rejected: t('applications.status.rejected'),
-  withdrawn: t('applications.status.withdrawn'),
-};
+const {
+  locale,
+  t,
+  apiBase,
+  profile,
+  isPartialProfile,
+  isFusedProfile,
+  isHeldForRemoval,
+  headline,
+  fusionStats,
+  isRecruiter,
+  recruiterUrl,
+  candidateUrl,
+  canViewGated,
+  canUseApplications,
+  loginHref,
+  gateLoginLabel,
+  gateEvidenceBody,
+  gateInterviewBody,
+  resolveEvidence,
+  authLabelKey,
+  authClass,
+  skillGroups,
+  shareUrl,
+  resumeJobId,
+  generatedAt,
+  since,
+  until,
+  interviewKitUrl,
+  applicationStatusLabels,
+  disputeEmail,
+} = pageData;
 ---
 
 <Layout locale={locale} title={profile.subject.login}>
@@ -731,239 +650,3 @@ const applicationStatusLabels = {
     </section>
   </div>
 </Layout>
-
-<style>
-  .profile-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--ja-space-4);
-    flex-wrap: wrap;
-  }
-
-  .profile-id {
-    display: flex;
-    align-items: center;
-    gap: var(--ja-space-4);
-  }
-
-  .avatar {
-    border-radius: var(--ja-radius-lg);
-    border: 1px solid var(--ja-color-border);
-  }
-
-  .login {
-    font-size: var(--ja-text-xl);
-    margin-bottom: var(--ja-space-1);
-  }
-
-  .header-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--ja-space-3);
-  }
-
-  .meta-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--ja-space-4);
-    padding: var(--ja-space-3) var(--ja-space-2);
-  }
-
-  .headline {
-    margin-top: var(--ja-space-3);
-    font-size: var(--ja-text-lg);
-  }
-
-  /* 下一步动作（T10）：只用既有 token，不引入新色板 */
-  .next-steps-lead {
-    margin-bottom: var(--ja-space-3);
-  }
-
-  .next-steps-list {
-    margin: 0;
-    padding-left: var(--ja-space-4);
-  }
-
-  .next-step-action {
-    margin: 0;
-    font-weight: 600;
-  }
-
-  .next-step-why {
-    margin: var(--ja-space-1) 0 0;
-  }
-
-  .next-step-evidence {
-    margin: var(--ja-space-2) 0 0;
-    padding-left: var(--ja-space-4);
-  }
-
-  h2 {
-    font-size: var(--ja-text-lg);
-    margin-bottom: var(--ja-space-3);
-  }
-
-  h3 {
-    font-size: var(--ja-text-base);
-  }
-
-  .signal {
-    padding: var(--ja-space-3);
-    border-radius: var(--ja-radius-md);
-    border-left: 3px solid var(--ja-color-border);
-    background: var(--ja-color-surface-muted);
-  }
-
-  .signal--info {
-    border-left-color: var(--ja-color-info);
-  }
-
-  .signal--warn {
-    border-left-color: var(--ja-color-warning);
-  }
-
-  .signal--risk {
-    border-left-color: var(--ja-color-danger);
-  }
-
-  .signal p {
-    margin-top: var(--ja-space-1);
-    font-size: var(--ja-text-sm);
-  }
-
-  .signal-code {
-    font-family: var(--ja-font-mono);
-    font-size: var(--ja-text-xs);
-  }
-
-  .kind-label {
-    margin-bottom: var(--ja-space-2);
-    color: var(--ja-color-fg-muted);
-    font-size: var(--ja-text-sm);
-  }
-
-  .depth-mark {
-    font-size: var(--ja-text-xs);
-    opacity: 0.7;
-  }
-
-  .metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: var(--ja-space-3);
-  }
-
-  .metric {
-    display: flex;
-    flex-direction: column;
-    gap: var(--ja-space-1);
-    padding: var(--ja-space-3);
-    background: var(--ja-color-surface-muted);
-    border-radius: var(--ja-radius-md);
-  }
-
-  .metric-value {
-    font-size: var(--ja-text-xl);
-    font-weight: 600;
-  }
-
-  .metric-key {
-    font-size: var(--ja-text-xs);
-    font-family: var(--ja-font-mono);
-  }
-
-  .merged-list {
-    padding-left: var(--ja-space-5);
-  }
-
-  .interview-item {
-    padding: var(--ja-space-3);
-    background: var(--ja-color-surface-muted);
-    border-radius: var(--ja-radius-md);
-  }
-
-  .question {
-    font-weight: 500;
-  }
-
-  .intent {
-    margin-top: var(--ja-space-1);
-    font-size: var(--ja-text-sm);
-  }
-
-  .caveats ul {
-    padding-left: var(--ja-space-5);
-  }
-
-  .caveats li {
-    font-size: var(--ja-text-sm);
-    color: var(--ja-color-fg-muted);
-  }
-
-  .caveats .dispute {
-    margin-top: var(--ja-space-3);
-    font-size: var(--ja-text-sm);
-    color: var(--ja-color-fg-muted);
-  }
-
-  /* 决策 #1-A 的"显著标注"：琥珀色左边框提示条，正文用前景色保证可读性 */
-  .unclaimed-notice {
-    margin-top: var(--ja-space-3);
-    padding: var(--ja-space-2) var(--ja-space-3);
-    border: 1px solid var(--ja-color-border);
-    border-left: 3px solid var(--ja-color-warning);
-    border-radius: var(--ja-radius-sm);
-    background: var(--ja-color-amber-50);
-    color: var(--ja-color-fg);
-    font-size: var(--ja-text-sm);
-    line-height: var(--ja-leading-normal);
-  }
-
-  .view-toggle {
-    padding: var(--ja-space-1) var(--ja-space-3);
-    font-size: var(--ja-text-sm);
-  }
-
-  .recruiter-banner {
-    border-left: 3px solid var(--ja-color-accent);
-    background: var(--ja-color-surface-muted);
-  }
-
-  .recruiter-banner p {
-    font-size: var(--ja-text-sm);
-    color: var(--ja-color-fg-muted);
-  }
-
-  .evidence-links {
-    margin-top: var(--ja-space-2);
-    padding-left: var(--ja-space-5);
-    list-style: disc;
-  }
-
-  .evidence-links li {
-    font-size: var(--ja-text-sm);
-  }
-
-  .skill-evidence {
-    margin-top: var(--ja-space-3);
-  }
-
-  .skill-evidence-row {
-    display: flex;
-    gap: var(--ja-space-2);
-    align-items: baseline;
-    font-size: var(--ja-text-sm);
-  }
-
-  .skill-evidence-name {
-    flex: none;
-    font-weight: 600;
-  }
-
-  .interview-kit-link {
-    padding: var(--ja-space-1) var(--ja-space-3);
-    font-size: var(--ja-text-sm);
-    white-space: nowrap;
-  }
-</style>
