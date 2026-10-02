@@ -6,6 +6,7 @@ import {
   buildMatchReport,
   matchGaps,
   matchReasons,
+  passesTitleOrTagGuard,
   selectCandidates,
   selectCandidatesForPreference,
 } from './match-report.js';
@@ -109,13 +110,29 @@ describe('buildMatchReport', () => {
   });
 });
 
+describe('passesTitleOrTagGuard', () => {
+  it('passes when any skill hit lands on title or tags', () => {
+    expect(passesTitleOrTagGuard({ skillHits: [{ skill: 'Go', score: 3, fields: ['title'] }] })).toBe(true);
+    expect(passesTitleOrTagGuard({ skillHits: [{ skill: 'Go', score: 2, fields: ['tags'] }] })).toBe(true);
+    expect(
+      passesTitleOrTagGuard({ skillHits: [{ skill: 'Go', score: 6, fields: ['title', 'tags', 'description'] }] }),
+    ).toBe(true);
+  });
+
+  it('rejects description-only hits (long descriptions must not grant candidacy)', () => {
+    expect(passesTitleOrTagGuard({ skillHits: [{ skill: 'Go', score: 1, fields: ['description'] }] })).toBe(false);
+    expect(passesTitleOrTagGuard({ skillHits: [] })).toBe(false);
+  });
+});
+
 describe('selectCandidates', () => {
   const strong: MatchLike = match();
+  // 仅描述提到 Go：不再构成候选资格（AGENT_RULE_VERSION 0.2 守卫），即便 minTier 放低也不进
   const weak: MatchLike = match({
-    score: 2,
+    score: 1,
     matchedSkills: ['Go'],
     fieldScores: { title: 0, tags: 0, description: 1 },
-    skillHits: [{ skill: 'Go', score: 2, fields: ['description'] }],
+    skillHits: [{ skill: 'Go', score: 1, fields: ['description'] }],
   });
 
   it('drops candidates below the quality gate instead of padding the list', () => {
@@ -124,7 +141,33 @@ describe('selectCandidates', () => {
       { match: weak, posting: posting({ jobId: 'b', title: 'Go Engineer' }) },
     ];
     expect(selectCandidates(items, { minTier: 'mid' }).map((i) => i.posting.jobId)).toEqual(['a']);
-    expect(selectCandidates(items, { minTier: 'low' })).toHaveLength(2);
+    // weak 仅描述命中：过不了标题/标签守卫，即使 minTier 放到 low 也不进
+    expect(selectCandidates(items, { minTier: 'low' }).map((i) => i.posting.jobId)).toEqual(['a']);
+  });
+
+  it('drops description-only matches even when their score would pass the gate', () => {
+    const descOnly: MatchLike = match({
+      score: 12,
+      matchedSkills: ['Go', 'Rust', 'K8s'],
+      fieldScores: { title: 0, tags: 0, description: 12 },
+      skillHits: [
+        { skill: 'Go', score: 4, fields: ['description'] },
+        { skill: 'Rust', score: 4, fields: ['description'] },
+        { skill: 'K8s', score: 4, fields: ['description'] },
+      ],
+    });
+    const titleHit: MatchLike = match({
+      score: 3,
+      matchedSkills: ['Go'],
+      fieldScores: { title: 3, tags: 0, description: 0 },
+      skillHits: [{ skill: 'Go', score: 3, fields: ['title'] }],
+    });
+    const items = [
+      { match: titleHit, posting: posting({ jobId: 'title-hit' }) },
+      { match: descOnly, posting: posting({ jobId: 'desc-only' }) },
+    ];
+    // descOnly 分数（12/18）足以 high，但仅有描述命中 → 被守卫剔除
+    expect(selectCandidates(items, { minTier: 'low' }).map((i) => i.posting.jobId)).toEqual(['title-hit']);
   });
 
   it('excludes job ids that already have a ticket, sorts by score then postedAt, and caps the limit', () => {

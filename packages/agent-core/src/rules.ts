@@ -5,7 +5,7 @@
  * 影响选择、排序、质量闸或报告结构的变更必须递增本版本；仅修注释/重命名不递增。
  * 阶段 1（求职工作台）只做「Agent 准备、人执行」，故内核里没有任何投递副作用。
  */
-export const AGENT_RULE_VERSION = '0.1';
+export const AGENT_RULE_VERSION = '0.2';
 
 /** 一轮扫描最多产出多少条待投票据（对齐设计判据「打开页面看到 10 个匹配岗位」）。 */
 export const DEFAULT_CANDIDATE_LIMIT = 10;

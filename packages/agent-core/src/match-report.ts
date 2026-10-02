@@ -138,7 +138,17 @@ export interface SelectCandidatesOptions {
 }
 
 /**
- * 候选选择：先过质量闸，再排优先级，最后截断。
+ * 标题或标签命中守卫（产品口径 2026-10-03，AGENT_RULE_VERSION 0.2）：
+ * 仅「描述提到技能」不再单独构成候选资格——岗位必须在标题或标签里命中至少一个画像技能。
+ * 判定依据与 matchReasons 同源（skillHits.fields），防长描述把技能提及多次、
+ * 把「描述沾边」的不相关岗位（如管理岗）塞进推荐列表（宁少勿滥，对齐偏好硬过滤口径）。
+ */
+export function passesTitleOrTagGuard(match: Pick<MatchLike, 'skillHits'>): boolean {
+  return match.skillHits.some((hit) => hit.fields.includes('title') || hit.fields.includes('tags'));
+}
+
+/**
+ * 候选选择：先过资格守卫（标题/标签命中）与质量闸，再排优先级，最后截断。
  * 排序键（稳定、可解释）：白名单公司 → 匹配分降序 → 发布时间降序（ISO 字符串可直接比较）。
  * 不做「凑数」：一条都没过闸就返回空数组，由编排壳走 rescan 而不是硬推低分岗。
  */
@@ -150,6 +160,7 @@ export function selectCandidates<T extends CandidateLike>(
   const excluded = options.excludeJobIds ?? new Set<string>();
   const scored = items
     .filter((item) => !excluded.has(item.posting.jobId))
+    .filter((item) => passesTitleOrTagGuard(item.match))
     .map((item) => ({
       item,
       tier: matchScoreTier(item.match.score, item.match.matchedSkills.length),
