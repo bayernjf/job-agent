@@ -35,6 +35,7 @@
 | 查隐私政策 / Chrome Web Store 隐私声明（收集什么、不收集什么、用途、受托方、留存删除、国际传输、用户权利） | [privacy-policy-20260924.md](privacy-policy-20260924.md) ★（中英双语权威源；在线页 `/[locale]/privacy`，CWS 上架填 `https://<app-origin>/en/privacy`） |
 | 让**未认领画像的主体自助申请撤回**分享链（公开申请 + 人工复核：端点 / 软挂起 / CLI `removal` 复核 / 报告页入口 / 与 #14 应求撤销通道的关系） | [design-profile-removal-request-20261001.md](design-profile-removal-request-20261001.md)（S3 **已落地 2026-10-01**，审计 item93） |
 | 看 AI 求职赛道的竞品认知、机会与跟进清单 | [市场调研-AI求职赛道-20260910.md](市场调研-AI求职赛道-20260910.md) |
+| 看赛道最新变化（2026-10：融资加速 / LinkedIn·OpenAI·GitHub 官方入场 / 「GitHub 行为证据」新玩家）与迭代含义 | [市场与竞品更新-20261003.md](市场与竞品更新-20261003.md) |
 | 看中国招聘市场企业端/求职者端双方痛点与共同根源（量化证据 + 对产品启示） | [市场调研-招聘市场痛点-20260916.md](市场调研-招聘市场痛点-20260916.md) |
 | 看痛点对应解决方案、已覆盖/需新增对位与实施批次（批1 产品化 + 批2 新接口已落地见 handoff item21；批3 待外部条件） | [设计-痛点解决方案-20260916.md](设计-痛点解决方案-20260916.md) |
 | 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（待决策，handoff item45） |
