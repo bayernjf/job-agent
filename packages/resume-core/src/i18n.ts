@@ -119,3 +119,50 @@ const en: ResumeCopy = {
 export function resumeCopy(locale: ResumeLocale): ResumeCopy {
   return locale === 'en' ? en : zh;
 }
+
+/**
+ * 求职信模板文案（阶段 1「改」的第二个交付物，设计 §3.3）。
+ *
+ * 与简历同一条 no-fabrication 纪律：模板只提供连接词与礼貌用语，
+ * 技能名、证据 claim、岗位/公司名一律用原文事实，不在此翻译或新造。
+ */
+export interface CoverLetterCopy {
+  /** 称呼：公司可空（自选 JD 直传时无公司） */
+  greeting: (company: string) => string;
+  /** 开头段：投的是哪个岗位 */
+  opening: (title: string, company: string) => string;
+  /** 匹配段：命中的技能 + 深度（深度词由 composeSkillDepthLabel 现拼） */
+  matchLine: (skills: string) => string;
+  /** 证据段：一条可直接核对的记录 */
+  evidenceLine: (claim: string, url: string) => string;
+  /** 收尾段 */
+  close: string;
+  /** 落款（姓名可空） */
+  signature: (name: string) => string;
+}
+
+const coverLetterZh: CoverLetterCopy = {
+  greeting: (company) => (company ? `尊敬的「${company}」招聘团队：` : '尊敬的招聘团队：'),
+  opening: (title, company) =>
+    company ? `我关注到贵司「${title}」职位，特此投递求职信。` : `我关注到「${title}」职位，特此投递求职信。`,
+  matchLine: (skills) => `我的公开代码证据显示，我在 ${skills} 上有可回溯的实践。`,
+  evidenceLine: (claim, url) => `其中一条可直接核对的记录：${claim}（${url}）。`,
+  close: '期待与您进一步沟通，谢谢您的时间。',
+  signature: (name) => (name ? `此致\n${name}` : '此致'),
+};
+
+const coverLetterEn: CoverLetterCopy = {
+  greeting: (company) => (company ? `Dear ${company} hiring team,` : 'Dear hiring team,'),
+  opening: (title, company) =>
+    company
+      ? `I am writing to apply for the ${title} role at ${company}.`
+      : `I am writing to apply for the ${title} role.`,
+  matchLine: (skills) => `My public code evidence shows verifiable hands-on work with ${skills}.`,
+  evidenceLine: (claim, url) => `One record you can check directly: ${claim} (${url}).`,
+  close: 'I would welcome the chance to talk further. Thank you for your time.',
+  signature: (name) => (name ? `Sincerely,\n${name}` : 'Sincerely,'),
+};
+
+export function coverLetterCopy(locale: ResumeLocale): CoverLetterCopy {
+  return locale === 'en' ? coverLetterEn : coverLetterZh;
+}
