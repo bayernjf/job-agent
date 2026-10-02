@@ -13,6 +13,10 @@ import { SqliteInterviewsRepository } from './sqlite/interviews-repo.js';
 import { SqliteAccountsRepository } from './sqlite/accounts-repo.js';
 import { SqliteAuthSessionsRepository } from './sqlite/auth-sessions-repo.js';
 import { SqliteProfileRemovalRequestsRepository } from './sqlite/profile-removal-requests-repo.js';
+import { SqliteJobPreferencesRepository } from './sqlite/job-preferences-repo.js';
+import { SqliteJobRunsRepository } from './sqlite/job-runs-repo.js';
+import { SqliteJobRunEventsRepository } from './sqlite/job-run-events-repo.js';
+import { SqliteSubmitIntentsRepository } from './sqlite/submit-intents-repo.js';
 import { openPostgres } from './postgres/connection.js';
 import { runPgMigrations } from './postgres/migrator.js';
 import { PgProfilesRepository } from './postgres/profiles-repo.js';
@@ -26,6 +30,10 @@ import { PgInterviewsRepository } from './postgres/interviews-repo.js';
 import { PgAccountsRepository } from './postgres/accounts-repo.js';
 import { PgAuthSessionsRepository } from './postgres/auth-sessions-repo.js';
 import { PgProfileRemovalRequestsRepository } from './postgres/profile-removal-requests-repo.js';
+import { PgJobPreferencesRepository } from './postgres/job-preferences-repo.js';
+import { PgJobRunsRepository } from './postgres/job-runs-repo.js';
+import { PgJobRunEventsRepository } from './postgres/job-run-events-repo.js';
+import { PgSubmitIntentsRepository } from './postgres/submit-intents-repo.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +85,10 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       accounts: new PgAccountsRepository(db),
       authSessions: new PgAuthSessionsRepository(db),
       profileRemovalRequests: new PgProfileRemovalRequestsRepository(db),
+      jobPreferences: new PgJobPreferencesRepository(db),
+      jobRuns: new PgJobRunsRepository(db),
+      jobRunEvents: new PgJobRunEventsRepository(db),
+      submitIntents: new PgSubmitIntentsRepository(db),
       migrate: async () => runPgMigrations(client, migrationsDir),
       ping: async () => {
         await client.unsafe('SELECT 1');
@@ -106,6 +118,10 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     accounts: new SqliteAccountsRepository(db),
     authSessions: new SqliteAuthSessionsRepository(db),
     profileRemovalRequests: new SqliteProfileRemovalRequestsRepository(db),
+    jobPreferences: new SqliteJobPreferencesRepository(db),
+    jobRuns: new SqliteJobRunsRepository(db),
+    jobRunEvents: new SqliteJobRunEventsRepository(db),
+    submitIntents: new SqliteSubmitIntentsRepository(db),
     migrate: async () => runMigrations(client, migrationsDir),
     ping: async () => {
       client.prepare('SELECT 1 AS ok').get();

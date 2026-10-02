@@ -289,6 +289,8 @@ export const applications = sqliteTable(
     origin: text('origin').notNull().default('manual'),
     appliedAt: text('applied_at').notNull(),
     createdByAccountId: text('created_by_account_id'),
+    /** 022：产出本行的投递票据（submit_intents.id）；手动/报告/扩展写入为 NULL */
+    submitIntentId: text('submit_intent_id'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
@@ -437,3 +439,133 @@ export const profileRemovalRequests = sqliteTable(
 
 export type ProfileRemovalRequestInsert = typeof profileRemovalRequests.$inferInsert;
 export type ProfileRemovalRequestSelect = typeof profileRemovalRequests.$inferSelect;
+
+/**
+ * job_preferences 表——求职偏好集（迁移 018，求职 Agent 阶段 1，设计 §3.1）。
+ * 一套偏好回答"找什么"，一个求职任务（job_runs）绑定恰好一套。
+ * JSON 数组一律 TEXT 存储（与 Postgres 侧保持一致）；布尔用 integer(boolean)。
+ */
+export const jobPreferences = sqliteTable(
+  'job_preferences',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    label: text('label').notNull(),
+    targetTitles: text('target_titles').notNull(),
+    skills: text('skills').notNull().default('[]'),
+    locations: text('locations').notNull().default('[]'),
+    remoteOnly: integer('remote_only', { mode: 'boolean' }).notNull().default(false),
+    salaryMinUsd: integer('salary_min_usd'),
+    sources: text('sources').notNull().default('[]'),
+    companyWhitelist: text('company_whitelist').notNull().default('[]'),
+    companyBlacklist: text('company_blacklist').notNull().default('[]'),
+    minTier: text('min_tier').notNull().default('mid'),
+    dailySubmitLimit: integer('daily_submit_limit').notNull().default(20),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [index('idx_jp_account').on(table.accountId, table.createdAt)],
+);
+
+export type JobPreferenceInsert = typeof jobPreferences.$inferInsert;
+export type JobPreferenceSelect = typeof jobPreferences.$inferSelect;
+
+/**
+ * job_runs 表——求职任务状态机实例（迁移 019，设计 §5.2）。
+ * last_scan_at 兼作调度游标：NULL = 从未扫描（排序时排最前）。
+ */
+export const jobRuns = sqliteTable(
+  'job_runs',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    profileId: text('profile_id').notNull(),
+    preferenceId: text('preference_id').notNull(),
+    status: text('status').notNull().default('created'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    lastScanAt: text('last_scan_at'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_jr_status').on(table.status, table.lastScanAt),
+    index('idx_jr_account').on(table.accountId, table.createdAt),
+  ],
+);
+
+export type JobRunInsert = typeof jobRuns.$inferInsert;
+export type JobRunSelect = typeof jobRuns.$inferSelect;
+
+/**
+ * job_run_events 表——状态迁移审计日志（迁移 020，设计 §5.2）。
+ * 只追加、不回改：run 行只留当前态，本表留可回放历史。
+ */
+export const jobRunEvents = sqliteTable(
+  'job_run_events',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull(),
+    event: text('event').notNull(),
+    fromStatus: text('from_status'),
+    toStatus: text('to_status').notNull(),
+    actor: text('actor').notNull(),
+    payload: text('payload').notNull().default('{}'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [index('idx_jre_run').on(table.runId, table.createdAt)],
+);
+
+export type JobRunEventInsert = typeof jobRunEvents.$inferInsert;
+export type JobRunEventSelect = typeof jobRunEvents.$inferSelect;
+
+/**
+ * submit_intents 表——人机闸投递票据（迁移 021，设计 §4.3）。
+ * 阶段 1 只准备不执行：票据必须自证"投的是哪一条"（岗位快照 + 匹配报告），
+ * job_source 独立成列，供每源每日限频统计。
+ */
+export const submitIntents = sqliteTable(
+  'submit_intents',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull(),
+    accountId: text('account_id').notNull(),
+    profileId: text('profile_id').notNull(),
+    jobId: text('job_id').notNull(),
+    jobSource: text('job_source').notNull(),
+    jobSnapshot: text('job_snapshot').notNull(),
+    matchScore: integer('match_score').notNull(),
+    matchTier: text('match_tier').notNull(),
+    matchReport: text('match_report').notNull(),
+    status: text('status').notNull().default('pending'),
+    rejectReason: text('reject_reason'),
+    approvedAt: text('approved_at'),
+    rejectedAt: text('rejected_at'),
+    submittedAt: text('submitted_at'),
+    applicationId: text('application_id'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_si_run').on(table.runId, table.createdAt),
+    index('idx_si_account_status').on(table.accountId, table.status),
+    index('idx_si_source').on(table.accountId, table.jobSource, table.status),
+  ],
+);
+
+export type SubmitIntentInsert = typeof submitIntents.$inferInsert;
+export type SubmitIntentSelect = typeof submitIntents.$inferSelect;

@@ -7,8 +7,12 @@ import type {
   IEvidenceRepository,
   IInterviewsRepository,
   IJobPostingsRepository,
+  IJobPreferencesRepository,
+  IJobRunEventsRepository,
+  IJobRunsRepository,
   IProfilesRepository,
   IProfileRemovalRequestsRepository,
+  ISubmitIntentsRepository,
   IWaitlistRepository,
 } from './repositories/index.js';
 import type { RunMigrationsResult } from './migrations-fs.js';
@@ -47,6 +51,14 @@ export interface StorageContext {
   authSessions: IAuthSessionsRepository;
   /** 画像移除申请单（审计 S3，迁移 016；按主体撤回的人工复核通道） */
   profileRemovalRequests: IProfileRemovalRequestsRepository;
+  /** 求职偏好集（求职 Agent 阶段 1，迁移 018） */
+  jobPreferences: IJobPreferencesRepository;
+  /** 求职任务状态机实例（求职 Agent 阶段 1，迁移 019） */
+  jobRuns: IJobRunsRepository;
+  /** 求职任务状态迁移审计流（求职 Agent 阶段 1，迁移 020） */
+  jobRunEvents: IJobRunEventsRepository;
+  /** 人机闸投递票据（求职 Agent 阶段 1，迁移 021） */
+  submitIntents: ISubmitIntentsRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /**

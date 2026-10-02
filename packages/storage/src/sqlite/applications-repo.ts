@@ -29,6 +29,8 @@ export class SqliteApplicationsRepository implements IApplicationsRepository {
         origin: application.origin ?? 'manual',
         appliedAt: application.appliedAt,
         createdByAccountId: application.createdByAccountId ?? null,
+        // 022：Agent 流程（标记已投）写入票据 id；其余写入保持 null
+        submitIntentId: application.submitIntentId ?? null,
       })
       .run();
   }
