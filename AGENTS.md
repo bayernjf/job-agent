@@ -14,7 +14,7 @@
 
 ## 项目概览
 
-JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`，剩 J 阶段人工 smoke 与生产 cron/轮询待确认；阶段与待办以 handoff.md 为准）。
+JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`，剩 J 阶段人工 smoke 与生产 cron/轮询待确认；阶段与待办以 handoff.md 为准）；**求职 Agent 阶段 1「求职工作台」代码已落地（2026-10-03，见运行架构第 10 条；未部署到生产）**，阶段 2（半自动投递）待拍板。
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
@@ -39,14 +39,15 @@ job-agent/
 │  ├─ github-source/  # Octokit、GraphQL 查询、L0/L1 采集、限频/缓存（首个 EvidenceSource）
 │  ├─ gitee-source/   # 第二个 EvidenceSource：Gitee v5 REST-only 采集→证据源无关 AnalyzerInput（CLI --platform 选源；设计见 docs/design-gitee-source-20260914.md）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
-│  ├─ resume-core/    # 纯函数：画像+岗位+匹配→岗位定向简历 ResumeDraft（match-input 映射 / rank 排序 / tailor 装配 / render md+html / polish 受约束润色安全层；只重排不造事实，设计见 docs/design-targeted-resume-20260915.md）
+│  ├─ resume-core/    # 纯函数：画像+岗位+匹配→岗位定向简历 ResumeDraft（match-input 映射 / rank 排序 / tailor 装配 / render md+html / polish 受约束润色安全层；阶段 1 起也产规则版求职信 CoverLetterDraft；只重排不造事实，设计见 docs/design-targeted-resume-20260915.md）
+│  ├─ agent-core/     # 纯函数：求职任务状态机（JobRun 迁移表）、偏好→匹配条件/硬过滤、质量闸与候选选择、可解释匹配报告（只出 code+事实）、票据计划、投递限频判断（阶段 1 求职工作台，设计见 docs/设计-求职Agent-20261002.md §10）
 │  ├─ llm/            # LLM 端口（LlmClient）+ FakeLlmClient（测试）+ OpenAICompatibleClient（/chat/completions，注入 fetch 测试）+ LlmResumePolishProvider（Zod 校验）；createResumePolishProviderFromEnv 无 LLM_API_KEY 返回 null（默认关闭走规则版），凭证只从服务端 LLM_* env 读（见 .env.example、简历设计 §7/§10）
 │  └─ ui-tokens/      # 设计 token 单一事实源（无构建静态 CSS，--ja-* 变量；report 与 extension 共用，设计见 docs/design-tokens-20260910.md）
 ├─ apps/
-│  ├─ api/            # Hono：触发分析、查询任务/画像、只读分享接口
+│  ├─ api/            # Hono：触发分析、查询任务/画像、只读分享接口，以及求职工作台 `/agent/*` + `/internal/cron/agent-tick`（编排壳在 src/agent-runner.ts）
 │  ├─ worker/         # 消费 analysis_jobs，调用 github-source + analyzer-core
 │  ├─ cli/            # 本地批量分析，导出 JSONL/报告（供决策 #8 标注实验）
-│  ├─ report/         # Astro 报告页 + React islands
+│  ├─ report/         # Astro 报告页 + React islands（含 `/[locale]/workbench` 求职工作台）
 │  └─ extension/      # P1 浏览器扩展（MV3 + content script + Shadow DOM 面板 + 三 ATS 适配器 + esbuild；试用指南见其 README）
 ├─ db/migrations/sqlite/   # SQLite 编号迁移（NNN_verb_snake_case.sql）
 ├─ db/migrations/postgres/ # Postgres 编号迁移（与 sqlite 编号/文件名一一对应），规范见 MIGRATION_CONVENTION.md
@@ -97,6 +98,8 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 8. **报告页授权分级闸与登录回跳（2026-09-19 落地，设计见 [docs/design-auth-gating-20260919.md](docs/design-auth-gating-20260919.md)）**：报告页是 Astro SSR **直读只读 storage（不走 API）**，身份由 `apps/report/src/lib/auth.ts` 的 `resolveViewer` 解析（只读、不 `touch`、坏/过期会话静默降级匿名）。两档可见性——未登录（anonymous/demo）可见结论/技能/匹配/简历/投递与匹配理由证据（决策 #10 要求可回溯），登录 `user` 才可见招聘方三视图**原始证据外链、面试题、`interview-kit.md`**（该端点未登录 `401`）；登录墙用纯 SSR `GateCard`，登录链接必须带同源 `return_to`（API 侧 `sanitizeReturnTo` 白名单防开放重定向）。**JSON API `GET /profiles/:id` 与 `/exportable` 保持公开**（扩展一键填充依赖 exportable，其投影无证据 URL/面试题），字段级 API 裁剪缓做（见 deferred）。
 
 9. **两侧分工的硬事实（改 B/C 任何表面前先读，全量见 [docs/design-recruiter-roles-20260925.md](docs/design-recruiter-roles-20260925.md) §1.1）**：项目**没有** B/C 两套账号，只有四条判据互不一致的机制——① 报告页 `?view=recruiter`（纯 query，无身份判断）② 内容分级闸（判据是"已登录"，与招聘方无关）③ `/[locale]/recruit` 工作台（SSR 直出）④ 端点闸（只有 `/interviews` 要求登录；`/candidates` 不查身份；`/applications` 自 2026-09-25 起**按画像认领状态**设闸——未认领画像沿用公开读写，已认领画像读与写只认本人 401/403，投递 PATCH 对有主行非主一律 404）。**不得把 ②④ 描述成"招聘方角色机制"**，全仓今天唯一的角色墙尚不存在（#17 已决策 2026-09-25、代码未开工）；数据模型上**没有 `role` 列**，也不得建 `teams`/`memberships`/席位表——那是 #17 第二期（触发条件见 deferred）；实施顺序：投递归属（#17-F11 / 任务 T01–T03b）**已于 2026-09-25 落地**，招聘方声明（F10）留后。**主力功能是应聘方（C）**：`accounts` 的语义即"通过 OAuth 登录的开发者"，招聘侧无独立身份线。改报告页/认证时保持「结论公开、证据原文登录可见」矩阵，勿把 analyzer-core 拖入身份逻辑。
+
+10. **求职 Agent 工作台（阶段 1，2026-10-03 落地，设计见 [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md) §10）**：`packages/agent-core`（纯函数：任务状态机、偏好→匹配条件与硬过滤、质量闸与候选选择、可解释匹配报告、票据计划）＋ `apps/api/src/agent-runner.ts`（编排壳：读库/写票据/装配闸）＋ `apps/report` 的 `/[locale]/workbench` 页面与 `AgentWorkbench` island。四条硬约束：① **阶段 1 只准备、不投递**——`POST /agent/runs/:id/approve` 只把 `submit_intents` 置 `approved`，全程无对外部系统的写动作（扩展自动投递属阶段 2）；② 状态迁移一律经仓储的 `compareAndSetStatus` **原子条件更新**并落一条 `job_run_events`（可回放），**禁止绕过状态机直接写 `status`**；③ 匹配报告**只出 code + 事实**（`title_match`/`tag_match`/`description_match` + 缺口标签），句子由渲染侧按 locale 现拼，内核不写自然语言；④ 投递限频按**岗位来源**统计 24h 内「已确认 + 已投递」，额度不足**整批 429、绝不部分确认**。业务代码只依赖 `@jobagent/agent-core` 纯函数与 storage 仓储，不得把 I/O 塞进内核。
 
 ### 内核与 I/O 分离（硬约束）
 
