@@ -164,12 +164,14 @@ describe('plan', () => {
   it('snapshots the posting without the heavy description field', () => {
     const snapshot = toSubmitIntentJob({
       ...posting({ jobId: 'job-9' }),
+      id: 'pool-key-9',
       sourceUrl: 'https://boards.greenhouse.io/acme/jobs/9',
       applyUrl: 'https://boards.greenhouse.io/acme/jobs/9/apply',
       salaryCurrency: 'USD',
     });
     expect(snapshot).toEqual({
       jobId: 'job-9',
+      postingId: 'pool-key-9',
       source: 'greenhouse',
       sourceUrl: 'https://boards.greenhouse.io/acme/jobs/9',
       applyUrl: 'https://boards.greenhouse.io/acme/jobs/9/apply',
@@ -187,7 +189,11 @@ describe('plan', () => {
   });
 
   it('plans intents from the same match object that passed the gate (score/tier are consistent)', () => {
-    const snapshotSource: IntentJobSnapshotSource = { ...posting(), sourceUrl: 'https://x.test/1' };
+    const snapshotSource: IntentJobSnapshotSource = {
+      ...posting(),
+      id: 'pool-key-1',
+      sourceUrl: 'https://x.test/1',
+    };
     const planned = planIntents([{ match: match(), posting: snapshotSource }], {
       profileSkills: ['TypeScript'],
       maxGaps: 1,
@@ -197,5 +203,7 @@ describe('plan', () => {
     expect(planned[0]!.matchTier).toBe('high');
     expect(planned[0]!.report.score).toBe(6);
     expect(planned[0]!.job.sourceUrl).toBe('https://x.test/1');
+    // 票据必须带上岗位池主键，否则 /resumes/build 取不到岗位行（工作台下载简历曾因此 404）
+    expect(planned[0]!.job.postingId).toBe('pool-key-1');
   });
 });
