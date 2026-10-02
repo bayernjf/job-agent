@@ -290,6 +290,117 @@ describe('migrations', () => {
     const profileRemovalCols = db.prepare('PRAGMA table_info(profiles)').all() as Array<{ name: string }>;
     expect(profileRemovalCols.map((c) => c.name)).toContain('removal_requested_at');
 
+    // 018–021（求职 Agent 阶段 1 求职工作台）：偏好集 / 任务 / 事件流 / 投递票据
+    expect(tables.map((t) => t.name)).toContain('job_preferences');
+    const preferenceColumns = db
+      .prepare('PRAGMA table_info(job_preferences)')
+      .all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'account_id',
+      'label',
+      'target_titles',
+      'skills',
+      'locations',
+      'remote_only',
+      'salary_min_usd',
+      'sources',
+      'company_whitelist',
+      'company_blacklist',
+      'min_tier',
+      'daily_submit_limit',
+      'created_at',
+      'updated_at',
+    ]) {
+      expect(preferenceColumns.map((c) => c.name)).toContain(expected);
+    }
+    const preferenceIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='job_preferences'")
+      .all() as Array<{ name: string }>;
+    expect(preferenceIndexes.map((i) => i.name)).toContain('idx_jp_account');
+
+    expect(tables.map((t) => t.name)).toContain('job_runs');
+    const runColumns = db.prepare('PRAGMA table_info(job_runs)').all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'account_id',
+      'profile_id',
+      'preference_id',
+      'status',
+      'attempts',
+      'last_error',
+      'last_scan_at',
+      'created_at',
+      'updated_at',
+    ]) {
+      expect(runColumns.map((c) => c.name)).toContain(expected);
+    }
+    const runIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='job_runs'")
+      .all() as Array<{ name: string }>;
+    expect(runIndexes.map((i) => i.name)).toContain('idx_jr_status');
+    expect(runIndexes.map((i) => i.name)).toContain('idx_jr_account');
+
+    expect(tables.map((t) => t.name)).toContain('job_run_events');
+    const runEventColumns = db
+      .prepare('PRAGMA table_info(job_run_events)')
+      .all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'run_id',
+      'event',
+      'from_status',
+      'to_status',
+      'actor',
+      'payload',
+      'created_at',
+    ]) {
+      expect(runEventColumns.map((c) => c.name)).toContain(expected);
+    }
+    const runEventIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='job_run_events'")
+      .all() as Array<{ name: string }>;
+    expect(runEventIndexes.map((i) => i.name)).toContain('idx_jre_run');
+
+    expect(tables.map((t) => t.name)).toContain('submit_intents');
+    const submitIntentColumns = db
+      .prepare('PRAGMA table_info(submit_intents)')
+      .all() as Array<{ name: string }>;
+    for (const expected of [
+      'id',
+      'run_id',
+      'account_id',
+      'profile_id',
+      'job_id',
+      'job_source',
+      'job_snapshot',
+      'match_score',
+      'match_tier',
+      'match_report',
+      'status',
+      'reject_reason',
+      'approved_at',
+      'rejected_at',
+      'submitted_at',
+      'application_id',
+      'created_at',
+      'updated_at',
+    ]) {
+      expect(submitIntentColumns.map((c) => c.name)).toContain(expected);
+    }
+    const submitIntentIndexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='submit_intents'")
+      .all() as Array<{ name: string }>;
+    expect(submitIntentIndexes.map((i) => i.name)).toContain('idx_si_run');
+    expect(submitIntentIndexes.map((i) => i.name)).toContain('idx_si_account_status');
+    expect(submitIntentIndexes.map((i) => i.name)).toContain('idx_si_source');
+
+    // 022：applications 回填票据外键列（origin 仍是自由文本，009 未加 CHECK）
+    const applicationIntentCols = db
+      .prepare('PRAGMA table_info(applications)')
+      .all() as Array<{ name: string }>;
+    expect(applicationIntentCols.map((c) => c.name)).toContain('submit_intent_id');
+
     db.close();
   });
 
@@ -341,6 +452,55 @@ describe('migrations', () => {
   it('rolls back migrations in reverse order with their down scripts', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
+
+    // 回滚 022（applications 去掉 submit_intent_id 票据外键列，表本身仍在）
+    const appColsBefore22 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
+    expect(appColsBefore22.map((c) => c.name)).toContain('submit_intent_id');
+    const result22 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result22.version).toBe('022');
+    const appColsAfter22 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
+    expect(appColsAfter22.map((c) => c.name)).not.toContain('submit_intent_id');
+    expect(appColsAfter22.map((c) => c.name)).toContain('origin'); // 只丢列，不丢表
+
+    // 回滚 021（submit_intents 整表）
+    const submitTablesBefore21 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(submitTablesBefore21.map((t) => t.name)).toContain('submit_intents');
+    const result21 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result21.version).toBe('021');
+    const submitTablesAfter21 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(submitTablesAfter21.map((t) => t.name)).not.toContain('submit_intents');
+    expect(submitTablesAfter21.map((t) => t.name)).toContain('job_run_events'); // 020 还在
+
+    // 回滚 020（job_run_events 整表）
+    const result20 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result20.version).toBe('020');
+    const runEventTablesAfter20 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(runEventTablesAfter20.map((t) => t.name)).not.toContain('job_run_events');
+    expect(runEventTablesAfter20.map((t) => t.name)).toContain('job_runs'); // 019 还在
+
+    // 回滚 019（job_runs 整表）
+    const result19 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result19.version).toBe('019');
+    const runTablesAfter19 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(runTablesAfter19.map((t) => t.name)).not.toContain('job_runs');
+    expect(runTablesAfter19.map((t) => t.name)).toContain('job_preferences'); // 018 还在
+
+    // 回滚 018（job_preferences 整表）
+    const result18 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result18.version).toBe('018');
+    const preferenceTablesAfter18 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(preferenceTablesAfter18.map((t) => t.name)).not.toContain('job_preferences');
+    expect(preferenceTablesAfter18.map((t) => t.name)).toContain('applications'); // 009 还在
 
     // 回滚 017（profiles 去掉 removal_requested_at 挂起标记，表本身仍在）
     const profileColsBefore17 = db.prepare('PRAGMA table_info(profiles)').all() as Array<{ name: string }>;

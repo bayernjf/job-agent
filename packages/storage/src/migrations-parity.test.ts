@@ -45,6 +45,10 @@ const TABLES = [
   'demo_rate_events',
   'applications',
   'profile_removal_requests',
+  'job_preferences',
+  'job_runs',
+  'job_run_events',
+  'submit_intents',
 ];
 
 describe('sqlite/postgres migration parity', () => {

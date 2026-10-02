@@ -118,3 +118,43 @@ export {
   REMOVAL_DECISIONS,
   toStoredProfileRemovalRequest,
 } from './profile-removal-request.js';
+
+export type {
+  JobPreferencePatch,
+  StoredJobPreference,
+  NewJobPreference,
+  RawJobPreferenceRow,
+} from './job-preference.js';
+export { toStoredJobPreference } from './job-preference.js';
+
+export type {
+  JobRunStatus,
+  StoredJobRun,
+  NewJobRun,
+  JobRunStatusPatch,
+  RawJobRunRow,
+} from './job-run.js';
+export { JOB_RUN_STATUSES_DB, toStoredJobRun } from './job-run.js';
+
+export type {
+  JobRunEventKind,
+  JobRunActor,
+  JobRunEventPayload,
+  StoredJobRunEvent,
+  NewJobRunEvent,
+  RawJobRunEventRow,
+} from './job-run-event.js';
+export { JOB_RUN_EVENT_KINDS, JOB_RUN_ACTORS, toStoredJobRunEvent } from './job-run-event.js';
+
+export type {
+  JobSource,
+  MatchReport,
+  MatchScoreTier,
+  SubmitIntentJob,
+  SubmitIntentStatus,
+  StoredSubmitIntent,
+  NewSubmitIntent,
+  SubmitIntentPatch,
+  RawSubmitIntentRow,
+} from './submit-intent.js';
+export { SUBMIT_INTENT_STATUSES, toStoredSubmitIntent } from './submit-intent.js';

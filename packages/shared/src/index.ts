@@ -764,7 +764,8 @@ export type JobPosting = z.infer<typeof JobPostingSchema>;
  * - mid：score ≥ 40% 满分
  * - low：score < 40%，或无命中技能
  */
-export type MatchScoreTier = 'high' | 'mid' | 'low';
+export const MatchScoreTierSchema = z.enum(['high', 'mid', 'low']);
+export type MatchScoreTier = z.infer<typeof MatchScoreTierSchema>;
 
 export function matchScoreTier(score: number, matchedSkillCount: number): MatchScoreTier {
   if (matchedSkillCount <= 0) return 'low';
@@ -1454,3 +1455,376 @@ export const InterviewListQuerySchema = z.object({
   status: InterviewStatusSchema.optional(),
 });
 export type InterviewListQuery = z.infer<typeof InterviewListQuerySchema>;
+
+// ─────────────────────────────────────────────────────────────────────────
+// 求职 Agent · 阶段 1「求职工作台」（2026-10-02，设计见 docs/设计-求职Agent-20261002.md）
+//
+// 阶段 1 的硬边界：**Agent 只准备、人执行**。Agent 按求职偏好扫本地岗位池 → 出可解释
+// 匹配报告 → 生成岗位定向简历/求职信 → 推到「待投清单」；真正把简历发出去的动作由用户在
+// 浏览器里自己完成，本阶段不产生任何对外部系统的副作用（无 ATS 自动填充、无自动提交）。
+//
+// 四个契约是单一事实源：
+//   - JobPreferences：找的依据（可多套偏好，一个求职任务绑一套）；
+//   - JobRun / JobRunEvent：任务状态机 + 可回放的迁移审计（设计 §5.2）；
+//   - SubmitIntent：人机闸票据（一条 = 一个待投岗位）+ 岗位精简快照；
+//   - MatchReport：可解释匹配报告，只出 code + 事实，句子由渲染侧按语言现拼。
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * 求职偏好集（设计 §3.1「求职偏好模型」）。
+ *
+ * 打分口径沿用 `matchJobs`（title×3 + tags×2 + description×1）：本契约只描述"找什么"，
+ * 不复制打分逻辑；`targetTitles` 是硬过滤关键词（任一命中即保留），`skills` 参与加权打分
+ * （留空则退回画像技能名），`remoteOnly`/`salaryMinUsd`/`sources` 与 matchJobs 的硬过滤一一对应。
+ */
+export const JobPreferencesSchema = z.object({
+  preferenceId: z.string().min(1),
+  accountId: z.string().min(1), // 归属账号（本人）；求职任务是登录用户的私有数据
+  label: z.string().min(1), // 用户可见名称，如「远程全栈」
+  targetTitles: z.array(z.string().min(1)).min(1), // 目标岗位关键词（至少一个，否则「找」无从下手）
+  skills: z.array(z.string().min(1)).default([]), // 参与加权打分的技能；空 = 用画像 skillTags.name
+  locations: z.array(z.string().min(1)).default([]), // 地区关键词（对 location 原文做子串过滤）；空 = 不限
+  remoteOnly: z.boolean().default(false),
+  salaryMinUsd: z.number().int().nonnegative().nullish(), // 年化美元下限；无薪资数据的岗位不满足（matchJobs 口径）
+  sources: z.array(JobSourceSchema).default([]), // 限定岗位来源；空 = 全部来源
+  companyWhitelist: z.array(z.string().min(1)).default([]), // 命中即优先（不排他）
+  companyBlacklist: z.array(z.string().min(1)).default([]), // 命中即剔除
+  minTier: MatchScoreTierSchema.default('mid'), // 质量闸：低于该档不进待投清单（设计 §4.3 防海投）
+  dailySubmitLimit: z.number().int().min(1).max(100).default(20), // 每源每日投递上限（设计 §3.4 限频）
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type JobPreferences = z.infer<typeof JobPreferencesSchema>;
+
+/** POST /agent/preferences 请求体：不含 id/归属/时间戳（服务端生成）。 */
+export const JobPreferencesCreateSchema = z
+  .object({
+    label: z.string().min(1).max(80),
+    targetTitles: z.array(z.string().min(1).max(80)).min(1).max(20),
+    skills: z.array(z.string().min(1).max(80)).max(60).optional(),
+    locations: z.array(z.string().min(1).max(80)).max(20).optional(),
+    remoteOnly: z.boolean().optional(),
+    salaryMinUsd: z.number().int().nonnegative().max(10_000_000).nullish(),
+    sources: z.array(JobSourceSchema).max(10).optional(),
+    companyWhitelist: z.array(z.string().min(1).max(120)).max(200).optional(),
+    companyBlacklist: z.array(z.string().min(1).max(120)).max(200).optional(),
+    minTier: MatchScoreTierSchema.optional(),
+    dailySubmitLimit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+export type JobPreferencesCreateInput = z.infer<typeof JobPreferencesCreateSchema>;
+
+/** PUT /agent/preferences/:id 请求体：至少一个字段；语义为整体替换提供的字段。 */
+export const JobPreferencesPatchSchema = JobPreferencesCreateSchema.partial().refine(
+  (d) => Object.keys(d).length > 0,
+  { message: 'at least one field to update is required' },
+);
+export type JobPreferencesPatchInput = z.infer<typeof JobPreferencesPatchSchema>;
+
+/**
+ * 求职任务状态全集（设计 §5.2）。阶段 1 实际只会走到
+ * created → configured → watching → recommending → awaiting_approval，
+ * 用户确认/标记已投后进入 tracking/archived；`submitting`/`submitted` 是阶段 2
+ * （扩展执行投递）才使用的状态，契约先行保留，避免阶段 2 再改状态机取值。
+ */
+export const JOB_RUN_STATUSES = [
+  'created', // 草稿，待校验偏好与画像
+  'configured', // 配置合法，等待首次调度
+  'watching', // 扫描岗位池，产出候选
+  'recommending', // 生成匹配报告 + 定向简历/求职信
+  'awaiting_approval', // ★ 人机闸：待投清单已就绪，等用户确认
+  'submitting', // （阶段 2）已确认，扩展执行投递中
+  'submitted', // 已投出（阶段 1：用户标记已投）
+  'tracking', // 投递后跟踪（复用 applications/interviews 管道）
+  'archived', // 归档终态
+  'cancelled', // 用户中止
+  'failed', // 不可恢复错误（必须带显式原因，禁止"看似成功"）
+] as const;
+export const JobRunStatusSchema = z.enum(JOB_RUN_STATUSES);
+export type JobRunStatus = z.infer<typeof JobRunStatusSchema>;
+
+/** 状态机迁移事件（设计 §5.2 表格）；每条迁移都落一条 JobRunEvent。 */
+export const JOB_RUN_EVENTS = [
+  'validate', // created → configured
+  'start', // configured → watching
+  'candidates_ready', // watching → recommending（候选非空且过质量闸）
+  'generated', // recommending → awaiting_approval（产出成功）
+  'approve', // awaiting_approval → （阶段 1）awaiting_approval 内票据置 approved
+  'reject', // awaiting_approval → watching（本轮无合格项，等下一轮）
+  'rescan', // watching/recommending → watching（本轮无合格项）
+  'submitted', // submitting → submitted（阶段 2 扩展回执）；阶段 1 由 awaiting_approval → tracking
+  'track', // submitted → tracking
+  'archive', // → archived
+  'fail', // 任意非终态 → failed（显式错误）
+  'cancel', // 任意非终态 → cancelled
+] as const;
+export const JobRunEventKindSchema = z.enum(JOB_RUN_EVENTS);
+export type JobRunEventKind = z.infer<typeof JobRunEventKindSchema>;
+
+/** 迁移动作者：user=用户动作、agent=Agent 一轮扫描、system=cron/运维。 */
+export const JOB_RUN_ACTORS = ['user', 'agent', 'system'] as const;
+export const JobRunActorSchema = z.enum(JOB_RUN_ACTORS);
+export type JobRunActor = z.infer<typeof JobRunActorSchema>;
+
+export const JobRunSchema = z.object({
+  runId: z.string().min(1),
+  accountId: z.string().min(1),
+  profileId: z.string().min(1),
+  preferenceId: z.string().min(1),
+  status: JobRunStatusSchema,
+  attempts: z.number().int().nonnegative(), // 本轮（watching→recommending）尝试次数
+  lastError: z.string().nullable(), // 显式失败原因；无错误为 null
+  lastScanAt: z.string().datetime().nullable(), // 上次扫描完成时间
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type JobRun = z.infer<typeof JobRunSchema>;
+
+/** 状态迁移审计日志（可回放）：每条含事件、前后状态、动作方与结构化载荷。 */
+export const JobRunEventSchema = z.object({
+  eventId: z.string().min(1),
+  runId: z.string().min(1),
+  event: JobRunEventKindSchema,
+  fromStatus: JobRunStatusSchema.nullable(), // 创建时的首个事件无前置状态
+  toStatus: JobRunStatusSchema,
+  actor: JobRunActorSchema,
+  payload: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).default({}),
+  createdAt: z.string().datetime(),
+});
+export type JobRunEvent = z.infer<typeof JobRunEventSchema>;
+
+/**
+ * 可解释匹配报告的原子片段（设计 §3.2）。
+ *
+ * 内核只产 **code + 事实**（命中的画像技能、岗位标签、字段与分值），**不产英文/中文句子**：
+ * 渲染侧（报告页工作台）按 code 取本地化文案现拼。这样新增语言不必改内核，
+ * 也不会出现"中文页面贴英文句子"的老问题（对齐 T23/T33 的纪律）。
+ */
+export const MATCH_REASON_CODES = [
+  'title_match', // 画像技能命中岗位标题
+  'tag_match', // 命中岗位标签
+  'description_match', // 只在岗位正文命中
+] as const;
+export const MatchReasonCodeSchema = z.enum(MATCH_REASON_CODES);
+export type MatchReasonCode = z.infer<typeof MatchReasonCodeSchema>;
+
+/** 缺口：岗位标签在画像技能里找不到（事实陈述，不推断"你不行"）。 */
+export const MATCH_GAP_CODES = ['tag_not_in_profile'] as const;
+export const MatchGapCodeSchema = z.enum(MATCH_GAP_CODES);
+export type MatchGapCode = z.infer<typeof MatchGapCodeSchema>;
+
+/** 补强建议：为已在岗位里出现、但画像缺证据的技能补一条可回溯证据。 */
+export const MATCH_BOOST_CODES = ['add_evidence_for_tag'] as const;
+export const MatchBoostCodeSchema = z.enum(MATCH_BOOST_CODES);
+export type MatchBoostCode = z.infer<typeof MatchBoostCodeSchema>;
+
+export const MatchReasonSchema = z.object({
+  code: MatchReasonCodeSchema,
+  skill: z.string().min(1), // 命中的画像技能原文（技能名是事实，不翻译）
+  points: z.number().int().positive(), // 该字段贡献的分值（title 3 / tags 2 / description 1）
+});
+export type MatchReason = z.infer<typeof MatchReasonSchema>;
+
+export const MatchGapSchema = z.object({
+  code: MatchGapCodeSchema,
+  tag: z.string().min(1), // 岗位标签原文
+});
+export type MatchGap = z.infer<typeof MatchGapSchema>;
+
+export const MatchBoostSchema = z.object({
+  code: MatchBoostCodeSchema,
+  skill: z.string().min(1), // 建议补证据的技能（= 缺口标签，大小写按岗位原文）
+});
+export type MatchBoost = z.infer<typeof MatchBoostSchema>;
+
+export const MatchReportSchema = z.object({
+  /** 产出该报告的求职 Agent 规则版本（AGENT_RULE_VERSION）；报告可复现、可追溯 */
+  ruleVersion: z.string().min(1),
+  score: z.number().nonnegative(), // 加权总分（title×3 + tags×2 + description×1）
+  tier: MatchScoreTierSchema,
+  fieldScores: z.object({
+    title: z.number().nonnegative(),
+    tags: z.number().nonnegative(),
+    description: z.number().nonnegative(),
+  }),
+  matchedSkills: z.array(z.string().min(1)), // 命中的画像技能（原文）
+  reasons: z.array(MatchReasonSchema),
+  gaps: z.array(MatchGapSchema),
+  suggestedBoost: z.array(MatchBoostSchema),
+});
+export type MatchReport = z.infer<typeof MatchReportSchema>;
+
+/** 待投票据内嵌的岗位精简快照（岗位池会被日更覆盖/下架，票据必须自证投的是哪一条）。 */
+export const SubmitIntentJobSchema = z.object({
+  jobId: z.string().min(1),
+  source: JobSourceSchema,
+  sourceUrl: z.string().url(),
+  applyUrl: z.string().url().optional(),
+  title: z.string().min(1),
+  company: z.string().min(1),
+  location: z.string().nullish(),
+  remote: z.boolean(),
+  salaryMin: z.number().nullish(),
+  salaryMax: z.number().nullish(),
+  salaryCurrency: z.string().nullish(),
+  tags: z.array(z.string()).default([]),
+  postedAt: z.string().datetime(),
+});
+export type SubmitIntentJob = z.infer<typeof SubmitIntentJobSchema>;
+
+/** 票据状态：pending=待用户确认（阶段 1 的待投清单）、approved=已确认待投、submitted=已投。 */
+export const SUBMIT_INTENT_STATUSES = [
+  'pending', // 人机闸：等用户确认
+  'approved', // 用户已确认（阶段 1：用户自己去 ATS 页面投）
+  'rejected', // 用户拒绝（附原因）
+  'submitted', // 已投出（阶段 1：用户回填"已投"）
+  'withdrawn', // 岗位下架/超时自动撤回
+  'failed', // 投递失败（阶段 2 扩展回执）
+] as const;
+export const SubmitIntentStatusSchema = z.enum(SUBMIT_INTENT_STATUSES);
+export type SubmitIntentStatus = z.infer<typeof SubmitIntentStatusSchema>;
+
+export const SubmitIntentSchema = z.object({
+  intentId: z.string().min(1),
+  runId: z.string().min(1),
+  accountId: z.string().min(1),
+  profileId: z.string().min(1),
+  job: SubmitIntentJobSchema,
+  matchScore: z.number().nonnegative(),
+  matchTier: MatchScoreTierSchema,
+  report: MatchReportSchema,
+  status: SubmitIntentStatusSchema,
+  rejectReason: z.string().nullable(),
+  approvedAt: z.string().datetime().nullable(),
+  rejectedAt: z.string().datetime().nullable(),
+  submittedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type SubmitIntent = z.infer<typeof SubmitIntentSchema>;
+
+/** POST /agent/runs 请求体：绑定一套偏好与一个本人已认领画像。 */
+export const JobRunCreateSchema = z
+  .object({
+    preferenceId: z.string().min(1),
+    profileId: z.string().min(1),
+  })
+  .strict();
+export type JobRunCreateInput = z.infer<typeof JobRunCreateSchema>;
+
+/** POST /agent/runs/:id/approve 请求体：确认一批待投岗位（阶段 1 = 用户自己去投）。 */
+export const JobRunApproveSchema = z
+  .object({ intentIds: z.array(z.string().min(1)).min(1).max(50) })
+  .strict();
+export type JobRunApproveInput = z.infer<typeof JobRunApproveSchema>;
+
+/** POST /agent/runs/:id/reject 请求体：拒绝一个待投岗位（可带原因，下一轮不再推同一条）。 */
+export const JobRunRejectSchema = z
+  .object({ intentId: z.string().min(1), reason: z.string().min(1).max(500).optional() })
+  .strict();
+export type JobRunRejectInput = z.infer<typeof JobRunRejectSchema>;
+
+/** GET /agent/runs/:id 响应体：任务状态 + 事件流（可回放）+ 全部票据。 */
+export const AgentRunViewSchema = z.object({
+  run: JobRunSchema,
+  events: z.array(JobRunEventSchema),
+  intents: z.array(SubmitIntentSchema),
+});
+export type AgentRunView = z.infer<typeof AgentRunViewSchema>;
+
+/** GET /agent/runs/:id/pending-approvals 响应体：待投清单（阶段 1 的主交付物）。 */
+export const PendingApprovalsSchema = z.object({
+  runId: z.string().min(1),
+  status: JobRunStatusSchema,
+  items: z.array(SubmitIntentSchema),
+});
+export type PendingApprovals = z.infer<typeof PendingApprovalsSchema>;
+
+/** 求职 Agent 结构化错误码（前后端共用单一事实源）。 */
+export const AGENT_ERROR_CODES = {
+  preferenceNotFound: 'AGENT_PREFERENCE_NOT_FOUND', // 404：偏好不存在或不属于本人
+  runNotFound: 'AGENT_RUN_NOT_FOUND', // 404：任务不存在或不属于本人
+  intentNotFound: 'AGENT_INTENT_NOT_FOUND', // 404：票据不存在或不属于本人
+  profileNotOwned: 'AGENT_PROFILE_NOT_OWNED', // 403：画像未由本人认领
+  runNotActive: 'AGENT_RUN_NOT_ACTIVE', // 409：任务已中止/归档，无法继续
+  invalidTransition: 'AGENT_INVALID_TRANSITION', // 409：该状态不接受此事件
+  nothingToApprove: 'AGENT_NOTHING_TO_APPROVE', // 409：没有可确认的待投项（已全处理/未就绪）
+  preferenceInUse: 'AGENT_PREFERENCE_IN_USE', // 409：该偏好仍被未结束的求职任务引用，不能删除
+  dailyLimitReached: 'AGENT_DAILY_SUBMIT_LIMIT_REACHED', // 429：该来源当日投递已达上限（限频闸）
+  artifactsUnavailable: 'AGENT_ARTIFACTS_UNAVAILABLE', // 409：简历/求职信生成失败（画像或岗位不足以装配）
+} as const;
+export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[keyof typeof AGENT_ERROR_CODES];
+
+// ─── 求职信（阶段 1「改」的第二个交付物）────────────────────────────────
+//
+// 与岗位定向简历同一条 no-fabrication 硬约束：每个段落只能引用画像快照里已有的事实，
+// 且必须挂 evidenceRefs（references 段落可空）。阶段 1 只做**规则版**（确定性、可复现）；
+// LLM 润色/改写沿用 resume-core 的 A/B 档模式，待阶段 2 再接入（设计 §8 开放问题 3）。
+
+/** 求职信装配规则版本：段落选择/模板变更时递增。 */
+export const COVER_LETTER_RULE_VERSION = '0.1';
+
+/** 求职信段落意图码（渲染与测试按 code 取，不按句子匹配）。 */
+export const COVER_LETTER_PARAGRAPH_CODES = [
+  'opening', // 我是谁 + 投哪个岗位
+  'match', // 岗位命中的技能与深度（来自画像技能标签）
+  'evidence', // 一条最强的可回溯证据亮点
+  'close', // 收尾与致谢
+] as const;
+export const CoverLetterParagraphCodeSchema = z.enum(COVER_LETTER_PARAGRAPH_CODES);
+export type CoverLetterParagraphCode = z.infer<typeof CoverLetterParagraphCodeSchema>;
+
+export const CoverLetterParagraphSchema = z
+  .object({
+    code: CoverLetterParagraphCodeSchema,
+    text: z.string().min(1),
+    evidenceRefs: z.array(z.string().min(1)),
+  })
+  .superRefine((p, ctx) => {
+    // 只有"断言画像事实"的段落必须可回溯（match/evidence）；
+    // opening 段只陈述"我投的是哪个岗位"（事实来自岗位行），close 段是礼貌收尾，两者无证据可挂。
+    if ((p.code === 'match' || p.code === 'evidence') && p.evidenceRefs.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'cover letter paragraph must cite at least one evidenceRef (no-fabrication)',
+        path: ['evidenceRefs'],
+      });
+    }
+  });
+export type CoverLetterParagraph = z.infer<typeof CoverLetterParagraphSchema>;
+
+export const CoverLetterDraftSchema = z.object({
+  schemaVersion: z.string().min(1),
+  ruleVersion: z.string().min(1),
+  generatedAt: z.string().datetime(),
+  locale: ResumeLocaleSchema,
+  subject: z.object({
+    login: z.string().min(1),
+    displayName: z.string().optional(),
+    profileUrl: z.string().url(),
+  }),
+  targetJob: z.object({
+    jobId: z.string().min(1),
+    title: z.string().min(1),
+    company: z.string(),
+    sourceUrl: z.string().url(),
+  }),
+  /** 抬头称呼与落款（同样是模板文案，随 locale 变化） */
+  greeting: z.string().min(1),
+  closing: z.string().min(1),
+  paragraphs: z.array(CoverLetterParagraphSchema).min(1),
+  provenance: z.object({
+    profileId: z.string().min(1),
+    analyzerVersion: z.string().min(1),
+    ruleVersion: z.string().min(1),
+  }),
+  gaps: z.array(z.string()), // 画像缺失、需用户补填的字段（沿用简历口径）
+  dataQualityNote: z.string().optional(), // 薄画像诚实标注
+});
+export type CoverLetterDraft = z.infer<typeof CoverLetterDraftSchema>;
+
+/** 解析求职信草稿（对外统一入口；失败返回 null，由调用方决定降级）。 */
+export function parseCoverLetterDraft(input: unknown): CoverLetterDraft | null {
+  const result = CoverLetterDraftSchema.safeParse(input);
+  return result.success ? result.data : null;
+}

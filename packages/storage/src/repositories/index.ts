@@ -13,3 +13,7 @@ export type { IInterviewsRepository, InterviewListFilter } from './interviews.js
 export type { IAccountsRepository } from './accounts.js';
 export type { IAuthSessionsRepository } from './auth-sessions.js';
 export type { IProfileRemovalRequestsRepository } from './profile-removal-requests.js';
+export type { IJobPreferencesRepository } from './job-preferences.js';
+export type { IJobRunsRepository } from './job-runs.js';
+export type { IJobRunEventsRepository } from './job-run-events.js';
+export type { ISubmitIntentsRepository } from './submit-intents.js';
