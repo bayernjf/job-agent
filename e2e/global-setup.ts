@@ -217,6 +217,25 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // eslint-disable-next-line no-console
   console.log(`[e2e] fixture DB ready at ${DB_FILE} (login=${record.snapshot?.subject.login})`);
 
+  // 预热：astro dev 首次访问某路由时按需编译，且 lockfile 变更后会重跑 Vite 依赖优化。
+  // 在 globalSetup 阶段（此时 webServer 已就绪）提前触发首页与报告页编译，
+  // 避免首个用例 goto 撞上编译/优化导致偶发超时。预热失败不致命：健康检查已通过，
+  // 用例自身的断言会暴露真实问题。
+  const warm = async (path: string): Promise<void> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60000);
+    try {
+      const res = await fetch(`http://127.0.0.1:4321${path}`, { signal: ctrl.signal });
+      await res.arrayBuffer();
+    } catch {
+      // ignore: non-fatal warmup; specs will surface real failures
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  await warm('/en/');
+  await warm(`/en/report/${FIXTURE_PROFILE_ID}`);
+
   // 返回 teardown：浏览器全部关闭后清理临时目录。
   // webServer 关闭时 better-sqlite3 句柄可能延迟释放导致 Windows EBUSY，
   // 残留文件无害（下次 globalSetup 开头会先 rmSync 清空），故吞掉清理错误。

@@ -1,0 +1,239 @@
+/*
+ * 报告页专属样式（Q2 从 [profileId].astro 的 <style> 抽出）。
+ * 原为 Astro scoped style；抽到全局 CSS 后，class 名均为报告页专属，
+ * 唯二的裸标签选择器 h2/h3 用根容器 .ja-container 限定，避免影响其他页面。
+ */
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-4);
+  flex-wrap: wrap;
+}
+
+.profile-id {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-4);
+}
+
+.avatar {
+  border-radius: var(--ja-radius-lg);
+  border: 1px solid var(--ja-color-border);
+}
+
+.login {
+  font-size: var(--ja-text-xl);
+  margin-bottom: var(--ja-space-1);
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-3);
+}
+
+.meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-4);
+  padding: var(--ja-space-3) var(--ja-space-2);
+}
+
+.headline {
+  margin-top: var(--ja-space-3);
+  font-size: var(--ja-text-lg);
+}
+
+/* 下一步动作（T10）：只用既有 token，不引入新色板 */
+.next-steps-lead {
+  margin-bottom: var(--ja-space-3);
+}
+
+.next-steps-list {
+  margin: 0;
+  padding-left: var(--ja-space-4);
+}
+
+.next-step-action {
+  margin: 0;
+  font-weight: 600;
+}
+
+.next-step-why {
+  margin: var(--ja-space-1) 0 0;
+}
+
+.next-step-evidence {
+  margin: var(--ja-space-2) 0 0;
+  padding-left: var(--ja-space-4);
+}
+
+.ja-container h2 {
+  font-size: var(--ja-text-lg);
+  margin-bottom: var(--ja-space-3);
+}
+
+.ja-container h3 {
+  font-size: var(--ja-text-base);
+}
+
+.signal {
+  padding: var(--ja-space-3);
+  border-radius: var(--ja-radius-md);
+  border-left: 3px solid var(--ja-color-border);
+  background: var(--ja-color-surface-muted);
+}
+
+.signal--info {
+  border-left-color: var(--ja-color-info);
+}
+
+.signal--warn {
+  border-left-color: var(--ja-color-warning);
+}
+
+.signal--risk {
+  border-left-color: var(--ja-color-danger);
+}
+
+.signal p {
+  margin-top: var(--ja-space-1);
+  font-size: var(--ja-text-sm);
+}
+
+.signal-code {
+  font-family: var(--ja-font-mono);
+  font-size: var(--ja-text-xs);
+}
+
+.kind-label {
+  margin-bottom: var(--ja-space-2);
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-sm);
+}
+
+.depth-mark {
+  font-size: var(--ja-text-xs);
+  opacity: 0.7;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--ja-space-3);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  padding: var(--ja-space-3);
+  background: var(--ja-color-surface-muted);
+  border-radius: var(--ja-radius-md);
+}
+
+.metric-value {
+  font-size: var(--ja-text-xl);
+  font-weight: 600;
+}
+
+.metric-key {
+  font-size: var(--ja-text-xs);
+  font-family: var(--ja-font-mono);
+}
+
+.merged-list {
+  padding-left: var(--ja-space-5);
+}
+
+.interview-item {
+  padding: var(--ja-space-3);
+  background: var(--ja-color-surface-muted);
+  border-radius: var(--ja-radius-md);
+}
+
+.question {
+  font-weight: 500;
+}
+
+.intent {
+  margin-top: var(--ja-space-1);
+  font-size: var(--ja-text-sm);
+}
+
+.caveats ul {
+  padding-left: var(--ja-space-5);
+}
+
+.caveats li {
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.caveats .dispute {
+  margin-top: var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+/* 决策 #1-A 的"显著标注"：琥珀色左边框提示条，正文用前景色保证可读性 */
+.unclaimed-notice {
+  margin-top: var(--ja-space-3);
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-left: 3px solid var(--ja-color-warning);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-amber-50);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+  line-height: var(--ja-leading-normal);
+}
+
+.view-toggle {
+  padding: var(--ja-space-1) var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+}
+
+.recruiter-banner {
+  border-left: 3px solid var(--ja-color-accent);
+  background: var(--ja-color-surface-muted);
+}
+
+.recruiter-banner p {
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.evidence-links {
+  margin-top: var(--ja-space-2);
+  padding-left: var(--ja-space-5);
+  list-style: disc;
+}
+
+.evidence-links li {
+  font-size: var(--ja-text-sm);
+}
+
+.skill-evidence {
+  margin-top: var(--ja-space-3);
+}
+
+.skill-evidence-row {
+  display: flex;
+  gap: var(--ja-space-2);
+  align-items: baseline;
+  font-size: var(--ja-text-sm);
+}
+
+.skill-evidence-name {
+  flex: none;
+  font-weight: 600;
+}
+
+.interview-kit-link {
+  padding: var(--ja-space-1) var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+  white-space: nowrap;
+}

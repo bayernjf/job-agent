@@ -4,12 +4,20 @@
  * 防止新增端点忘写文档或文档残留已删除端点。
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../../..');
 const DOC = readFileSync(resolve(REPO_ROOT, 'docs/API.md'), 'utf8');
-const SOURCE = readFileSync(resolve(__dirname, 'index.ts'), 'utf8');
+// Q1 单文件拆分后，路由字面量分布在 routes/*.ts；这里把 index.ts 与所有 routes
+// 文件的源码拼接后再做正则枚举，保持「文档 ↔ 实际注册」双向守护的意图不变。
+const ROUTES_DIR = resolve(__dirname, 'routes');
+const routeSources = readdirSync(ROUTES_DIR)
+  .filter((f) => f.endsWith('.ts'))
+  .map((f) => readFileSync(resolve(ROUTES_DIR, f), 'utf8'));
+const SOURCE = [readFileSync(resolve(__dirname, 'index.ts'), 'utf8'), ...routeSources].join(
+  '\n',
+);
 
 const METHODS = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] as const;
 type Endpoint = `${(typeof METHODS)[number]} ${string}`;

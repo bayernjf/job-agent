@@ -91,6 +91,23 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Agent workbench full-stack E2E
+        # 真 API + 真 SQLite + 真报告页（不 mock）：能抓到只在真链路上暴露的字段/契约
+        # 错配（2026-10-03 的工作台简历下载 404 就是这样发现的）。夹具由
+        # e2e/agent/global-setup.ts 直接写库，零网络。见 playwright.agent.config.ts。
+        run: pnpm e2e:agent
+
+      - name: Upload agent E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-e2e-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Extension E2E tests
         # Loads the unpacked MV3 extension in --headless=new chromium (no xvfb needed);
         # the script rebuilds apps/extension/dist before launching. See
