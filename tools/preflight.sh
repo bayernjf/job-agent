@@ -17,8 +17,10 @@
 #      not implement the audit endpoint)
 #
 # Usage:  ./tools/preflight.sh [--e2e] [--deploy]
-#   --e2e    Additionally run both Playwright suites after the fast stages:
-#            report E2E (`pnpm e2e`) and extension E2E (`pnpm e2e:extension`).
+#   --e2e    Additionally run all three Playwright suites after the fast stages:
+#            report E2E (`pnpm e2e`), agent workbench full-stack E2E
+#            (`pnpm e2e:agent`, real API + real SQLite, nothing mocked) and
+#            extension E2E (`pnpm e2e:extension`).
 #   --deploy Additionally run the pre-launch artifact gates (form C):
 #            6. Astro build with the Vercel adapter (ASTRO_ADAPTER=vercel),
 #               proving the serverless bundle still builds
@@ -135,6 +137,7 @@ stage "dependency audit"    pnpm audit --audit-level=high --registry https://reg
 
 if [ "$RUN_E2E" -eq 1 ]; then
   stage "report E2E"     pnpm e2e || exit 1
+  stage "agent E2E"      pnpm e2e:agent || exit 1
   stage "extension E2E"  pnpm e2e:extension || exit 1
 fi
 
