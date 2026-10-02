@@ -12,11 +12,18 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStorage } from '@jobagent/storage';
+import { openSqlite } from '../../packages/storage/dist/sqlite/connection.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** 与 playwright.agent.config.ts 保持一致：库名带本轮唯一后缀由配置生成，这里用 glob 后的路径 */
+/**
+ * 与 playwright.agent.config.ts 的 AGENT_DB 保持**同一固定路径**（确定性硬要求）：
+ * globalSetup 在 Playwright 独立进程中运行，跨进程传路径只能靠 env 继承，而继承并不可靠
+ * （实测曾出现 globalSetup 回退到自己的 pid-ts 文件、与 webServer 各用一库，导致
+ * "导航已登录、页面恒登录墙"）。固定文件名消除该不确定性；并发冲突风险极低
+ * （本地单跑 / CI 每 job 独立 checkout），配置加载期会先清理残留。
+ */
 export const AGENT_DB =
-  process.env.JA_AGENT_DB ?? resolve(HERE, '..', '.tmp-agent', `agent-${process.pid}-${Date.now()}.db`);
+  process.env.JA_AGENT_DB ?? resolve(HERE, '..', '.tmp-agent', 'agent-e2e.db');
 
 export const FIXTURE_PROFILE_ID = 'prof-agent-e2e';
 export const FIXTURE_ACCOUNT_ID = 'acc-agent-e2e';
@@ -141,9 +148,38 @@ const evidence = [
 ];
 
 export default async function globalSetup(): Promise<void> {
+  // 幂等重灌（不删库文件、不重建 schema）：
+  // 1) 若删除/重建文件，会替换其他进程（API/report）已打开连接的底层文件，
+  //    触发 SQLITE_READONLY_DBMOVED（写库即 500）或「readonly 连接缓存空库」；
+  // 2) 本函数既在配置加载期执行（Playwright 可能多次 import 配置 → 多次执行），
+  //    也在需要时手动执行——必须对多次运行安全。
+  // 流程：确保 schema（幂等迁移）→ 清空业务表 → 灌夹具。
   mkdirSync(dirname(AGENT_DB), { recursive: true });
-  // 目录与库文件由 playwright.agent.config.ts 在配置加载期准备（API 启动即打开它并自动迁移），
-  // 这里只负责灌夹具——不要删库/重建目录，否则会踩到已启动的 API 连接。
+  const bootstrap = await createStorage({ sqlitePath: AGENT_DB });
+  await bootstrap.close();
+  const raw = openSqlite(AGENT_DB, { readonly: false });
+  try {
+    raw.client.exec(`
+      DELETE FROM submit_intents;
+      DELETE FROM job_run_events;
+      DELETE FROM job_runs;
+      DELETE FROM job_preferences;
+      DELETE FROM applications;
+      DELETE FROM interviews;
+      DELETE FROM profile_removal_requests;
+      DELETE FROM demo_rate_events;
+      DELETE FROM demo_sessions;
+      DELETE FROM waitlist;
+      DELETE FROM analysis_jobs;
+      DELETE FROM job_postings;
+      DELETE FROM auth_sessions;
+      DELETE FROM accounts;
+      DELETE FROM evidence;
+      DELETE FROM profiles;
+    `);
+  } finally {
+    raw.client.close();
+  }
   const repos = await createStorage({ sqlitePath: AGENT_DB });
   await repos.profiles.insert({
     id: FIXTURE_PROFILE_ID,
