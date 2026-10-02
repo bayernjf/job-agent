@@ -630,16 +630,24 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<{
 
   // ── 内部定时任务（serverless 部署由 Vercel Cron 调用；常驻部署不用这两条）────────
   //
-  // 鉴权（二选一）：
-  //   1. 配置了 CRON_SECRET：cron 路径必须带 ?token=<CRON_SECRET>（常量时间比较）；
-  //   2. 未配置 CRON_SECRET：仅接受平台注入的 x-vercel-cron: 1 头（生产建议配 secret）。
+  // 鉴权（凭证均为 CRON_SECRET，一律常量时间比较）：
+  //   1. `?token=<CRON_SECRET>`——GitHub Actions 轮询用（见 .github/workflows/cron-poll.yml）；
+  //   2. `Authorization: Bearer <CRON_SECRET>`——Vercel Cron 在项目配了 CRON_SECRET 时自动注入的
+  //      请求头，故 vercel.json 的 cron path 无需（也不得）内联 token；
+  //   3. 未配置 CRON_SECRET：仅接受平台注入的 x-vercel-cron: 1 头（生产已由启动闸禁止）。
+  const constantTimeEquals = (value: string, expected: Buffer): boolean => {
+    const got = Buffer.from(value);
+    return got.length === expected.length && timingSafeEqual(got, expected);
+  };
   const cronAuthorized = (c: Context): boolean => {
     const secret = process.env.CRON_SECRET;
     if (secret) {
-      const token = c.req.query('token') ?? '';
-      const a = Buffer.from(token);
-      const b = Buffer.from(secret);
-      return a.length === b.length && timingSafeEqual(a, b);
+      const expected = Buffer.from(secret);
+      const bearer = (c.req.header('authorization') ?? '').replace(/^Bearer\s+/i, '');
+      return (
+        constantTimeEquals(c.req.query('token') ?? '', expected) ||
+        constantTimeEquals(bearer, expected)
+      );
     }
     return c.req.header('x-vercel-cron') === '1';
   };
