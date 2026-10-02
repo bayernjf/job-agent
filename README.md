@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸均已落地**；真实性规则 0.3 经真实双源 26 账号回归复核零误伤（holilayet 修复确认）。**2026-09-24 部署前就绪确认单门禁全绿（835 单测 / 报告 E2E 57 / 扩展 E2E 11 / Docker PG 11 迁移幂等+9 行为 / smoke 7/7 / audit·gitleaks 0；中英隐私政策与 CWS 素材齐备），上线级 MVP 的唯一硬阻塞是 P0-3「形态 C」生产部署的控制台人工操作（Vercel + Supabase，执行单 A–J 已就绪）**，其余推进项均卡外部条件（部署决策、CWS 上架、真实 Gitee OAuth 首次冒烟，见 handoff 与 `docs/部署前就绪确认单-20260924.md`）。pnpm workspaces 全仓（14 workspace：9 packages + 5 apps）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸、求职 Agent 阶段 1「求职工作台」（PRD F12）均已落地**；真实性规则 0.8（0.1→0.8 各轮双向校准与真实双源回归见 handoff item5/25/26/66）。**形态 C 生产已于 2026-09-30 上线（`https://app.job-agent.bayjf.com`，Vercel + Supabase），剩 J 阶段人工 smoke（异议邮箱、生产 `LLM_*`、Supabase 备份）与 cron/轮询确认**，其余推进项卡外部条件（CWS 上架、Workday 直渲染租户端到端、扩展真人试用、真实 Gitee OAuth 首次冒烟，见 handoff 与 `docs/部署前就绪确认单-20260924.md`）。pnpm workspaces 全仓（17 workspace：根 + 10 packages + 6 apps）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配、求职工作台均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -17,15 +17,16 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 - **演示模式完成**：免注册「试用演示」以 HttpOnly Cookie 临时身份进入真实产品，三态身份 + 会话/IP/Worker 三道配额闸 + 三态预置示例，代码全落地；配额已于 2026-09-21 决策：每会话 3 次新分析（融合扣 2）、有效期 24h；部署形态 C 代码就绪、待真实部署。
 - **岗位定向简历完成（P-R1/P-R2/P-R3 可闭环子项）**：在画像范围内按岗位生成匹配度高的简历（no-fabrication，每条断言挂证据、只重排不造事实），CLI build/batch + API + 报告页 ResumeBuilder + 扩展深链 + OpenAI 兼容可选润色（默认关闭）；真实 LLM 需自配 `LLM_*`。
 - **招聘痛点解决方案批次 1+2 完成**：企业核验视图（`?view=recruiter`）、面试准备包导出、画像库人才检索（`/candidates`）、企业筛选工作台（`/recruit`）、投递记录追踪（applications）均已落地；批次 3 依赖外部条件。
+- **求职 Agent 阶段 1「求职工作台」落地（2026-10-03，PRD F12 / handoff item94）**：把画像与岗位池接成「找 → 评 → 改 → 投（人工）」——多套**求职偏好**（岗位关键词/技能/地区/远程/薪资/公司黑白名单/质量闸/每源每日上限）→ 新建任务即扫岗位池 → **可解释匹配报告**（命中技能与字段分值、岗位提到而画像无证据的缺口、补强建议）→ 岗位定向简历 + 规则版求职信 → **待投清单**（确认 / 拒绝 / 标记已投）。**只准备不投递**：无 ATS 自动填充、无自动提交；标记已投才写一条 `origin='agent'` 投递记录并转入既有跟踪管道。页面 `/[locale]/workbench`，契约见 [docs/API.md](docs/API.md) §3.8，设计与实施差异见 [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md)；阶段 2/3 的开放问题＝决策 #20（未决策）。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
 
 ## 文档导航
 
 | 文档 | 作用 |
 | --- | --- |
-| [docs/PRD.md](docs/PRD.md) | 产品需求：范围、F1–F9、数据契约、指标、风险 |
+| [docs/PRD.md](docs/PRD.md) | 产品需求：范围、F1–F12、数据契约、指标、风险 |
 | [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) | 技术栈、架构、工程结构与 M1 落地顺序 |
-| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#8 已决策，含 #15/#16 追加，#14 2026-09-21 已决策） |
+| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#8 已决策、#9–#13 延后、#14–#19 已决策、**#20 求职 Agent 阶段 2/3 待决**） |
 | [docs/讨论记录-01-切入口与MVP收敛-20260910.md](docs/讨论记录-01-切入口与MVP收敛-20260910.md) | 关键产品判断的讨论过程与依据 |
 | [docs/讨论记录-02-投递功能与竞品分析-20260911.md](docs/讨论记录-02-投递功能与竞品分析-20260911.md) | 投递方向、四种技术路径、职位聚合/扩展可行性 |
 | [docs/产品构想-以GitHub为桥梁的招聘系统.md](docs/产品构想-以GitHub为桥梁的招聘系统.md) | 最初的产品构想与市场背景 |
@@ -55,7 +56,10 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md) | 部署 / 上线 Runbook（形态 A/B、生产 env、迁移、cron、上线 smoke） |
 | [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md) | 形态 C 上线照勾执行单（Vercel 单项目 + Supabase + Cloudflare DNS + Vercel Cron） |
 | [docs/评审-MVP-20260922.md](docs/评审-MVP-20260922.md) | 上线就绪度评审：代码级 MVP 已达成，唯一硬阻塞 P0-3 生产部署（**生产已于 2026-09-30 上线，此单为历史基线**） |
+| [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md) | 求职 Agent 构想：六步闭环、人机确认闸、JobRun 状态机、三阶段路径（**阶段 1 求职工作台已落地，§10 记实施差异**） |
 | [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
+
+> 上表是常用入口、非完整清单；**全部文档（含 2026-09-25 起的批次）以 [handoff.md](handoff.md) 的「Project documents」区为单一事实源**，场景导航见 [docs/README.md](docs/README.md)。
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
 | [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md) | 数据库迁移规范（`db/migrations/NNN_*.sql`） |
