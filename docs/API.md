@@ -50,7 +50,7 @@
 | `DATABASE_URL` | — | Postgres 连接串（postgres 时）；含 `?pgbouncer=true` 或端口 6543 时自动关闭 prepared statements（Supabase 事务池化），按 `sslmode` 显式 TLS |
 | `DB_AUTO_MIGRATE` | 未设置时可写连接自动迁移、只读连接不迁移 | 是否在启动时自动跑迁移；serverless 函数必须显式 `false`（DDL 只在本地用 5432 串跑 `pnpm migrate:pg:up`），仅接受小写 `true`/`false`，其它值 warn 后回退默认 |
 | `API_MOUNT_PREFIX` | 空 | API 在同源下的挂载前缀，形态 C 设 `/api`；影响 OAuth `redirect_uri` 拼接与 state/return Cookie 的 `Path`（变为 `/api/auth`）。Hono 内部路由本身不带前缀，由转发层剥前缀 |
-| `CRON_SECRET` | 空 | `/internal/cron/*` 鉴权密钥；配置后请求必须带 `?token=<值>`（常量时间比较），未配置时仅认 `x-vercel-cron: 1` 头。生产必填，生成：`openssl rand -hex 32` |
+| `CRON_SECRET` | 空 | `/internal/cron/*` 鉴权密钥；配置后请求必须带 `?token=<值>`（Actions 轮询）或 `Authorization: Bearer <值>`（Vercel Cron 平台注入），均常量时间比较；未配置时仅认 `x-vercel-cron: 1` 头。生产必填，生成：`openssl rand -hex 32` |
 | `PROFILE_CACHE_TTL_MS` | `86400000`（24h） | 完整画像缓存有效期 |
 | `GITHUB_TOKEN` | 空 | 采集凭证（PAT / GitHub App installation token），只在服务端读取；未配置时分析作业会在采集阶段失败 |
 | `GITEE_TOKEN` | 空 | 可选，仅用于提高 Gitee 匿名约 60 次/分的限额；匿名即可读公开数据 |
@@ -1107,10 +1107,12 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 形态 C（Vercel 单项目同域，见 [deployment-runbook-20260920.md](deployment-runbook-20260920.md)）没有常驻 Worker：Vercel Cron 定时 GET 这两条端点驱动分析消费与数据清理。本地 / Docker 常驻部署不经过它们（常驻 Worker 自行轮询，清理走宿主 cron 调 CLI）。形态 C 下外部路径为 `/api/internal/cron/*`（前缀由转发层剥离，见文首路径约定）。
 
-**鉴权（二选一）**：
+**鉴权（凭证均为 `CRON_SECRET`，一律常量时间比较）**：
 
-1. 配置了 `CRON_SECRET`：请求必须带 `?token=<CRON_SECRET>`，服务端常量时间比较，不符返回 401；
-2. 未配置 `CRON_SECRET`：仅接受平台注入的 `x-vercel-cron: 1` 请求头（仅建议临时调试，生产必须配 secret）。
+1. 配置了 `CRON_SECRET`：请求带 `?token=<CRON_SECRET>`（GitHub Actions `cron-poll.yml` 轮询用）**或** `Authorization: Bearer <CRON_SECRET>`（Vercel Cron 在项目配了 `CRON_SECRET` 后自动注入的请求头），任一匹配即放行；均不符返回 401；
+2. 未配置 `CRON_SECRET`：仅接受平台注入的 `x-vercel-cron: 1` 请求头（仅建议临时调试，生产必须配 secret，且启动闸会直接拒绝启动）。
+
+> 因此 `apps/report/vercel.json` 的 cron path **不内联 token**（`/api/internal/cron/cleanup?task=all`），secret 只存在于 Vercel 项目环境变量。
 
 ### `GET /internal/cron/process-job`
 
