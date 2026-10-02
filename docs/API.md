@@ -1186,7 +1186,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 - `format=json`：`{ "draft": { ...ResumeDraft }, "fromSnapshot": false }`
 - 画像快照或岗位无法装配时 `409 AGENT_ARTIFACTS_UNAVAILABLE`
 
-> 服务端不持久化本地补填字段（电话/教育/工作经历只存浏览器本机），故本端点产出的简历**不含**本地补填；报告页与工作台的下载按钮走 `POST /resumes/build` 并带上本机字段（同一套 `resume-core` 渲染代码）。
+> 服务端不持久化本地补填字段（电话/教育/工作经历只存浏览器本机），故本端点产出的简历**不含**本地补填；报告页与工作台的下载按钮走 `POST /resumes/build` 并带上本机字段（同一套 `resume-core` 渲染代码）——工作台传的是票据里的 **`job.postingId`（岗位池主键 `job_postings.id`）**，不是来源原生 `job.jobId`；老票据缺 `postingId` 时退回 `jobId` 并走快照兜底。
 
 ### `GET /agent/intents/:id/cover-letter`
 
