@@ -72,6 +72,8 @@ CRON_SECRET=$CRON_SECRET
 AUTH_STATE_SECRET=$AUTH_STATE_SECRET
 DEMO_IP_SALT=$DEMO_IP_SALT
 
-# Reminder: apps/report/vercel.json cron path must carry the same CRON_SECRET
-# as ?token=<CRON_SECRET> (or configure the schedules in the Vercel cron UI).
+# Reminder: apps/report/vercel.json cron path carries NO token — Vercel injects
+# Authorization: Bearer $CRON_SECRET on cron invocations, and the endpoint accepts
+# it (plus ?token=<CRON_SECRET> for the GitHub Actions poller). Just set CRON_SECRET
+# in the Vercel project env; nothing in Git needs to change per environment.
 EOF
