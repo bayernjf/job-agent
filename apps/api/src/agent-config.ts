@@ -17,7 +17,9 @@ export interface AgentConfig {
 
 export const AGENT_DEFAULTS = {
   candidateLimit: 10,
-  scanPoolLimit: 800,
+  // 生产岗位池 active ≈ 9862 条（2026-09-30 实查），默认 2000 覆盖最近约 20%，
+  // 兼顾覆盖面与单轮扫描成本；需要全量时部署方可用 env 调到上限 5000。
+  scanPoolLimit: 2000,
   tickMaxRuns: 10,
 } as const;
 
