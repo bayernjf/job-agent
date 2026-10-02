@@ -50,3 +50,4 @@ apps/extension/release/
 
 # local resume outputs + PII (name/email/phone/work history) — never commit
 resumes/
+e2e/.tmp-agent/

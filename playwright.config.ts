@@ -18,7 +18,11 @@ export default defineConfig({
   // 扩展用例归属 playwright.extension.config.ts（其 fixture 自启 persistent context
   // 加载 unpacked MV3，不需要这里的 Astro webServer / fixture DB）；显式排除，
   // 避免 `pnpm e2e` 与 `pnpm e2e:extension` 重复执行同一批扩展用例。
-  testIgnore: '**/extension/**',
+  // 扩展用例归属 playwright.extension.config.ts（其 fixture 自启动 persistent context
+  // 加载 unpacked MV3，不需要这里的 Astro webServer / fixture DB）；工作台「真全栈」用例
+  // 归属 playwright.agent.config.ts（需要真 API + 真 SQLite）。两处都显式排除，避免
+  // `pnpm e2e` 把需要别的 webServer 的用例也拉进来跑。
+  testIgnore: ['**/extension/**', '**/agent/**'],
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
