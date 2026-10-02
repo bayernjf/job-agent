@@ -58,6 +58,8 @@ git pull --rebase origin <branch>
    git diff --check
    ```
 
+   改到 UI / 端到端链路时另按需跑：`pnpm e2e`（报告页）、`pnpm e2e:agent`（求职工作台真全栈）、`pnpm e2e:extension`（扩展）；或一条 `bash tools/preflight.sh --e2e` 把三套都跑掉（CI 也会跑这三套）。
+
 4. 按 `git-commit-message.md` 做原子提交。
 5. push `dev`，等待 `dev` 的 Actions 全绿；失败则在 `dev` 上修复后重新 push，循环到成功。
 6. `dev` 全部成功前，不得创建 `dev → main` PR。

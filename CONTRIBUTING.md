@@ -27,12 +27,13 @@ pnpm --filter <pkg> test  # 只跑某个包的测试
 
 ## 3. workspace 布局
 
-`packages/*`（shared / storage / github-source / gitee-source / analyzer-core / job-source / resume-core / llm / ui-tokens，共 9 个）与 `apps/*`（api / worker / cli / report / extension，共 5 个）。规划细节见 [AGENTS.md](AGENTS.md) 与 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)。
+`packages/*`（shared / storage / github-source / gitee-source / analyzer-core / job-source / resume-core / agent-core / llm / ui-tokens，共 10 个）与 `apps/*`（api / worker / cli / report / extension / mcp，共 6 个）。规划细节见 [AGENTS.md](AGENTS.md) 与 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)。
 
 ## 4. 测试约定
 
 - 测试文件就近放置：`*.test.ts` / `*.test.tsx`，使用 Vitest；E2E 用 Playwright。
-- **默认使用录制并脱敏的 GitHub 响应夹具 / 确定性 fake，不打真实 GitHub、不调真实 LLM**；外部依赖一律可离线复现。
+- **三套 Playwright 各管一段，互不重叠**：`pnpm e2e`（报告页，mock 掉 API）/ `pnpm e2e:agent`（**求职工作台真全栈**：真 `apps/api` + 真 SQLite + 真报告页 SSR，**不 mock**，夹具零网络）/ `pnpm e2e:extension`（扩展 MV3，route 拦截、不连真实 ATS）。改到 `/agent/*`、工作台页面或票据契约时**必跑** `pnpm e2e:agent`——只在真链路暴露的字段错配（如"票据存来源 id、端点按池主键取值"）只有它抓得到。
+- **默认使用录制并脱敏的 GitHub 响应夹具 / 确定性 fake，不打真实 GitHub、不调真实 LLM**；外部依赖一律可离线复现（`pnpm e2e:agent` 也不例外：夹具岗位直接写库，不做 `jobs sync`）。
 - `analyzer-core` 是纯函数内核，测试优先级最高：每条真实性信号、以及"证据不足 → `insufficient_data`"分支都要有夹具覆盖。
 - 跑单个测试文件：`pnpm --filter <pkg> exec vitest run path/to/file.test.ts`。
 
