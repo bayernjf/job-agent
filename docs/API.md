@@ -1,11 +1,11 @@
-# JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历 + 企业人才检索/投递追踪）
+# JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历 + 企业人才检索/投递追踪 + 求职工作台）
 
-- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领 + GitHub/Gitee 双平台 OAuth + 形态 C serverless 内部 cron）
+- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领 + GitHub/Gitee 双平台 OAuth + 形态 C serverless 内部 cron + 求职 Agent 阶段 1 工作台）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
-- 内容类型：请求/响应均为 `application/json`（健康检查与 OAuth 302 跳转除外）
+- 内容类型：请求/响应均为 `application/json`（健康检查、OAuth 302 跳转与 `/agent/intents/:id/resume|cover-letter` 的 md/html 输出除外）
 - 路径前缀：Hono 内部路由即本文档所列路径（`/analyze`、`/auth/*`…），**不带 `/api` 前缀**。形态 C 同域部署时由报告站 `pages/api/[...slug].ts` 把外部 `/api/*` 剥前缀后转发，并设 `API_MOUNT_PREFIX=/api` 让 OAuth 回调 URI/Cookie Path 带上前缀；故浏览器实际访问的是 `https://<域名>/api/analyze` 等。
-- CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）；形态 C 同域不涉及 CORS。
-- 最后更新：2026-09-24（新增 `GET /health?deep=1` 深健康检查）
+- CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）；形态 C 同域不涉及 CORS。允许方法为 `GET/POST/PUT/PATCH/DELETE/OPTIONS`（`/agent/preferences/:id` 用 PUT/DELETE，投递与面试用 PATCH）。
+- 最后更新：2026-10-03（新增 §3.8 求职 Agent 工作台与 `/internal/cron/agent-tick`）
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`，演示模式完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
 
@@ -73,6 +73,9 @@
 | `AUTH_STATE_SECRET` | 空（进程内随机） | OAuth state 的 HMAC 密钥，生产多实例必须固定 |
 | `AUTH_CALLBACK_BASE_URL` | 空（按请求推导） | OAuth 回调基址，不带尾斜杠；生产反代/跨子域时显式填域名 |
 | `AUTH_AFTER_LOGIN_URL` | `/` | 登录成功后跳转地址 |
+| `AGENT_CANDIDATE_LIMIT` | `10` | 求职任务一轮扫描最多产出多少条待投票据（≥1 且 ≤50，非法值启动即报错） |
+| `AGENT_SCAN_POOL_LIMIT` | `800` | 单轮扫描从岗位池取多少条候选（按发布时间倒序，≥1 且 ≤5000） |
+| `AGENT_TICK_MAX_RUNS` | `10` | 一次 `/internal/cron/agent-tick` 最多推进多少个求职任务（≥1 且 ≤100） |
 
 > MCP 接入面（独立 stdio 进程 `apps/mcp`，决策 #19，2026-10-01）另读：`MCP_API_KEY`（默认空＝fail-closed，画像类工具返回 MCP_KEY_REQUIRED 错误码、仅 `search_jobs` 可用；生产缺 key 启动即失败）、`MCP_RATE_WINDOW_MS`（默认 `60000`）、`MCP_RATE_LIMIT_PER_WINDOW`（默认 `60`），IP 哈希复用 `DEMO_IP_SALT`。
 
@@ -1073,6 +1076,128 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 ---
 
+## 3.8 求职 Agent 工作台（阶段 1，需登录）
+
+求职 Copilot 的「找 → 评 → 改」三步，设计见 [设计-求职Agent-20261002.md](设计-求职Agent-20261002.md) §3/§5/§6。**阶段 1 只准备、不投递**：Agent 按求职偏好扫本地岗位池、出可解释匹配报告、备好岗位定向简历与求职信、推到「待投清单」；真正把简历投出去的动作由用户在浏览器里自己完成，本组端点**没有任何对外部系统的写动作**。
+
+**通用规则**：
+
+- 全部端点要求登录 `user`（匿名、demo 一律 `401 AUTH_REQUIRED`）；偏好、任务、票据都是账号私有数据，非本人资源与不存在的资源同形返回 `404`（不泄露存在性）。
+- 新建任务（`POST /agent/runs`）要求画像**已由本人认领**（`profiles.subject_claimed` 且 platform/login 与登录账号一致），否则 `403 AGENT_PROFILE_NOT_OWNED`。
+- 状态机：`created → configured → watching → recommending → awaiting_approval → tracking`（另有 `cancelled`/`failed` 终态；`submitting`/`submitted` 预留给阶段 2 的扩展自动投递）。每次迁移写入一条 `job_run_events`，`GET /agent/runs/:id` 可回放。
+- 工件不落库：定向简历与求职信在请求时由不可变的画像快照 + 票据内岗位精简快照重新装配（同一份事实 → 同一份交付物），因此现有「简历不持久化」决策不被推翻。
+
+### `GET /agent/preferences` / `POST /agent/preferences`
+
+列出本人偏好集 / 新建一套偏好。请求体（`POST`）：
+
+```json
+{
+  "label": "远程全栈",
+  "targetTitles": ["full stack", "typescript"],
+  "skills": ["TypeScript", "React"],
+  "locations": ["shenzhen"],
+  "remoteOnly": true,
+  "salaryMinUsd": 120000,
+  "sources": ["greenhouse", "lever"],
+  "companyWhitelist": ["Stripe"],
+  "companyBlacklist": ["SomeCorp"],
+  "minTier": "mid",
+  "dailySubmitLimit": 20
+}
+```
+
+`targetTitles` 至少 1 个（岗位类型关键词，对 title/tags/description 做归一化子串硬过滤）；`skills` 留空则回退画像技能；`minTier` 是质量闸（低于该档不进待投清单，默认 `mid`）；`dailySubmitLimit` 是**每来源**每日投递上限（默认 20）。
+
+`200` / `201`：
+
+```json
+{ "preferences": [ { "preferenceId": "pref-...", "label": "远程全栈", "...": "..." } ] }
+```
+
+### `GET /agent/preferences/:id` / `PUT /agent/preferences/:id` / `DELETE /agent/preferences/:id`
+
+读/改/删单套偏好。`PUT` 至少一个字段，未提供的字段保持不变。`DELETE` 在该偏好仍被**未结束**的任务引用时返回 `409 AGENT_PREFERENCE_IN_USE`（先 `POST /agent/runs/:id/cancel`）。
+
+`200`：`{ "preference": { ... } }`；`DELETE` 返回 `{ "ok": true }`。
+
+### `GET /agent/runs` / `POST /agent/runs`
+
+列出本人的求职任务 / 新建任务并**立即扫一轮**（纯本地计算：读岗位池 + 匹配 + 装配工件）。
+
+请求体：
+
+```json
+{ "preferenceId": "pref-...", "profileId": "prof-..." }
+```
+
+`201`：任务视图（`run` + `events` + `intents`）加本轮统计：
+
+```json
+{
+  "run": { "runId": "run-...", "status": "awaiting_approval", "attempts": 0, "lastError": null, "lastScanAt": "2026-10-03T00:00:00.000Z" },
+  "events": [ { "event": "validate", "fromStatus": "created", "toStatus": "configured", "actor": "user" } ],
+  "intents": [ { "intentId": "intent-...", "status": "pending", "job": { "jobId": "...", "title": "...", "company": "..." }, "matchScore": 5, "matchTier": "high", "report": { "reasons": [], "gaps": [], "suggestedBoost": [] } } ],
+  "scan": { "poolSize": 9862, "matchedCount": 12, "candidateCount": 10, "excludedCount": 1, "skippedCount": 0 }
+}
+```
+
+岗位池里没有任何合格项时任务停在 `watching`（事件 `rescan`，`intents` 为空），**不是失败**、也不硬推低分岗位。
+
+### `GET /agent/runs/:id`
+
+任务状态 + 事件流（可回放）+ 全部票据。`404 AGENT_RUN_NOT_FOUND`（不存在或非本人）。
+
+### `POST /agent/runs/:id/scan`
+
+手动推进一轮（不等 cron）。终态返回 `409 AGENT_RUN_NOT_ACTIVE`；已是 `awaiting_approval` 时只回当前视图。响应同 `POST /agent/runs`（带 `scan`）。
+
+### `POST /agent/runs/:id/cancel`
+
+用户中止（非终态都可），写 `cancel` 事件并落 `cancelled` 终态。`200`：任务视图。
+
+### `GET /agent/runs/:id/pending-approvals`
+
+待投清单：`pending`（待用户确认）+ `approved`（已确认、等用户自己去投），`pending` 在前。
+
+```json
+{ "runId": "run-...", "status": "awaiting_approval", "items": [ { "intentId": "intent-...", "status": "pending" } ] }
+```
+
+### `POST /agent/runs/:id/approve` / `POST /agent/runs/:id/reject`
+
+人机闸的两个动作。
+
+- `approve`：`{ "intentIds": ["intent-..."] }`（1–50 个）。只把票据置 `approved`（阶段 1 不投递），任务仍停在 `awaiting_approval`。**限频闸按来源统计 24h 内「已确认 + 已投递」**，额度不足则**整批** `429 AGENT_DAILY_SUBMIT_LIMIT_REACHED`（附 `source`/`limit`/`committed`/`remaining`），绝不部分确认。任务不在 `awaiting_approval` 时 `409 AGENT_RUN_NOT_ACTIVE`；没有可确认的待投项时 `409 AGENT_NOTHING_TO_APPROVE`。
+- `reject`：`{ "intentId": "intent-...", "reason": "公司不合适" }`（`reason` 可选）。票据置 `rejected`；该任务再无待办票据时回到 `watching` 等下一轮，且**被拒岗位不会在后续扫描中重复推荐**。
+- `200`：任务视图（`approve` 另带 `approved` 计数）。
+
+### `POST /agent/intents/:id/mark-submitted`
+
+用户投完回来回填「已投」：票据置 `submitted`，同时写一条投递记录（`applications.origin='agent'`、`submit_intent_id` 指向该票据、`status='applied'`、`createdByAccountId=本人`），并把无待办票据的任务推进到 `tracking`（复用既有投递/面试跟踪管道）。重复调用幂等，不会写第二条投递记录。
+
+`200`：`{ "intent": { ... }, "applicationId": "app-...", "run": { ... } }`；票据非 `pending`/`approved` 时 `409 AGENT_INVALID_TRANSITION`。
+
+### `GET /agent/intents/:id/resume`
+
+按需装配的岗位定向简历（`no-fabrication`，每条画像来源断言挂 `evidenceRefs`）。`format=md|html|json`（默认 `md`）、`locale=zh-CN|en`（默认 `zh-CN`）。岗位已下架时按票据内的岗位精简快照生成（响应 JSON 带 `fromSnapshot: true`）。
+
+- `format=md` / `html`：返回 `text/markdown` / `text/html`
+- `format=json`：`{ "draft": { ...ResumeDraft }, "fromSnapshot": false }`
+- 画像快照或岗位无法装配时 `409 AGENT_ARTIFACTS_UNAVAILABLE`
+
+> 服务端不持久化本地补填字段（电话/教育/工作经历只存浏览器本机），故本端点产出的简历**不含**本地补填；报告页与工作台的下载按钮走 `POST /resumes/build` 并带上本机字段（同一套 `resume-core` 渲染代码）。
+
+### `GET /agent/intents/:id/cover-letter`
+
+规则版求职信（首期不开 LLM），`format=md|json`（默认 `md`）、`locale=zh-CN|en`。段落只引用画像已有事实且挂 `evidenceRefs`；没有命中技能/可回溯证据时**不产出该段**（宁缺勿编）。`409 AGENT_ARTIFACTS_UNAVAILABLE` 同上。
+
+### `GET /internal/cron/agent-tick`
+
+见 §5。
+
+---
+
 ## 4. 健康检查
 
 ### `GET /health`
@@ -1105,7 +1230,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 ## 5. 内部定时端点（serverless 部署，/internal/cron/*）
 
-形态 C（Vercel 单项目同域，见 [deployment-runbook-20260920.md](deployment-runbook-20260920.md)）没有常驻 Worker：Vercel Cron 定时 GET 这两条端点驱动分析消费与数据清理。本地 / Docker 常驻部署不经过它们（常驻 Worker 自行轮询，清理走宿主 cron 调 CLI）。形态 C 下外部路径为 `/api/internal/cron/*`（前缀由转发层剥离，见文首路径约定）。
+形态 C（Vercel 单项目同域，见 [deployment-runbook-20260920.md](deployment-runbook-20260920.md)）没有常驻 Worker：定时 GET 这些端点驱动分析消费、求职任务推进与数据清理。本地 / Docker 常驻部署不经过它们（常驻 Worker 自行轮询，清理走宿主 cron 调 CLI）。形态 C 下外部路径为 `/api/internal/cron/*`（前缀由转发层剥离，见文首路径约定）。
 
 **鉴权（凭证均为 `CRON_SECRET`，一律常量时间比较）**：
 
@@ -1154,7 +1279,24 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 }
 ```
 
-> 岗位库日更 / HN 月更**不走**这两条端点（采集耗时不适合 serverless），由 GitHub Actions 定时跑 CLI `jobs sync`，见 `.github/workflows/jobs-sync.yml` 与 Runbook §7。
+### `GET /internal/cron/agent-tick`
+
+推进求职任务：按状态取最久未扫描的至多 `AGENT_TICK_MAX_RUNS` 个任务，各推一轮（`configured → watching → …`，或重扫已 `watching` 的任务）。每轮同样走质量闸与工件装配；扫不到合格岗位的任务留在 `watching`，不算失败。
+
+```json
+{
+  "ok": true,
+  "outcome": {
+    "advanced": 1,
+    "idle": false,
+    "results": [ { "runId": "run-...", "status": "awaiting_approval", "intents": 3 } ]
+  }
+}
+```
+
+队列为空时 `outcome.idle=true`（幂等，可安全重放）。`500`：仓储/装配异常返回 `{ "ok": false, "error": "..." }`，不伪装成功。
+
+> 岗位库日更 / HN 月更**不走**这些端点（采集耗时不适合 serverless），由 GitHub Actions 定时跑 CLI `jobs sync`，见 `.github/workflows/jobs-sync.yml` 与 Runbook §7。求职任务的定时推进由 `.github/workflows/cron-poll.yml` 在每次轮询时调用本端点（与 `process-job` 并列）。
 
 ---
 
