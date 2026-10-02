@@ -18,7 +18,8 @@ name: Cron poll
 #
 # Manual runs: Actions → Cron poll → Run workflow. The endpoint is idempotent:
 # an empty queue returns HTTP 200 with body "idle", so a manual run is a safe
-# liveness probe.
+# liveness probe. The same pass also advances queued job-hunt agent runs
+# (agent-tick, 求职工作台阶段 1).
 #
 # While CRON_SECRET/VERCEL_PROD_URL are absent (form C not yet deployed),
 # scheduled runs finish with a visible warning; a manual dispatch fails fast to
@@ -83,3 +84,17 @@ jobs:
             echo "Processed one job (attempt $i, kind=$kind); continuing to drain."
             sleep 5
           done
+
+      - name: Advance job-hunt agent runs (agent-tick)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_PROD_URL: ${{ secrets.VERCEL_PROD_URL }}
+        run: |
+          # agent-tick 推进至多 AGENT_TICK_MAX_RUNS 个求职任务（求职工作台阶段 1：
+          # 找岗位 → 出可解释匹配报告 → 备好定向简历/求职信 → 待投清单）。
+          # 队列为空时返回 {"ok":true,"outcome":{"idle":true,...}}，可安全重放；
+          # 401/403/5xx 立即中止（与 process-job 同口径，不吞错）。
+          curl -fsS -m 60 \
+            "$VERCEL_PROD_URL/api/internal/cron/agent-tick?token=$CRON_SECRET" \
+            || { echo "::error::agent-tick failed (curl exit $?)"; exit 1; }
