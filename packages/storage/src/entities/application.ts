@@ -28,9 +28,14 @@ export const APPLICATION_STATUSES: readonly ApplicationStatus[] = [
 ];
 
 /** 投递动作来源 */
-export type ApplicationOrigin = 'manual' | 'report' | 'extension';
+export type ApplicationOrigin = 'manual' | 'report' | 'extension' | 'agent';
 
-export const APPLICATION_ORIGINS: readonly ApplicationOrigin[] = ['manual', 'report', 'extension'];
+export const APPLICATION_ORIGINS: readonly ApplicationOrigin[] = [
+  'manual',
+  'report',
+  'extension',
+  'agent',
+];
 
 export interface StoredApplication {
   id: string;
@@ -52,6 +57,11 @@ export interface StoredApplication {
    * 且**不回改**——当时的身份无法反推。null 行是否可改见仓储 update 的 scope 语义。
    */
   createdByAccountId: string | null;
+  /**
+   * 产出本行的投递票据（submit_intents.id，迁移 022）。手动/报告/扩展写入、以及
+   * 022 之前的历史行一律为 null。
+   */
+  submitIntentId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -70,6 +80,8 @@ export interface NewApplication {
   appliedAt: string;
   /** 登录创建者；匿名写入传 null（缺省即 null） */
   createdByAccountId?: string | null;
+  /** 022：产出本行的投递票据；非 Agent 流程写入传 null（缺省即 null） */
+  submitIntentId?: string | null;
 }
 
 /** 可局部更新的字段（状态、备注、投递时间、岗位链接） */
@@ -94,6 +106,7 @@ export interface RawApplicationRow {
   origin: string;
   appliedAt: string;
   createdByAccountId: string | null;
+  submitIntentId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -118,6 +131,7 @@ export function toStoredApplication(row: RawApplicationRow): StoredApplication {
     origin,
     appliedAt: row.appliedAt,
     createdByAccountId: row.createdByAccountId,
+    submitIntentId: row.submitIntentId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

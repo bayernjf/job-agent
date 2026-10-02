@@ -360,6 +360,146 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     }
   });
 
+  // 阶段 1「求职工作台」：状态机并发闸 + 人机闸票据 + 每源每日限频都在真 PG 上各跑一遍
+  // （SQLite 侧的同名用例不能替 Postgres 实现背书：两方言是各自一份 repo 代码）。
+  pgIt('guards job_run transitions with a conditional update', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const runId = `run_pg_${suffix}`;
+    await s.jobRuns.insert({
+      id: runId,
+      accountId: `acc_${suffix}`,
+      profileId: `prof_${suffix}`,
+      preferenceId: `pref_${suffix}`,
+      createdAt: T_NOW,
+    });
+    expect((await s.jobRuns.getById(runId))?.status).toBe('created');
+
+    // 并发的两个推进者（cron + 用户手动触发）只有一个能拿到这行
+    const [a, b] = await Promise.all([
+      s.jobRuns.compareAndSetStatus(runId, 'created', { status: 'configured', updatedAt: T_NOW }),
+      s.jobRuns.compareAndSetStatus(runId, 'created', { status: 'failed', updatedAt: T_NOW }),
+    ]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    expect(['configured', 'failed']).toContain((await s.jobRuns.getById(runId))!.status);
+    // 拿到行的那一方之后，陈旧期望再也推不动
+    expect(
+      await s.jobRuns.compareAndSetStatus(runId, 'created', {
+        status: 'watching',
+        updatedAt: T_NOW,
+      }),
+    ).toBeUndefined();
+
+    // 队列排序：从未扫描（last_scan_at 为 NULL）的任务必须排在已扫描过的前面。
+    // 上面那条 runId 已被推进到 configured/failed，不再属于本查询的状态集合，故另建两条。
+    const neverScannedId = `run_pg_never_${suffix}`;
+    await s.jobRuns.insert({
+      id: neverScannedId,
+      accountId: `acc_${suffix}`,
+      profileId: `prof_${suffix}`,
+      preferenceId: `pref_${suffix}`,
+      createdAt: T_NOW,
+    });
+    // 新任务一律从 created 起步，推进到 watching 时**不写 lastScanAt**（即"从未扫描"）
+    await s.jobRuns.compareAndSetStatus(neverScannedId, 'created', {
+      status: 'watching',
+      updatedAt: T_NOW,
+    });
+    await s.jobRuns.insert({
+      id: `run_pg2_${suffix}`,
+      accountId: `acc_${suffix}`,
+      profileId: `prof_${suffix}`,
+      preferenceId: `pref_${suffix}`,
+      createdAt: T_NOW,
+    });
+    await s.jobRuns.compareAndSetStatus(`run_pg2_${suffix}`, 'created', {
+      status: 'watching',
+      lastScanAt: T_NOW, // 已扫描过：必须排在"从未扫描"（NULL）之后
+      updatedAt: T_NOW,
+    });
+    const queue = await s.jobRuns.listByStatuses(['created', 'watching'], 200);
+    const idxNeverScanned = queue.findIndex((r) => r.id === neverScannedId);
+    const idxScanned = queue.findIndex((r) => r.id === `run_pg2_${suffix}`);
+    expect(idxNeverScanned).toBeGreaterThanOrEqual(0);
+    expect(idxScanned).toBeGreaterThanOrEqual(0);
+    expect(idxNeverScanned).toBeLessThan(idxScanned);
+  });
+
+  pgIt('gates submit tickets behind the human approval workflow', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const accountId = `acc_si_${suffix}`;
+    const runId = `run_si_${suffix}`;
+    const job = {
+      jobId: `job_${suffix}`,
+      source: 'greenhouse' as const,
+      sourceUrl: `https://example.com/${suffix}/job`,
+      title: 'Staff Engineer',
+      company: `PG Co ${suffix}`,
+      location: 'Remote',
+      remote: true,
+      salaryMin: null,
+      salaryMax: null,
+      salaryCurrency: null,
+      tags: ['go'],
+      postedAt: T_NOW,
+    };
+    const report = {
+      ruleVersion: '0.1',
+      score: 6,
+      tier: 'high' as const,
+      fieldScores: { title: 3, tags: 2, description: 1 },
+      matchedSkills: ['go'],
+      reasons: [{ code: 'title_match' as const, skill: 'go', points: 3 }],
+      gaps: [],
+      suggestedBoost: [],
+    };
+    const ticket = (id: string, createdAt: string) => ({
+      id,
+      runId,
+      accountId,
+      profileId: `prof_${suffix}`,
+      jobId: job.jobId,
+      jobSource: job.source,
+      job,
+      matchScore: 6,
+      matchTier: 'high' as const,
+      report,
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const pendingId = `intent_pending_${suffix}`;
+    const rejectedId = `intent_rejected_${suffix}`;
+    await s.submitIntents.insertMany([ticket(pendingId, T_NOW), ticket(rejectedId, T_NOW)]);
+
+    const stored = await s.submitIntents.getById(pendingId);
+    expect(stored?.status).toBe('pending');
+    expect(stored?.job).toEqual(job);
+    expect(stored?.report).toEqual(report);
+
+    // 拒绝一张票后它不再可被 approveMany 移动
+    expect((await s.submitIntents.reject(rejectedId, 'nope', T_NOW))?.status).toBe('rejected');
+    expect(await s.submitIntents.approveMany(runId, [pendingId, rejectedId], T_NOW)).toBe(1);
+    expect(await s.submitIntents.approveMany(runId, [pendingId], T_NOW)).toBe(0);
+    expect((await s.submitIntents.getById(pendingId))?.approvedAt).toBe(T_NOW);
+
+    // 已投出：approved → submitted，并回填 applications.id
+    const submitted = await s.submitIntents.markSubmitted(pendingId, T_NOW, `app_${suffix}`);
+    expect(submitted?.status).toBe('submitted');
+    expect(submitted?.applicationId).toBe(`app_${suffix}`);
+    expect(await s.submitIntents.markSubmitted(rejectedId, T_NOW, null)).toBeUndefined();
+
+    // 每源每日限频：只数 approved/submitted，且窗口与账号、来源都要对上
+    // （时间戳比较走 ::text 定型，pooler(prepare=false) 下也不会撞 42883）
+    expect(await s.submitIntents.countCommittedBySourceSince(accountId, 'greenhouse', T_NOW)).toBe(1);
+    expect(await s.submitIntents.countCommittedBySourceSince(accountId, 'lever', T_NOW)).toBe(0);
+    expect(
+      await s.submitIntents.countCommittedBySourceSince(accountId, 'greenhouse', '2026-09-23T00:00:00.000Z'),
+    ).toBe(0);
+    expect(
+      await s.submitIntents.countCommittedBySourceSince(`acc_other_${suffix}`, 'greenhouse', T_NOW),
+    ).toBe(0);
+  });
+
   pgIt('inserts and reads back a profile with boolean and JSON round-trip', async (s) => {
     const id = `prof_${randomUUID().replace(/-/g, '').slice(0, 24)}`;
     const snapshot = minimalSnapshot(`pg_${randomUUID().slice(0, 6)}`);
@@ -473,6 +613,10 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
           'interviews',
           'accounts',
           'auth_sessions',
+          'job_preferences',
+          'job_runs',
+          'job_run_events',
+          'submit_intents',
         ]) {
           expect(names).toContain(table);
         }

@@ -29,6 +29,10 @@ export type { IInterviewsRepository, InterviewListFilter } from './repositories/
 export type { IAccountsRepository } from './repositories/accounts.js';
 export type { IAuthSessionsRepository } from './repositories/auth-sessions.js';
 export type { IProfileRemovalRequestsRepository } from './repositories/profile-removal-requests.js';
+export type { IJobPreferencesRepository } from './repositories/job-preferences.js';
+export type { IJobRunsRepository } from './repositories/job-runs.js';
+export type { IJobRunEventsRepository } from './repositories/job-run-events.js';
+export type { ISubmitIntentsRepository } from './repositories/submit-intents.js';
 
 // 实体领域类型
 export type {
@@ -99,6 +103,30 @@ export type {
   CandidateSearchQuery,
   CandidateSearchResult,
 } from './entities/candidate.js';
+export type {
+  JobPreferencePatch,
+  StoredJobPreference,
+  NewJobPreference,
+} from './entities/job-preference.js';
+export type {
+  JobRunStatus,
+  StoredJobRun,
+  NewJobRun,
+  JobRunStatusPatch,
+} from './entities/job-run.js';
+export type {
+  JobRunEventKind,
+  JobRunActor,
+  JobRunEventPayload,
+  StoredJobRunEvent,
+  NewJobRunEvent,
+} from './entities/job-run-event.js';
+export type {
+  SubmitIntentStatus,
+  StoredSubmitIntent,
+  NewSubmitIntent,
+  SubmitIntentPatch,
+} from './entities/submit-intent.js';
 
 // 状态枚举与纯映射（测试/工具可用）
 export {
@@ -129,6 +157,14 @@ export {
   toStoredInterview,
   toCandidateSummary,
   searchCandidates,
+  JOB_RUN_STATUSES_DB,
+  toStoredJobRun,
+  JOB_RUN_EVENT_KINDS,
+  JOB_RUN_ACTORS,
+  toStoredJobRunEvent,
+  SUBMIT_INTENT_STATUSES,
+  toStoredSubmitIntent,
+  toStoredJobPreference,
 } from './entities/index.js';
 
 // 迁移（CLI/脚本/测试）
