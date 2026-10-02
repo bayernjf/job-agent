@@ -74,7 +74,7 @@
 | `AUTH_CALLBACK_BASE_URL` | 空（按请求推导） | OAuth 回调基址，不带尾斜杠；生产反代/跨子域时显式填域名 |
 | `AUTH_AFTER_LOGIN_URL` | `/` | 登录成功后跳转地址 |
 | `AGENT_CANDIDATE_LIMIT` | `10` | 求职任务一轮扫描最多产出多少条待投票据（≥1 且 ≤50，非法值启动即报错） |
-| `AGENT_SCAN_POOL_LIMIT` | `800` | 单轮扫描从岗位池取多少条候选（按发布时间倒序，≥1 且 ≤5000） |
+| `AGENT_SCAN_POOL_LIMIT` | `2000` | 单轮扫描从岗位池取多少条候选（按发布时间倒序，≥1 且 ≤5000；默认 2000 约覆盖生产池最近 20%） |
 | `AGENT_TICK_MAX_RUNS` | `10` | 一次 `/internal/cron/agent-tick` 最多推进多少个求职任务（≥1 且 ≤100） |
 
 > MCP 接入面（独立 stdio 进程 `apps/mcp`，决策 #19，2026-10-01）另读：`MCP_API_KEY`（默认空＝fail-closed，画像类工具返回 MCP_KEY_REQUIRED 错误码、仅 `search_jobs` 可用；生产缺 key 启动即失败）、`MCP_RATE_WINDOW_MS`（默认 `60000`）、`MCP_RATE_LIMIT_PER_WINDOW`（默认 `60`），IP 哈希复用 `DEMO_IP_SALT`。
