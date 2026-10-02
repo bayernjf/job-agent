@@ -128,6 +128,12 @@ Supabase           Postgres（区域与 hnd1 对齐）：6543 事务池化给函
    Vercel 环境显式设 **`DB_AUTO_MIGRATE=false`** 关闭函数冷启动自动迁移（未设时非只读打开默认 autoMigrate；该开关只接受 `true`/`false`），后续结构变更一律先发迁移、再发代码。
 4. Supabase 控制台开启自动备份（Pro 含 PITR）；表清单见 §5。
 
+**上线后的增量结构变更（先迁移、再发代码）**
+
+首次迁移之后，每次结构变更都走同一顺序：**① 本地用 5432 串跑 `pnpm migrate:pg:up`（幂等，可重放）→ ② 核对 `pnpm migrate:pg:status` 为最新 → ③ 再 push/合并触发 Vercel 部署**。`DB_AUTO_MIGRATE=false` 下函数冷启动不会补 DDL，若代码先上而表缺失，新端点会 500（2026-10-02 已发生过一次：缺 `accounts`/`auth_sessions` 等表导致 OAuth 回调 500）。
+
+> **本次（求职 Agent 阶段 1，2026-10-03）**：需要应用到生产的迁移是 **018–022**（`job_preferences`/`job_runs`/`job_run_events`/`submit_intents` + `applications.submit_intent_id`），`db/migrations/postgres/` 下五个文件，均为 `IF NOT EXISTS` 幂等；**无新增必需环境变量**（`AGENT_*` 三个可选，不配走内置默认）。合并后 `.github/workflows/cron-poll.yml` 会在每次轮询末调用 `/api/internal/cron/agent-tick` 推进求职任务——该步骤不需要 Vercel 侧任何 cron 配置。
+
 **岗位日更 / HN 月更不进 serverless**：`jobs sync`（五源、耗时长、易超 300s）由 **GitHub Actions 定时 workflow [`.github/workflows/jobs-sync.yml`](../.github/workflows/jobs-sync.yml) 跑 CLI**（已落地）：UTC 每天 18:17 跑四源日更（stale 7d）、每月 1 日 18:42 跑 HN（`--stale-days 35`），支持 Actions 面板手动触发（daily / hn-monthly 二选一），并发组防止重叠。**上线前需在仓库 Settings → Secrets and variables → Actions 配 `DATABASE_URL`**：用 Supabase **5432 Session pooler/直连串**（Actions 是长生命周期非 serverless 客户端，且任务含多语句 upsert；不要用 6543 事务池化串），workflow 已固定 `DB_DRIVER=postgres`、`DB_AUTO_MIGRATE=false`（只写数据不碰 DDL）；可选 `JOB_HTTP_PROXY`（GitHub runner 在海外直连各源，通常不需要）。demo/auth 清理已由 Vercel Cron cleanup 端点承担，无需再跑 CLI。
 
 **本地/Docker 不受影响**：`astro.config.mjs` 仅在检测到 `VERCEL` 或 `ASTRO_ADAPTER=vercel` 时切到 Vercel 适配器，本地与 Docker 仍是 `@astrojs/node` standalone；本地验证 Vercel 产物：`ASTRO_ADAPTER=vercel pnpm --filter @jobagent/report build`。
