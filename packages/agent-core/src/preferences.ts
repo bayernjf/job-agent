@@ -32,6 +32,8 @@ export function normalizeText(input: unknown): string {
 
 /** 内核只依赖岗位的结构形状（不 import storage 的 StoredJobPosting）。 */
 export interface PreferencePostingLike {
+  /** 岗位池主键 `job_postings.id`（派生值）；采集结果一定有，离线夹具可省略 */
+  id?: string;
   jobId: string;
   source: JobSource;
   title: string;

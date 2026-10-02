@@ -791,7 +791,8 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
           credentials: 'include',
           body: JSON.stringify({
             profileId: intent.profileId,
-            jobId: intent.job.jobId,
+            // 岗位池主键优先（/resumes/build 按池主键取岗位行）；老票据退回来源原生 jobId
+            jobId: intent.job.postingId ?? intent.job.jobId,
             locale,
             format: 'md',
             ...(local ? { local } : {}),

@@ -1657,6 +1657,12 @@ export type MatchReport = z.infer<typeof MatchReportSchema>;
 /** 待投票据内嵌的岗位精简快照（岗位池会被日更覆盖/下架，票据必须自证投的是哪一条）。 */
 export const SubmitIntentJobSchema = z.object({
   jobId: z.string().min(1),
+  /**
+   * 岗位池主键（`job_postings.id`，即 `makeJobPostingId(source, sourceUrl)` 的派生值）。
+   * 与 `jobId`（来源原生 id，如 remoteok 的 `1137405`）区分：取活岗位行、简历生成等按池主键查；
+   * 老票据缺该字段时退回 `jobId` 并在库里查不到 → 走快照兜底（不报错）。
+   */
+  postingId: z.string().min(1).optional(),
   source: JobSourceSchema,
   sourceUrl: z.string().url(),
   applyUrl: z.string().url().optional(),

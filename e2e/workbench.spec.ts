@@ -70,6 +70,7 @@ const INTENT = {
   profileId: FIXTURE_CLAIMED_PROFILE_ID,
   job: {
     jobId: 'job-e2e-1',
+    postingId: 'job-e2e-1',
     source: 'remoteok',
     sourceUrl: 'https://example.test/job-e2e-1',
     applyUrl: 'https://example.test/apply/job-e2e-1',

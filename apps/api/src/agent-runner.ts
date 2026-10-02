@@ -181,7 +181,9 @@ async function postingForIntent(
   repos: Pick<AgentRepos, 'jobPostings'>,
   intent: StoredSubmitIntent,
 ): Promise<{ posting: JobPosting; fromSnapshot: boolean }> {
-  const live = await repos.jobPostings.getById(intent.jobId);
+  // 池主键（postingId）优先；老票据没有该字段时退回来源原生 jobId（查不到就走快照兜底）
+  const poolKey = intent.job.postingId ?? intent.job.jobId;
+  const live = await repos.jobPostings.getById(poolKey);
   if (live) return { posting: live, fromSnapshot: false };
   return { posting: postingFromIntentSnapshot(intent), fromSnapshot: true };
 }

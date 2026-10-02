@@ -10,6 +10,8 @@ import type { PreferencePostingLike } from './preferences.js';
  */
 
 export interface IntentJobSnapshotSource extends PreferencePostingLike {
+  /** 岗位池主键（`job_postings.id`）——票据据此回查活岗位行、生成定向简历 */
+  id: string;
   sourceUrl: string;
   applyUrl?: string | null;
   salaryCurrency?: string | null;
@@ -18,6 +20,7 @@ export interface IntentJobSnapshotSource extends PreferencePostingLike {
 export function toSubmitIntentJob(posting: IntentJobSnapshotSource): SubmitIntentJob {
   const snapshot: SubmitIntentJob = {
     jobId: posting.jobId,
+    postingId: posting.id,
     source: posting.source,
     sourceUrl: posting.sourceUrl,
     title: posting.title,

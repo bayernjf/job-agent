@@ -306,6 +306,8 @@ describe('agent workbench — stage 1 loop', () => {
     const intent = body.intents[0]!;
     expect(intent.status).toBe('pending');
     expect(intent.jobId).toBe(makeJobPostingId('greenhouse', 'https://boards.example.com/acme/jobs/1'));
+    // 票据必须同时带上岗位池主键：工作台下载简历走 POST /resumes/build，按池主键取岗位行
+    expect((intent as unknown as { job: { postingId?: string } }).job.postingId).toBe(intent.jobId);
     expect(intent.matchTier).toBe('high');
     expect(intent.report.reasons).toEqual(
       expect.arrayContaining([{ code: 'title_match', skill: 'TypeScript', points: 3 }]),
