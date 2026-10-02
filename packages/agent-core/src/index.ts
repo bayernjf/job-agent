@@ -38,6 +38,7 @@ export {
   buildMatchReport,
   matchGaps,
   matchReasons,
+  passesTitleOrTagGuard,
   selectCandidates,
   selectCandidatesForPreference,
   type BuildMatchReportInput,
