@@ -1393,6 +1393,314 @@ h4 { font-size: var(--ja-text-lg); }
   margin-top: var(--ja-space-5);
 }
 
+/* ─── 求职工作台 AgentWorkbench React island（阶段 1，/[locale]/workbench）──
+   Global for the same reason as the other islands: rendered by a client:load
+   island, so Astro scoped styles would not reach it. Tokens only. */
+
+.agent-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-4);
+}
+
+.agent-workbench-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+}
+
+.agent-no-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ja-space-2);
+}
+
+.agent-pref-form,
+.agent-run-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ja-space-3);
+  margin: var(--ja-space-3) 0;
+}
+
+.agent-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  font-size: var(--ja-text-sm);
+}
+
+.agent-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+}
+
+.agent-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-2);
+}
+
+.agent-pref-list,
+.agent-run-list,
+.agent-intent-list,
+.agent-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.agent-pref-list,
+.agent-intent-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+}
+
+.agent-run-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  margin-top: var(--ja-space-3);
+}
+
+.agent-pref {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ja-space-2);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+}
+
+.agent-pref-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ja-space-3);
+}
+
+.agent-pref-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-3);
+}
+
+.agent-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font: inherit;
+}
+
+.agent-run:hover {
+  border-color: var(--ja-color-accent);
+}
+
+.agent-run--active {
+  border-color: var(--ja-color-accent);
+  background: var(--ja-color-accent-subtle);
+}
+
+.agent-run-id {
+  font-family: var(--ja-font-mono);
+  font-size: var(--ja-text-xs);
+}
+
+.agent-status {
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+}
+
+.agent-status--awaiting_approval {
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+}
+
+.agent-status--failed {
+  background: var(--ja-color-danger-bg);
+  color: var(--ja-color-danger-fg);
+}
+
+.agent-status--cancelled,
+.agent-status--archived {
+  color: var(--ja-color-fg-muted);
+}
+
+.agent-status--tracking,
+.agent-status--submitted {
+  background: var(--ja-color-success-bg);
+  color: var(--ja-color-success-fg);
+}
+
+.agent-run-detail {
+  margin-top: var(--ja-space-3);
+  padding-top: var(--ja-space-3);
+  border-top: 1px solid var(--ja-color-border);
+}
+
+.agent-run-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-3);
+}
+
+.agent-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  margin-top: var(--ja-space-2);
+}
+
+.agent-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ja-space-2);
+  padding: var(--ja-space-2);
+  border-left: 2px solid var(--ja-color-border);
+  font-size: var(--ja-text-sm);
+}
+
+.agent-event-kind {
+  font-weight: 500;
+}
+
+.agent-event-transition {
+  font-family: var(--ja-font-mono);
+  font-size: var(--ja-text-xs);
+}
+
+.agent-intent {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.agent-intent-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ja-space-3);
+}
+
+.agent-intent-title {
+  font-size: var(--ja-text-base);
+}
+
+.agent-intent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+}
+
+.agent-intent-status {
+  padding: 0.1rem var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface-muted);
+}
+
+.agent-intent-fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--ja-space-1);
+}
+
+.agent-match {
+  margin-top: var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+}
+
+.agent-match summary {
+  cursor: pointer;
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+}
+
+.agent-match-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+  margin-top: var(--ja-space-2);
+  padding: var(--ja-space-3);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+}
+
+.agent-match-score {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+}
+
+.agent-score-value {
+  font-family: var(--ja-font-mono);
+  font-weight: 600;
+}
+
+.agent-match-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ja-space-2);
+}
+
+.agent-match-label {
+  font-size: var(--ja-text-xs);
+}
+
+.agent-match-list {
+  margin: 0;
+  padding-left: var(--ja-space-4);
+}
+
+.agent-intent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-2);
+}
+
+.agent-reject-reason {
+  flex: 1 1 12rem;
+  width: auto;
+  min-width: 10rem;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+}
+
+.agent-intent-link {
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-accent);
+  text-decoration: none;
+}
+
+.agent-intent-link:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 640px) {
   .recruit-filters {
     grid-template-columns: 1fr;
@@ -1403,6 +1711,11 @@ h4 { font-size: var(--ja-text-lg); }
   }
 
   .ivp-form {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-pref-form,
+  .agent-run-form {
     grid-template-columns: 1fr;
   }
 }

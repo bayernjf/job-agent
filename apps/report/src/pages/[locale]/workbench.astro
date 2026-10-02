@@ -1,0 +1,248 @@
+---
+/**
+ * 求职工作台 /[locale]/workbench（设计 docs/设计-求职Agent-20261002.md §3/§5/§6 阶段 1）。
+ *
+ * 与 /my 同构：SSR 直读只读 storage 解析身份（resolveViewer），未登录走纯 SSR 登录墙
+ * （GateCard + 同源 return_to）；登录后 SSR 预取本人画像列表作为 island 的可序列化 props，
+ * 其余数据（偏好/任务/事件流/待投清单）由 island 带 credentials:'include' 向 API 取。
+ *
+ * 阶段 1 的硬边界：**Agent 只准备、人执行**——本页只出匹配报告与定向材料，
+ * 投递动作永远由用户在岗位页自己完成（设计 §4 原则 1）。
+ * i18n 在服务端完成：所有用户可见文案经 t() 拼好，按 labels 传给岛，岛内零硬编码。
+ */
+import Layout from '../../layouts/Layout.astro';
+import GateCard from '../../components/GateCard.astro';
+import AgentWorkbench from '../../components/AgentWorkbench.tsx';
+import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
+import { getStorage } from '../../lib/db.js';
+import { resolveViewer } from '../../lib/auth.js';
+import { browserApiBase } from '../../lib/api-base.js';
+
+const { locale: rawLocale } = Astro.params;
+if (!isLocale(rawLocale)) {
+  return Astro.redirect('/en/');
+}
+const locale: Locale = rawLocale;
+const t = createTranslator(locale);
+const apiBase = browserApiBase();
+
+const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
+const storage = await getStorage();
+const profiles =
+  viewer.kind === 'user'
+    ? await storage.profiles.listBySubject(viewer.platform, viewer.login)
+    : [];
+const loginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(`/${locale}/workbench`)}`;
+
+/** island props 必须可序列化：只投影 id + 人类可读标题（同 /my 的 headline 口径）。 */
+const initialProfiles = profiles.map((p) => ({
+  profileId: p.id,
+  headline: p.snapshot?.summary?.headline ?? p.subjectLogin,
+}));
+const claimedProfileId = viewer.kind === 'user' ? viewer.claimedProfileId : null;
+---
+
+<Layout locale={locale} titleKey="workbench.title" robots="noindex,nofollow">
+  <div class="workbench-page ja-container">
+    {viewer.kind !== 'user' ? (
+      <>
+        <header class="workbench-header">
+          <h1>{t('workbench.title')}</h1>
+          <p class="ja-muted">{t('workbench.subtitle')}</p>
+        </header>
+        <GateCard
+          title={t('workbench.gateTitle')}
+          body={t('workbench.gateBody')}
+          loginHref={loginHref}
+          loginLabel={t('workbench.gateLogin')}
+          testId="workbench-gate"
+        />
+      </>
+    ) : (
+      <AgentWorkbench
+        client:load
+        apiBase={apiBase}
+        locale={locale}
+        initialProfiles={initialProfiles}
+        claimedProfileId={claimedProfileId}
+        profileHintHref={`/${locale}/`}
+        labels={{
+          title: t('workbench.title'),
+          subtitle: t('workbench.subtitle'),
+          loading: t('workbench.loading'),
+          error: t('workbench.error'),
+          noProfileHint: t('workbench.noProfileHint'),
+          noProfileAction: t('workbench.noProfileAction'),
+          preferences: {
+            title: t('workbench.preferences.title'),
+            hint: t('workbench.preferences.hint'),
+            loading: t('workbench.loading'),
+            empty: t('workbench.preferences.empty'),
+            add: t('workbench.preferences.add'),
+            create: t('workbench.preferences.create'),
+            cancel: t('workbench.preferences.cancel'),
+            delete: t('workbench.preferences.delete'),
+            createdAt: t('workbench.preferences.createdAt'),
+            labelLabel: t('workbench.preferences.labelLabel'),
+            labelPlaceholder: t('workbench.preferences.labelPlaceholder'),
+            titlesLabel: t('workbench.preferences.titlesLabel'),
+            titlesPlaceholder: t('workbench.preferences.titlesPlaceholder'),
+            skillsLabel: t('workbench.preferences.skillsLabel'),
+            skillsPlaceholder: t('workbench.preferences.skillsPlaceholder'),
+            locationsLabel: t('workbench.preferences.locationsLabel'),
+            locationsPlaceholder: t('workbench.preferences.locationsPlaceholder'),
+            remoteOnlyLabel: t('workbench.preferences.remoteOnlyLabel'),
+            salaryLabel: t('workbench.preferences.salaryLabel'),
+            salaryPlaceholder: t('workbench.preferences.salaryPlaceholder'),
+            minTierLabel: t('workbench.preferences.minTierLabel'),
+            dailySubmitLimitLabel: t('workbench.preferences.dailySubmitLimitLabel'),
+            required: t('workbench.preferences.required'),
+          },
+          runs: {
+            title: t('workbench.runs.title'),
+            hint: t('workbench.runs.hint'),
+            loading: t('workbench.loading'),
+            empty: t('workbench.runs.empty'),
+            create: t('workbench.runs.create'),
+            scan: t('workbench.runs.scan'),
+            cancel: t('workbench.runs.cancel'),
+            profileLabel: t('workbench.runs.profileLabel'),
+            noProfileOption: t('workbench.runs.noProfileOption'),
+            preferenceLabel: t('workbench.runs.preferenceLabel'),
+            noPreferenceOption: t('workbench.runs.noPreferenceOption'),
+            selectHint: t('workbench.runs.selectHint'),
+            attempts: t('workbench.runs.attempts'),
+            lastScan: t('workbench.runs.lastScan'),
+            lastScanNever: t('workbench.runs.lastScanNever'),
+            scanResult: t('workbench.runs.scanResult'),
+            timeline: t('workbench.runs.timeline'),
+            timelineEmpty: t('workbench.runs.timelineEmpty'),
+            from: t('workbench.runs.from'),
+            actorLabel: t('workbench.runs.actorLabel'),
+          },
+          pending: {
+            title: t('workbench.pending.title'),
+            hint: t('workbench.pending.hint'),
+            loading: t('workbench.pending.loading'),
+            empty: t('workbench.pending.empty'),
+            approve: t('workbench.pending.approve'),
+            reject: t('workbench.pending.reject'),
+            rejectReasonLabel: t('workbench.pending.rejectReasonLabel'),
+            rejectReasonPlaceholder: t('workbench.pending.rejectReasonPlaceholder'),
+            resume: t('workbench.pending.resume'),
+            coverLetter: t('workbench.pending.coverLetter'),
+            apply: t('workbench.pending.apply'),
+            markSubmitted: t('workbench.pending.markSubmitted'),
+            remote: t('workbench.pending.remote'),
+            salaryUnavailable: t('workbench.pending.salaryUnavailable'),
+            approved: t('workbench.pending.approved'),
+          },
+          match: {
+            title: t('workbench.match.title'),
+            matchedSkills: t('workbench.match.matchedSkills'),
+            reasons: t('workbench.match.reasons'),
+            gaps: t('workbench.match.gaps'),
+            boosts: t('workbench.match.boosts'),
+            none: t('workbench.match.none'),
+            points: t('workbench.match.points'),
+            reason: {
+              title_match: t('workbench.match.reason.titleMatch'),
+              tag_match: t('workbench.match.reason.tagMatch'),
+              description_match: t('workbench.match.reason.descriptionMatch'),
+            },
+            gap: {
+              tag_not_in_profile: t('workbench.match.gap.tagNotInProfile'),
+            },
+            boost: {
+              add_evidence_for_tag: t('workbench.match.boost.addEvidenceForTag'),
+            },
+          },
+          statuses: {
+            created: t('workbench.statuses.created'),
+            configured: t('workbench.statuses.configured'),
+            watching: t('workbench.statuses.watching'),
+            recommending: t('workbench.statuses.recommending'),
+            awaiting_approval: t('workbench.statuses.awaiting_approval'),
+            submitting: t('workbench.statuses.submitting'),
+            submitted: t('workbench.statuses.submitted'),
+            tracking: t('workbench.statuses.tracking'),
+            archived: t('workbench.statuses.archived'),
+            cancelled: t('workbench.statuses.cancelled'),
+            failed: t('workbench.statuses.failed'),
+          },
+          intentStatuses: {
+            pending: t('workbench.intentStatuses.pending'),
+            approved: t('workbench.intentStatuses.approved'),
+            rejected: t('workbench.intentStatuses.rejected'),
+            submitted: t('workbench.intentStatuses.submitted'),
+            withdrawn: t('workbench.intentStatuses.withdrawn'),
+            failed: t('workbench.intentStatuses.failed'),
+          },
+          eventKinds: {
+            validate: t('workbench.eventKinds.validate'),
+            start: t('workbench.eventKinds.start'),
+            candidatesReady: t('workbench.eventKinds.candidatesReady'),
+            generated: t('workbench.eventKinds.generated'),
+            approve: t('workbench.eventKinds.approve'),
+            reject: t('workbench.eventKinds.reject'),
+            rescan: t('workbench.eventKinds.rescan'),
+            submitted: t('workbench.eventKinds.submitted'),
+            track: t('workbench.eventKinds.track'),
+            archive: t('workbench.eventKinds.archive'),
+            fail: t('workbench.eventKinds.fail'),
+            cancel: t('workbench.eventKinds.cancel'),
+          },
+          actors: {
+            user: t('workbench.actors.user'),
+            agent: t('workbench.actors.agent'),
+            system: t('workbench.actors.system'),
+          },
+          tiers: {
+            high: t('workbench.tiers.high'),
+            mid: t('workbench.tiers.mid'),
+            low: t('workbench.tiers.low'),
+          },
+          actions: {
+            refresh: t('workbench.actions.refresh'),
+          },
+          errors: {
+            preferences: t('workbench.errors.preferences'),
+            runs: t('workbench.errors.runs'),
+            intents: t('workbench.errors.intents'),
+            code: {
+              AGENT_PREFERENCE_NOT_FOUND: t('workbench.errors.code.preferenceNotFound'),
+              AGENT_RUN_NOT_FOUND: t('workbench.errors.code.runNotFound'),
+              AGENT_INTENT_NOT_FOUND: t('workbench.errors.code.intentNotFound'),
+              AGENT_PROFILE_NOT_OWNED: t('workbench.errors.code.profileNotOwned'),
+              AGENT_RUN_NOT_ACTIVE: t('workbench.errors.code.runNotActive'),
+              AGENT_INVALID_TRANSITION: t('workbench.errors.code.invalidTransition'),
+              AGENT_NOTHING_TO_APPROVE: t('workbench.errors.code.nothingToApprove'),
+              AGENT_DAILY_SUBMIT_LIMIT_REACHED: t('workbench.errors.code.dailyLimitReached'),
+              AGENT_ARTIFACTS_UNAVAILABLE: t('workbench.errors.code.artifactsUnavailable'),
+            },
+          },
+          fields: {
+            company: t('workbench.fields.company'),
+            location: t('workbench.fields.location'),
+            salary: t('workbench.fields.salary'),
+            postedAt: t('workbench.fields.postedAt'),
+            run: t('workbench.fields.run'),
+          },
+        }}
+      />
+    )}
+  </div>
+</Layout>
+
+<style>
+  .workbench-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-4);
+  }
+  .workbench-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-1);
+  }
+</style>
