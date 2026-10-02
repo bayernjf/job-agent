@@ -6,7 +6,7 @@
   "regions": ["hnd1"],
   "crons": [
     {
-      "path": "/api/internal/cron/cleanup?task=all&token=REPLACE_WITH_CRON_SECRET",
+      "path": "/api/internal/cron/cleanup?task=all",
       "schedule": "17 3 * * *"
     }
   ]

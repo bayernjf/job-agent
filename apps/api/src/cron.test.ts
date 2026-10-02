@@ -2,6 +2,7 @@
  * 内部定时任务端点测试（serverless 部署，2026-09-20）：
  * - 未带凭证 → 401
  * - CRON_SECRET 配置后，?token= 错误/正确
+ * - CRON_SECRET 配置后，Authorization: Bearer 错误/正确（Vercel Cron 自动注入的形态）
  * - 未配置 secret 时接受平台 x-vercel-cron: 1 头
  * - process-job 透传 worker 结果；cleanup 校验 task 并调用注入的 maintenance
  *
@@ -56,6 +57,30 @@ describe('GET /internal/cron/process-job', () => {
     expect(processJobOnce).toHaveBeenCalledOnce();
   });
 
+  it('accepts Authorization: Bearer <CRON_SECRET> (the header Vercel Cron injects)', async () => {
+    process.env.CRON_SECRET = SECRET;
+    const processJobOnce = vi.fn(async () => ({ kind: 'idle' as const }));
+    const app = await createApp({ repos: await freshRepos(), processJobOnce });
+
+    const res = await app.request('/internal/cron/process-job', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
+    expect(res.status).toBe(200);
+    expect(processJobOnce).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a wrong Authorization header when CRON_SECRET is configured', async () => {
+    process.env.CRON_SECRET = SECRET;
+    const processJobOnce = vi.fn(async () => ({ kind: 'idle' as const }));
+    const app = await createApp({ repos: await freshRepos(), processJobOnce });
+
+    for (const authorization of [`Bearer wrong`, `Basic ${SECRET}`, `Bearer ${SECRET}extra`]) {
+      const res = await app.request('/internal/cron/process-job', { headers: { authorization } });
+      expect(res.status).toBe(401);
+    }
+    expect(processJobOnce).not.toHaveBeenCalled();
+  });
+
   it('accepts the platform x-vercel-cron header when no secret is set', async () => {
     const processJobOnce = vi.fn(async () => ({ kind: 'idle' as const }));
     const app = await createApp({ repos: await freshRepos(), processJobOnce });
@@ -87,6 +112,18 @@ describe('GET /internal/cron/cleanup', () => {
     const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/internal/cron/cleanup');
     expect(res.status).toBe(401);
+  });
+
+  it('runs the cleanup cron via Authorization: Bearer (vercel.json path carries no token)', async () => {
+    process.env.CRON_SECRET = SECRET;
+    const runMaintenance = vi.fn(async (task: string) => ({ task, demoSessions: 1 }));
+    const app = await createApp({ repos: await freshRepos(), runMaintenance });
+
+    const res = await app.request('/internal/cron/cleanup?task=all', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
+    expect(res.status).toBe(200);
+    expect(runMaintenance).toHaveBeenCalledWith('all', expect.any(String));
   });
 
   it('rejects an unknown task value', async () => {

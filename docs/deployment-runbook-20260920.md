@@ -113,8 +113,8 @@ Supabase           Postgres（区域与 hnd1 对齐）：6543 事务池化给函
 1. Import 本仓，**Root Directory 设为 `apps/report`**（`vercel.json` 在该目录；构建命令已在其中写好，会先 `pnpm --filter @jobagent/report... build` 构建 workspace 依赖）。
 2. Framework Preset = Astro；Node 版本 24（与 `.nvmrc` 一致）；Region 选东京 `hnd1`（与 Supabase 区域对齐，且海外直连 GitHub/Gitee，**不需要 `JOB_HTTP_PROXY`**）。
 3. Environment Variables：按 `.env.example` 末尾「生产部署：Vercel + Supabase（形态 C）」段逐项填——`DB_DRIVER=postgres`、`DATABASE_URL`（6543 池化串）、**`DB_AUTO_MIGRATE=false`**（迁移只走本地 5432 流程）、**`API_MOUNT_PREFIX=/api`**（决定对外 OAuth 回调 URI 与临时 Cookie Path，漏配会导致登录回调 404）、`GITHUB_TOKEN`/`GITEE_TOKEN`、OAuth client/secret、`AUTH_STATE_SECRET`、`AUTH_CALLBACK_BASE_URL=https://<域名>`（不含 `/api`）、`TRUST_PROXY=true`、`DEMO_IP_SALT`、`CRON_SECRET`。
-4. Cron：`apps/report/vercel.json` 已声明两条——`* * * * *` 调 `/api/internal/cron/process-job?token=...`（每分钟认领处理一个分析任务）、`17 3 * * *` 调 cleanup（清过期 demo/认证数据）。**部署前必须把路径里的 `REPLACE_WITH_CRON_SECRET` 换成真实 `CRON_SECRET`**（或改用 Vercel 控制台的 Cron 管理界面填）。
-5. **计划限制（2026-09 核实）**：函数时长 Hobby/Pro 默认与上限均含 300s（Pro 可调到 800s），单任务处理够用；但 **Cron 在 Hobby 计划每天只能跑 1 次，每分钟表达式会直接导致部署失败——生产需 Pro 计划**。Hobby 只能用于演示（把 process-job 改成日频，队列基本不可用）。
+4. Cron：`apps/report/vercel.json` 声明 `17 3 * * *` 调 `/api/internal/cron/cleanup?task=all`（清过期 demo/认证数据）。**path 内不内联 token**：项目配了 `CRON_SECRET` 后 Vercel 会在触发时自动带 `Authorization: Bearer $CRON_SECRET`，端点接受该头（也接受 Actions 轮询用的 `?token=<CRON_SECRET>`）；旧写法「path 里填 `REPLACE_WITH_CRON_SECRET` 再手改」已于 2026-10-02 废弃——占位从未被替换，导致 cleanup 每日 401。分析任务的消费在 Pro 计划下另加 `* * * * *` 调 `/api/internal/cron/process-job?token=<CRON_SECRET>`（Actions 轮询形态）。
+5. **计划限制（2026-09 核实）**：函数时长 Hobby/Pro 默认与上限均含 300s（Pro 可调到 800s），单任务处理够用；但 **Cron 在 Hobby 计划每天只能跑 1 次，每分钟表达式会直接导致部署失败**。生产当前用 Hobby：cleanup 走每日 1 次（合规），`process-job` 改由 GitHub Actions `cron-poll.yml` 轮询替代（**实测间隔 4–7.5h，排队最坏等数小时**，见部署执行单 E1/F5）；要回到每分钟消费需升 Pro 并在 vercel.json 恢复该条 cron。
 6. 自定义域名：Vercel 项目绑定 `app.job-agent.bayjf.com`（占位），再到 Cloudflare DNS 加 CNAME（建议 DNS-only / 关闭橙云代理，让 Vercel 直接终结 TLS，避免边缘与函数区域链路的不确定行为；如坚持开橙云需实测）。
 
 **Supabase 开库与首次迁移**
