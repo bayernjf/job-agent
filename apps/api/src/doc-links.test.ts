@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../../..');
 const SKIP_DIRS = new Set([
@@ -45,7 +45,7 @@ describe('markdown relative links', () => {
   it('resolve to a file that exists', () => {
     const broken: string[] = [];
     for (const file of markdownFiles(REPO_ROOT)) {
-      const dir = file.slice(0, file.lastIndexOf('/'));
+      const dir = dirname(file);
       for (const match of readFileSync(file, 'utf8').matchAll(new RegExp(LINK.source, 'g'))) {
         const target = match[1];
         if (!target || target.startsWith('/')) continue;

@@ -68,6 +68,6 @@ pnpm --filter @jobagent/extension build
 扩展面板（ATS 页）与报告页简历补填（`/report/:id`）共享同一份本地档案（email/电话/所在地/LinkedIn + 教育/工作经历），数据经扩展 `chrome.storage` 自动互通、仅存本机，不上传服务端。
 
 - **固定扩展 ID**：本扩展 manifest 内置 `key`，加载后 ID 固定为 `dgbnkdljapgglpdcmncbleioocbjfmmc`。若此前加载过旧版扩展（无 `key`），需先移除旧版再重新「Load unpacked」本目录，否则 ID 不同、报告页无法连通。
-- **报告页需在 `externally_connectable` 白名单域**：当前白名单为 `http://localhost:4321`、`http://127.0.0.1:4321` 与生产占位 `https://job-agent.bayjf.com`。本地跑报告页请用 `localhost:4321`（`pnpm --filter @jobagent/report dev`）。
+- **报告页需在 `externally_connectable` 白名单域**：当前白名单为 `http://localhost:4321`、`http://127.0.0.1:4321` 与生产报告域 `https://app.job-agent.bayjf.com`。本地跑报告页请用 `localhost:4321`（`pnpm --filter @jobagent/report dev`）。
 - **同步方向**：扩展面板填的 email/电话/所在地/LinkedIn 会自动带到报告页简历补填；报告页填的完整档案会自动带到扩展 ATS 填充。任一端未装扩展 / 非 Chrome 浏览器时自动降级为仅本端 localStorage，互不影响。
 - **当前两端字段差异（待对齐，handoff item46 遗留）**：报告页简历补填表单可填 **个人网站（personalSite）**，但暂无 LinkedIn 输入框；扩展面板 Local details 可填 **LinkedIn**，但暂无个人网站输入框。因此 **LinkedIn 目前只能在扩展面板补、个人网站只能在报告页补填后同步到扩展**（同步通道本身正常，真机已验证个人网站能从报告页推到扩展并填入 ATS 的 Website 框）；email/电话/所在地两端都可填。是否把两端字段补齐对齐待产品决策。

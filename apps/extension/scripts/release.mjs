@@ -11,8 +11,8 @@
  *                         https://app.job-agent.bayjf.com/api
  * Optional env:
  *   EXTENSION_SITE_ORIGIN Production report-site origin. build.mjs defaults to
- *                         the placeholder https://job-agent.bayjf.com; the real
- *                         production origin MUST be set before publishing.
+ *                         https://app.job-agent.bayjf.com (the production
+ *                         report origin); override only when the domain changes.
  *
  * Usage:
  *   EXTENSION_API_BASE=https://app.example.com/api \
@@ -51,8 +51,8 @@ if (!apiBase || !/^https:\/\//.test(apiBase) || isLocal(apiBase)) {
 }
 if (!siteOrigin) {
   console.warn(
-    '[release] EXTENSION_SITE_ORIGIN not set; build.mjs keeps the placeholder ' +
-      'https://job-agent.bayjf.com. Set the real production origin before publishing.',
+    '[release] EXTENSION_SITE_ORIGIN not set; using the default production ' +
+      'report origin https://app.job-agent.bayjf.com.',
   );
 } else if (!/^https:\/\//.test(siteOrigin) || isLocal(siteOrigin)) {
   fail('EXTENSION_SITE_ORIGIN must be a public https origin.');
