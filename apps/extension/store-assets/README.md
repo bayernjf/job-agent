@@ -78,11 +78,11 @@ Work through this before uploading the zip to the Chrome Web Store. Items marked
 **[decision]** depend on the production deployment (Form C execution sheet) and
 cannot be closed by code alone.
 
-1. **[decision] Production domain decided** (B1, suggested `app.job-agent.bayjf.com`).
-   The committed `src/manifest.json` still contains the placeholder
-   `https://job-agent.bayjf.com` (the landing-page domain) plus localhost grants;
-   do not ship it verbatim. The release build above rewrites the placeholder and
-   strips localhost entries — verify `dist/manifest.json` afterwards.
+1. **[decision] Production domain decided** (B1 — **decided**: `app.job-agent.bayjf.com`,
+   live since 2026-09-30). `src/manifest.json` ships the production report domain
+   `https://app.job-agent.bayjf.com` plus localhost grants; the release build
+   strips localhost entries and pins the site origin — verify
+   `dist/manifest.json` afterwards.
 2. **Release build green**: `EXTENSION_RELEASE=1` build refuses localhost
    `EXTENSION_API_BASE`/`EXTENSION_SITE_ORIGIN`; confirm `dist/manifest.json`
    contains no `localhost`/`127.0.0.1` entry and the API base is the same-origin
