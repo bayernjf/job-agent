@@ -892,6 +892,77 @@ h4 { font-size: var(--ja-text-lg); }
   gap: var(--ja-space-2);
 }
 
+.resume-coverletter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+}
+
+.resume-coverletter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-2);
+}
+
+.resume-coverletter-head strong {
+  font-size: var(--ja-text-sm);
+  font-weight: 600;
+}
+
+.resume-coverletter-hint {
+  font-size: var(--ja-text-xs);
+}
+
+.resume-coverletter-error {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  font-size: var(--ja-text-xs);
+  color: var(--ja-color-danger);
+}
+
+.resume-coverletter-error p {
+  margin: 0;
+  flex: 1;
+}
+
+.resume-coverletter-done {
+  margin: 0;
+  font-size: var(--ja-text-xs);
+  color: var(--ja-color-success);
+}
+
+.resume-coverletter-subject {
+  margin: 0;
+  font-size: var(--ja-text-sm);
+  font-weight: 600;
+}
+
+.resume-coverletter-body {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  padding: var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-text);
+  font: inherit;
+  font-size: var(--ja-text-sm);
+  line-height: 1.6;
+}
+
+.resume-coverletter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-2);
+}
+
 .resume-close {
   margin-left: auto;
 }
