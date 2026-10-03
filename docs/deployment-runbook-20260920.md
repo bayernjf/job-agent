@@ -19,7 +19,7 @@
 | `report` | `report` | 4321 | Astro SSR 报告站 + React islands；既服务浏览器页面，也在 SSR 阶段向 api 取数 |
 | `db` | `postgres:16-alpine`（compose profile `with-pg`） | 5432 | 生产数据库；本地默认用 SQLite（卷内文件） |
 
-- **数据库迁移是自动的**：服务以非只读方式打开存储时 `autoMigrate` 默认为 `true`（`packages/storage/src/storage.ts`：`config.autoMigrate ?? !config.readonly`）。api/worker/report 启动即应用迁移；Postgres 多实例并发首迁移由 advisory lock 串行化（`141ee9a`），SQLite 靠共享卷单文件。
+- **数据库迁移是自动的**：服务以非只读方式打开存储时 `autoMigrate` 默认为 `true`（`packages/storage/src/storage.ts`：`config.autoMigrate ?? !config.readonly`）。api/worker/report 启动即应用迁移；Postgres 多实例并发首迁移由 advisory lock 串行化（`4c4ebe7`），SQLite 靠共享卷单文件。
 - SQLite 数据落在容器 `/app/data`（compose 命名卷 `appdata`）；node-runtime 镜像已 `mkdir -p /app/data`。
 - CLI（`jobagent`）在 api/worker 镜像内可用：node-runtime 阶段 `COPY` 了整个 `apps/`，`pnpm -r build` 已构建 `apps/cli/dist`，容器内入口为 `node apps/cli/dist/index.js`。
 

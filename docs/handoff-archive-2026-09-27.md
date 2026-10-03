@@ -19,36 +19,36 @@
 
 ## §2 item87：T15 薄画像降级 + T22 扩岗位种子清单 + T19 融合画像可认领 + T18 求职者面试管道 + T20 推荐去重与翻页（2026-09-27）
 
-评审 §9 A 组纯代码 5 项一口气闭环，均无外部依赖。**5 个英文原子提交，未 push**：`e3772a6`（T15）→ `66354d8`（T22）→ `cc409ee`（T19）→ `af3b71e`（T18）→ `9546b3b`（T20）。作者 bayernjf、无 co-author。
+评审 §9 A 组纯代码 5 项一口气闭环，均无外部依赖。**5 个英文原子提交，未 push**：`035b483`（T15）→ `444f898`（T22）→ `c0a3081`（T19）→ `7f92df0`（T18）→ `1b605da`（T20）。作者 bayernjf、无 co-author。
 
-### T15 薄画像降级（`e3772a6`）
+### T15 薄画像降级（`035b483`）
 
 - `ResumeDraftSchema` 增可选 `dataQualityNote`；`tailor.ts` 读 `authenticity.status`，命中 `insufficient_data`/`suspicious` 时设 note 并 push 进 `gaps`；md/html 渲染「数据说明」小节（`.notice` amber 样式）。
 - 不再对空画像出"看似完整"的简历（PRD NFR-6 与 AGENTS 铁律）。
 - render 套件 13/13 绿（+2 用例）。
 - **注意**：改 shared 契约后必须 `pnpm --filter @jobagent/shared build` → `pnpm --filter @jobagent/resume-core build` 再跑测试。
 
-### T22 扩岗位种子清单（`66354d8`）
+### T22 扩岗位种子清单（`444f898`）
 
 - `packages/job-source/src/adapters/registry.ts` 的 `SEED_GREENHOUSE_BOARDS` 8→45 家（brex/coinbase/databricks/anthropic/elastic/twilio/vercel/reddit/assemblyai/stabilityai/chime/pinterest/webflow/block/mixpanel/newrelic/lyft/lattice/airbnb/remote/pagerduty/gusto/wise/monzo/duolingo/deliveroo/n26/wolt 等，附"2026-09-26 实测 200"注释）。
 - Lever 候选 64 家全 404 零新增；探测脚本在 /tmp 不入库。
 - job-source 测试 78/78 绿。纯配置，不动一行匹配逻辑。
 
-### T19 融合画像可认领（`cc409ee`）
+### T19 融合画像可认领（`c0a3081`）
 
 - 原始断点：API claim 段要求 `profile.subjectPlatform === principal.platform`，而融合画像存 `'all'` → 双源登录都 403；且报告页 `!isFusedProfile` 条件不挂 ClaimProfile。
 - 落地：判定改 `subjectPlatform==='all' ? subjectLogin===principal.login : 平台+login 双等`（403 body 保持 `subject:{platform,login}`）；`ClaimResultSchema.subject.platform` 在 shared 扩为 `PlatformSchema.or(z.literal('all'))`（API 返回处加 `as 'github'|'gitee'|'all'` 窄化）；`ClaimProfile.tsx` subjectPlatform 类型扩为三值并支持 all 判定；astro 去 `!isFusedProfile`，`subjectPlatform={isFusedProfile?'all':profile.subject.platform}`。
 - 测试：`auth-flow.test.ts` 的 `insertProfile` 加第 4 参（默认 'github'），新用例"lets either source claim a fused platform=all profile with the same login"（GitHub alice 认领 alice/all→200 且 body.subject.platform='all'；Gitee bob 认领 bob/all→200；Gitee bob 认领 alice/all→403 `AUTH_NOT_PROFILE_OWNER`），auth-flow 21/21 绿。
 - **踩坑**：把 Gitee 会话与 GitHub repos 混用会 401≠403，须在同 app+repos 内判定。
 
-### T18 求职者面试管道（`af3b71e`）
+### T18 求职者面试管道（`7f92df0`）
 
 - 判据原文"复用 012 interviews 与行级归属，换挂载点与文案（从 /recruit 挪进我的），把 applicationId 真接上，不再要求进前 100 候选人"。
 - 落地：`InterviewPlanner.tsx` 整文件重写——`Candidate` 下拉改为「我的投递」`Application` 下拉（`id=ivp-application`，仅列 `BUILDABLE_STATUSES={'saved','applied','viewed'}`，选择后自动带出 targetTitle→role、targetCompany→company）；登录后 `resolveMyProfile()`（claimedProfileId 优先，否则 GET `/profiles/by-subject/:platform/:login`），POST payload 带 `applicationId`；登录但无画像 → `data-testid="interview-no-profile"` 引导；completed 才展开 `interview-result`。
 - `my.astro` 在 `viewer.kind==='user' && profiles.length>0` 条件下挂载；`recruit.astro` 移除 InterviewPlanner 挂载块；i18n `interviews.*` 改求职者口吻并删除 `interviews.candidate`/`candidatePlaceholder` 两个 key（中英各仍对齐）；E2E 重写为"登录墙（my-gate + return_to=%2Fen%2Fmy）+ 从投递建行（断言 POST body 含 `applicationId:'app-e2e-1'`）+ 流转 completed/record outcome"3 用例。
 - **修复的 bug**：my.astro 挂载块多出重复 `)}` 导致 Astro `CompilerError: Unexpected token`（[locale]/my.astro:76:5），删除后 E2E 3/3、全量 77/77 绿。
 
-### T20 推荐去重与翻页（`9546b3b`）
+### T20 推荐去重与翻页（`1b605da`）
 
 - 判据"剔除已保存/已投、加 offset 与关键词、跨源同岗位合并（今天只标记不合并）| 同一岗位不在推荐里出现两次；已投的不再推"。
 - 落地分层：
@@ -68,11 +68,11 @@
 ## §3 本批 commit 链
 
 ```text
-e3772a6 feat(resume-core): annotate data quality for thin profiles
-66354d8 chore(job-source): expand greenhouse seed boards to 45
-cc409ee feat(api): claim fused platform=all profiles from either source
-af3b71e feat(report): move interview planner into my page for candidates
-9546b3b feat(job-source): dedupe recommendations, filter applied jobs, add paging
+035b483 feat(resume-core): annotate data quality for thin profiles
+444f898 chore(job-source): expand greenhouse seed boards to 45
+c0a3081 feat(api): claim fused platform=all profiles from either source
+7f92df0 feat(report): move interview planner into my page for candidates
+1b605da feat(job-source): dedupe recommendations, filter applied jobs, add paging
 ```
 
 未 push；push 后 `pr-helper-by-bayernjf` 会在约 5 分钟内自动建并合 `dev → main` PR。
@@ -116,12 +116,12 @@ af3b71e feat(report): move interview planner into my page for candidates
 
 ### 4.6 提交
 
-- `9627de0` feat(storage): add cascade delete repos（9 文件：3 接口 + sqlite 3 + postgres 3）
-- `293895d` feat(api): add DELETE /profiles/:id
-- `f97a63c` test(api): cover profile delete cascade（6 用例）
-- `942150b` feat(report): add delete button on my page（DeleteProfileButton + i18n + my.astro）
-- `2c04c84` test(report): e2e for self-service unlink
-- `231d8dd` docs(api): document profile delete endpoint
+- `3b978f2` feat(storage): add cascade delete repos（9 文件：3 接口 + sqlite 3 + postgres 3）
+- `e2123e0` feat(api): add DELETE /profiles/:id
+- `e95367c` test(api): cover profile delete cascade（6 用例）
+- `9d176bf` feat(report): add delete button on my page（DeleteProfileButton + i18n + my.astro）
+- `af2fb03` test(report): e2e for self-service unlink
+- `92a900b` docs(api): document profile delete endpoint
 - docs(handoff) 本批（handoff.md + 本归档 §4）
 
 英文原子、作者 bayernjf、无 AI co-author、未 push（push 由用户执行）。
@@ -160,7 +160,7 @@ deferred 各条触发条件均未满足，可一口气推进的登记遗留为�
   按名称稳定排序（svelte < vue）。现有 16 条集合断言不受顺序影响全绿。
 - **顺带修复一条真断链**：doc-links 守护抓到 `docs/handoff-archive-2026-09-27.md` 里
   `docs/评审-MVP-20260927.md` 链接（归档在 docs/ 下、评审文档也在 docs/ 下，多写一层 docs/ 前缀）
-  → 改为 `评审-MVP-20260927.md`（独立 commit `9109195`）。**守护有效性的实证**：全量测试正是
+  → 改为 `评审-MVP-20260927.md`（独立 commit `672bb5c`）。**守护有效性的实证**：全量测试正是
   被这条断链拦红后修复。
 
 ### 5.3 验证与提交
@@ -172,5 +172,5 @@ deferred 各条触发条件均未满足，可一口气推进的登记遗留为�
   - `chore(ci)` add check-migrations step and upload E2E test artifacts
   - `fix(analyzer)` rank framework tags by depth and repos（skills.ts + rules.ts 0.8）
   - `test(analyzer)` guard T14 framework ranking with regression cases
-  - `9109195` fix(docs) correct archive link to review doc
+  - `672bb5c` fix(docs) correct archive link to review doc
   - `docs(handoff)` record item89（handoff.md + 本归档 §5）

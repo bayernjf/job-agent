@@ -98,4 +98,4 @@ interviews
 - 补齐 §3 表草案漏列但 §4 已要求的 `created_by_account_id TEXT NOT NULL`。
 - 不做物理删除：`cancelled/no_show` 用状态表达（对齐 applications 的 withdrawn 哲学）。
 
-落地物：shared 契约 → 双方言迁移 012（18 列 3 索引）+ `IInterviewsRepository` 双实现 → `POST/GET/PATCH /interviews`（登录闸）→ 报告页 `InterviewPlanner` island + 47 个中英 i18n key + 3 个零网络 E2E；提交链 `43cadbe` shared → `5725c5c` db → `e919556` api → `4ca82c4` report。验证：全仓 typecheck/build 全 Done、单测 862 全绿、报告 E2E 60/60、check-migrations 12 对 0 warning。实现明细、踩坑与缓做项见 [handoff-archive-2026-09-24](handoff-archive-2026-09-24.md) §4。
+落地物：shared 契约 → 双方言迁移 012（18 列 3 索引）+ `IInterviewsRepository` 双实现 → `POST/GET/PATCH /interviews`（登录闸）→ 报告页 `InterviewPlanner` island + 47 个中英 i18n key + 3 个零网络 E2E；提交链 `ef9b017` shared → `bb132e2` db → `b4266b9` api → `c458cb6` report。验证：全仓 typecheck/build 全 Done、单测 862 全绿、报告 E2E 60/60、check-migrations 12 对 0 warning。实现明细、踩坑与缓做项见 [handoff-archive-2026-09-24](handoff-archive-2026-09-24.md) §4。

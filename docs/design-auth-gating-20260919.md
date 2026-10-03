@@ -116,8 +116,8 @@
 
 | 提交 | 内容 |
 | --- | --- |
-| `ba21d04` `feat(api)` | `sanitizeReturnTo` 纯函数 + 单测；shared `AUTH_RETURN_COOKIE`；login 种 return Cookie、callback 二次校验回跳并清除；auth-flow 3 端点测试 |
-| `4600a87` `feat(report)` | SSR `resolveViewer`/`canViewGatedContent` + 单测、`GateCard.astro`、报告页三处证据与面试题门控、interview-kit 端点 401、AccountMenu 带 return_to、5 组中英 i18n key、gated-content E2E 6 例与三处既有断言修正 |
+| `b8f3881` `feat(api)` | `sanitizeReturnTo` 纯函数 + 单测；shared `AUTH_RETURN_COOKIE`；login 种 return Cookie、callback 二次校验回跳并清除；auth-flow 3 端点测试 |
+| `39e083a` `feat(report)` | SSR `resolveViewer`/`canViewGatedContent` + 单测、`GateCard.astro`、报告页三处证据与面试题门控、interview-kit 端点 401、AccountMenu 带 return_to、5 组中英 i18n key、gated-content E2E 6 例与三处既有断言修正 |
 | 本 docs 提交 | 本设计文档 + API.md §1.2 + deferred-items + handoff/docs README 回写 |
 
 验证数据（Node v24.0.0）：apps/api 122 测试全过（含 return_to 11 中相关）、apps/report 33 单测全过（含新增 auth 5）；受影响 4 个 E2E spec 22/22 通过；全仓 typecheck/test exit 0。作者保留为仓库 owner，未加 AI co-author；**未 push**（push 与 dev→main PR 由负责人执行）。

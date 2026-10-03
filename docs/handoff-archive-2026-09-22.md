@@ -31,7 +31,7 @@
 - 真机在面板触发后用 curl 复现应用层真实响应：无 cookie 时 `POST /analyze` body `{username, platform}` 返回 **403 `DEMO_REQUIRED`**；字段名必须是 `username`，发 `login` 报 400。
 - 即：传输层在页面源就被浏览器掐断，与后端逻辑无关。
 
-### 修复（commit `69d8bc8`）
+### 修复（commit `788a026`）
 
 - 新增 `apps/extension/src/lib/sw-relay.ts`：消息常量 `EXT_MSG_API_REQUEST='jobagent.apiRequest'` + 纯函数 `relayApiRequest`（注入 fetch，便于单测），在**扩展源（background service worker）**执行请求，异常收敛为 `status=0`。
 - 新增 `apps/extension/src/lib/sw-fetch.ts`：content 侧与 `fetch` 同形的适配器，经 `chrome.runtime.sendMessage` 把 method/headers/body（结构化克隆）转发给 SW，返回 Response-like（`ok/status/statusText/json()/text()`）；SW 不可用或网络失败抛 `TypeError`，与原生 fetch 失败行为一致。`JobAgentApi` / `matchJobs` 无需感知传输通道，单测仍注入假 fetch。
@@ -48,7 +48,7 @@
 
 `apps/api` `POST /analyze` 的缓存命中要求 `latestBySubject` 存在 + `complete` + `Date.now()-updatedAt < PROFILE_CACHE_TTL_MS`（默认 24h），且命中判断在权限闸之前。超 TTL 的快照会走「触发新分析」分支 → 匿名用户被演示闸挡 **403 `DEMO_REQUIRED`**。但画像快照本就**永久存在、`GET /profiles/:id` 公开**，分享链接不设 TTL；「加载一份已生成的画像来一键填充」不应被 24h 缓存 TTL 与演示配额挡住。真机复现：本地库 `torvalds` 画像（profileId `0d83a702-3f75-4a1e-aad5-3fea0fd46ca7`，github，complete，`updated_at 2026-09-15 14:48:56`，已超 24h）在旧扩展匿名加载即 403。
 
-### 修复 — 后端（commit `acd27bd`）
+### 修复 — 后端（commit `3fbf8b8`）
 
 新增公开只读端点 **`GET /profiles/by-subject/:platform/:login`**：
 
@@ -57,7 +57,7 @@
 - 无 complete 快照（含/不含 partial）回 **404 `PROFILE_NOT_FOUND`**；platform/login 非法回 400。
 - 单测 `apps/api/src/index.test.ts` 新增 7 用例（complete github 匿名 200 只回指针无 snapshot/skills 且不建 job、gitee 200、跨平台同 login 不匹配 404、无快照 404、partial 404、platform=all 400、非法 login 400）。
 
-### 修复 — 扩展客户端（commit `b32a588`）
+### 修复 — 扩展客户端（commit `efadd8b`）
 
 `apps/extension/src/lib/api.ts` `fetchProfile`：
 
@@ -81,7 +81,7 @@ by-subject 符合「看已有画像不受限」精神、数据本就公开，但
 
 `ats/greenhouse.ts` 原 `set(['country','location'], location)`；`findFields` 子串匹配按 DOM 序取第一个命中。电话组的区号 ComboBox（aria-label 含 `Country`，DOM 更靠前）与独立 Location(City) 框都命中 `country`/`location` 关键词，导致城市串被写进电话区号框。
 
-### 修复（commit `18f7d8e`）
+### 修复（commit `d23c1ae`）
 
 - ATS 内核 `findFields` 加第三参 `exclude:string[]=[]`（归一化后做排除词判定：命中关键词且不在排除集合）。
 - Greenhouse/Lever：phone 透传排除 `country/dial/area`；location 删除 `country` 关键词并排除 `phone/country/dial/area code`；github 输入排除 `linkedin/website/portfolio`。
@@ -95,7 +95,7 @@ by-subject 符合「看已有画像不受限」精神、数据本就公开，但
 
 ATS `FillValue` 联合类型与 `LocalAtsFieldsSchema` 都没有 website/personalSite 槽位，Website 框永远不会被填。
 
-### 修复（commit `18f7d8e`，shared 契约与 ATS 适配器同提交以保证可编译）
+### 修复（commit `d23c1ae`，shared 契约与 ATS 适配器同提交以保证可编译）
 
 - `packages/shared/src/index.ts`：`LocalAtsFieldsSchema` 在 `linkedinUrl` 后加 `personalWebsite: z.string().url().optional()`；`localProfileToAtsFields` 加 `personalSite → personalWebsite` 投影；`legacyAtsToLocalProfile` 加反向投影。`local-profile.test.ts` 补投影与往返用例。
 - ATS 内核：`FillValue` 联合加 `'personal_website_url'`；`toFillValues` 加 personalWebsite 投影。
@@ -157,19 +157,19 @@ ATS `FillValue` 联合类型与 `LocalAtsFieldsSchema` 都没有 website/persona
 
 | commit | type(scope) | 内容 |
 |---|---|---|
-| `acd27bd` | feat(api) | add by-subject profile lookup endpoint（#55 后端，7 单测） |
-| `69d8bc8` | feat(extension) | proxy API through service worker（#54 传输层 + SW 单测 + #54 E2E 适配 + E2E timeout） |
-| `b32a588` | feat(extension) | load cached snapshot by subject（#55 客户端 + by-subject E2E 用例） |
-| `18f7d8e` | fix(extension) | disambiguate location/phone, fill website（#56/#57 + shared 契约） |
+| `3fbf8b8` | feat(api) | add by-subject profile lookup endpoint（#55 后端，7 单测） |
+| `788a026` | feat(extension) | proxy API through service worker（#54 传输层 + SW 单测 + #54 E2E 适配 + E2E timeout） |
+| `efadd8b` | feat(extension) | load cached snapshot by subject（#55 客户端 + by-subject E2E 用例） |
+| `d23c1ae` | fix(extension) | disambiguate location/phone, fill website（#56/#57 + shared 契约） |
 | （docs 提交） | docs | handoff 回写 + 本归档 + docs/README + INSTALL（hash 见 handoff Git 状态） |
 
-原子拆分说明：#54 与 #55 在同一测试文件相邻，为保证**每个提交自身 E2E 也绿**，E2E 用「仅 #54 中间版 → 提交 → 恢复 #55 最终版 → 提交」拆分：`69d8bc8` 时点客户端仍是旧的直连 POST /analyze（经 SW），配合 context 级 /analyze 路由与平台用例；`b32a588` 再引入 by-subject 前置与 404 路由 / 命中用例。
+原子拆分说明：#54 与 #55 在同一测试文件相邻，为保证**每个提交自身 E2E 也绿**，E2E 用「仅 #54 中间版 → 提交 → 恢复 #55 最终版 → 提交」拆分：`788a026` 时点客户端仍是旧的直连 POST /analyze（经 SW），配合 context 级 /analyze 路由与平台用例；`efadd8b` 再引入 by-subject 前置与 404 路由 / 命中用例。
 
 ---
 
 ## 9. 当时 Git 同步态（2026-09-22）
 
-- 分支 `dev`（track `origin/dev`）。本批前 `origin/dev` = `2e906e8`、`origin/main` = `81404a9`（PR #71 合并），无 open PR。
+- 分支 `dev`（track `origin/dev`）。本批前 `origin/dev` = `de6bca5`、`origin/main` = `3dbdc89`（PR #71 合并），无 open PR。
 - 本批 4 个代码提交 + 1 个 docs 提交在本地领先 `origin/dev`（push 与 dev→main PR 由用户执行）。
 - 真机用本地库 `data/job-agent.db`（SQLite）：6 条 complete 画像、2303 条 job_postings、0 applications；`.env` 无 GITHUB_TOKEN（worker 不启动，画像走缓存/by-subject）。
 - 本地起 API 姿势：`export DB_PATH=/Users/jiangfeng/000mycodes/job-agent/data/job-agent.db`（绝对路径）+ `pnpm --filter @jobagent/api dev`（dev 跑 dist，改 api 源码需先 build api 包）；报告页 `pnpm --filter @jobagent/report dev`（:4321）。本批临时 dev 服务用完已停。
@@ -182,8 +182,8 @@ ATS `FillValue` 联合类型与 `LocalAtsFieldsSchema` 都没有 website/persona
 
 ### 10.1 权威 Node v24 完整验证基线补齐 + native addon 铁律固化
 
-2026-09-21（本地英文原子提交，未 push：`049ea1a` docs(build)、当日 handoff）：此前 Node24 只复跑了单测，报告/扩展 E2E 仍沿用 Node v22 基线；本轮在 Node v24.0.0（fnm，better-sqlite3 abi 137）下重跑：报告 Playwright E2E **52/52（约 1.9m，webServer 自动起 Astro + fixture SQLite）**、扩展 E2E **9/9（约 30.5s，先 build MV3、`--headless=new` 零网络）**，结合包级串行单测 **13 包 781 全绿**与 storage 真实 embedded PG 7/7，Node24 全链路基线闭环；actionlint（Docker `rhysd/actionlint`）全量扫 ci.yml/jobs-sync.yml exit 0。另把环境教训写入 AGENTS.md：fnm/nvm 切 Node 版本后必须 `pnpm rebuild -r better-sqlite3`（根目录不带 `-r` 因子包依赖 selector 不匹配会静默 no-op），否则 native addon 仍按旧 `NODE_MODULE_VERSION` 编译、SQLite 测试集体崩；CI 在 Linux 全新 install 不受影响。
+2026-09-21（本地英文原子提交，未 push：`d6c80b3` docs(build)、当日 handoff）：此前 Node24 只复跑了单测，报告/扩展 E2E 仍沿用 Node v22 基线；本轮在 Node v24.0.0（fnm，better-sqlite3 abi 137）下重跑：报告 Playwright E2E **52/52（约 1.9m，webServer 自动起 Astro + fixture SQLite）**、扩展 E2E **9/9（约 30.5s，先 build MV3、`--headless=new` 零网络）**，结合包级串行单测 **13 包 781 全绿**与 storage 真实 embedded PG 7/7，Node24 全链路基线闭环；actionlint（Docker `rhysd/actionlint`）全量扫 ci.yml/jobs-sync.yml exit 0。另把环境教训写入 AGENTS.md：fnm/nvm 切 Node 版本后必须 `pnpm rebuild -r better-sqlite3`（根目录不带 `-r` 因子包依赖 selector 不匹配会静默 no-op），否则 native addon 仍按旧 `NODE_MODULE_VERSION` 编译、SQLite 测试集体崩；CI 在 Linux 全新 install 不受影响。
 
 ### 10.2 修复 main 上 Jobs sync 定时任务在形态 C 部署前每晚刷红
 
-2026-09-21（`cc9de52` ci(sync)，本地提交未 push）：PR #69 自动并入 main 后「合并后验证」1/2 失败——main 的 `Jobs sync` schedule run（[35536757602](https://github.com/bayernjf/job-agent/actions/runs/35536757602)，每日 18:17 UTC）跑 CLI 时因仓库未配 `DATABASE_URL` secret（形态 C Supabase 尚未部署）触发 `packages/storage/src/storage.ts:59` fail-fast（`DB_DRIVER=postgres requires DATABASE_URL`）exit 1。修复 `.github/workflows/jobs-sync.yml`：新增 `Guard DATABASE_URL secret`（`id: guard`，输出 `has_db`）——**schedule 触发且缺 secret 时打 `::warning::` 并令 has_db=false，install/build/两个 sync 步骤全部 skipped、run 整体成功；workflow_dispatch 手动触发缺 secret 仍硬失败；secret 存在则正常执行**；CLI fail-fast 保留为最后防线。guard shell 四组合（schedule/dispatch × 有/无 secret）断言全过，actionlint exit 0。注意 GitHub `schedule` 仅在默认分支 main 运行：本修复须经下一个 dev→main PR 合入 main 后下一次 cron 才转为中性跳过；合入前若到点旧版仍会再红一次。
+2026-09-21（`65d21d9` ci(sync)，本地提交未 push）：PR #69 自动并入 main 后「合并后验证」1/2 失败——main 的 `Jobs sync` schedule run（[35536757602](https://github.com/bayernjf/job-agent/actions/runs/35536757602)，每日 18:17 UTC）跑 CLI 时因仓库未配 `DATABASE_URL` secret（形态 C Supabase 尚未部署）触发 `packages/storage/src/storage.ts:59` fail-fast（`DB_DRIVER=postgres requires DATABASE_URL`）exit 1。修复 `.github/workflows/jobs-sync.yml`：新增 `Guard DATABASE_URL secret`（`id: guard`，输出 `has_db`）——**schedule 触发且缺 secret 时打 `::warning::` 并令 has_db=false，install/build/两个 sync 步骤全部 skipped、run 整体成功；workflow_dispatch 手动触发缺 secret 仍硬失败；secret 存在则正常执行**；CLI fail-fast 保留为最后防线。guard shell 四组合（schedule/dispatch × 有/无 secret）断言全过，actionlint exit 0。注意 GitHub `schedule` 仅在默认分支 main 运行：本修复须经下一个 dev→main PR 合入 main 后下一次 cron 才转为中性跳过；合入前若到点旧版仍会再红一次。
