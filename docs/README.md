@@ -38,7 +38,7 @@
 | 看赛道最新变化（2026-10：融资加速 / LinkedIn·OpenAI·GitHub 官方入场 / 「GitHub 行为证据」新玩家）与迭代含义 | [市场与竞品更新-20261003.md](市场与竞品更新-20261003.md) |
 | 看中国招聘市场企业端/求职者端双方痛点与共同根源（量化证据 + 对产品启示） | [市场调研-招聘市场痛点-20260916.md](市场调研-招聘市场痛点-20260916.md) |
 | 看痛点对应解决方案、已覆盖/需新增对位与实施批次（批1 产品化 + 批2 新接口已落地见 handoff item21；批3 待外部条件） | [设计-痛点解决方案-20260916.md](设计-痛点解决方案-20260916.md) |
-| 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（待决策，handoff item45） |
+| 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（**已落地 2026-09-24，PR #81，handoff item45**） |
 | 用招聘方核验视图 / 企业人才库 / 投递追踪 / 面试准备包（`?view=recruiter`、`/[locale]/recruit`、`interview-kit.md`、`/candidates` 与 `/applications` 端点） | [API.md](API.md) §3.5/§3.6 + [../handoff.md](../handoff.md) item21 |
 | 写用户可见文案 / 加双语 / 处理语言与分享链接（含扩展面板、MV3 _locales） | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
 | 定颜色、间距、圆角、字号 / 改主题（共享 token 包、Shadow DOM 接入） | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
