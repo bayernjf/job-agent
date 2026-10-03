@@ -23,8 +23,13 @@ describe('planTransition', () => {
     expect(planTransition('awaiting_approval', 'submitted')).toMatchObject({ ok: true, to: 'tracking' });
   });
 
-  it('keeps the run on the human gate when an item is approved, and returns to watching when rejected', () => {
-    expect(planTransition('awaiting_approval', 'approve')).toMatchObject({ ok: true, to: 'awaiting_approval' });
+  it('drives the stage-2 path: approve leaves the gate into submitting, then extension receipts in two audit steps', () => {
+    expect(planTransition('awaiting_approval', 'approve')).toMatchObject({ ok: true, to: 'submitting' });
+    expect(planTransition('submitting', 'submitted')).toMatchObject({ ok: true, to: 'submitted' });
+    expect(planTransition('submitted', 'track')).toMatchObject({ ok: true, to: 'tracking' });
+  });
+
+  it('keeps the reject path: back to watching when the last pending item is rejected', () => {
     expect(planTransition('awaiting_approval', 'reject')).toMatchObject({ ok: true, to: 'watching' });
   });
 

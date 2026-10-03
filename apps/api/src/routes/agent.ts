@@ -431,7 +431,15 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       const open = all.filter((item) => item.status === 'pending' || item.status === 'approved');
       if (open.length === 0) {
         // 待办清零 → tracking（「跟」：后续复用 applications/interviews 管道）
-        run = (await applyRunEvent(repos, runBefore, 'submitted', 'user', submittedAt)) ?? runBefore;
+        if (runBefore.status === 'submitting') {
+          // 阶段 2 扩展回执：submitting → submitted → tracking，两个审计时刻分开落
+          const submitted =
+            (await applyRunEvent(repos, runBefore, 'submitted', 'user', submittedAt)) ?? runBefore;
+          run = (await applyRunEvent(repos, submitted, 'track', 'user', submittedAt)) ?? submitted;
+        } else {
+          // 阶段 1 兼容：awaiting_approval --submitted--> tracking（一步到位）
+          run = (await applyRunEvent(repos, runBefore, 'submitted', 'user', submittedAt)) ?? runBefore;
+        }
       }
     }
     return c.json({

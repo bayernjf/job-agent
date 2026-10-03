@@ -320,7 +320,7 @@ describe('agent workbench — stage 1 loop', () => {
     expect(pending.status).toBe('awaiting_approval');
     expect(pending.items).toHaveLength(1);
 
-    // 确认：只置票据 approved，任务仍停在人机闸上（阶段 1 无自动投递）
+    // 确认：票据置 approved，任务离开人机闸进入 submitting（阶段 2 机器执行态，§10.4 A1）
     const approveRes = await json(`/agent/runs/${body.run.runId}/approve`, {
       method: 'POST',
       body: JSON.stringify({ intentIds: [intent.intentId] }),
@@ -332,10 +332,10 @@ describe('agent workbench — stage 1 loop', () => {
       intents: Array<{ status: string }>;
     };
     expect(approved.approved).toBe(1);
-    expect(approved.run.status).toBe('awaiting_approval');
+    expect(approved.run.status).toBe('submitting');
     expect(approved.intents[0]!.status).toBe('approved');
 
-    // 用户投完回来回填：写一条 origin=agent 的投递记录，任务转 tracking
+    // 扩展回执（用户点提交后）：submitting → submitted → tracking，写 origin=agent 投递记录
     const submittedRes = await json(`/agent/intents/${intent.intentId}/mark-submitted`, { method: 'POST' });
     expect(submittedRes.status).toBe(200);
     const submitted = (await submittedRes.json()) as {
@@ -362,7 +362,7 @@ describe('agent workbench — stage 1 loop', () => {
     expect(again.status).toBe(200);
     expect(await repos.applications.listByProfile('p-1')).toHaveLength(1);
 
-    // 事件流完整可回放
+    // 事件流完整可回放（阶段 2：approve → submitting，回执分 submitted + track 两步）
     const viewRes = await json(`/agent/runs/${body.run.runId}`);
     const view = (await viewRes.json()) as { events: Array<{ event: string }> };
     expect(view.events.map((e) => e.event)).toEqual([
@@ -371,6 +371,40 @@ describe('agent workbench — stage 1 loop', () => {
       'candidates_ready',
       'generated',
       'approve',
+      'submitted',
+      'track',
+    ]);
+  });
+
+  it('keeps the stage-1 compatibility path: mark-submitted without approve goes straight to tracking', async () => {
+    const { repos, json } = await harness();
+    await insertProfile(repos, 'p-1', ALICE.login);
+    await json('/profiles/p-1/claim', { method: 'POST' });
+    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-1' }),
+    });
+    const run = (await runRes.json()) as { run: { runId: string }; intents: Array<{ intentId: string }> };
+
+    // 不 approve 直接回填（用户自己投完回来标已投）：票据 pending → submitted，任务 tracking
+    const submittedRes = await json(`/agent/intents/${run.intents[0]!.intentId}/mark-submitted`, {
+      method: 'POST',
+    });
+    expect(submittedRes.status).toBe(200);
+    const submitted = (await submittedRes.json()) as { run: { status: string } };
+    expect(submitted.run.status).toBe('tracking');
+
+    const viewRes = await json(`/agent/runs/${run.run.runId}`);
+    const view = (await viewRes.json()) as { events: Array<{ event: string }> };
+    // 兼容路径无 approve：awaiting_approval --submitted--> tracking 一步到位
+    expect(view.events.map((e) => e.event)).toEqual([
+      'validate',
+      'start',
+      'candidates_ready',
+      'generated',
       'submitted',
     ]);
   });
@@ -473,17 +507,44 @@ describe('agent workbench — stage 1 loop', () => {
     expect(((await tooMany.json()) as { code: string }).code).toBe('AGENT_DAILY_SUBMIT_LIMIT_REACHED');
     expect(await repos.submitIntents.listByRunAndStatus(run.run.runId, 'approved')).toHaveLength(0);
 
-    // 单条可确认；再确认第二条时额度已用尽
+    // 单条可确认；确认后任务离开人机闸进入 submitting（阶段 2），同一 run 不能再 approve
     const one = await json(`/agent/runs/${run.run.runId}/approve`, {
       method: 'POST',
       body: JSON.stringify({ intentIds: [run.intents[0]!.intentId] }),
     });
     expect(one.status).toBe(200);
-    const second = await json(`/agent/runs/${run.run.runId}/approve`, {
+    expect(((await one.json()) as { run: { status: string } }).run.status).toBe('submitting');
+
+    // 额度按账号+源跨 run 累计：新 run 的票据再 approve → 429，且不被部分确认
+    await repos.jobPostings.upsertBatch(
+      [
+        posting({
+          sourceUrl: 'https://boards.example.com/acme/jobs/3',
+          title: 'TypeScript Backend Engineer',
+        }),
+      ],
+      '2026-10-02T00:00:00.000Z',
+    );
+    const run2Res = await json('/agent/runs', {
       method: 'POST',
-      body: JSON.stringify({ intentIds: [run.intents[1]!.intentId] }),
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-1' }),
     });
-    expect(second.status).toBe(429);
+    const run2 = (await run2Res.json()) as {
+      run: { runId: string };
+      intents: Array<{ intentId: string; jobId: string }>;
+    };
+    // run2 是独立任务线：会重推 run1 已确认但未投递的岗位，加上 jobs/3 共 3 条
+    expect(run2.intents).toHaveLength(3);
+    const thirdJobId = makeJobPostingId('greenhouse', 'https://boards.example.com/acme/jobs/3');
+    const thirdIntent = run2.intents.find((i) => i.jobId === thirdJobId);
+    expect(thirdIntent).toBeDefined();
+    const limited = await json(`/agent/runs/${run2.run.runId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ intentIds: [thirdIntent!.intentId] }),
+    });
+    expect(limited.status).toBe(429);
+    expect(((await limited.json()) as { code: string }).code).toBe('AGENT_DAILY_SUBMIT_LIMIT_REACHED');
+    expect(await repos.submitIntents.listByRunAndStatus(run2.run.runId, 'approved')).toHaveLength(0);
   });
 
   it('serves the tailored resume and rule-based cover letter on demand', async () => {
@@ -635,5 +696,51 @@ describe('agent workbench — cron tick', () => {
     // 队列清空后 tick 是幂等的 idle
     const idle = await app.request(`/internal/cron/agent-tick?token=${CRON_SECRET}`);
     expect(((await idle.json()) as { outcome: { idle: boolean } }).outcome.idle).toBe(true);
+  });
+
+  it('recycles stale submitting runs to failed with an explicit submit_timeout reason on tick', async () => {
+    const { repos, app, json } = await harness();
+    await insertProfile(repos, 'p-1', ALICE.login);
+    await json('/profiles/p-1/claim', { method: 'POST' });
+    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-1' }),
+    });
+    const run = (await runRes.json()) as {
+      run: { runId: string };
+      intents: Array<{ intentId: string }>;
+    };
+    const approveRes = await json(`/agent/runs/${run.run.runId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ intentIds: [run.intents[0]!.intentId] }),
+    });
+    expect(approveRes.status).toBe(200);
+    expect(((await approveRes.json()) as { run: { status: string } }).run.status).toBe('submitting');
+
+    // 模拟用户确认后 48h 未在扩展完成提交：把 run 的 updatedAt 拨回过去
+    const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
+    await repos.jobRuns.setStatus(run.run.runId, { status: 'submitting', updatedAt: stale });
+
+    const tick = await app.request(`/internal/cron/agent-tick?token=${CRON_SECRET}`);
+    expect(tick.status).toBe(200);
+    const body = (await tick.json()) as { ok: boolean; outcome: { recycled: number } };
+    expect(body.ok).toBe(true);
+    expect(body.outcome.recycled).toBe(1);
+
+    const view = (await (await json(`/agent/runs/${run.run.runId}`)).json()) as {
+      run: { status: string; lastError: string | null };
+      events: Array<{ event: string; actor: string; fromStatus: string; toStatus: string }>;
+    };
+    expect(view.run.status).toBe('failed');
+    expect(view.run.lastError).toBe('submit_timeout');
+    expect(view.events.at(-1)).toMatchObject({
+      event: 'fail',
+      actor: 'system',
+      fromStatus: 'submitting',
+      toStatus: 'failed',
+    });
   });
 });
