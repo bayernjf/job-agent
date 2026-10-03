@@ -1834,3 +1834,64 @@ export function parseCoverLetterDraft(input: unknown): CoverLetterDraft | null {
   const result = CoverLetterDraftSchema.safeParse(input);
   return result.success ? result.data : null;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LLM 模型供给契约（内置目录 + BYOK，design-llm-model-provisioning-20261003）
+// 决策 #21（2026-10-03 全部拍板）：内置＝Admin UI 管理目录（凭证 env only）；
+// BYOK＝用户自由设置（一账号一条、服务端加密列）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 模态：当前仅消费文本模型（图像/视频模型为未消费备用，不进目录）。 */
+export const LLM_CATALOG_MODALITIES = ['text'] as const;
+export const LlmCatalogModalitySchema = z.enum(LLM_CATALOG_MODALITIES);
+export type LlmCatalogModality = z.infer<typeof LlmCatalogModalitySchema>;
+
+/**
+ * 内置目录中的一个模型行（迁移 024 llm_catalog_models）。
+ * 白名单不变量（agent-world model-catalog）：admin 数据合并只允许覆盖本结构
+ * 的字段；baseUrl / apiKey 永远来自 env，结构上不可被目录覆盖。
+ */
+export const LlmCatalogModelSchema = z.object({
+  id: z.string().min(1), // 目录 id，如 agnes-2.5-flash
+  provider: z.string().min(1), // provenance 标识，如 'agnes'
+  model: z.string().min(1), // 请求实际 model id
+  enabled: z.boolean(), // 停用＝下架（请求如实报错，不静默降级）
+  isDefault: z.boolean(), // 每模态唯一默认（由 admin 面保证）
+  sortOrder: z.number().int().min(0),
+  modalities: z.array(LlmCatalogModalitySchema).min(1),
+});
+export type LlmCatalogModel = z.infer<typeof LlmCatalogModelSchema>;
+
+/** BYOK 用户配置（迁移 025 user_llm_configs；apiKey 加密列服务端留存）。 */
+export const UserLlmConfigSchema = z.object({
+  provider: z.string().min(1).default('custom'),
+  baseUrl: z.string().url(), // https 校验由 API 层 refine（SSRF 面）
+  model: z.string().min(1),
+});
+export type UserLlmConfig = z.infer<typeof UserLlmConfigSchema>;
+
+/** 加密落库形态（storage 内部使用；apiKeyEncrypted 永不出现在任何对外响应）。 */
+export type StoredUserLlmConfig = UserLlmConfig & {
+  accountId: string;
+  apiKeyEncrypted: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** admin 写入目录的请求体（整体替换白名单字段；凭证字段不存在）。 */
+export const LlmCatalogUpsertSchema = z.object({
+  models: z.array(LlmCatalogModelSchema).min(1),
+});
+export type LlmCatalogUpsert = z.infer<typeof LlmCatalogUpsertSchema>;
+
+/** BYOK 保存请求（apiKey 可省略＝不改密钥只改其它字段）。 */
+export const UserLlmConfigSaveSchema = UserLlmConfigSchema.extend({
+  apiKey: z.string().min(1).optional(),
+});
+export type UserLlmConfigSave = z.infer<typeof UserLlmConfigSaveSchema>;
+
+/** BYOK 配置的对外视图：只回显掩码，永不回显完整 key。 */
+export const UserLlmConfigViewSchema = UserLlmConfigSchema.extend({
+  keyMasked: z.string(), // 形如 sk-****<末4位>
+});
+export type UserLlmConfigView = z.infer<typeof UserLlmConfigViewSchema>;
