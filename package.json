@@ -39,7 +39,7 @@
     },
     "auditConfig": {
       "ignoreCves": [
-        "GHSA-ch52-4w7c-c8xp"
+        "CVE-2026-93748"
       ]
     }
   }
