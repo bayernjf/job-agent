@@ -1300,6 +1300,57 @@ apiKey 以 AES-256-GCM 密文落库，明文只存在于请求处理瞬间。
 
 ---
 
+## 3.10 扩展登录态（决策 #22）
+
+浏览器扩展经「工作台签发一次性授权码 → 兑换长期 Bearer API Token」获得登录身份（全量设计见
+`docs/design-扩展登录态-20261004.md`）。登录始终发生在工作台（Web OAuth），扩展不重做 OAuth；
+服务端只存 token 的 SHA-256 哈希，明文仅签发响应返回一次。code 5 分钟单次消费防重放，
+token 90 天滑动续期、可撤销。
+
+### `POST /auth/extension-token/issue`
+
+工作台签发一次性授权码（**需 cookie 登录**，401 `AUTH_REQUIRED`）。响应：
+
+```json
+{ "code": "ext-code-<32B base64url>", "expiresAt": "2026-10-04T04:05:00.000Z" }
+```
+
+### `POST /auth/extension-token/consume`
+
+扩展用一次性 code 兑换长期 token（code 即凭证，无需额外鉴权）。请求：
+
+```json
+{ "code": "ext-code-<32B base64url>" }
+```
+
+成功 200：
+
+```json
+{ "apiToken": "tkn-<32B base64url>", "name": "browser extension",
+  "expiresAt": "2027-01-02T04:00:00.000Z",
+  "account": { "platform": "github", "login": "alice" } }
+```
+
+失败：404 `EXT_CODE_NOT_FOUND`（不存在）；410 `EXT_CODE_USED`（已消费，防重放）；
+410 `EXT_CODE_EXPIRED`（超过 5 分钟）。后续请求带
+`Authorization: Bearer <apiToken>`，命中即按该账号的 user 身份处理（/auth/me 可见）。
+
+### `GET /auth/extension-tokens`
+
+授权管理列表（需登录）：返回本账号未撤销 token 的摘要，**仅指纹尾 4 位、不可逆查明文**：
+
+```json
+{ "tokens": [{ "id": "tkn-<…>", "fingerprint": "<last4>", "name": "browser extension",
+               "createdAt": "…", "lastSeenAt": "…", "expiresAt": "…" }] }
+```
+
+### `DELETE /auth/extension-tokens/:id`
+
+撤销本人 token（需登录；不存在/非本人 404 `EXT_TOKEN_NOT_FOUND`）。撤销立即生效：
+携带该 token 的下一个请求回退为匿名。
+
+---
+
 ## 4. 健康检查
 
 ### `GET /health`
