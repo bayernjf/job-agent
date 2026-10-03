@@ -1,6 +1,6 @@
 # LLM 模型供给设计：内置模型（Admin UI 管理，参考 agent-world）+ BYOK（用户自由设置）
 
-- 状态：**全部已拍板（2026-10-03，决策 #21 子问 0–6 全采纳助手建议）；待开工 P0 里程碑**
+- 状态：**已拍板并落地（2026-10-03）：决策 #21 子问 0–6 全采纳助手建议；P0 里程碑全部完成（handoff item105，12 个提交未 push）**。P1 生产激活＝配 `LLM_*`/`LLM_ENC_KEY`/`ADMIN_ACCOUNT_LOGINS` env + 首个 admin 在 `/admin` 录入目录行
 - 日期：2026-10-03（v3：决策 #21 全部拍板；v2 按 agent-world model-catalog 方案重构内置层管理方式）
 - 关联：handoff item102/103/104；[待拍板决策清单 #21](待拍板决策清单-20260910.md)；[design-cover-letter-20261003.md](design-cover-letter-20261003.md)；[design-targeted-resume-20260915.md](design-targeted-resume-20260915.md) §10
 - 参考：agent-world [design-model-catalog.md](https://github.com/bayernjf/agent-world/blob/main/docs/design-model-catalog.md)（内置目录 admin 面 + 字段归属 + 凭证 env only 不变量，2026-09-25/26 已全部落地）
@@ -131,7 +131,7 @@ CREATE TABLE user_llm_configs (
 
 ## 6. 里程碑拆分
 
-- **P0 内置层基建**：迁移 023（`llm_catalog_models` + `accounts.is_admin` + `user_llm_configs`）+ `packages/llm` 目录合并纯函数（白名单 pick）+ 启动加载/显式刷新缓存 + admin 端点（GET/PUT/refresh）+ admin 面板 UI（report）+ BYOK 4 端点 + 工作台模型设置面板 + 请求路由（BYOK 优先 → 内置回落）+ i18n + 测试（含凭证不入表、越权 403、白名单不可覆盖 baseUrl/apiKey、validate、回落链、停用即报错）。
+- **P0 内置层基建（✅ 已落地 2026-10-03，handoff item105）**：迁移 023–025（`llm_catalog_models` + `accounts.is_admin` + `user_llm_configs`）+ `packages/llm` 目录合并纯函数（白名单 pick）+ 启动加载/显式刷新缓存 + admin 端点（GET/PUT/refresh）+ admin 面板 UI（report `/admin` + AccountMenu 入口）+ BYOK 4 端点（AES-256-GCM 加密列）+ 工作台模型设置面板 + 请求路由（BYOK 优先 → 内置回落）+ i18n 48 key + 测试（含凭证不入表、越权 403、白名单不可覆盖 baseUrl/apiKey、validate、回落链、停用即报错；storage 205 / llm 46 / api 249 / report 155 全绿）。
 - **P1 生产激活（J7 变体）**：生产 Vercel 配 `LLM_*`（`LLM_BASE_URL` / `LLM_API_KEY` = Agnes）+ `LLM_ENC_KEY` + `ADMIN_ACCOUNT_LOGINS`；首个 admin 登录后在 Admin UI 录入 `agnes-2.5-flash` 目录行。**注意**：P1 仍要配 env——按 agent-world 不变量，**凭证永远在 env**，admin UI 管理的是目录不是凭证。
 - **P2 体验增强（缓做）**：`GET /models` 探测、用量展示、完整审计表、内置/BYOK 混用策略。
 
