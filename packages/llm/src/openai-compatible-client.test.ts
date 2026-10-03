@@ -97,6 +97,36 @@ describe('OpenAICompatibleClient', () => {
     });
   });
 
+  it('keeps the real Authorization header even if extraHeaders tries to override it (S5)', async () => {
+    const { fn, calls } = fakeFetch(() => contentResponse(JSON.stringify({ ok: true })));
+    const client = new OpenAICompatibleClient({
+      ...baseCfg,
+      extraHeaders: { authorization: 'Bearer attacker', 'x-gateway': '1' },
+      fetchImpl: fn,
+    });
+    await client.generateJson<{ ok: boolean }>({ messages: [] });
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers.authorization).toBe('Bearer secret-key');
+    expect(headers['x-gateway']).toBe('1');
+  });
+
+  it('redacts the api key from upstream error detail (S5)', async () => {
+    const { fn } = fakeFetch(() => ({
+      ok: false,
+      status: 502,
+      json: async () => ({}),
+      text: async () =>
+        JSON.stringify({ error: { message: 'bad gateway, auth header was secret-key' } }),
+    }));
+    const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+    const err = (await client
+      .generateJson({ messages: [] })
+      .catch((e: LlmResponseError) => e)) as LlmResponseError;
+    expect(err.message).toContain('HTTP 502');
+    expect(err.message).toContain('[REDACTED]');
+    expect(err.message).not.toContain('secret-key');
+  });
+
   it('rejects model content that is not a JSON object', async () => {
     const { fn } = fakeFetch(() => contentResponse('not json at all'));
     const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
