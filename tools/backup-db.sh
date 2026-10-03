@@ -88,6 +88,7 @@ run_dump() {
 
 if ! run_dump; then
   echo "backup-db.sh: dump failed (see output above)" >&2
+  rm -f "$OUT"
   exit 2
 fi
 
