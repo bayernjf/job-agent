@@ -44,6 +44,15 @@ interface ModelSettingsProps {
   labels: ModelSettingsLabels;
 }
 
+interface LlmConfigGetResponse {
+  configured: boolean;
+  provider?: string;
+  baseUrl?: string;
+  model?: string;
+  keyMasked?: string;
+  reason?: 'encryption_missing';
+}
+
 interface LlmConfigView {
   provider: string;
   baseUrl: string;
@@ -73,26 +82,26 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
     setStatus({ kind: 'loading' });
     try {
       const res = await fetch(`${apiBase}/account/llm-config`, { credentials: 'include' });
-      if (res.status === 404) {
-        setConfig(null);
-        setLoaded(true);
-        setStatus({ kind: 'idle' });
-        return;
-      }
-      if (res.status === 503) {
-        setEncryptionMissing(true);
-        setLoaded(true);
-        setStatus({ kind: 'idle' });
-        return;
-      }
       if (!res.ok) {
         setStatus({ kind: 'error', message: labels.loadFailed });
         return;
       }
-      const data = (await res.json()) as LlmConfigView;
-      setConfig(data);
-      setBaseUrl(data.baseUrl);
-      setModel(data.model);
+      const data = (await res.json()) as LlmConfigGetResponse;
+      if (!data.configured) {
+        setConfig(null);
+        setEncryptionMissing(data.reason === 'encryption_missing');
+        setLoaded(true);
+        setStatus({ kind: 'idle' });
+        return;
+      }
+      setConfig({
+        provider: data.provider ?? 'custom',
+        baseUrl: data.baseUrl ?? '',
+        model: data.model ?? '',
+        keyMasked: data.keyMasked,
+      });
+      setBaseUrl(data.baseUrl ?? '');
+      setModel(data.model ?? '');
       setLoaded(true);
       setStatus({ kind: 'idle' });
     } catch {
