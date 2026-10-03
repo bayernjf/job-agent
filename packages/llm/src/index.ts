@@ -41,3 +41,4 @@ export {
   type BuiltinCatalogDefaults,
 } from './catalog.js';
 export { createCatalogCache, type CatalogCache } from './catalog-cache.js';
+export { encryptApiKey, decryptApiKey, maskApiKey } from './encryption.js';
