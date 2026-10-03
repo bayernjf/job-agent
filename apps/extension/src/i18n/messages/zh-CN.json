@@ -16,6 +16,7 @@
   "panel.analyze": "获取可信画像",
   "panel.analyzing": "分析中…",
   "panel.claimedBadge": "本人已验证",
+  "panel.unclaimedNotice": "本画像由公开行为数据自动生成，尚未经本人授权或认领。所有结论都是可复核的辅助判断，不构成事实认定。",
   "panel.authenticityValue": "真实性：{status}（{confidence}%）",
   "panel.skillsValue": "技能：{skills}",
   "panel.skillsEmpty": "—",

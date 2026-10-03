@@ -320,6 +320,13 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
 
       {profile && (
         <div className="ja-result">
+          {/* 未认领画像：面板同样带「未经本人授权」标注（deferred 合规线，
+              与报告页提示条 item58 / JSON 出口同口径） */}
+          {!profile.subject.claimed && (
+            <div className="ja-unclaimed" role="note">
+              {t('panel.unclaimedNotice')}
+            </div>
+          )}
           <div className="ja-row">
             <strong>{profile.subject.displayName ?? profile.subject.login}</strong>
             {profile.subject.claimed && <span className="ja-badge">{t('panel.claimedBadge')}</span>}

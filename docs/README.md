@@ -23,14 +23,14 @@
 | 了解投递功能方向、Jobright 竞品深度分析、四种技术路径对比 | [讨论记录-02-投递功能与竞品分析-20260911.md](讨论记录-02-投递功能与竞品分析-20260911.md) |
 | 看技术栈选型、运行架构、目录规划、M1 排期与 Spike | [技术选型-MVP-20260910.md](技术选型-MVP-20260910.md) |
 | 一页看懂当前技术栈分层（客户端/服务/内核/采集/持久化五层 + 各包职责 + 数据流） | [技术栈总览-分层架构-20260916.md](技术栈总览-分层架构-20260916.md) |
-| 逐条看待决策事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已决策，#9–#13 延后，#14 2026-09-21 已决策，#15/#16 2026-09-11 已决策：扩展一键填充 P1 做、职位聚合按 P2 启动；**#17 B 端角色、#18 C 端优先重排 均已于 2026-09-25 决策（选 A + 采纳子问建议）**） |
+| 逐条看待决策事项与建议组合 | [待拍板决策清单-20260910.md](待拍板决策清单-20260910.md)（#1–#8 已决策，#9–#13 延后，#14 2026-09-21 已决策，#15/#16 2026-09-11 已决策：扩展一键填充 P1 做、职位聚合按 P2 启动；**#17 B 端角色、#18 C 端优先重排 均已于 2026-09-25 决策（选 A + 采纳子问建议）；#19 MCP 接入面 2026-10-01 已决策并落地；#20 求职 Agent 阶段 2/3 边界、#21 LLM 模型供给 均已于 2026-10-03 决策/拍板（#21 P0 已落地）**） |
 | 看哪些事被刻意缓做、什么条件下重启 | [deferred-items.md](deferred-items.md) |
 | 接手写代码 / 了解工程硬约束 | [../AGENTS.md](../AGENTS.md) + [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
 | 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
 | 处理 CI 密钥扫描（gitleaks）误报 / 增删 allowlist | [../AGENTS.md](../AGENTS.md)（工程化门禁）+ [../.gitleaks.toml](../.gitleaks.toml) |
-| 部署 / 上线（形态 A/B 反代、生产 env、自动迁移、jobs/demo/auth 定时任务、上线 smoke） | [deployment-runbook-20260920.md](deployment-runbook-20260920.md) ★（形态 C 与 demo 配额已决策，**生产已上线 2026-09-30**；剩 J 阶段人工 smoke 与 ⚠️ 生产 cron/轮询待确认，见 handoff 当前状态） |
-| 真正动手上线形态 C（照勾的分阶段操作序列：Supabase→密钥→OAuth→Vercel→DNS→Actions→预热→落地页→smoke） | [部署执行单-形态C-20260921.md](部署执行单-形态C-20260921.md) ★（配 `tools/gen-deploy-secrets.sh`、`tools/smoke-deploy.sh`、`tools/backup-db.sh`；控制台步骤只能本人操作；**A–I 已勾、J1/J4/J8 已勾 2026-10-02，剩 J2/J3/J6/J7**） |
+| 部署 / 上线（形态 A/B 反代、生产 env、自动迁移、jobs/demo/auth 定时任务、上线 smoke） | [deployment-runbook-20260920.md](deployment-runbook-20260920.md) ★（形态 C 与 demo 配额已决策，**生产已上线 2026-09-30**；剩 J 阶段人工 smoke 收尾（J6/J7）与 B4 备份，见 handoff 当前状态；cron/轮询通道已实查确认生效 2026-10-02） |
+| 真正动手上线形态 C（照勾的分阶段操作序列：Supabase→密钥→OAuth→Vercel→DNS→Actions→预热→落地页→smoke） | [部署执行单-形态C-20260921.md](部署执行单-形态C-20260921.md) ★（配 `tools/gen-deploy-secrets.sh`、`tools/smoke-deploy.sh`、`tools/backup-db.sh`；控制台步骤只能本人操作；**生产已上线 2026-09-30；J1/J2/J3/J4/J5 已实测通过 2026-10-02，剩 J6 异议 mailto、J7 生产 `LLM_*` + B4 备份**） |
 | 给数据库做本地备份（B4：Supabase Free 无平台备份） | `tools/backup-db.sh`（pg_dump 带时间戳 → `backups/`，保留最新 N 份；DATABASE_URL 需 5432 session 串，6543 事务池化串会被警告） |
 | 上线前最后核对一遍门禁实测结果（基线/PG 方言/Vercel 产物/smoke/审计/密钥扫描/CWS 素材） | [部署前就绪确认单-20260924.md](部署前就绪确认单-20260924.md) ★（A1–A7 实测记录与两个 smoke 发现的处置；**生产已上线后转为历史门禁基线**） |
 | 查隐私政策 / Chrome Web Store 隐私声明（收集什么、不收集什么、用途、受托方、留存删除、国际传输、用户权利） | [privacy-policy-20260924.md](privacy-policy-20260924.md) ★（中英双语权威源；在线页 `/[locale]/privacy`，CWS 上架填 `https://<app-origin>/en/privacy`） |

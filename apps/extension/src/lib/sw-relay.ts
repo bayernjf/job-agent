@@ -10,8 +10,12 @@
  * 声明在 manifest 的 host_permissions 中，这类请求即被跨域授权，豁免上述页面级限制。
  * 因此 content script 不直接 fetch，而是发内部消息给 SW，由 SW 代发并回传可序列化结果。
  *
+ * 安全（S8，审计 §3.2）：代发目标 host 必须命中白名单（isAllowedRelayHost），
+ * 防止被注入的页面脚本借扩展 host_permissions 请求任意 URL。
+ *
  * 本文件不含任何 chrome.* 调用，纯函数 relayApiRequest 可在单测中注入 fetch 覆盖。
  */
+import { isAllowedRelayHost } from './external-origins.js';
 
 export const EXT_MSG_API_REQUEST = 'jobagent.apiRequest';
 
@@ -65,6 +69,9 @@ export async function relayApiRequest(
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return failure('unsupported scheme');
+  }
+  if (!isAllowedRelayHost(parsed.hostname)) {
+    return failure('host not allowed');
   }
   const method = (message.method ?? 'GET').toUpperCase();
   if (!ALLOWED_METHODS.has(method)) {

@@ -16,6 +16,7 @@
   "panel.analyze": "Load verified profile",
   "panel.analyzing": "Analyzing…",
   "panel.claimedBadge": "Verified owner",
+  "panel.unclaimedNotice": "This profile was generated automatically from public activity data and has not been authorised or claimed by its owner. Conclusions are reviewable aids, not findings of fact.",
   "panel.authenticityValue": "Authenticity: {status} ({confidence}%)",
   "panel.skillsValue": "Skills: {skills}",
   "panel.skillsEmpty": "—",

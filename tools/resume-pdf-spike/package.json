@@ -1,0 +1,20 @@
+{
+  "name": "@jobagent/resume-pdf-spike",
+  "private": true,
+  "version": "0.0.0",
+  "description": "简历↔画像对账前置：PDF 文本抽取 spike（中英混排合成样本），验证抽取管线与『原文不留存』代码级守卫",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "make-fixtures": "node src/make-fixtures.js",
+    "extract": "node src/extract.js",
+    "test": "node --test --test-concurrency=1 src/*.test.js"
+  },
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1"
+  }
+}

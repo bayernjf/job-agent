@@ -1,0 +1,7 @@
+# 生成物与本地依赖不进库（make-fixtures/extract 可再生成）
+node_modules/
+fonts/
+fixtures/*.pdf
+resume-extract.json
+resume-extract.tmp.json
+pnpm-lock.yaml

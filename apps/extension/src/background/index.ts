@@ -17,6 +17,7 @@ import {
 } from '@jobagent/shared';
 import { readStoredLocalProfile, writeStoredLocalProfile } from '../lib/local-profile-storage.js';
 import { isApiRequestMessage, relayApiRequest } from '../lib/sw-relay.js';
+import { isAllowedExternalOrigin } from '../lib/external-origins.js';
 
 chrome.runtime.onInstalled.addListener(() => {
   // 占位：预留安装事件，后续可在此做版本迁移/一次性初始化。
@@ -42,7 +43,12 @@ async function handle(req: ExtLocalProfileRequest): Promise<ExtLocalProfileRespo
 }
 
 // external 消息（来自 externally_connectable 白名单网页，如报告页）。
-chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
+// S7（审计 §3.2）：按 sender.origin 再校验一次——manifest 白名单含 localhost 时，
+// 该端口任意页面都可发消息，SW 侧必须 fail closed，只处理命中 ALLOWED_EXTERNAL_ORIGINS 的发送方。
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  if (!isAllowedExternalOrigin(sender)) {
+    return false; // 未知 origin 一律不响应（fail closed）
+  }
   const req = message as ExtLocalProfileRequest;
   if (req && (req.type === EXT_MSG_GET_LOCAL_PROFILE || req.type === EXT_MSG_SET_LOCAL_PROFILE)) {
     void handle(req).then(sendResponse);

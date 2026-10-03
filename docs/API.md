@@ -467,6 +467,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
   "id": "prof-...",
   "analyzerVersion": "schema-0.1-engine-0.1.0",
   "subject": { "platform": "github", "login": "sindresorhus", "claimed": false },
+  "authorizationNotice": "This profile was generated automatically from public activity data and has not been authorised or claimed by its owner. Every conclusion is a reviewable aid, not a finding of fact.",
   "dataWindow": { "since": "...", "until": "..." },
   "analysisLayers": ["L0", "L1"],
   "status": "complete",
@@ -475,6 +476,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
   "updatedAt": "..."
 }
 ```
+
+`authorizationNotice`（**仅未认领画像出现**，`subject.claimed=false` 时）：「未经本人授权」标注的机器可读出口（deferred 合规线，与报告页提示条 item58 同口径），固定英文文案（`packages/shared` 的 `UNAUTHORIZED_NOTICE` 常量），防止第三方抓取真实性结论时断章取义；认领画像省略该字段。
 
 `snapshot` 为完整 `AbilityProfile`，字段契约以 `packages/shared` 为准，主要包含：
 
@@ -526,6 +529,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 - 由服务端对 `snapshot` 调用 `toExportableProfile` 投影（`packages/shared`），缺 `snapshot` 返回 404。
 - 字段契约：`schemaVersion`（当前 `0.1`）、`subject`（displayName/login/profileUrl）、`headline`、`authenticity`（status/confidence）、`skills[]`（name/confidence/evidenceRefs）、`summary` 等，以 `packages/shared` 的 `ExportableProfileSchema` 为准。
+- `authorizationNotice`（**仅未认领画像出现**，`subject.claimed=false` 时）：「未经本人授权」标注（同 `GET /profiles/:id`，固定英文文案），扩展面板据此显示未认领提示；认领画像省略该字段。
 
 #### 响应（200，节选）
 
@@ -533,6 +537,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 {
   "schemaVersion": "0.1",
   "subject": { "platform": "github", "login": "sindresorhus", "displayName": "Sindre Sorhus", "profileUrl": "https://github.com/sindresorhus" },
+  "authorizationNotice": "This profile was generated automatically from public activity data and has not been authorised or claimed by its owner. Every conclusion is a reviewable aid, not a finding of fact.",
   "headline": "Sindre Sorhus — ...",
   "authenticity": { "status": "likely_authentic", "confidence": 0.82 },
   "skills": [ { "name": "TypeScript", "confidence": 0.9, "evidenceRefs": ["..."] } ],

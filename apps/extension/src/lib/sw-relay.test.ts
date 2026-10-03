@@ -67,6 +67,19 @@ describe('relayApiRequest (service worker 侧代发纯函数)', () => {
     expect(out).toMatchObject({ status: 0, error: 'unsupported scheme' });
   });
 
+  it('S8：只允许白名单 host（localhost / 127.0.0.1 / 生产域），其余拒绝', async () => {
+    const blocked = await relayApiRequest(req({ url: 'https://evil.example.com/steal' }));
+    expect(blocked).toMatchObject({ status: 0, error: 'host not allowed' });
+    const blockedSub = await relayApiRequest(req({ url: 'https://app.job-agent.bayjf.com.evil.io/x' }));
+    expect(blockedSub).toMatchObject({ status: 0, error: 'host not allowed' });
+    const blockedPort = await relayApiRequest(req({ url: 'http://localhost.evil.io:3000/x' }));
+    expect(blockedPort).toMatchObject({ status: 0, error: 'host not allowed' });
+    // 白名单内正常代发
+    const fetchImpl = vi.fn(fakeFetch({ ok: true, status: 200, text: async () => 'ok' }));
+    await relayApiRequest(req({ url: 'https://app.job-agent.bayjf.com/api/profiles/p/exportable' }), fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('拒绝无法解析的 URL', async () => {
     const out = await relayApiRequest(req({ url: 'not-a-url' }));
     expect(out).toMatchObject({ status: 0, error: 'invalid URL' });

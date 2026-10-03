@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { AbilityProfile } from '@jobagent/shared';
+import { UNAUTHORIZED_NOTICE, type AbilityProfile } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
 
@@ -517,6 +517,30 @@ describe('GET /profiles/:id', () => {
     expect(body.snapshot).toBeTruthy();
     expect(body.snapshot.profileId).toBe('prof-001');
     expect(body.snapshot.authenticity.status).toBe('likely_authentic');
+    // 未认领画像：机器可读出口必须带「未经本人授权」标注（deferred 合规线）
+    expect(body.authorizationNotice).toBe(UNAUTHORIZED_NOTICE);
+  });
+
+  it('omits authorizationNotice for claimed profile', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    const profile = sampleProfile('prof-001', 'profile-user');
+    await repos.profiles.insert({
+      id: 'prof-001',
+      analyzerVersion: profile.analyzerVersion,
+      subjectLogin: profile.subject.login,
+      subjectClaimed: true,
+      dataWindowSince: profile.dataWindow.since,
+      dataWindowUntil: profile.dataWindow.until,
+      status: 'complete',
+      snapshot: profile,
+    });
+
+    const res = await app.request('/profiles/prof-001');
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.subject.claimed).toBe(true);
+    expect('authorizationNotice' in body).toBe(false);
   });
 
   it('returns 404 for non-existent profile', async () => {
@@ -554,6 +578,8 @@ describe('GET /profiles/:id/exportable', () => {
     expect(body.skills).toEqual([]);
     expect(body.authenticity.status).toBe('likely_authentic');
     expect(body.authenticity.confidence).toBe(0.75);
+    // 未认领画像：exportable 投影同样带标注（扩展/分享/抓取方可见）
+    expect(body.authorizationNotice).toBe(UNAUTHORIZED_NOTICE);
   });
 
   it('returns 404 for non-existent profile', async () => {
