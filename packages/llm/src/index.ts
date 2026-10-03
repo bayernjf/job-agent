@@ -13,8 +13,15 @@ export { LlmResponseError } from './port.js';
 export { FakeLlmClient } from './fake-client.js';
 export { LlmResumePolishProvider, RESUME_POLISH_PROMPT_VERSION } from './resume-polish.js';
 export {
+  LlmCoverLetterProvider,
+  COVER_LETTER_PROMPT_VERSION,
+  type CoverLetterOutput,
+  type CoverLetterProvider,
+} from './cover-letter.js';
+export {
   OpenAICompatibleClient,
   createResumePolishProviderFromEnv,
+  createCoverLetterProviderFromEnv,
   providerFromBaseUrl,
   parseJsonObject,
 } from './openai-compatible-client.js';
