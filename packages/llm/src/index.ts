@@ -13,8 +13,15 @@ export { LlmResponseError } from './port.js';
 export { FakeLlmClient } from './fake-client.js';
 export { LlmResumePolishProvider, RESUME_POLISH_PROMPT_VERSION } from './resume-polish.js';
 export {
+  LlmCoverLetterProvider,
+  COVER_LETTER_PROMPT_VERSION,
+  type CoverLetterOutput,
+  type CoverLetterProvider,
+} from './cover-letter.js';
+export {
   OpenAICompatibleClient,
   createResumePolishProviderFromEnv,
+  createCoverLetterProviderFromEnv,
   providerFromBaseUrl,
   parseJsonObject,
 } from './openai-compatible-client.js';
@@ -26,3 +33,12 @@ export type {
   LlmFetchResponse,
   CreateProviderOptions,
 } from './openai-compatible-client.js';
+export {
+  BUILTIN_CATALOG_DEFAULTS,
+  mergeBuiltinCatalog,
+  resolveBuiltinModel,
+  CatalogModelError,
+  type BuiltinCatalogDefaults,
+} from './catalog.js';
+export { createCatalogCache, type CatalogCache } from './catalog-cache.js';
+export { encryptApiKey, decryptApiKey, maskApiKey } from './encryption.js';

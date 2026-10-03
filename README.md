@@ -15,7 +15,8 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 - **P2 完成**：五源岗位库（RemoteOK/Remotive/Greenhouse/Lever/HN）入库与增量同步、纯函数 `matchJobs` 技能匹配、API 岗位搜索/匹配端点、画像↔岗位推荐端到端接线（报告页推荐岛 + 扩展匹配面板，可解释 fieldScores/skillReasons）均落地。
 - **Gitee 第二证据源完成**：`packages/gitee-source`（v5 REST-only）+ CLI/API/Worker/报告页/扩展全链路平台切换，海内外同步；双源在线融合画像（`platform=all`，镜像去重 + 跨源同帖去重 7 天窗 + 融合作业 demo 配额扣 2）与 FusionReport 去重统计已落地。
 - **演示模式完成**：免注册「试用演示」以 HttpOnly Cookie 临时身份进入真实产品，三态身份 + 会话/IP/Worker 三道配额闸 + 三态预置示例，代码全落地；配额已于 2026-09-21 决策：每会话 3 次新分析（融合扣 2）、有效期 24h；部署形态 C 代码就绪、待真实部署。
-- **岗位定向简历完成（P-R1/P-R2/P-R3 可闭环子项）**：在画像范围内按岗位生成匹配度高的简历（no-fabrication，每条断言挂证据、只重排不造事实），CLI build/batch + API + 报告页 ResumeBuilder + 扩展深链 + OpenAI 兼容可选润色（默认关闭）；真实 LLM 需自配 `LLM_*`。
+- **岗位定向简历完成（P-R1/P-R2/P-R3 可闭环子项）**：在画像范围内按岗位生成匹配度高的简历（no-fabrication，每条断言挂证据、只重排不造事实），CLI build/batch + API + 报告页 ResumeBuilder + 扩展深链 + OpenAI 兼容可选润色（默认关闭）。
+- **LLM 模型供给双轨完成（2026-10-03，决策 #21，handoff item105）**：内置模型＝管理员在 `/admin` 面板管理目录（凭证只在 env `LLM_*`）；BYOK＝登录用户工作台「模型设置」自由配 OpenAI 兼容端点（apiKey 服务端 AES-256-GCM 加密，`LLM_ENC_KEY`）；请求路由 BYOK 优先 → 内置回落。生产激活＝配 `LLM_*`/`LLM_ENC_KEY`/`ADMIN_ACCOUNT_LOGINS` env，详见 docs/design-llm-model-provisioning-20261003.md。
 - **招聘痛点解决方案批次 1+2 完成**：企业核验视图（`?view=recruiter`）、面试准备包导出、画像库人才检索（`/candidates`）、企业筛选工作台（`/recruit`）、投递记录追踪（applications）均已落地；批次 3 依赖外部条件。
 - **求职 Agent 阶段 1「求职工作台」落地（2026-10-03，PRD F12 / handoff item94）**：把画像与岗位池接成「找 → 评 → 改 → 投（人工）」——多套**求职偏好**（岗位关键词/技能/地区/远程/薪资/公司黑白名单/质量闸/每源每日上限）→ 新建任务即扫岗位池 → **可解释匹配报告**（命中技能与字段分值、岗位提到而画像无证据的缺口、补强建议）→ 岗位定向简历 + 规则版求职信 → **待投清单**（确认 / 拒绝 / 标记已投）。**只准备不投递**：无 ATS 自动填充、无自动提交；标记已投才写一条 `origin='agent'` 投递记录并转入既有跟踪管道。页面 `/[locale]/workbench`，契约见 [docs/API.md](docs/API.md) §3.8，设计与实施差异见 [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md)；阶段 2/3 的边界已由决策 #20 拍板（2026-10-03：**扩展自动填充、填完等用户点提交**／快照暂不落库／复盘人工确认且样本 ≥20／对招聘方披露「AI 辅助投递」），待开工。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
@@ -90,6 +91,7 @@ pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm migrate:up / migrate:down / migrate:status   # SQLite 迁移（migrate:pg:* 走 Postgres）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 迁移目录对齐
 bash tools/preflight.sh          # 上线前一键本地预检：typecheck/迁移/单测/build/audit（--e2e 追加两套 E2E；--deploy 追加 Vercel 产物构建 + Docker PG 方言闸 + 扩展 release 打包）
+bash tools/backup-db.sh          # 数据库备份（B4）：pg_dump 到 backups/ 带时间戳、保留最新 N 份（--dry-run 只打印计划；DATABASE_URL 需 5432 session 串）
 ```
 
 扩展 CWS 发布包（release 构建 + zip，需指定生产 API/站点域，详见 [store-assets README](apps/extension/store-assets/README.md)）：

@@ -26,6 +26,7 @@ JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项�
 - 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`；浏览器扩展 `apps/extension`（P1：三大 ATS 一键填充）
 - 测试：Vitest（就近单元）+ Playwright（E2E）
 - 分析深度：MVP 仅 **L0 元数据 + L1 行为时序**，**不 clone 仓库**（L2/L3/L4 见 docs/deferred-items）
+- **LLM 模型供给双轨（决策 #21，2026-10-03 P0 落地）**：内置模型＝**Admin UI 管理目录**（`accounts.is_admin` + `llm_catalog_models` 表 + `/[locale]/admin` 面板；**凭证永远 env only**——`LLM_BASE_URL`/`LLM_API_KEY`，admin 面板结构上无凭证字段）；BYOK＝**登录用户自由设置**（`user_llm_configs` 一行一账号，apiKey 服务端 AES-256-GCM 加密列，`LLM_ENC_KEY` env；`/account/llm-config` 4 端点 + 工作台 ModelSettings 面板）。请求路由（`apps/api/src/routes/llm-resolve.ts`）：**BYOK 优先 → 内置回落**；都无→polish 规则版 / cover-letter 503。首个 admin＝`ADMIN_ACCOUNT_LOGINS` env 白名单登录自动置位。设计见 [docs/design-llm-model-provisioning-20261003.md](docs/design-llm-model-provisioning-20261003.md)。
 
 > 选型理由、备选方案与待核实项见 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)；产品范围以 [docs/PRD.md](docs/PRD.md) 为准；未决策事项见 [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md)，**不得把"建议"当作"已决策"直接实现**。
 
@@ -51,7 +52,7 @@ job-agent/
 │  └─ extension/      # P1 浏览器扩展（MV3 + content script + Shadow DOM 面板 + 三 ATS 适配器 + esbuild；试用指南见其 README）
 ├─ db/migrations/sqlite/   # SQLite 编号迁移（NNN_verb_snake_case.sql）
 ├─ db/migrations/postgres/ # Postgres 编号迁移（与 sqlite 编号/文件名一一对应），规范见 MIGRATION_CONVENTION.md
-├─ tools/             # check-migrations.sh / preflight.sh / smoke-deploy.sh 等工程脚本
+├─ tools/             # check-migrations.sh / preflight.sh / backup-db.sh / smoke-deploy.sh 等工程脚本
 ├─ tests/fixtures/    # 录制并脱敏的 GitHub 响应夹具
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
 ```
@@ -70,6 +71,7 @@ pnpm --filter <pkg> exec vitest run path/to/file.test.ts  # 跑单个测试文�
 pnpm migrate:up / migrate:down / migrate:status          # SQLite 应用/回滚一步/查看状态；目标库优先级 `--db <path>` > `DB_PATH` > 仓库根 data/job-agent.db，每次执行先打印选中的路径与来源；migrate:pg:* 走 Postgres（读 DATABASE_URL，不接受库路径参数）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号/文件头 + 文件名集合对齐（可传单目录参数）
 bash tools/preflight.sh          # 上线前一键本地预检（typecheck/迁移/单测/build/audit，首败即停；--e2e 追加三套 Playwright：report / agent 真全栈 / extension；--deploy 追加形态 C 产物闸：ASTRO_ADAPTER=vercel 构建 + 一次性 Docker PG 迁移幂等与 storage 实跑〔无 docker 则 SKIP〕+ 扩展 CWS release 打包）
+bash tools/backup-db.sh          # 数据库备份（B4）：pg_dump → backups/ 带时间戳、保留最新 N 份；--dry-run 只打印计划；DATABASE_URL 须 5432 session 串（6543 事务池化串会被警告）
 pnpm e2e                         # report 页 Playwright E2E（拉起 Astro，mock API）
 pnpm e2e:agent                   # 求职工作台「真全栈」E2E：真 API + 真 SQLite + 真报告页（不 mock），夹具零网络（改 /agent/*、工作台或票据契约时必跑）
 pnpm e2e:extension               # 扩展 E2E：--headless=new 加载 unpacked MV3、零网络（先 build dist；设计见 docs/design-extension-e2e-20260914.md）

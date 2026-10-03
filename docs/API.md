@@ -73,6 +73,8 @@
 | `AUTH_STATE_SECRET` | 空（进程内随机） | OAuth state 的 HMAC 密钥，生产多实例必须固定 |
 | `AUTH_CALLBACK_BASE_URL` | 空（按请求推导） | OAuth 回调基址，不带尾斜杠；生产反代/跨子域时显式填域名 |
 | `AUTH_AFTER_LOGIN_URL` | `/` | 登录成功后跳转地址 |
+| `LLM_ENC_KEY` | 空 | BYOK apiKey 的 AES-256-GCM 加密钥（决策 #21-1）；未配置时 `/account/llm-config` 保存/读取返回 503 ENCRYPTION_NOT_CONFIGURED |
+| `ADMIN_ACCOUNT_LOGINS` | 空 | 平台管理员白名单（逗号分隔 OAuth 登录名）；名单内账号登录自动置 `is_admin=1`（迁移 023，决策 #21-5），`/auth/me` 回 `canManageLlmCatalog: true` |
 | `AGENT_CANDIDATE_LIMIT` | `10` | 求职任务一轮扫描最多产出多少条待投票据（≥1 且 ≤50，非法值启动即报错） |
 | `AGENT_SCAN_POOL_LIMIT` | `2000` | 单轮扫描从岗位池取多少条候选（按发布时间倒序，≥1 且 ≤5000；默认 2000 约覆盖生产池最近 20%） |
 | `AGENT_TICK_MAX_RUNS` | `10` | 一次 `/internal/cron/agent-tick` 最多推进多少个求职任务（≥1 且 ≤100） |
@@ -833,6 +835,44 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | 404 | 画像不存在/无快照，或岗位不存在 |
 | 500 | 已存储的岗位记录不符合契约（数据异常，正常不会发生） |
 
+### `POST /resumes/cover-letter`（A 档，2026-10-03）
+
+针对**一个岗位**生成一封**求职信**（LLM 生成性 prose）。与 `/resumes/build` 共用同一套画像/岗位/匹配解析：请求先装配规则版简历草稿（`buildResume`），再把草稿与目标岗位喂给 LLM，产出 `{ subject?, body }`。**只登录 `user` 可调**（LLM 为付费能力，参照 `polish:true` 的 403 模式）。
+
+与润色的关键差异：求职信是**全新文本**，没有 resume-core 的契约级防臆造闸可挂，因此防臆造依赖三层：
+
+1. **prompt 硬约束**——只允许引用简历草稿/岗位中已出现的事实；严禁新增数字/日期/公司/产品/技能名；禁止"我缺乏…"式自贬；en ≤220 词 / zh ≤380 字；
+2. **输出 schema**——`subject ≤120`、`body 10..4000`，多余字段剥离，非法整体报错；
+3. **用户复核**——产物是用户主动请求、人工过目后再使用。
+
+**没有规则版回退**：未配置 LLM 返回 `503 LLM_NOT_CONFIGURED`，模型调用/校验失败返回 `502 LLM_FAILED` + reason，绝不输出"伪求职信"（与"禁止输出看似完整的报告"口径一致）。产物不入库、不记日志。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `profileId` | string | **是** | 画像 id；不存在或无快照返回 404 |
+| `jobId` | string | **二选一** | 岗位内部主键（同 `/resumes/build`） |
+| `posting` | object | **二选一** | 自选岗位（同 `/resumes/build`，结构一致） |
+| `locale` | `"zh-CN"` \| `"en"` | 否 | 求职信语言，默认 `zh-CN` |
+| `local` | object | 否 | 本地补填字段（同 `/resumes/build`，会进简历草稿的姓名/联系方式/经历） |
+
+#### 响应
+
+```json
+// 200
+{ "subject": "Application for Senior TypeScript Engineer",
+  "body": "Dear hiring team, …（由 LLM 生成，仅引用简历与岗位中已有事实）",
+  "provenance": { "provider": "agnes", "model": "agnes-2.5-flash", "promptVersion": "cover-letter-0.1" } }
+```
+
+- `200`：`{ subject?, body, provenance }`。
+- `400`：非法 JSON / 校验失败（`jobId` 与 `posting` 必须恰好给一个）。
+- `403`：匿名/demo 会话 → `{code:'AUTH_REQUIRED'}`。
+- `404`：画像不存在/无快照，或岗位不存在。
+- `502`：`{code:'LLM_FAILED', reason}`——模型调用失败或输出未通过 schema 校验（如实标注，不伪造）。
+- `503`：`{code:'LLM_NOT_CONFIGURED'}`——服务端未配置 `LLM_API_KEY`（默认关闭）。
+
 ---
 
 ## 3.5 企业人才检索（筛选工作台）
@@ -1195,6 +1235,63 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 ### `GET /internal/cron/agent-tick`
 
 见 §5。
+
+---
+
+## 3.9 LLM 模型供给（决策 #21，需登录）
+
+内置目录与 BYOK 双轨，全量设计见 `docs/design-llm-model-provisioning-20261003.md`。
+两个面都要求登录（401 `AUTH_REQUIRED`）；`/admin/llm-catalog/*` 额外要求账号 `is_admin=1`
+（403 `FORBIDDEN`，由 `ADMIN_ACCOUNT_LOGINS` 白名单登录自动置位）。
+
+### `GET /admin/llm-catalog`
+
+admin 面。返回合并后内置目录（空表回代码默认 agnes-2.5-flash）与内置凭证配置态：
+
+```json
+{
+  "models": [
+    { "id": "agnes-2.5-flash", "provider": "agnes", "model": "agnes-2.5-flash",
+      "enabled": true, "isDefault": true, "sortOrder": 1, "modalities": ["text"] }
+  ],
+  "envConfigured": true
+}
+```
+
+目录只含数据面字段；凭证永远在 env（`LLM_API_KEY` 等），结构上不可被目录覆盖。
+
+### `PUT /admin/llm-catalog`
+
+整体替换目录（min 1 条；字段＝id/provider/model/enabled/isDefault/sortOrder/modalities，
+**不接受凭证字段**）。写库后显式刷新缓存，`GET` 立即生效。非法负载 400。
+
+### `POST /admin/llm-catalog/refresh`
+
+重读仓储并刷新进程内缓存（外部 DDL/直改后无需重启）。
+
+### `GET /account/llm-config`
+
+BYOK 面。**始终 200**（未配置不是"资源不存在"，用 `configured` 标记表达；保持 2xx
+可避免浏览器控制台把 404/503 记为资源加载错误，workbench 页依赖此契约）：
+- 未配置：`{ "configured": false }`
+- 服务端缺 `LLM_ENC_KEY`（配置存在但读不出 key）：`{ "configured": false, "reason": "encryption_missing" }`
+- 已配置：`{ "configured": true, "provider", "baseUrl", "model", "keyMasked" }`——只回显掩码
+  （形如 `sk-****9876`），**绝不回显完整 key**。
+
+### `PUT /account/llm-config`
+
+保存/更新 BYOK 配置（一账号一行）。请求体：`{ provider?, baseUrl, model, apiKey? }`；
+`apiKey` 可省略＝沿用旧密钥。`LLM_ENC_KEY` 未配置 503；既无旧配置又无 key 400。
+apiKey 以 AES-256-GCM 密文落库，明文只存在于请求处理瞬间。
+
+### `DELETE /account/llm-config`
+
+清除 BYOK 配置（幂等，204）。
+
+### `POST /account/llm-config/validate`
+
+最小真实请求校验（`max_tokens=1`，用户自己的 key 打用户自己的端点）。成功 200
+`{ ok: true, provider, model }`；上游失败 502 `LLM_VALIDATION_FAILED`（错误体脱敏，不回显 key）。
 
 ---
 

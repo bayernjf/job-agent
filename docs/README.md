@@ -30,7 +30,8 @@
 | 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
 | 处理 CI 密钥扫描（gitleaks）误报 / 增删 allowlist | [../AGENTS.md](../AGENTS.md)（工程化门禁）+ [../.gitleaks.toml](../.gitleaks.toml) |
 | 部署 / 上线（形态 A/B 反代、生产 env、自动迁移、jobs/demo/auth 定时任务、上线 smoke） | [deployment-runbook-20260920.md](deployment-runbook-20260920.md) ★（形态 C 与 demo 配额已决策，**生产已上线 2026-09-30**；剩 J 阶段人工 smoke 与 ⚠️ 生产 cron/轮询待确认，见 handoff 当前状态） |
-| 真正动手上线形态 C（照勾的分阶段操作序列：Supabase→密钥→OAuth→Vercel→DNS→Actions→预热→落地页→smoke） | [部署执行单-形态C-20260921.md](部署执行单-形态C-20260921.md) ★（配 `tools/gen-deploy-secrets.sh`、`tools/smoke-deploy.sh`；控制台步骤只能本人操作；**A–I 已勾、J1/J4/J8 已勾 2026-10-02，剩 J2/J3/J6/J7**） |
+| 真正动手上线形态 C（照勾的分阶段操作序列：Supabase→密钥→OAuth→Vercel→DNS→Actions→预热→落地页→smoke） | [部署执行单-形态C-20260921.md](部署执行单-形态C-20260921.md) ★（配 `tools/gen-deploy-secrets.sh`、`tools/smoke-deploy.sh`、`tools/backup-db.sh`；控制台步骤只能本人操作；**A–I 已勾、J1/J4/J8 已勾 2026-10-02，剩 J2/J3/J6/J7**） |
+| 给数据库做本地备份（B4：Supabase Free 无平台备份） | `tools/backup-db.sh`（pg_dump 带时间戳 → `backups/`，保留最新 N 份；DATABASE_URL 需 5432 session 串，6543 事务池化串会被警告） |
 | 上线前最后核对一遍门禁实测结果（基线/PG 方言/Vercel 产物/smoke/审计/密钥扫描/CWS 素材） | [部署前就绪确认单-20260924.md](部署前就绪确认单-20260924.md) ★（A1–A7 实测记录与两个 smoke 发现的处置；**生产已上线后转为历史门禁基线**） |
 | 查隐私政策 / Chrome Web Store 隐私声明（收集什么、不收集什么、用途、受托方、留存删除、国际传输、用户权利） | [privacy-policy-20260924.md](privacy-policy-20260924.md) ★（中英双语权威源；在线页 `/[locale]/privacy`，CWS 上架填 `https://<app-origin>/en/privacy`） |
 | 让**未认领画像的主体自助申请撤回**分享链（公开申请 + 人工复核：端点 / 软挂起 / CLI `removal` 复核 / 报告页入口 / 与 #14 应求撤销通道的关系） | [design-profile-removal-request-20261001.md](design-profile-removal-request-20261001.md)（S3 **已落地 2026-10-01**，审计 item93） |
@@ -38,7 +39,7 @@
 | 看赛道最新变化（2026-10：融资加速 / LinkedIn·OpenAI·GitHub 官方入场 / 「GitHub 行为证据」新玩家）与迭代含义 | [市场与竞品更新-20261003.md](市场与竞品更新-20261003.md) |
 | 看中国招聘市场企业端/求职者端双方痛点与共同根源（量化证据 + 对产品启示） | [市场调研-招聘市场痛点-20260916.md](市场调研-招聘市场痛点-20260916.md) |
 | 看痛点对应解决方案、已覆盖/需新增对位与实施批次（批1 产品化 + 批2 新接口已落地见 handoff item21；批3 待外部条件） | [设计-痛点解决方案-20260916.md](设计-痛点解决方案-20260916.md) |
-| 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（待决策，handoff item45） |
+| 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（**已落地 2026-09-24，PR #81，handoff item45**） |
 | 用招聘方核验视图 / 企业人才库 / 投递追踪 / 面试准备包（`?view=recruiter`、`/[locale]/recruit`、`interview-kit.md`、`/candidates` 与 `/applications` 端点） | [API.md](API.md) §3.5/§3.6 + [../handoff.md](../handoff.md) item21 |
 | 写用户可见文案 / 加双语 / 处理语言与分享链接（含扩展面板、MV3 _locales） | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
 | 定颜色、间距、圆角、字号 / 改主题（共享 token 包、Shadow DOM 接入） | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
@@ -51,6 +52,8 @@
 | 融合 GitHub+Gitee 双源（共享 commit oid 识别镜像去重 / fuseInputs 纯函数 / CLI `--platform all` / 在线 `platform=all` 作业与报告页第三平台入口见 §8） | [design-cross-source-fusion-20260915.md](design-cross-source-fusion-20260915.md) ★ |
 | 免注册"试用演示"进入真实产品（已落地：三态身份 / 会话+IP+Worker 三道配额闸 / 预置示例 / 006–008 迁移 / API·report·extension·CLI；上线外部项见 handoff item17） | [design-demo-mode-20260915.md](design-demo-mode-20260915.md) ★ |
 | 针对岗位生成定制简历（已落地 P-R1/P-R2 + P-R3 可闭环子项：resume-core 纯函数 + polish 安全层、CLI build/batch、POST /resumes/build、报告页 ResumeBuilder、扩展深链、本地补填 canonical 统一与跨端自动同步 §5.4.1；真实 LLM/服务端持久化/PDF/版本管理仍待决策，见 handoff item18/19/24） | [design-targeted-resume-20260915.md](design-targeted-resume-20260915.md) ★ |
+| 针对岗位生成求职信（A 档已落地 2026-10-03：llm 受约束生成器 + POST /resumes/cover-letter（仅登录 user）+ 报告页 ResumeBuilder 入口 + i18n；防臆造三层与端点契约见文档） | [design-cover-letter-20261003.md](design-cover-letter-20261003.md) ★ |
+| 配置 LLM 模型（内置模型＝**Admin UI 管理**（参考 agent-world model-catalog：admin 管目录、env 管凭证）/ BYOK＝用户自由设置 OpenAI 兼容 key；方向与细节已拍板 2026-10-03（决策 #21，P0 已落地：迁移 023–025 + admin/BYOK 端点 + report 面板 + 请求路由 BYOK 优先→内置回落）） | [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md) ★ |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 装 / 试用浏览器扩展，一键填充 ATS 表单（含真机故障排查：SW 代发、host_permissions 重载、缓存画像 by-subject、跨端同步） | [../apps/extension/README.md](../apps/extension/README.md) + [../apps/extension/INSTALL.md](../apps/extension/INSTALL.md)（真机试用/跨端同步详细步骤，handoff item46） |

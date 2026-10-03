@@ -453,6 +453,39 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 025（user_llm_configs 整表，BYOK 模型配置）
+    const cfgTablesBefore25 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(cfgTablesBefore25.map((t) => t.name)).toContain('user_llm_configs');
+    const result25 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result25.version).toBe('025');
+    const cfgTablesAfter25 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(cfgTablesAfter25.map((t) => t.name)).not.toContain('user_llm_configs');
+
+    // 回滚 024（llm_catalog_models 整表，内置模型目录）
+    const catTablesBefore24 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(catTablesBefore24.map((t) => t.name)).toContain('llm_catalog_models');
+    const result24 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result24.version).toBe('024');
+    const catTablesAfter24 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(catTablesAfter24.map((t) => t.name)).not.toContain('llm_catalog_models');
+
+    // 回滚 023（accounts 去掉 is_admin 列，表本身仍在）
+    const accColsBefore23 = db.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>;
+    expect(accColsBefore23.map((c) => c.name)).toContain('is_admin');
+    const result23 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result23.version).toBe('023');
+    const accColsAfter23 = db.prepare('PRAGMA table_info(accounts)').all() as Array<{ name: string }>;
+    expect(accColsAfter23.map((c) => c.name)).not.toContain('is_admin');
+    expect(accColsAfter23.map((c) => c.name)).toContain('recruiter_declared_at'); // 只丢列，不丢表
+
     // 回滚 022（applications 去掉 submit_intent_id 票据外键列，表本身仍在）
     const appColsBefore22 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
     expect(appColsBefore22.map((c) => c.name)).toContain('submit_intent_id');

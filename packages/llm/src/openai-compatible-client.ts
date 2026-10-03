@@ -12,6 +12,7 @@
 import type { ResumePolishProvider } from '@jobagent/resume-core';
 import type { LlmClient, LlmJsonRequest } from './port.js';
 import { LlmResponseError } from './port.js';
+import { LlmCoverLetterProvider, type CoverLetterProvider } from './cover-letter.js';
 import { LlmResumePolishProvider } from './resume-polish.js';
 
 /** 可注入的最小响应形状（不依赖 DOM lib 的 Response 类型）。 */
@@ -123,14 +124,20 @@ export class OpenAICompatibleClient implements LlmClient {
     this.fetchImpl = config.fetchImpl ?? defaultFetch;
   }
 
+  /** 把 api key 从文本中替换为占位符，防止上游错误体回显密钥（S5）。 */
+  private redactSecret(text: string): string {
+    return this.apiKey ? text.split(this.apiKey).join('[REDACTED]') : text;
+  }
+
   async generateJson<T = unknown>(request: LlmJsonRequest): Promise<T> {
     const messages: OpenAIChatMessage[] = request.messages.map((m) => ({ role: m.role, content: m.content }));
     const init: LlmFetchInit = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${this.apiKey}`,
         ...this.extraHeaders,
+        // 顺序固定：authorization 最后设置，extraHeaders 永远无法覆盖真实 key（S5）
+        authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
         model: this.model,
@@ -157,7 +164,8 @@ export class OpenAICompatibleClient implements LlmClient {
     if (!res.ok) {
       let detail = '';
       try {
-        detail = (await res.text()).slice(0, 300);
+        // 错误体前 300 字符进日志；第三方网关可能在错误体回显请求头，key 必须脱敏（S5）
+        detail = this.redactSecret((await res.text()).slice(0, 300));
       } catch {
         // 读取错误体失败时忽略，仅保留状态码
       }
@@ -236,4 +244,42 @@ export function createResumePolishProviderFromEnv(
     fetchImpl: options.fetchImpl,
   });
   return new LlmResumePolishProvider(client);
+}
+
+/**
+ * 仅从**服务端**环境变量构造求职信 provider（A 档，2026-10-03）。
+ * 与 createResumePolishProviderFromEnv 同款默认关闭策略：无 LLM_API_KEY →
+ * null（调用方如实返回 LLM_NOT_CONFIGURED，不伪造求职信）；有 key 缺
+ * LLM_MODEL → 抛错；LLM_BASE_URL 缺省官方 OpenAI 兼容端点。
+ */
+export function createCoverLetterProviderFromEnv(
+  env: LlmEnv = process.env,
+  options: CreateProviderOptions = {},
+): CoverLetterProvider | null {
+  const apiKey = env.LLM_API_KEY?.trim() ?? '';
+  if (!apiKey) return null;
+
+  const model = env.LLM_MODEL?.trim() ?? '';
+  if (!model) {
+    throw new Error(
+      'LLM_API_KEY is set but LLM_MODEL is missing; set an OpenAI-compatible model id',
+    );
+  }
+
+  const baseUrl = stripTrailingSlash(env.LLM_BASE_URL?.trim() || 'https://api.openai.com/v1');
+  const parsedTimeout = Number(env.LLM_TIMEOUT_MS);
+  const timeoutMs =
+    env.LLM_TIMEOUT_MS && Number.isFinite(parsedTimeout) && parsedTimeout > 0
+      ? parsedTimeout
+      : undefined;
+
+  const client = new OpenAICompatibleClient({
+    baseUrl,
+    apiKey,
+    model,
+    provider: env.LLM_PROVIDER?.trim() || undefined,
+    timeoutMs,
+    fetchImpl: options.fetchImpl,
+  });
+  return new LlmCoverLetterProvider(client);
 }

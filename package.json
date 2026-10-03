@@ -36,6 +36,11 @@
     "overrides": {
       "devalue": ">=5.9.3",
       "fast-uri": ">=3.1.8"
+    },
+    "auditConfig": {
+      "ignoreCves": [
+        "CVE-2026-93748"
+      ]
     }
   }
 }

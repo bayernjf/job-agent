@@ -35,7 +35,11 @@ import { fileURLToPath } from 'node:url';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { createStorage } from '@jobagent/storage';
-import { createResumePolishProviderFromEnv } from '@jobagent/llm';
+import {
+  createCatalogCache,
+  createCoverLetterProviderFromEnv,
+  createResumePolishProviderFromEnv,
+} from '@jobagent/llm';
 import { loadDemoConfig } from './demo-config.js';
 import { loadAuthConfig } from './auth-config.js';
 import { GithubAuthProvider } from './github-auth.js';
@@ -57,6 +61,7 @@ import { registerJobPostings } from './routes/job-postings.js';
 import { registerResumes } from './routes/resumes.js';
 import { registerRecruiting } from './routes/recruiting.js';
 import { registerAgent } from './routes/agent.js';
+import { registerLlmRoutes } from './routes/llm.js';
 import { describeError } from './routes/helpers.js';
 import type { RouteDeps } from './routes/context.js';
 import type { ApiDeps, ApiRepos, HonoEnv } from './routes/types.js';
@@ -86,6 +91,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   // 简历 LLM 润色：默认按服务端 LLM_* env 构造，未配置 LLM_API_KEY 时为 null（规则版兜底，零费用）。
   const polishProvider =
     deps.resumePolish === undefined ? createResumePolishProviderFromEnv() : deps.resumePolish;
+  // 求职信 LLM 生成（A 档）：同样默认关闭；未配置时端点如实返回 LLM_NOT_CONFIGURED。
+  const coverLetterProvider =
+    deps.coverLetter === undefined ? createCoverLetterProviderFromEnv() : deps.coverLetter;
   // DEMO_IP_SALT 缺省时进程内随机盐（重启后历史 IP 窗口失效，仅本地/实验可接受）
   const effectiveSalt = cfg.ipSalt || randomBytes(16).toString('hex');
   // 账号/OAuth（决策 #1-A/#6-A）：未配置 client id/secret 时该平台 provider=null，登录路由返回 501
@@ -173,6 +181,19 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
 
   const agentConfig = deps.agentConfig ?? loadAgentConfig();
 
+  // LLM 供给（决策 #21）：内置目录缓存启动加载一次（表为空→代码默认目录），
+  // admin 写入后显式刷新；BYOK 密钥加密钥来自 LLM_ENC_KEY（未配则 BYOK 保存 503）。
+  const catalogCache = deps.llmCatalogCache ?? createCatalogCache();
+  if (!deps.llmCatalogCache) {
+    // 生产/未注入时从仓储预载（读库失败不致命：cache.get 走默认目录，admin refresh 可恢复）
+    try {
+      catalogCache.refresh(await repos.llmCatalog.listAll());
+    } catch (err) {
+      console.warn('[llm] catalog preload failed, using code defaults:', describeError(err));
+    }
+  }
+  const llmEncKey = deps.llmEncKey ?? process.env.LLM_ENC_KEY ?? null;
+
   // 各域 router 共享的依赖包。
   const routeDeps: RouteDeps = {
     repos,
@@ -181,7 +202,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     authCfg,
     githubProvider,
     giteeProvider,
+    catalogCache,
+    llmEncKey,
     polishProvider,
+    coverLetterProvider,
     stateSecret,
     agentConfig,
     agentRepos: repos,
@@ -201,6 +225,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   registerResumes(app, routeDeps);
   registerRecruiting(app, routeDeps);
   registerAgent(app, routeDeps);
+  registerLlmRoutes(app, routeDeps);
 
   // 404 兜底
   app.notFound((c) => {

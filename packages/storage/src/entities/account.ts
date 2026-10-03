@@ -27,6 +27,8 @@ export interface StoredAccount {
    * null=未声明；声明后永不因重新登录或后台清理被静默重置。
    */
   recruiterDeclaredAt: string | null;
+  /** 平台管理员标记（迁移 023，决策 #21-5）：admin 面（LLM 目录等）鉴权用 */
+  isAdmin: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +59,8 @@ export interface RawAccountRow {
   avatarUrl: string | null;
   claimedProfileId: string | null;
   recruiterDeclaredAt?: string | null;
+  /** 方言差异：sqlite 返回 0/1（number），pg 返回 boolean；映射时用 Boolean() 归一 */
+  isAdmin?: boolean | number;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +78,7 @@ export function toStoredAccount(row: RawAccountRow): StoredAccount {
     avatarUrl: row.avatarUrl ?? null,
     claimedProfileId: row.claimedProfileId ?? null,
     recruiterDeclaredAt: row.recruiterDeclaredAt ?? null,
+    isAdmin: Boolean(row.isAdmin),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

@@ -17,6 +17,8 @@ import { SqliteJobPreferencesRepository } from './sqlite/job-preferences-repo.js
 import { SqliteJobRunsRepository } from './sqlite/job-runs-repo.js';
 import { SqliteJobRunEventsRepository } from './sqlite/job-run-events-repo.js';
 import { SqliteSubmitIntentsRepository } from './sqlite/submit-intents-repo.js';
+import { SqliteLlmCatalogRepository } from './sqlite/llm-catalog-repo.js';
+import { SqliteUserLlmConfigsRepository } from './sqlite/user-llm-configs-repo.js';
 import { openPostgres } from './postgres/connection.js';
 import { runPgMigrations } from './postgres/migrator.js';
 import { PgProfilesRepository } from './postgres/profiles-repo.js';
@@ -34,6 +36,8 @@ import { PgJobPreferencesRepository } from './postgres/job-preferences-repo.js';
 import { PgJobRunsRepository } from './postgres/job-runs-repo.js';
 import { PgJobRunEventsRepository } from './postgres/job-run-events-repo.js';
 import { PgSubmitIntentsRepository } from './postgres/submit-intents-repo.js';
+import { PgLlmCatalogRepository } from './postgres/llm-catalog-repo.js';
+import { PgUserLlmConfigsRepository } from './postgres/user-llm-configs-repo.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -89,6 +93,8 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       jobRuns: new PgJobRunsRepository(db),
       jobRunEvents: new PgJobRunEventsRepository(db),
       submitIntents: new PgSubmitIntentsRepository(db),
+      llmCatalog: new PgLlmCatalogRepository(db),
+      userLlmConfigs: new PgUserLlmConfigsRepository(db),
       migrate: async () => runPgMigrations(client, migrationsDir),
       ping: async () => {
         await client.unsafe('SELECT 1');
@@ -122,6 +128,8 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     jobRuns: new SqliteJobRunsRepository(db),
     jobRunEvents: new SqliteJobRunEventsRepository(db),
     submitIntents: new SqliteSubmitIntentsRepository(db),
+    llmCatalog: new SqliteLlmCatalogRepository(db),
+    userLlmConfigs: new SqliteUserLlmConfigsRepository(db),
     migrate: async () => runMigrations(client, migrationsDir),
     ping: async () => {
       client.prepare('SELECT 1 AS ok').get();
