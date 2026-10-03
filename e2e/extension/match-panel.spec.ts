@@ -40,7 +40,9 @@ test.describe('extension match panel', () => {
       };
     });
     expect(styles.panelWidth).toBe('320px');
-    expect(styles.fabBg).toBe('rgb(22, 163, 74)'); // --ja-color-accent (green-600), not the unstyled default button grey
+    // toHaveCSS 自带重试：tokens.css 是异步 link 加载，直接 evaluate 读 computed style
+    // 会在样式表就绪前取到默认灰（加载竞态），轮询到 var(--ja-color-accent) 生效为止。
+    await expect(extPage.locator('.ja-fab')).toHaveCSS('background-color', 'rgb(22, 163, 74)');
   });
 
   test('links to the web demo without sharing extension credentials', async ({ extPage, openPanel }) => {
