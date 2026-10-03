@@ -12,6 +12,7 @@
 import type { ResumePolishProvider } from '@jobagent/resume-core';
 import type { LlmClient, LlmJsonRequest } from './port.js';
 import { LlmResponseError } from './port.js';
+import { LlmCoverLetterProvider, type CoverLetterProvider } from './cover-letter.js';
 import { LlmResumePolishProvider } from './resume-polish.js';
 
 /** 可注入的最小响应形状（不依赖 DOM lib 的 Response 类型）。 */
@@ -243,4 +244,42 @@ export function createResumePolishProviderFromEnv(
     fetchImpl: options.fetchImpl,
   });
   return new LlmResumePolishProvider(client);
+}
+
+/**
+ * 仅从**服务端**环境变量构造求职信 provider（A 档，2026-10-03）。
+ * 与 createResumePolishProviderFromEnv 同款默认关闭策略：无 LLM_API_KEY →
+ * null（调用方如实返回 LLM_NOT_CONFIGURED，不伪造求职信）；有 key 缺
+ * LLM_MODEL → 抛错；LLM_BASE_URL 缺省官方 OpenAI 兼容端点。
+ */
+export function createCoverLetterProviderFromEnv(
+  env: LlmEnv = process.env,
+  options: CreateProviderOptions = {},
+): CoverLetterProvider | null {
+  const apiKey = env.LLM_API_KEY?.trim() ?? '';
+  if (!apiKey) return null;
+
+  const model = env.LLM_MODEL?.trim() ?? '';
+  if (!model) {
+    throw new Error(
+      'LLM_API_KEY is set but LLM_MODEL is missing; set an OpenAI-compatible model id',
+    );
+  }
+
+  const baseUrl = stripTrailingSlash(env.LLM_BASE_URL?.trim() || 'https://api.openai.com/v1');
+  const parsedTimeout = Number(env.LLM_TIMEOUT_MS);
+  const timeoutMs =
+    env.LLM_TIMEOUT_MS && Number.isFinite(parsedTimeout) && parsedTimeout > 0
+      ? parsedTimeout
+      : undefined;
+
+  const client = new OpenAICompatibleClient({
+    baseUrl,
+    apiKey,
+    model,
+    provider: env.LLM_PROVIDER?.trim() || undefined,
+    timeoutMs,
+    fetchImpl: options.fetchImpl,
+  });
+  return new LlmCoverLetterProvider(client);
 }
