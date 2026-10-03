@@ -1271,8 +1271,12 @@ admin 面。返回合并后内置目录（空表回代码默认 agnes-2.5-flash�
 
 ### `GET /account/llm-config`
 
-BYOK 面。无配置 404 `NOT_FOUND`；有配置只回显掩码（`keyMasked`，形如 `sk-****9876`），
-绝不回显完整 key。`LLM_ENC_KEY` 未配置时 503 ENCRYPTION_NOT_CONFIGURED。
+BYOK 面。**始终 200**（未配置不是"资源不存在"，用 `configured` 标记表达；保持 2xx
+可避免浏览器控制台把 404/503 记为资源加载错误，workbench 页依赖此契约）：
+- 未配置：`{ "configured": false }`
+- 服务端缺 `LLM_ENC_KEY`（配置存在但读不出 key）：`{ "configured": false, "reason": "encryption_missing" }`
+- 已配置：`{ "configured": true, "provider", "baseUrl", "model", "keyMasked" }`——只回显掩码
+  （形如 `sk-****9876`），**绝不回显完整 key**。
 
 ### `PUT /account/llm-config`
 
