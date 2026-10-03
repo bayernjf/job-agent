@@ -833,6 +833,44 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | 404 | 画像不存在/无快照，或岗位不存在 |
 | 500 | 已存储的岗位记录不符合契约（数据异常，正常不会发生） |
 
+### `POST /resumes/cover-letter`（A 档，2026-10-03）
+
+针对**一个岗位**生成一封**求职信**（LLM 生成性 prose）。与 `/resumes/build` 共用同一套画像/岗位/匹配解析：请求先装配规则版简历草稿（`buildResume`），再把草稿与目标岗位喂给 LLM，产出 `{ subject?, body }`。**只登录 `user` 可调**（LLM 为付费能力，参照 `polish:true` 的 403 模式）。
+
+与润色的关键差异：求职信是**全新文本**，没有 resume-core 的契约级防臆造闸可挂，因此防臆造依赖三层：
+
+1. **prompt 硬约束**——只允许引用简历草稿/岗位中已出现的事实；严禁新增数字/日期/公司/产品/技能名；禁止"我缺乏…"式自贬；en ≤220 词 / zh ≤380 字；
+2. **输出 schema**——`subject ≤120`、`body 10..4000`，多余字段剥离，非法整体报错；
+3. **用户复核**——产物是用户主动请求、人工过目后再使用。
+
+**没有规则版回退**：未配置 LLM 返回 `503 LLM_NOT_CONFIGURED`，模型调用/校验失败返回 `502 LLM_FAILED` + reason，绝不输出"伪求职信"（与"禁止输出看似完整的报告"口径一致）。产物不入库、不记日志。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `profileId` | string | **是** | 画像 id；不存在或无快照返回 404 |
+| `jobId` | string | **二选一** | 岗位内部主键（同 `/resumes/build`） |
+| `posting` | object | **二选一** | 自选岗位（同 `/resumes/build`，结构一致） |
+| `locale` | `"zh-CN"` \| `"en"` | 否 | 求职信语言，默认 `zh-CN` |
+| `local` | object | 否 | 本地补填字段（同 `/resumes/build`，会进简历草稿的姓名/联系方式/经历） |
+
+#### 响应
+
+```json
+// 200
+{ "subject": "Application for Senior TypeScript Engineer",
+  "body": "Dear hiring team, …（由 LLM 生成，仅引用简历与岗位中已有事实）",
+  "provenance": { "provider": "agnes", "model": "agnes-2.5-flash", "promptVersion": "cover-letter-0.1" } }
+```
+
+- `200`：`{ subject?, body, provenance }`。
+- `400`：非法 JSON / 校验失败（`jobId` 与 `posting` 必须恰好给一个）。
+- `403`：匿名/demo 会话 → `{code:'AUTH_REQUIRED'}`。
+- `404`：画像不存在/无快照，或岗位不存在。
+- `502`：`{code:'LLM_FAILED', reason}`——模型调用失败或输出未通过 schema 校验（如实标注，不伪造）。
+- `503`：`{code:'LLM_NOT_CONFIGURED'}`——服务端未配置 `LLM_API_KEY`（默认关闭）。
+
 ---
 
 ## 3.5 企业人才检索（筛选工作台）
