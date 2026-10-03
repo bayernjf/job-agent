@@ -28,5 +28,14 @@ useDefault = true
 # ignored while a planted `private-key` and `github-pat` are still reported.
 
 [allowlist]
-description = "Base64 RSA public key (Chrome extension manifest `key`), not a credential"
-regexes = ['^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A[A-Za-z0-9+/]+={0,2}$']
+# Non-credential values allowlisted by exact shape (never by path, so a real
+# credential anywhere — including in the same files — is still reported):
+# 1) Base64 RSA public key (Chrome extension manifest `key`), published not secret;
+# 2) fake placeholder API keys used only in unit-test fixtures (also annotated
+#    inline with `// gitleaks:allow` in the sources).
+description = "Public extension manifest key and fake test-fixture API keys"
+regexes = [
+  '^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A[A-Za-z0-9+/]+={0,2}$',
+  '^sk-(bob-secret-9876|byok-key|secret-1234|abcdef1234|test-key-1234567890abcdef1234567890abcdef|x)$',
+  '^test-enc-key-20261003$',
+]
