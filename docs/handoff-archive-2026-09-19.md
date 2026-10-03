@@ -4,37 +4,37 @@
 
 ## 1. item28 本人授权主脊（GitHub OAuth 登录 + accounts/auth_sessions + 本人认领）明细
 
-> 决策 #1-A / #6-A。后端主体于 2026-09-18 落地为 5 个英文原子提交并已 push（基线 `9a48761`，经 PR 并入路径以主 handoff Git 状态为准）；其前端接线与运维清理本体在 item29（见本文件 §2）补齐。
+> 决策 #1-A / #6-A。后端主体于 2026-09-18 落地为 5 个英文原子提交并已 push（基线 `9d9c51e`，经 PR 并入路径以主 handoff Git 状态为准）；其前端接线与运维清理本体在 item29（见本文件 §2）补齐。
 
 分层落地（5 提交）：
 
-1. `53072c3` feat(shared)：把长期预留、从未产生的 `Principal.kind='user'` 接上真实登录来源。user Principal 扩为 `{kind:'user',accountId,sessionId,platform,login,expiresAt}`；新增 cookie 常量 `jobagent_session`（HttpOnly，`AUTH_SESSION_COOKIE`）、`jobagent_oauth_state`（CSRF，Path=/auth/github）；`AuthMeSchema`（**刻意剥离 email/providerAccountId**，有测试断言）、`ClaimResultSchema`、`AUTH_ERROR_CODES`（401/403/404/400/501/502）。auth-account 9 测试。
-2. `5ff8c9c` feat(db)：双方言迁移 010 `accounts`（UNIQUE(platform,provider_account_id) 等 3 索引）、011 `auth_sessions`（account/expires 索引），一文件一表、sqlite/pg 对称，check-migrations 11 对 0 warning。
-3. `0cc4fa3` feat(storage)：两实体 + `IAccountsRepository`（upsertFromProvider/getById/getByProvider/setClaimedProfile）+ `IAuthSessionsRepository`（create/getActive/touch/revoke）+ profiles 双方言 `markClaimed`，StorageContext/createStorage 双方言装配。accounts-auth-sessions 9 测试，schema-parity/migrations/PG-behavior 同步（PG 迁移计数 9→11、真实 embedded Postgres 7/7）。
-4. `5dfa0b3` feat(api)：auth-config 纯函数 + AuthProvider 端口 + github-auth（Node24 全局 fetch web flow、HMAC-SHA256 签名 state + timingSafeEqual 校验、scope=user:email）+ FakeAuthProvider（测试不打网络）+ `resolveAuthPrincipal`（**user 优先于 demo/匿名**）。5 端点：`GET /auth/github/login`（未配置 501 AUTH_NOT_CONFIGURED）、`GET /auth/github/callback`、`POST /auth/logout`（匿名 no-op）、`GET /auth/me`、`POST /profiles/:id/claim`。claim 校验画像 subject 与登录账号 platform+login **完全一致**（非本人 403 AUTH_NOT_PROFILE_OWNER、画像不存在 404、匿名 401、幂等重复 200）。登录用户 `/analyze` 建 `requesterKind=user`/`demoSessionId=null` 任务、不占 demo 配额（worker 仅对 demo 做并发闸、formal 优先，user 天然通行，无需改 worker）。auth 9 + auth-flow 8 测试，api 共 106 全绿。
-5. `0f4ce17` docs(api)：`.env.example` 加 OAuth 段、`docs/API.md` 新增 §1.2（5 端点 / 两类 cookie / 错误码 / claim 归属规则 / 登录用户 analyze 路径）+ 状态码表 / 环境变量表。
+1. `0c578f0` feat(shared)：把长期预留、从未产生的 `Principal.kind='user'` 接上真实登录来源。user Principal 扩为 `{kind:'user',accountId,sessionId,platform,login,expiresAt}`；新增 cookie 常量 `jobagent_session`（HttpOnly，`AUTH_SESSION_COOKIE`）、`jobagent_oauth_state`（CSRF，Path=/auth/github）；`AuthMeSchema`（**刻意剥离 email/providerAccountId**，有测试断言）、`ClaimResultSchema`、`AUTH_ERROR_CODES`（401/403/404/400/501/502）。auth-account 9 测试。
+2. `9f64e5e` feat(db)：双方言迁移 010 `accounts`（UNIQUE(platform,provider_account_id) 等 3 索引）、011 `auth_sessions`（account/expires 索引），一文件一表、sqlite/pg 对称，check-migrations 11 对 0 warning。
+3. `ec23cb6` feat(storage)：两实体 + `IAccountsRepository`（upsertFromProvider/getById/getByProvider/setClaimedProfile）+ `IAuthSessionsRepository`（create/getActive/touch/revoke）+ profiles 双方言 `markClaimed`，StorageContext/createStorage 双方言装配。accounts-auth-sessions 9 测试，schema-parity/migrations/PG-behavior 同步（PG 迁移计数 9→11、真实 embedded Postgres 7/7）。
+4. `8c089fc` feat(api)：auth-config 纯函数 + AuthProvider 端口 + github-auth（Node24 全局 fetch web flow、HMAC-SHA256 签名 state + timingSafeEqual 校验、scope=user:email）+ FakeAuthProvider（测试不打网络）+ `resolveAuthPrincipal`（**user 优先于 demo/匿名**）。5 端点：`GET /auth/github/login`（未配置 501 AUTH_NOT_CONFIGURED）、`GET /auth/github/callback`、`POST /auth/logout`（匿名 no-op）、`GET /auth/me`、`POST /profiles/:id/claim`。claim 校验画像 subject 与登录账号 platform+login **完全一致**（非本人 403 AUTH_NOT_PROFILE_OWNER、画像不存在 404、匿名 401、幂等重复 200）。登录用户 `/analyze` 建 `requesterKind=user`/`demoSessionId=null` 任务、不占 demo 配额（worker 仅对 demo 做并发闸、formal 优先，user 天然通行，无需改 worker）。auth 9 + auth-flow 8 测试，api 共 106 全绿。
+5. `e3a93dc` docs(api)：`.env.example` 加 OAuth 段、`docs/API.md` 新增 §1.2（5 端点 / 两类 cookie / 错误码 / claim 归属规则 / 登录用户 analyze 路径）+ 状态码表 / 环境变量表。
 
 AuthMe 返回约定：匿名/演示只回 `{kind}`；user 回 `{kind:'user',accountId,platform('github'|'gitee'),login,name?,avatarUrl?,claimedProfileId?,expiresAt?}`，**不回 email/providerAccountId**。OAuth env（外部未配）：`GITHUB_OAUTH_CLIENT_ID/SECRET`、`AUTH_STATE_SECRET`、`AUTH_CALLBACK_BASE_URL`、`AUTH_AFTER_LOGIN_URL`（默认 '/'）、`AUTH_SESSION_TTL_MS`。
 
 ## 2. item29 账号主脊前端接线 + 认证数据运维清理（2026-09-19，3 个代码原子提交）
 
-> 用户决策「搞 1 和 2」：①把已落地的认证后端接到报告页前端（item28-⑤）；②照 `demo cleanup` 给 CLI 加 `auth cleanup`（item28-④ 本体，cron 调度随部署）。**未授权**「授权分级闸（未登录看他人画像折叠哪些模块）」，本批不做。3 个代码提交：`d88328a` feat(db) → `c6492ab` feat(cli) → `a914500` feat(report)；文档随末个 docs 提交。
+> 用户决策「搞 1 和 2」：①把已落地的认证后端接到报告页前端（item28-⑤）；②照 `demo cleanup` 给 CLI 加 `auth cleanup`（item28-④ 本体，cron 调度随部署）。**未授权**「授权分级闸（未登录看他人画像折叠哪些模块）」，本批不做。3 个代码提交：`b30b494` feat(db) → `33a072d` feat(cli) → `87a80c2` feat(report)；文档随末个 docs 提交。
 
-### 2.1 storage 清理方法（`d88328a`，双方言）
+### 2.1 storage 清理方法（`b30b494`，双方言）
 
 - `IAuthSessionsRepository.purgeExpired(nowIso, retainMs)`：删 `(status='revoked' AND last_seen_at<cutoff) OR expires_at<cutoff`，cutoff = now − retainMs。
 - `IAccountsRepository.deleteUnclaimed(nowIso, retainMs)`：删 `claimed_profile_id IS NULL AND updated_at<cutoff AND NOT EXISTS(select 1 from auth_sessions where account_id=accounts.id and expires_at>=now)`。再次登录会按 (platform, provider_account_id) 重新 upsert，故删无认领记录的闲置账号不丢数据。
 - 方言差异只在计数返回：sqlite `.delete().run().changes ?? 0`；postgres `.delete().returning({id}).length`。NOT EXISTS 用物理表/列名 snake_case 内联 `sql\`\``，sqlite/pg 物理命名一致故双方言通用。
 - `accounts-auth-sessions.test.ts` 新增两个 describe（purgeExpired / deleteUnclaimed），用原始 INSERT 精确控制时间戳，确定性验证「删过期/撤销 + 陈旧未认领；留 active、近期撤销、已认领、有活会话、近期更新」，文件 11 测试全绿。PG 行为套件本就只覆盖迁移/并发、无账号 CRUD 用例，新 PG 方法沿用「sqlite 逻辑测试 + PG typecheck + 标准 Drizzle/标准 SQL」既有覆盖口径。
 
-### 2.2 CLI `auth cleanup`（`c6492ab`）
+### 2.2 CLI `auth cleanup`（`33a072d`）
 
 - 新建 `apps/cli/src/auth-commands.ts`：`jobagent auth cleanup [--retain-hours 24] [--account-retain-hours 720]`，先清会话再清账号（顺序保证 NOT EXISTS 反映清理后状态）。默认会话保留 24h（与 demo cleanup 一致）、未认领账号保留 30 天（720h，避免删掉刚登录未认领的用户）。输出 `purged N expired/revoked auth session(s) (retain Xh) and M unclaimed account(s) ... (retain Yh)`。退出码 0 成功 / 2 参数错 / 1 存储错。DB 走 deps.storage 或 `DB_PATH ?? data/job-agent.db`（makeCliStorage）。
 - `index.ts` 注册 `command==='auth'` → runAuth，并在根 Usage 加 `auth cleanup`。
 - `auth-commands.test.ts` 5 测试（固定未来 NOW=2027-06-01 保证确定性：清理计数 / 保留 claimed 与 live-session / 账号保留窗 / 两个非法 flag 退出 2 / 未知子命令退出 2），全绿。
 - cron 调度本体不做，随生产部署挂定时任务（与 `demo cleanup` 同等待遇，见 deferred）。
 
-### 2.3 报告页登录/认领前端（`a914500`）
+### 2.3 报告页登录/认领前端（`87a80c2`）
 
 照 DemoBanner / ShareButton 范式（fetch `${apiBase}/...`、`credentials:'same-origin'`、文案全由 Astro props 经 t() 传入、只用 `--ja-*` token、`client:load`）新建两个 React island：
 

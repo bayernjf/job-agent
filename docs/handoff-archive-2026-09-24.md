@@ -5,7 +5,7 @@
 
 ## 1. item50：部署前收尾批次 T1–T8（2026-09-23 晚）
 
-4 个代码/素材原子提交 + docs(handoff)，已随 PR #77 合并：`174e878` build(extension) → `e37401a` docs(deferred) → `14f5023` docs → `2883207` fix(extension) → `0fc2bf2` docs(handoff)。
+4 个代码/素材原子提交 + docs(handoff)，已随 PR #77 合并：`48fa3d0` build(extension) → `fa9ce9c` docs(deferred) → `de2e3ae` docs → `227c35f` fix(extension) → `c63c39c` docs(handoff)。
 
 - **T4 release 一键打包**：新增 `apps/extension/scripts/release.mjs`（`pnpm --filter @jobagent/extension release`：强制 `EXTENSION_API_BASE` 为 https、注入 `EXTENSION_RELEASE=1` 构建、二次断言 dist manifest 无 localhost、manifest.json 位于 zip 根、macOS/Linux 系统 zip + Windows PowerShell Compress-Archive、已存在拒绝覆盖需 `--force`），占位生产域实测打包成功（13 files/422KB/grants 改写），验证包留在 gitignored `apps/extension/release/`。
 - **T6 CWS 截图重截闭环（A1 遗留）**：在规则 0.3 英文画像 `32d41707`（bayernjf，2026-09-22 生成）上重跑 capture，挖出并修复 capture.mjs 三个真实问题：扩展先调 `by-subject` 而脚本未路由致匹配列表超时（补路由转发）、高级字段 localhost 是 placeholder 而非 value（清值无效，改为截图时替换 placeholder 为生产占位域并去焦）、Astro 7.3.2 无关闭 dev toolbar 的 CLI 开关（路由拦截 `/dev-toolbar/**` 脚本返回 204），7 张素材全部重新生成并逐张目检（无 localhost、无 toolbar、英文 claim、真实匹配/证据/填充）。
@@ -17,7 +17,7 @@
 
 ## 2. item51：部署前最后一公里验证 + CWS 上架前准备（2026-09-24，macOS）
 
-6 个本地英文原子提交（未 push）：`153bec9` feat(report) 双语隐私政策页 → `9ea1824` docs(privacy) 权威源 → `a3b22b8` docs(cws) 权限说明/listing → `be06a5d` fix(worker) lazy sources → `8940f30` test(smoke) locale 重定向断言 → `cd1a3c7` docs(handoff) item51 登记。
+6 个本地英文原子提交（未 push）：`10281c0` feat(report) 双语隐私政策页 → `3181ef4` docs(privacy) 权威源 → `d0848da` docs(cws) 权限说明/listing → `1f42678` fix(worker) lazy sources → `c72fcf3` test(smoke) locale 重定向断言 → `75f471b` docs(handoff) item51 登记。
 
 ### A 组门禁（全绿）
 
@@ -46,7 +46,7 @@
 
 ## 3. 归档时 Git 同步态
 
-归档动作发生在 2026-09-24 文档收尾批次；当时 `origin/dev` = `e823516`、`origin/main` = `50421c7`（Merge PR #77），本地含 item51 六提交 + 本 docs 归档提交（均未 push）。最终实况以 handoff 主文件「Git 状态」为准。
+归档动作发生在 2026-09-24 文档收尾批次；当时 `origin/dev` = `9509632`、`origin/main` = `5c84272`（Merge PR #77），本地含 item51 六提交 + 本 docs 归档提交（均未 push）。最终实况以 handoff 主文件「Git 状态」为准。
 
 
 ## 4. item45：面试计划表 Interviews（2026-09-24）
@@ -68,10 +68,10 @@
 
 **落地（4 个英文原子提交，本地未 push）**：
 
-- `43cadbe` feat(shared)：`INTERVIEW_FORMATS/STATUSES/OUTCOMES` 枚举 + `InterviewCreateSchema`（end>start 的 refine、email 校验、可空字段 nullish）/ `InterviewPatchSchema`（全 optional、rating 1..5、非空对象 refine）/ `InterviewListQuerySchema` + 同名类型。
-- `5725c5c` feat(db)：双方言迁移 012（`interviews` 18 列 3 索引：`idx_interviews_owner_status(created_by_account_id,status,scheduled_start)`、`idx_interviews_profile_start(profile_id,scheduled_start)`、`idx_interviews_application(application_id)`）+ `IInterviewsRepository`（insert/getById/listByOwner/update）sqlite+postgres 双实现，注册进两个 context 工厂与 `StorageContext`，schema-parity / migrations / postgres-behavior 测试同步。
-- `e919556` feat(api)：`POST/GET/PATCH /interviews` 三端点（user 登录闸，非 user 401；profile/application 存在性与归属校验；非本人资源统一 404 不泄露存在；PATCH 合并后 end>start 校验；关联投递仅早期阶段推进 interview）+ `interviews.test.ts` 5 用例 + `docs/API.md` §3.7（api-doc-consistency 测试双向守护路由文档化）。
-- `4ca82c4` feat(report)：`InterviewPlanner.tsx` client:load island（登录墙带同源 `return_to`、排期表单、本人面试列表、状态 select 乐观更新失败回滚、completed 展开结果录入）挂 `/recruit`；47 个 `interviews.*` i18n key 中英对齐；global.css `ivp-*` 全 `--ja-*` token 样式；`e2e/interview-planner.spec.ts` 3 用例零网络（匿名登录墙 / 登录创建 / 状态流转 + 结果 PATCH 断言）。
+- `ef9b017` feat(shared)：`INTERVIEW_FORMATS/STATUSES/OUTCOMES` 枚举 + `InterviewCreateSchema`（end>start 的 refine、email 校验、可空字段 nullish）/ `InterviewPatchSchema`（全 optional、rating 1..5、非空对象 refine）/ `InterviewListQuerySchema` + 同名类型。
+- `bb132e2` feat(db)：双方言迁移 012（`interviews` 18 列 3 索引：`idx_interviews_owner_status(created_by_account_id,status,scheduled_start)`、`idx_interviews_profile_start(profile_id,scheduled_start)`、`idx_interviews_application(application_id)`）+ `IInterviewsRepository`（insert/getById/listByOwner/update）sqlite+postgres 双实现，注册进两个 context 工厂与 `StorageContext`，schema-parity / migrations / postgres-behavior 测试同步。
+- `b4266b9` feat(api)：`POST/GET/PATCH /interviews` 三端点（user 登录闸，非 user 401；profile/application 存在性与归属校验；非本人资源统一 404 不泄露存在；PATCH 合并后 end>start 校验；关联投递仅早期阶段推进 interview）+ `interviews.test.ts` 5 用例 + `docs/API.md` §3.7（api-doc-consistency 测试双向守护路由文档化）。
+- `c458cb6` feat(report)：`InterviewPlanner.tsx` client:load island（登录墙带同源 `return_to`、排期表单、本人面试列表、状态 select 乐观更新失败回滚、completed 展开结果录入）挂 `/recruit`；47 个 `interviews.*` i18n key 中英对齐；global.css `ivp-*` 全 `--ja-*` token 样式；`e2e/interview-planner.spec.ts` 3 用例零网络（匿名登录墙 / 登录创建 / 状态流转 + 结果 PATCH 断言）。
 
 **验证（Node v24.0.0 / fnm 实测）**：全仓 typecheck/build 全 Done；单测 **862** 全绿（storage **129** 含本机 embedded Postgres 本次真实跑通 10 例、api **171** 含 interviews 5、report **58**）；报告 Playwright E2E **60/60**（新增面试 3 例）；check-migrations **12 对 0 warning**；`git diff --check` 干净。
 
@@ -81,11 +81,11 @@
 
 ## 5. item54：上线前门禁补缺口批次 T0–T3（2026-09-24 深夜）
 
-**接手方式与发现**：本轮先做「handoff 说的和仓库真实状态是否一致」的实查，挖出一条状态漂移与三条门禁缺口，逐项闭环。5 个代码/文档原子提交 + 1 个 docs(handoff)：`8b0d525` docs(api) → `b0e083a` test(api) → `43c9671` docs(deploy) → `8a62f69` test(smoke) → `53d6a16` chore(build) → docs(handoff)。
+**接手方式与发现**：本轮先做「handoff 说的和仓库真实状态是否一致」的实查，挖出一条状态漂移与三条门禁缺口，逐项闭环。5 个代码/文档原子提交 + 1 个 docs(handoff)：`926c820` docs(api) → `671ebf0` test(api) → `3c7c098` docs(deploy) → `23668d9` test(smoke) → `014a3c3` chore(build) → docs(handoff)。
 
 ### T0 状态纠偏（为什么错、错在哪）
 
-handoff「Git 状态」写「本地 `dev` 领先 15 个提交均未 push（`origin/dev` = `8cb09b2`、`origin/main` = `19a4920`＝PR #80）」，实测 `git rev-parse origin/dev` 与本地 `dev` 同为 `bb09b61`、`origin/main` = `f538283`＝**Merge PR #81**（`gh pr list` 显示 #81「feat: add deep DB health probe and interview planner」2026-09-24T12:58 MERGED），`origin/main..origin/dev` 为 0。即 item52（3 提交）+ item53（7 提交）+ item45（4 提交）+ 那条 docs 提交**全部已 push 并已进 main**。原因是 PR #81 合并后没回写 handoff 的同步态段。连带订正 6 处「本地未 push」标注（活跃待办 item45/52/53、最近变更 4 条、§Git 状态、活跃待办前言的 item45 子句）。
+handoff「Git 状态」写「本地 `dev` 领先 15 个提交均未 push（`origin/dev` = `943de4a`、`origin/main` = `160fa66`＝PR #80）」，实测 `git rev-parse origin/dev` 与本地 `dev` 同为 `13a35a8`、`origin/main` = `34755f4`＝**Merge PR #81**（`gh pr list` 显示 #81「feat: add deep DB health probe and interview planner」2026-09-24T12:58 MERGED），`origin/main..origin/dev` 为 0。即 item52（3 提交）+ item53（7 提交）+ item45（4 提交）+ 那条 docs 提交**全部已 push 并已进 main**。原因是 PR #81 合并后没回写 handoff 的同步态段。连带订正 6 处「本地未 push」标注（活跃待办 item45/52/53、最近变更 4 条、§Git 状态、活跃待办前言的 item45 子句）。
 
 ### T1 部署冒烟补口
 

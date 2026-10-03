@@ -1,7 +1,7 @@
 # Handoff 归档 — 2026-09-25
 
 > 跨天冻结、不再追加；同一天（2026-09-25）的后续批次按 § 续记。记录从 handoff 主文件裁出的 item68–74 明细（第三次 MVP 评审批次 6 + T17 提前 + T09）。
-> 归档时本批 6 个英文原子提交均在本地 `dev`、**未 push**：`5e144a4` → `20af4d8` → `0f5cb21` → `770d6cb` → `7727fc9` → `7607256`。
+> 归档时本批 6 个英文原子提交均在本地 `dev`、**未 push**：`fc8e2e2` → `6ad770f` → `090f0c6` → `48f5291` → `8fa2f1a` → `7556a30`。
 
 ## 1. 批次 6 总览（第三次评审 §7，2026-09-25）
 
@@ -72,9 +72,9 @@
 
 | hash | message |
 | --- | --- |
-| `5e144a4` | feat(storage): add profile delete, snapshot update and fresh-job count |
-| `20af4d8` | feat(worker): stage L0/L1 collection with explicit partial profiles |
-| `0f5cb21` | feat(analyzer): emit evidence-backed improvement suggestions |
-| `770d6cb` | feat(api): accept manual postings, gate polish and lock prod startup |
-| `7727fc9` | feat(cli): add profiles delete subcommand |
-| `7607256` | feat(report): add my-jobs page and explicit failure states |
+| `fc8e2e2` | feat(storage): add profile delete, snapshot update and fresh-job count |
+| `6ad770f` | feat(worker): stage L0/L1 collection with explicit partial profiles |
+| `090f0c6` | feat(analyzer): emit evidence-backed improvement suggestions |
+| `48f5291` | feat(api): accept manual postings, gate polish and lock prod startup |
+| `8fa2f1a` | feat(cli): add profiles delete subcommand |
+| `7556a30` | feat(report): add my-jobs page and explicit failure states |
