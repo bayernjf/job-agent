@@ -869,6 +869,9 @@ export const AuthMeSchema = z.object({
   // F10（决策 #17 第一期）：招聘方显式自声明时刻（UTC ISO8601），null/缺省=未声明。
   // 这是账号属性而非角色枚举：不声明不影响应聘侧功能，声明仅解锁招聘方面。
   recruiterDeclaredAt: z.string().nullable().optional(),
+  // LLM 供给（决策 #21）：平台管理员标记（迁移 023，ADMIN_ACCOUNT_LOGINS 白名单置位）。
+  // 仅 kind='user' 回；false/缺省=无 admin 面权限。
+  canManageLlmCatalog: z.boolean().optional(),
   expiresAt: z.string().optional(),
 });
 export type AuthMe = z.infer<typeof AuthMeSchema>;
@@ -1895,3 +1898,14 @@ export const UserLlmConfigViewSchema = UserLlmConfigSchema.extend({
   keyMasked: z.string(), // 形如 sk-****<末4位>
 });
 export type UserLlmConfigView = z.infer<typeof UserLlmConfigViewSchema>;
+
+/**
+ * GET /admin/llm-catalog 响应体（决策 #21-0）：合并后目录 + env 凭证配置态。
+ * 目录本身不含任何凭证字段；envConfigured 告知管理员内置通道是否可用
+ * （LLM_API_KEY 已配置）。不包含任何 key 内容。
+ */
+export const AdminLlmCatalogViewSchema = z.object({
+  models: z.array(LlmCatalogModelSchema),
+  envConfigured: z.boolean(),
+});
+export type AdminLlmCatalogView = z.infer<typeof AdminLlmCatalogViewSchema>;
