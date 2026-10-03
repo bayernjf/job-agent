@@ -20,7 +20,7 @@ describe('BYOK api key 加密（AES-256-GCM）', () => {
   it('密文被篡改（任一字节）→ 认证失败抛错', () => {
     const cipher = encryptApiKey('sk-secret-1234', 'k');
     const bytes = Buffer.from(cipher, 'base64');
-    bytes[bytes.length - 1] ^= 0xff;
+    bytes[bytes.length - 1]! ^= 0xff;
     expect(() => decryptApiKey(bytes.toString('base64'), 'k')).toThrow();
   });
 
