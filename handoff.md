@@ -27,7 +27,7 @@ JobAgent 当前状态，截至 2026-10-03。
 - [docs/市场调研-招聘市场痛点-20260916.md](docs/市场调研-招聘市场痛点-20260916.md) — 中国招聘市场双方痛点调研：企业端（寻源/筛选/造假/误聘）与求职者端（反馈缺失/定位模糊/竞争加剧）量化痛点、共同根源与对 JobAgent 的可信信号启示（现行）
 - [docs/设计-痛点解决方案-20260916.md](docs/设计-痛点解决方案-20260916.md) — 12 项痛点→解决方案对位表 + 实施批次拆分：批次1 纯产品化（企业核验视图/面试准备包/落地页文案）、批次2 新接口（人才检索/筛选工作台/投递追踪）、批次3 外部条件；**批次 1 代码项 + 批次 2 已于 2026-09-16 落地（见 item21，落地页文案在独立仓未改、批次3 待外部条件）**（现行）
 - [apps/extension/README.md](apps/extension/README.md) — P1 浏览器扩展试用指南：本地服务、开发者模式加载、Greenhouse/Lever 一键填充步骤与已知限制（现行）
-- [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) — #1–#19；#1–#8 已决策（#4 当日修订为海内外同步），#9–#13 延后，#14 已于 2026-09-21 决策，#15/#16 已定（扩展 P1、职位聚合 P2），#17/#18 已于 2026-09-25 决策（#17 分期、#18 四期 C-A→C-D），**#19 MCP 接入面已于 2026-10-01 决策并落地**（三子问按建议：引 SDK 仅装 `apps/mcp`·stdio、fail-closed、v0 不给证据外链；见 item90 与 `apps/mcp`）
+- [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) — #1–#21；#1–#8 已决策（#4 当日修订为海内外同步），#9–#13 延后，#14 已于 2026-09-21 决策，#15/#16 已定（扩展 P1、职位聚合 P2），#17/#18 已于 2026-09-25 决策（#17 分期、#18 四期 C-A→C-D），**#19 MCP 接入面已于 2026-10-01 决策并落地**（三子问按建议：引 SDK 仅装 `apps/mcp`·stdio、fail-closed、v0 不给证据外链；见 item90 与 `apps/mcp`），**#20 求职 Agent 阶段 2/3 边界已于 2026-10-03 决策**（四条全采纳建议：填完等用户点提交 / 快照暂不落库 / 复盘 ≥20 条带结果才生效 / 披露 AI 辅助投递标识；见 item95），**#21 LLM 模型供给已于 2026-10-03 拍板并 P0 落地**（内置 Admin UI + BYOK 服务端加密、凭证 env only；见 item102–105 与 `docs/design-llm-model-provisioning-20261003.md`）
 - [docs/deferred-items.md](docs/deferred-items.md) — 缓做/低优事项登记表（挂起项 + 触发条件的单一事实源）
 - [docs/handoff-archive-2026-09-19.md](docs/handoff-archive-2026-09-19.md) — handoff 历史归档（2026-09-19）：item28 账号授权主脊（GitHub OAuth 登录/会话/认领）明细 + item29 报告页登录认领前端接线与 CLI `auth cleanup` 明细（归档，只读不追加）
 - [docs/handoff-archive-2026-09-20.md](docs/handoff-archive-2026-09-20.md) — handoff 历史归档（2026-09-20）：item30 真实 GitHub OAuth 端到端、item31 return_to 深链、item32 授权分级闸、item33 Gitee OAuth、item34 部署加固、item35 形态 C 部署就绪、item36 岗位同步 Actions/API 文档明细 + 当时 Git 同步态（归档，只读不追加）
@@ -74,6 +74,8 @@ JobAgent 当前状态，截至 2026-10-03。
 - [docs/部署前就绪确认单-20260924.md](docs/部署前就绪确认单-20260924.md) — 形态 C 上线前最后一轮"代码/产物侧"门禁实测记录（A1–A7 + B1–B4）：835 单测/报告 E2E 57/扩展 11、Docker PG 11 迁移+9 行为、Vercel 产物、smoke 7/7（含 worker lazy-sources 与脚本断言两个真实修复）、audit/gitleaks 0、CWS 隐私政策/权限/素材；结论＝代码侧门禁全绿，唯一硬阻塞 P0-3 控制台人工部署（**生产已于 2026-09-30 上线，此单转为历史门禁基线**；现行，2026-09-24，item51）
 - [docs/privacy-policy-20260924.md](docs/privacy-policy-20260924.md) — 中英双语隐私政策权威源（10 节×2 语言：处理信息/不收集/用途/共享受托方/留存删除/国际传输/权利/未成年人/安全/变更联系），与在线页 `/[locale]/privacy` 同步，CWS 上架填 `https://<app-origin>/en/privacy`（现行，2026-09-24，item51）
 - [docs/代码审计与功能全景-20260930.md](docs/代码审计与功能全景-20260930.md) — **项目级深度代码审计 + 产品功能点全量梳理（2026-09-30，只读审计、未改产品代码）**：审计范围/方法与版本基线（规则 0.8、991 单测、17 对迁移、34 路由）+ 分层架构核查（主干成立、三处方向问题）+ **8 条架构违规**（report 直连 DB 绕过服务层最严重／api 用双重断言丢弃 `close()`／`DemoRateKind` 双定义冲突／采集层反向依赖内核等）+ **安全与隐私 6 条已确认**（`POST /interviews` 未传 owner 可改写他人投递、未认领画像分享链不可撤销、招聘方闸为自声明、扩展 host_permissions 过宽等）与 5 条疑似，并逐项给出「未发现问题」清单（密钥/注入/XSS/开放重定向/鉴权矩阵）+ 测试与工程化实测（含并行 vitest 假红现象）+ **产品功能全景 12 个能力域** + 风险登记 P0–P3 与建议（现行，2026-09-30）
+- [docs/design-cover-letter-20261003.md](docs/design-cover-letter-20261003.md) — 岗位定向求职信设计（A 档已落地 2026-10-03，item101）：llm 受约束生成器（防臆造三层）+ `POST /resumes/cover-letter`（仅登录 user）+ 报告页 ResumeBuilder 入口 + i18n（现行）
+- [docs/design-llm-model-provisioning-20261003.md](docs/design-llm-model-provisioning-20261003.md) — LLM 模型供给设计（决策 #21 已拍板 2026-10-03，**P0 已落地 item105**）：内置模型＝Admin UI 管理（凭证 env only）+ BYOK＝用户自由设置（AES-256-GCM 加密列）、迁移 023–025、请求路由 BYOK 优先→内置回落（现行）
 
 ## 当前状态
 
