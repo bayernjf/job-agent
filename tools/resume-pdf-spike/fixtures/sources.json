@@ -1,0 +1,100 @@
+[
+  {
+    "id": "zh-major",
+    "title": "软件工程师中文简历",
+    "expectFields": {
+      "name": "张三",
+      "email": "zhangsan@example.com",
+      "phone": "138-0000-1234"
+    },
+    "sourceLines": [
+      "张三",
+      "高级软件工程师 | 全栈方向",
+      "电话：138-0000-1234 ｜ 邮箱：zhangsan@example.com ｜ 北京",
+      "8 年全栈开发经验，专注于分布式系统与 AI 应用落地。曾主导多个日活百万级系统的架构升级，擅长把复杂业务拆解为可交付的技术方案。",
+      "2021-2026 ｜ 某互联网公司 ｜ 技术专家。负责推荐系统中台建设，将线上召回链路延迟降低 45%；带领 6 人团队完成 Go 微服务迁移。",
+      "2016-2021 ｜ 某创业公司 ｜ 全栈工程师。独立交付 React + Node.js 的 SaaS 产品，服务 200+ 企业客户，累计营收 3000 万元。",
+      "Go / TypeScript / React / PostgreSQL / Kubernetes / 机器学习基础",
+      "2012-2016 ｜ 北京某大学 ｜ 计算机科学与技术 ｜ 本科"
+    ]
+  },
+  {
+    "id": "mixed-half",
+    "title": "Product Manager Resume (中英双语)",
+    "expectFields": {
+      "name": "李娜",
+      "email": "lina@example.com",
+      "phone": "+86 139-0000-5678"
+    },
+    "sourceLines": [
+      "李娜 / Li Na",
+      "Product Manager · B2B SaaS",
+      "+86 139-0000-5678 · lina@example.com · Shanghai",
+      "5 years of B2B product management with a focus on data-driven growth. 擅长从用户调研到商业化的完整闭环，主导过 3 款从 0 到 1 的产品。",
+      "2022–2026 ｜ GlobalTech ｜ Senior PM. Owned the analytics product line; grew ARR from $1M to $4M. 推动企业级权限体系上线，支撑 50+ 客户私有化部署。",
+      "2019–2022 ｜ 某科技公司 ｜ Product Manager. Launched a customer-service chatbot serving 300k users. 把客服人工介入率从 35% 降到 12%。",
+      "Product Strategy / SQL / A/B Testing / 用户研究 / Figma / 数据分析",
+      "2015–2019 ｜ 复旦大学 ｜ 信息管理与信息系统 ｜ 本科"
+    ]
+  },
+  {
+    "id": "en-major",
+    "title": "Senior Backend Engineer Resume",
+    "expectFields": {
+      "name": "王伟",
+      "email": "wangwei.dev@example.com",
+      "phone": "+1 (555) 010-2020"
+    },
+    "sourceLines": [
+      "Wang Wei (王伟)",
+      "Senior Backend Engineer",
+      "wangwei.dev@example.com ｜ +1 (555) 010-2020 ｜ Remote",
+      "Senior backend engineer with 9 years of experience in high-throughput services and infrastructure. Proficient in Go, Rust and cloud-native stack (Kubernetes, Envoy).",
+      "2019–Present ｜ DataStream Inc. ｜ Staff Engineer. Designed the ingestion pipeline processing 2B events/day; reduced infra cost by 30% via tiered storage. 中文团队协作经验丰富，多次承担跨时区技术评审。",
+      "2015–2019 ｜ CloudWorks ｜ Backend Engineer. Built multi-tenant billing system handling $50M annual revenue.",
+      "Go / Rust / Kubernetes / PostgreSQL / Kafka / 分布式系统设计",
+      "2011–2015 ｜ Zhejiang University ｜ Computer Science ｜ B.S."
+    ]
+  },
+  {
+    "id": "two-column",
+    "title": "前端工程师双栏简历",
+    "expectFields": {
+      "name": "陈杰",
+      "email": "chenjie@example.com",
+      "phone": "021-5555-8899"
+    },
+    "sourceLines": [
+      "陈杰 · chenjie@example.com",
+      "Tel: 021-5555-8899",
+      "GitHub: github.com/chenjie",
+      "上海",
+      "低代码平台 ｜ 2024-2026 ｜ 前端负责人：设计组件协议，沉淀 120+ 业务组件，平台月活 4 万。",
+      "可视化编排引擎 ｜ 2022-2024 ｜ 核心开发：基于 React Flow 实现 DAG 编排，支撑 300+ 自动化场景。",
+      "2020-2026 ｜ 某 SaaS 公司 ｜ 高级前端工程师。主导前端工程化改造，构建时间从 8 分钟降到 90 秒。",
+      "React / TypeScript / Vite / Node.js / WebGL / 性能优化",
+      "2016-2020 ｜ 上海某大学 ｜ 软件工程 ｜ 本科"
+    ]
+  },
+  {
+    "id": "table",
+    "title": "数据分析师简历（含表格）",
+    "expectFields": {
+      "name": "赵敏",
+      "email": "zhaomin@example.com",
+      "phone": "135-0000-7788"
+    },
+    "sourceLines": [
+      "赵敏",
+      "数据分析师 · 增长方向",
+      "zhaomin@example.com · 135-0000-7788 · 深圳",
+      "SQL / Python 熟练 2026",
+      "Tableau / Power BI 熟练 2026",
+      "A/B 测试 精通 2025",
+      "Spark / Hive 进阶 2024",
+      "增长实验平台 ｜ 2024-2026 ｜ 搭建实验看板，累计支撑 800+ 次 A/B 实验，推动 GMV 提升 12%。",
+      "用户分层模型 ｜ 2023-2024 ｜ 基于 RFM + 行为序列构建分层，提升触达转化率 18%。",
+      "2015-2019 中山大学 统计学 本科"
+    ]
+  }
+]
