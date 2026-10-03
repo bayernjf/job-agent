@@ -1900,6 +1900,21 @@ export const UserLlmConfigViewSchema = UserLlmConfigSchema.extend({
 export type UserLlmConfigView = z.infer<typeof UserLlmConfigViewSchema>;
 
 /**
+ * GET /account/llm-config 响应：**始终 200**。未配置不是"资源不存在"，
+ * 用 configured 标记表达——浏览器会把 4xx/5xx 记为资源加载错误刷进控制台，
+ * workbench E2E 的 consoleErrors 断言依赖此契约。reason 只用于表达服务端
+ * 缺 LLM_ENC_KEY（配置存在但读不出 key）。
+ */
+export const UserLlmConfigGetResponseSchema = z.discriminatedUnion('configured', [
+  UserLlmConfigViewSchema.extend({ configured: z.literal(true) }),
+  z.object({
+    configured: z.literal(false),
+    reason: z.enum(['encryption_missing']).optional(),
+  }),
+]);
+export type UserLlmConfigGetResponse = z.infer<typeof UserLlmConfigGetResponseSchema>;
+
+/**
  * GET /admin/llm-catalog 响应体（决策 #21-0）：合并后目录 + env 凭证配置态。
  * 目录本身不含任何凭证字段；envConfigured 告知管理员内置通道是否可用
  * （LLM_API_KEY 已配置）。不包含任何 key 内容。
