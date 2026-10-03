@@ -1,0 +1,70 @@
+---
+/**
+ * 模型管理 /[locale]/admin（决策 #21，design-llm-model-provisioning §4.2）。
+ * 管理员面板：只管理内置模型目录（数据面），凭证始终在服务端 env。
+ * SSR 只做登录闸（未登录见 GateCard）；is_admin 由 island 拉 /auth/me 判定
+ * （canManageLlmCatalog，与 API 403 行为一致）。
+ */
+import Layout from '../../layouts/Layout.astro';
+import GateCard from '../../components/GateCard.astro';
+import AdminLlmCatalog from '../../components/AdminLlmCatalog.tsx';
+import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
+import { resolveViewer } from '../../lib/auth.js';
+import { browserApiBase } from '../../lib/api-base.js';
+
+const { locale: rawLocale } = Astro.params;
+if (!isLocale(rawLocale)) {
+  return Astro.redirect('/en/');
+}
+const locale: Locale = rawLocale;
+const t = createTranslator(locale);
+const apiBase = browserApiBase();
+
+const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
+const loginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(`/${locale}/admin`)}`;
+---
+
+<Layout locale={locale} titleKey="admin.title" robots="noindex,nofollow">
+  <div class="admin-page ja-container">
+    <header class="admin-header">
+      <h1>{t('admin.title')}</h1>
+      <p class="ja-muted">{t('admin.subtitle')}</p>
+    </header>
+    {viewer.kind !== 'user' ? (
+      <GateCard
+        title={t('admin.gateTitle')}
+        body={t('admin.gateBody')}
+        loginHref={loginHref}
+        loginLabel={t('admin.gateLogin')}
+        testId="admin-gate"
+      />
+    ) : (
+      <AdminLlmCatalog
+        client:load
+        apiBase={apiBase}
+        locale={locale}
+        labels={{
+          subtitle: t('admin.subtitle'),
+          forbidden: t('admin.forbidden'),
+          envConfiguredYes: t('admin.envConfiguredYes'),
+          envConfiguredNo: t('admin.envConfiguredNo'),
+          modelProvider: t('admin.model.provider'),
+          modelModel: t('admin.model.model'),
+          modelEnabled: t('admin.model.enabled'),
+          modelIsDefault: t('admin.model.isDefault'),
+          modelSortOrder: t('admin.model.sortOrder'),
+          modelModalities: t('admin.model.modalities'),
+          addModel: t('admin.addModel'),
+          saveCatalog: t('admin.saveCatalog'),
+          refresh: t('admin.refresh'),
+          refreshDone: t('admin.refreshDone'),
+          saveSuccess: t('admin.saveSuccess'),
+          saveFailed: t('admin.saveFailed'),
+          loadFailed: t('admin.loadFailed'),
+          unauthorized: t('admin.unauthorized'),
+          emptyHint: t('admin.emptyHint'),
+        }}
+      />
+    )}
+  </div>
+</Layout>
