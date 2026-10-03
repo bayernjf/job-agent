@@ -58,7 +58,7 @@ pnpm --filter @jobagent/extension build
 - **API 连接失败**：确认后端服务在 `localhost:3000` 运行，且面板中 API 地址正确
 - **Analyze 一直 pending**：确认 Worker 终端在运行（会打印 `[worker]` 日志）
 - **404 错误**：GitHub/Gitee 用户名不存在，换一个确认存在的；若该平台确无画像快照，单源会回退到触发新分析
-- **HTTPS 招聘页里 API 报 `Failed to fetch` / status 0（重要）**：扩展**不在招聘页（content script）里直接请求 API**，而是把所有 API 请求交给 **background service worker 代发**（扩展源请求，规避 HTTPS 页对 `http://localhost` 的 CORS / 混合内容 / 私有网络访问限制）。出现该错先确认：①后端在面板配置的 API 地址上运行；②该地址已在扩展 `manifest.json` 的 `host_permissions` 中（本地默认含 `http://localhost:3000`、`http://127.0.0.1:3000`）。
+- **HTTPS 招聘页里 API 报 `Failed to fetch` / status 0（重要）**：扩展**不在招聘页（content script）里直接请求 API**，而是把所有 API 请求交给 **background service worker 代发**（扩展源请求，规避 HTTPS 页对 `http://localhost` 的 CORS / 混合内容 / 私有网络访问限制）。出现该错先确认：①后端在面板配置的 API 地址上运行；②该地址已在扩展 `manifest.json` 的 `host_permissions` 中（本地默认含 `http://localhost:3000`、`http://127.0.0.1:3000`）。**安全白名单**：SW 代发只允许 `localhost` / `127.0.0.1` / 生产域 `app.job-agent.bayjf.com` 三个 host（`src/lib/external-origins.ts`，S8）；自托管其他域需构建时以 `EXTENSION_SITE_ORIGIN` 指定后重新打包，且该域须同时加进 manifest `host_permissions`。
 - **改过代码 / `host_permissions` / manifest 后改动不生效**：必须先 `pnpm --filter @jobagent/extension build` 重建 `dist/`，再到 `chrome://extensions/` 点 JobAgent 卡片自己的「重新加载」（reload）按钮，最后**刷新招聘页标签页**；仅刷新招聘页不会重载 manifest 权限。
 - **加载已生成画像却提示 403 / 要求演示会话（DEMO_REQUIRED）**：单源（GitHub/Gitee）加载时扩展会先查公开只读端点 `GET /profiles/by-subject/:platform/:login`，命中已生成的 complete 快照就直接加载，**不看 24h 缓存 TTL、不扣演示配额、不触发新分析**；只有查无快照（404）才回退 `POST /analyze` 触发新分析（匿名受每会话 3 次 / 24h 演示配额限制，登录用户不限）。若旧画像仍 403，确认扩展已重建为含 by-subject 逻辑的最新版本并按上一条重新加载。
 - **匹配岗位为空**：匹配在本地岗位库中进行，需后端已跑过岗位同步（`jobagent jobs sync`）；这与画像加载、一键填充相互独立，不影响填表。

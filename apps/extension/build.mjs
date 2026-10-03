@@ -57,7 +57,12 @@ async function emitManifest() {
 
 await mkdir(outdir, { recursive: true });
 
-const define = { EXTENSION_API_BASE: JSON.stringify(apiBase) };
+const define = {
+  EXTENSION_API_BASE: JSON.stringify(apiBase),
+  // SW 侧外部消息/relay 白名单（external-origins.ts）使用；release 时与
+  // manifest externally_connectable / host_permissions 替换为同一 origin。
+  EXTENSION_SITE_ORIGIN: JSON.stringify(siteOrigin),
+};
 
 // Content script: injected into ATS pages, renders the floating button + fill panel.
 // Bundled as a single IIFE (React inlined) because MV3 content scripts cannot use ES modules.
