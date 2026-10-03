@@ -17,3 +17,5 @@ export type { IJobPreferencesRepository } from './job-preferences.js';
 export type { IJobRunsRepository } from './job-runs.js';
 export type { IJobRunEventsRepository } from './job-run-events.js';
 export type { ISubmitIntentsRepository } from './submit-intents.js';
+export type { ILlmCatalogRepository } from './llm-catalog.js';
+export type { IUserLlmConfigsRepository } from './user-llm-configs.js';

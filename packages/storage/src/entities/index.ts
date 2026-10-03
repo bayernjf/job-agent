@@ -158,3 +158,15 @@ export type {
   RawSubmitIntentRow,
 } from './submit-intent.js';
 export { SUBMIT_INTENT_STATUSES, toStoredSubmitIntent } from './submit-intent.js';
+
+export type {
+  StoredLlmCatalogModel,
+  NewLlmCatalogModel,
+  RawLlmCatalogModelRow,
+} from './llm-catalog-model.js';
+export { toStoredLlmCatalogModel, toLlmCatalogModelRow } from './llm-catalog-model.js';
+
+export type { RawUserLlmConfigRow } from './user-llm-config.js';
+export { toStoredUserLlmConfig } from './user-llm-config.js';
+
+export type { StoredUserLlmConfig } from '@jobagent/shared';

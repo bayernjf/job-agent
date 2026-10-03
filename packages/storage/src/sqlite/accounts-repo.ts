@@ -157,4 +157,14 @@ export class SqliteAccountsRepository implements IAccountsRepository {
       .run();
     return result.changes ?? 0;
   }
+
+  async setAdmin(accountId: string, isAdmin: boolean): Promise<StoredAccount | undefined> {
+    const result = this.db
+      .update(t)
+      .set({ isAdmin: isAdmin ? 1 : 0, updatedAt: new Date().toISOString() })
+      .where(eq(t.id, accountId))
+      .run();
+    if ((result.changes ?? 0) === 0) return undefined;
+    return this.getById(accountId);
+  }
 }

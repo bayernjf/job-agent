@@ -10,9 +10,11 @@ import type {
   IJobPreferencesRepository,
   IJobRunEventsRepository,
   IJobRunsRepository,
+  ILlmCatalogRepository,
   IProfilesRepository,
   IProfileRemovalRequestsRepository,
   ISubmitIntentsRepository,
+  IUserLlmConfigsRepository,
   IWaitlistRepository,
 } from './repositories/index.js';
 import type { RunMigrationsResult } from './migrations-fs.js';
@@ -59,6 +61,10 @@ export interface StorageContext {
   jobRunEvents: IJobRunEventsRepository;
   /** 人机闸投递票据（求职 Agent 阶段 1，迁移 021） */
   submitIntents: ISubmitIntentsRepository;
+  /** 内置模型目录（LLM 供给 P0，迁移 024；admin 面维护，凭证 env only） */
+  llmCatalog: ILlmCatalogRepository;
+  /** BYOK 模型配置（LLM 供给 P0，迁移 025；一账号一行，apiKey 加密列） */
+  userLlmConfigs: IUserLlmConfigsRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /**

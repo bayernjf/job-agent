@@ -150,4 +150,14 @@ export class PgAccountsRepository implements IAccountsRepository {
       .returning({ id: t.id });
     return rows.length;
   }
+
+  async setAdmin(accountId: string, isAdmin: boolean): Promise<StoredAccount | undefined> {
+    const rows = await this.db
+      .update(t)
+      .set({ isAdmin, updatedAt: new Date().toISOString() })
+      .where(eq(t.id, accountId))
+      .returning();
+    if (rows.length === 0) return undefined;
+    return toStoredAccount(rows[0]!);
+  }
 }

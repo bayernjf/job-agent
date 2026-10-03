@@ -323,6 +323,7 @@ export const accounts = sqliteTable(
     avatarUrl: text('avatar_url'),
     claimedProfileId: text('claimed_profile_id'),
     recruiterDeclaredAt: text('recruiter_declared_at'),
+    isAdmin: integer('is_admin').notNull().default(0),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
@@ -569,3 +570,55 @@ export const submitIntents = sqliteTable(
 
 export type SubmitIntentInsert = typeof submitIntents.$inferInsert;
 export type SubmitIntentSelect = typeof submitIntents.$inferSelect;
+
+/**
+ * llm_catalog_models 表——内置模型目录（迁移 024，design-llm-model-provisioning
+ * §4.2）。admin 面维护；白名单不变量：只有本表字段可被 admin 数据覆盖，
+ * baseUrl/apiKey 永远在 env。
+ */
+export const llmCatalogModels = sqliteTable(
+  'llm_catalog_models',
+  {
+    id: text('id').primaryKey(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    enabled: integer('enabled').notNull().default(1),
+    isDefault: integer('is_default').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
+    modalities: text('modalities').notNull().default('["text"]'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [index('idx_catalog_default').on(table.isDefault, table.enabled)],
+);
+
+export type LlmCatalogModelInsert = typeof llmCatalogModels.$inferInsert;
+export type LlmCatalogModelSelect = typeof llmCatalogModels.$inferSelect;
+
+/**
+ * user_llm_configs 表——BYOK 模型配置（迁移 025，design §4.3）。
+ * api_key_encrypted 只存 AES-256-GCM 密文（决策 #21-1）；一账号一行（#21-6）。
+ */
+export const userLlmConfigs = sqliteTable(
+  'user_llm_configs',
+  {
+    accountId: text('account_id').primaryKey(),
+    provider: text('provider').notNull().default('custom'),
+    baseUrl: text('base_url').notNull(),
+    model: text('model').notNull(),
+    apiKeyEncrypted: text('api_key_encrypted').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+);
+
+export type UserLlmConfigInsert = typeof userLlmConfigs.$inferInsert;
+export type UserLlmConfigSelect = typeof userLlmConfigs.$inferSelect;
