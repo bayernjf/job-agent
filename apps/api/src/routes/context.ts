@@ -8,6 +8,7 @@ import type { AgentRepos } from '../agent-runner.js';
 import type { AgentConfig } from '../agent-config.js';
 import type { AuthProvider } from '../auth-provider.js';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
+import type { CoverLetterProvider } from '@jobagent/llm';
 import type { AuthConfig } from '../auth-config.js';
 import type { DemoConfig } from '../demo-config.js';
 import type { ApiDeps, ApiRepos } from './types.js';
@@ -25,6 +26,8 @@ export interface RouteDeps {
   giteeProvider: AuthProvider | null;
   /** 简历 LLM 润色（未配置为 null，规则版兜底） */
   polishProvider: ResumePolishProvider | null;
+  /** 求职信 LLM 生成（A 档；未配置为 null，端点如实返回 LLM_NOT_CONFIGURED） */
+  coverLetterProvider: CoverLetterProvider | null;
   /** OAuth state 签名密钥（AUTH_STATE_SECRET 或进程随机） */
   stateSecret: string;
   agentConfig: AgentConfig;

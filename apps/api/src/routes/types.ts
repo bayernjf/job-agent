@@ -23,6 +23,7 @@ import type { DemoConfig } from '../demo-config.js';
 import type { AuthConfig } from '../auth-config.js';
 import type { AuthProvider } from '../auth-provider.js';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
+import type { CoverLetterProvider } from '@jobagent/llm';
 import type { ClaimOneResult } from '@jobagent/worker';
 import type { MaintenanceTask } from '../cron-jobs.js';
 import type { AgentConfig } from '../agent-config.js';
@@ -78,6 +79,12 @@ export interface ApiDeps {
    * 显式传 null = 强制关闭；测试注入 FakeLlmClient 包装的 provider。
    */
   resumePolish?: ResumePolishProvider | null;
+  /**
+   * 求职信 LLM provider（A 档，2026-10-03）。
+   * 不传（undefined）= 按服务端 LLM_* 环境变量自动构造（无 LLM_API_KEY 则为 null，
+   * 端点如实返回 LLM_NOT_CONFIGURED，不伪造求职信）；显式传 null = 强制关闭。
+   */
+  coverLetter?: CoverLetterProvider | null;
   /**
    * 单任务处理（serverless cron）。不传 = 调 @jobagent/worker 的 claimAndProcessOne
    * （读 GITHUB_TOKEN/GITEE_TOKEN）；测试注入 fake，避免打真实采集。

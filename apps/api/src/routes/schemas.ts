@@ -95,6 +95,20 @@ export const ResumeBuildRequestSchema = z
     message: 'exactly one of jobId or posting is required',
   });
 
+// 求职信生成请求体（A 档，2026-10-03）：画像 + 岗位 + 可选本地补填；
+// 仅登录 user 可调（LLM 付费），产物不入库、不记日志，失败如实报错不伪造。
+export const CoverLetterRequestSchema = z
+  .object({
+    profileId: z.string().min(1, 'profileId is required'),
+    jobId: z.string().min(1).optional(),
+    posting: ManualPostingSchema.optional(),
+    locale: ResumeLocaleSchema.optional(),
+    local: LocalResumeFieldsSchema.optional(),
+  })
+  .refine((d) => Boolean(d.jobId) !== Boolean(d.posting), {
+    message: 'exactly one of jobId or posting is required',
+  });
+
 // ── 企业侧人才检索（筛选工作台 P-A/P-B）──────────────────────────────────
 // 全是 query string（字符串），枚举集合/数字在 handler 内逐项转换校验。
 export const CandidateSearchQuerySchema = z.object({
