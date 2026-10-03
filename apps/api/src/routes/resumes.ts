@@ -22,11 +22,12 @@ import {
   renderMarkdown,
 } from '@jobagent/resume-core';
 import type { RouteDeps } from './context.js';
+import { resolveTextLlm } from './llm-resolve.js';
 import { CoverLetterRequestSchema, ResumeBuildRequestSchema } from './schemas.js';
 import type { HonoEnv } from './types.js';
 
 export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now, polishProvider } = d;
+  const { repos, now } = d;
 
   app.post('/resumes/build', async (c) => {
     const buildPrincipal = c.get('principal');
@@ -99,14 +100,16 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     });
 
     // 可选 B 档 LLM 措辞润色：只改措辞、安全层防臆造，任何失败/未配置都回退规则版（draft 引用不变）。
+    // LLM 供给（决策 #21）：每次调用前解析 BYOK 优先 → 内置回落 → 规则版。
     let finalDraft = ruleDraft;
     let polish: { requested: boolean; applied: boolean; reason?: string } | undefined;
     if (req.polish === true) {
       polish = { requested: true, applied: false };
-      if (!polishProvider) {
+      const llm = await resolveTextLlm(c, d);
+      if (llm.source === 'none') {
         polish.reason = 'not_configured';
       } else {
-        const result = await polishResume(ruleDraft, posting, polishProvider, {
+        const result = await polishResume(ruleDraft, posting, llm.polish!, {
           locale,
           now: now(),
         });
@@ -156,13 +159,15 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
     }
     const req = parsed.data;
-    const { coverLetterProvider } = d;
-    if (!coverLetterProvider) {
+    // LLM 供给（决策 #21）：BYOK 优先 → 内置回落；两者都无 → 如实 LLM_NOT_CONFIGURED。
+    const llm = await resolveTextLlm(c, d);
+    if (!llm.cover) {
       return c.json(
         { error: 'LLM is not configured on the server', code: 'LLM_NOT_CONFIGURED' },
         503,
       );
     }
+    const coverLetterProvider = llm.cover;
 
     const storedProfile = await repos.profiles.getById(req.profileId);
     if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
