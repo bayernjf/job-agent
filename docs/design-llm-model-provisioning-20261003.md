@@ -1,8 +1,8 @@
 # LLM 模型供给设计：内置模型（Admin UI 管理，参考 agent-world）+ BYOK（用户自由设置）
 
-- 状态：**方向已拍板（2026-10-03），细节待拍板（决策 #21）**；设计定稿，代码未动
-- 日期：2026-10-03（v2：按 agent-world model-catalog 方案重构内置层管理方式）
-- 关联：handoff item102/103；[待拍板决策清单 #21](待拍板决策清单-20260910.md)；[design-cover-letter-20261003.md](design-cover-letter-20261003.md)；[design-targeted-resume-20260915.md](design-targeted-resume-20260915.md) §10
+- 状态：**全部已拍板（2026-10-03，决策 #21 子问 0–6 全采纳助手建议）；待开工 P0 里程碑**
+- 日期：2026-10-03（v3：决策 #21 全部拍板；v2 按 agent-world model-catalog 方案重构内置层管理方式）
+- 关联：handoff item102/103/104；[待拍板决策清单 #21](待拍板决策清单-20260910.md)；[design-cover-letter-20261003.md](design-cover-letter-20261003.md)；[design-targeted-resume-20260915.md](design-targeted-resume-20260915.md) §10
 - 参考：agent-world [design-model-catalog.md](https://github.com/bayernjf/agent-world/blob/main/docs/design-model-catalog.md)（内置目录 admin 面 + 字段归属 + 凭证 env only 不变量，2026-09-25/26 已全部落地）
 
 ## 1. 背景与动机
@@ -118,22 +118,16 @@ CREATE TABLE user_llm_configs (
 
 | 子问 | 选项 | 助手建议 | 状态 |
 | --- | --- | --- | --- |
-| 0. 内置管理方式 | Admin UI（参考 agent-world）/ 继续改 env 发版 | **Admin UI** | ✅ **已拍板 2026-10-03（用户）** |
-| 0'. BYOK 开放度 | 用户自由设置任意 OpenAI 兼容端点 / 限定白名单厂商 | **用户自由设置** | ✅ **已拍板 2026-10-03（用户）** |
-| 1. BYOK 密钥存储 | A 服务端加密列（`LLM_ENC_KEY`）/ B 仅浏览器本地 | **A**（LLM 调用在服务端，本地 key 明文过网络） | ⏸ 待拍板（倾向 A） |
-| 2. 内置凭证形态 | A `apiKey`/`baseUrl` 仍 env only（agent-world 不变量）/ B 也进 admin 数据面 | **A**（凭证永不进数据不进界面） | ⏸ 待拍板（倾向 A） |
-| 3. 内置成本与配额 | A 平台承担、内置免费（账号级限流兜底）/ B 内置仅 demo 预置 | **A** | ⏸ 待拍板（倾向 A） |
-| 4. BYOK 与平台配额 | A BYOK 不计平台配额（仅账号级限流）/ B 同样计入 | **A** | ⏸ 待拍板（倾向 A） |
-| 5. 首个 admin 授予 | A env 白名单自动置位（`ADMIN_ACCOUNT_LOGINS`）/ B 手动 SQL | **A**（零手工操作） | ⏸ 待拍板（倾向 A） |
-| 6. 一账号一条 vs 按用途多条 | A 一条文本模型配置 / B polish 与 cover-letter 各一 | **A**（MVP 简化） | ⏸ 待拍板（倾向 A） |
+| 0. 内置管理方式 | Admin UI（参考 agent-world）/ 继续改 env 发版 | **Admin UI** | ✅ **已拍板 2026-10-03** |
+| 0'. BYOK 开放度 | 用户自由设置任意 OpenAI 兼容端点 / 限定白名单厂商 | **用户自由设置** | ✅ **已拍板 2026-10-03** |
+| 1. BYOK 密钥存储 | A 服务端加密列（`LLM_ENC_KEY`）/ B 仅浏览器本地 | **A**（LLM 调用在服务端，本地 key 明文过网络） | ✅ **已拍板 2026-10-03（A）** |
+| 2. 内置凭证形态 | A `apiKey`/`baseUrl` 仍 env only（agent-world 不变量）/ B 也进 admin 数据面 | **A**（凭证永不进数据不进界面） | ✅ **已拍板 2026-10-03（A）** |
+| 3. 内置成本与配额 | A 平台承担、内置免费（账号级限流兜底）/ B 内置仅 demo 预置 | **A** | ✅ **已拍板 2026-10-03（A）** |
+| 4. BYOK 与平台配额 | A BYOK 不计平台配额（仅账号级限流）/ B 同样计入 | **A** | ✅ **已拍板 2026-10-03（A）** |
+| 5. 首个 admin 授予 | A env 白名单自动置位（`ADMIN_ACCOUNT_LOGINS`）/ B 手动 SQL | **A**（零手工操作） | ✅ **已拍板 2026-10-03（A）** |
+| 6. 一账号一条 vs 按用途多条 | A 一条文本模型配置 / B polish 与 cover-letter 各一 | **A**（MVP 简化） | ✅ **已拍板 2026-10-03（A）** |
 
-> **【你的决定】（未拍板项，2026-10-03 登记；子问 0/0' 已拍板）**
-> 1.
-> 2.
-> 3.
-> 4.
-> 5.
-> 6.
+> **【你的决定】（2026-10-03 全部拍板，0–6 全采纳助手建议）**：内置＝Admin UI 管理（admin 管目录、凭证 env only）；BYOK＝用户自由设置（一账号一条、服务端加密列、不计平台配额、账号级限流）；内置免费平台承担；首个 admin 经 `ADMIN_ACCOUNT_LOGINS` env 白名单自动置位。
 
 ## 6. 里程碑拆分
 
@@ -157,3 +151,4 @@ CREATE TABLE user_llm_configs (
 
 - 2026-10-03（v1）：用户提出「内置模型（Agnes）+ BYOK」双轨；设计文档立项，决策 #21 待拍板（handoff item102）。
 - 2026-10-03（v2）：**用户拍板子问 0/0'**——内置模型＝**Admin UI 管理**（参考 agent-world [design-model-catalog](https://github.com/bayernjf/agent-world/blob/main/docs/design-model-catalog.md)，管理目录而非凭证）；BYOK＝**用户自由设置**。设计按 agent-world 方案重构：字段归属按「改一次动什么」切、凭证 env only 不变量、下架即报错、启动加载+写后显式刷新、admin 权限与简化审计；并登记 JobAgent 三项差异适配（无 role/无 settings 表/无 audit）。handoff item103。
+- 2026-10-03（v3）：**决策 #21 子问 1–6 全部拍板（全采纳助手建议）**——BYOK 密钥＝服务端 AES-256-GCM 加密列（`LLM_ENC_KEY`）；内置凭证＝env only；内置免费平台承担；BYOK 不计平台配额（账号级限流）；首个 admin＝`ADMIN_ACCOUNT_LOGINS` env 白名单自动置位；BYOK＝一账号一条。**设计定稿，P0 待开工**。handoff item104。
