@@ -16,8 +16,11 @@ import {
  * 阶段 1（求职工作台）实际路径：
  *   created → configured → watching → recommending → awaiting_approval → tracking
  *   （无合格项时 watching/recommending --rescan--> watching；用户中止 --cancel--> cancelled）
- * `submitting` / `submitted` 是阶段 2（扩展执行投递）才使用的状态，此处先固化迁移，
- * 避免阶段 2 再改状态机取值。
+ * 阶段 2（扩展执行投递，§10.4 A 主链，2026-10-03 接线）：
+ *   awaiting_approval --approve--> submitting --submitted--> submitted --track--> tracking
+ *   （approve 后任务离开人机闸进入机器执行态；扩展回执分两步落两个审计时刻。
+ *     保留 awaiting_approval --submitted--> tracking：用户不 approve 直接回填的兼容路径）
+ * `submitting` / `submitted` 阶段 1 预留取值，阶段 2 起正式使用。
  */
 
 /** 迁移动作者：user=用户点击、agent=Agent 一轮、system=cron/运维。 */
@@ -49,11 +52,11 @@ export const JOB_RUN_TRANSITIONS: JobRunTransitionTable = {
     cancel: 'cancelled',
   },
   awaiting_approval: {
-    // 阶段 1：确认只是把票据置 approved，任务仍停在人机闸上（可能还有其它待投项）
-    approve: 'awaiting_approval',
+    // 阶段 2：确认后任务离开人机闸，进入机器执行态（扩展取票据自动填充、用户点提交后回执）
+    approve: 'submitting',
     // 用户拒绝最后一个待投项且无已确认项：回 watching 等下一轮
     reject: 'watching',
-    // 阶段 1：用户标记「已投」（票据置 submitted）→ 进入跟踪
+    // 兼容路径：用户不 approve 直接回填「已投」（阶段 1 行为）→ 进入跟踪
     submitted: 'tracking',
     rescan: 'watching',
     fail: 'failed',

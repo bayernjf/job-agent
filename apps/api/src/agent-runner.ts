@@ -329,6 +329,7 @@ export async function advanceRunOnce(
     candidateLimit: AGENT_DEFAULTS.candidateLimit,
     scanPoolLimit: AGENT_DEFAULTS.scanPoolLimit,
     tickMaxRuns: AGENT_DEFAULTS.tickMaxRuns,
+    submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
   };
   const nowIso = deps.now();
 
@@ -487,17 +488,37 @@ async function scanOnce(
   return { ok: true, view, scan: stats };
 }
 
-/** cron tick：按状态推进至多 maxRuns 个任务（最久没扫的优先）。 */
+/** cron tick：推进至多 maxRuns 个扫描态任务，并回收超时未回执的 submitting 任务（阶段 2，§10.4 A4）。 */
 export async function runAgentTickOnce(deps: {
   repos: AgentRepos;
   now: () => string;
   config?: AgentConfig;
-}): Promise<{ advanced: number; idle: boolean; results: Array<{ runId: string; status: string; intents: number }> }> {
+}): Promise<{
+  advanced: number;
+  recycled: number;
+  idle: boolean;
+  results: Array<{ runId: string; status: string; intents: number }>;
+}> {
   const cfg = deps.config ?? {
     candidateLimit: AGENT_DEFAULTS.candidateLimit,
     scanPoolLimit: AGENT_DEFAULTS.scanPoolLimit,
     tickMaxRuns: AGENT_DEFAULTS.tickMaxRuns,
+    submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
   };
+  // 超时回收：submitting 超过 submitStaleHours 无回执 → fail（显式原因 submit_timeout，
+  // 不静默悬空；用户要重试就新建任务）。取 200 条足够覆盖正常规模，无需新仓储方法。
+  const submitting = await deps.repos.jobRuns.listByStatuses(['submitting'], 200);
+  let recycled = 0;
+  const nowIso = deps.now();
+  for (const run of submitting) {
+    const ageHours = (Date.parse(nowIso) - Date.parse(run.updatedAt)) / 3_600_000;
+    if (ageHours >= cfg.submitStaleHours) {
+      const failed = await applyRunEvent(deps.repos, run, 'fail', 'system', nowIso, {
+        lastError: 'submit_timeout',
+      });
+      if (failed) recycled += 1;
+    }
+  }
   const runs = await deps.repos.jobRuns.listByStatuses(
     ['created', 'configured', 'watching', 'recommending'],
     cfg.tickMaxRuns,
@@ -515,5 +536,5 @@ export async function runAgentTickOnce(deps: {
       results.push({ runId: run.id, status: 'error', intents: 0 });
     }
   }
-  return { advanced: results.length, idle: results.length === 0, results };
+  return { advanced: results.length, recycled, idle: results.length === 0 && recycled === 0, results };
 }
