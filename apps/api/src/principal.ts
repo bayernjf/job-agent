@@ -4,9 +4,15 @@
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Context } from 'hono';
-import { AUTH_SESSION_COOKIE, type Principal } from '@jobagent/shared';
+import { AUTH_SESSION_COOKIE } from '@jobagent/shared';
+import {
+  API_TOKEN_PREFIX,
+  EXT_AUTH_CODE_PREFIX,
+  type Principal,
+} from '@jobagent/shared';
 import type {
   IAccountsRepository,
+  IApiTokensRepository,
   IAuthSessionsRepository,
   IDemoSessionsRepository,
 } from '@jobagent/storage';
@@ -98,6 +104,50 @@ export function generateAccountId(): string {
 /** 不可猜的登录会话 token（同时是 jobagent_session Cookie 值）。 */
 export function generateAuthSessionToken(): string {
   return `ses-${randomBytes(32).toString('base64url')}`;
+}
+
+/** 一次性扩展授权码（明文即凭证，5 分钟单次消费）。 */
+export function generateExtensionAuthCode(): string {
+  return `${EXT_AUTH_CODE_PREFIX}${randomBytes(32).toString('base64url')}`;
+}
+
+/** 扩展长期 API token（明文仅签发时返回一次，库中只存 SHA-256）。 */
+export function generateApiToken(): string {
+  return `${API_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`;
+}
+
+/** SHA-256 hex 摘要（api_tokens.token_hash 的存储形态）。 */
+export function sha256Hex(input: string): string {
+  return createHash('sha256').update(input).digest('hex');
+}
+
+/**
+ * 从 Authorization: Bearer <api_token> 解析登录用户 Principal（扩展登录态，决策 #22）。
+ * 命中 active token 时滑动续期（last_seen_at + expires_at 顺延 ttlMs）并返回 user principal；
+ * 未知/过期/已撤销 token 返回 null（调用方回退 demo/匿名）。sessionId 用 `token:<id>` 前缀，
+ * 与 cookie 会话区分（供审计与撤销对账）。
+ */
+export async function resolveApiTokenPrincipal(
+  bearer: string | undefined,
+  apiTokens: IApiTokensRepository,
+  accounts: IAccountsRepository,
+  now: () => string,
+  ttlMs: number,
+): Promise<Principal | null> {
+  if (!bearer || !bearer.startsWith(API_TOKEN_PREFIX)) return null;
+  const token = await apiTokens.getActiveByHash(sha256Hex(bearer), now());
+  if (!token) return null;
+  const account = await accounts.getById(token.accountId);
+  if (!account) return null;
+  await apiTokens.touchAndSlide(token.id, now(), ttlMs);
+  return {
+    kind: 'user',
+    accountId: account.id,
+    sessionId: `token:${token.id}`,
+    platform: account.platform,
+    login: account.login,
+    expiresAt: token.expiresAt,
+  };
 }
 
 /**

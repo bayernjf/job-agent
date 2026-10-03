@@ -5,17 +5,27 @@
 import type { Context, Hono } from 'hono';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import {
+  API_TOKEN_TTL_MS,
   AUTH_ERROR_CODES,
   AUTH_SESSION_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_RETURN_COOKIE,
+  EXT_AUTH_CODE_TTL_MS,
+  EXT_AUTH_ERROR_CODES,
+  ExtensionAuthTokenConsumeRequestSchema,
   RecruiterDeclareRequestSchema,
+  type ApiTokenSummary,
   type AuthMe,
+  type ExtensionAuthCodeIssueResponse,
+  type ExtensionAuthTokenConsumeResponse,
 } from '@jobagent/shared';
 import {
   generateAccountId,
+  generateApiToken,
   generateAuthSessionToken,
+  generateExtensionAuthCode,
   readCookie,
+  sha256Hex,
 } from '../principal.js';
 import type { AuthProvider, OAuthProfile } from '../auth-provider.js';
 import { OAuthExchangeError } from '../auth-provider.js';
@@ -230,6 +240,105 @@ export function registerAuth(app: Hono<HonoEnv>, d: RouteDeps): void {
     }
     const updated = await repos.accounts.revokeRecruiter(principal.accountId);
     if (!updated) return c.json({ error: 'account not found' }, 404);
+    return new Response(null, { status: 204 });
+  });
+
+
+  // ── 扩展登录态（决策 #22，design-扩展登录态-20261004.md）─────────────────
+  // 扩展经「工作台签发一次性授权码 → 兑换长期 API Token（Bearer）」获得登录身份；
+  // 服务端只存 SHA-256 哈希，明文仅签发响应返回一次。登录始终发生在工作台，
+  // 扩展不重做 OAuth；code 5 分钟单次消费，token 90 天滑动续期、可撤销。
+
+  // POST /auth/extension-token/issue：为当前登录账号签发一次性授权码。
+  // 仅限 cookie 登录的 user（扩展要拿身份必须先在工作台登录）；响应只含 code+expiresAt，
+  // code 经 externally_connectable + S7 origin 校验的通道传给扩展（本端点不接收 code）。
+  app.post('/auth/extension-token/issue', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
+    }
+    const code = generateExtensionAuthCode();
+    const expiresAt = new Date(Date.parse(now()) + EXT_AUTH_CODE_TTL_MS).toISOString();
+    await repos.extensionAuthCodes.create({ id: code, accountId: principal.accountId, expiresAt });
+    const body: ExtensionAuthCodeIssueResponse = { code, expiresAt };
+    return c.json(body, 200);
+  });
+
+  // POST /auth/extension-token/consume：扩展用一次性 code 兑换长期 api_token。
+  // code 即凭证（无额外鉴权）；单次消费防重放；库中只存 token 的 SHA-256 哈希。
+  app.post('/auth/extension-token/consume', async (c) => {
+    const parsed = ExtensionAuthTokenConsumeRequestSchema.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid request', code: EXT_AUTH_ERROR_CODES.codeNotFound }, 400);
+    }
+    const { code } = parsed.data;
+    const existing = await repos.extensionAuthCodes.getById(code);
+    if (!existing) {
+      return c.json({ error: 'extension auth code not found', code: EXT_AUTH_ERROR_CODES.codeNotFound }, 404);
+    }
+    if (existing.usedAt !== null) {
+      return c.json({ error: 'extension auth code already used', code: EXT_AUTH_ERROR_CODES.codeUsed }, 410);
+    }
+    if (existing.expiresAt <= now()) {
+      return c.json({ error: 'extension auth code expired', code: EXT_AUTH_ERROR_CODES.codeExpired }, 410);
+    }
+    const consumed = await repos.extensionAuthCodes.consume(code, now());
+    if (!consumed) {
+      // 并发双请求只有一个成功：另一个按已消费处理
+      return c.json({ error: 'extension auth code already used', code: EXT_AUTH_ERROR_CODES.codeUsed }, 410);
+    }
+    const account = await repos.accounts.getById(existing.accountId);
+    if (!account) {
+      return c.json({ error: 'issuing account not found', code: EXT_AUTH_ERROR_CODES.codeNotFound }, 404);
+    }
+    const apiToken = generateApiToken();
+    const expiresAt = new Date(Date.parse(now()) + API_TOKEN_TTL_MS).toISOString();
+    await repos.apiTokens.create({
+      id: apiToken,
+      accountId: existing.accountId,
+      tokenHash: sha256Hex(apiToken),
+      name: 'browser extension',
+      expiresAt,
+    });
+    const body: ExtensionAuthTokenConsumeResponse = {
+      apiToken,
+      name: 'browser extension',
+      expiresAt,
+      account: { platform: account.platform, login: account.login },
+    };
+    return c.json(body, 200);
+  });
+
+  // GET /auth/extension-tokens：授权管理列表（仅指纹尾 4 位，不可逆查明文）。
+  app.get('/auth/extension-tokens', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
+    }
+    const tokens = await repos.apiTokens.listActiveByAccount(principal.accountId, now());
+    const summaries: ApiTokenSummary[] = tokens.map((t) => ({
+      id: t.id,
+      fingerprint: t.id.slice(-4),
+      name: t.name,
+      createdAt: t.createdAt,
+      lastSeenAt: t.lastSeenAt,
+      expiresAt: t.expiresAt,
+    }));
+    return c.json({ tokens: summaries }, 200);
+  });
+
+  // DELETE /auth/extension-tokens/:id：撤销本人扩展 token（不可逆；不存在/非本人 404）。
+  app.delete('/auth/extension-tokens/:id', async (c) => {
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
+    }
+    const tokenId = c.req.param('id');
+    const owned = await repos.apiTokens.listActiveByAccount(principal.accountId, now());
+    if (!owned.some((t) => t.id === tokenId)) {
+      return c.json({ error: 'extension token not found', code: EXT_AUTH_ERROR_CODES.tokenNotFound }, 404);
+    }
+    await repos.apiTokens.revoke(tokenId, now());
     return new Response(null, { status: 204 });
   });
 }
