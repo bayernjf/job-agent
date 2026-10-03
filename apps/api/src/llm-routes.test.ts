@@ -244,7 +244,7 @@ describe('BYOK /account/llm-config（加密保存 + 掩码回显）', () => {
     const app = await createApp(deps);
     const cookies = await loginAs(BOB, repos, app);
     const auth = { Cookie: cookieHeader(cookies, 'jobagent_session') };
-    const apiKey = 'sk-bob-secret-9876';
+    const apiKey = 'sk-bob-secret-9876'; // gitleaks:allow 测试假 key
 
     const get0 = await app.request('/account/llm-config', { headers: auth });
     expect(get0.status).toBe(200);
@@ -308,7 +308,7 @@ describe('BYOK /account/llm-config（加密保存 + 掩码回显）', () => {
     const res = await app.request('/account/llm-config', {
       method: 'PUT',
       headers: { ...auth, 'content-type': 'application/json' },
-      body: JSON.stringify({ baseUrl: 'https://api.example.com/v1', model: 'm', apiKey: 'sk-x' }),
+      body: JSON.stringify({ baseUrl: 'https://api.example.com/v1', model: 'm', apiKey: 'sk-x' }), // gitleaks:allow
     });
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ code: 'ENCRYPTION_NOT_CONFIGURED' });
@@ -585,7 +585,7 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
       body: JSON.stringify({
         baseUrl: 'https://byok.example.com/v1',
         model: 'byok-model',
-        apiKey: 'sk-byok-key',
+        apiKey: 'sk-byok-key', // gitleaks:allow
       }),
     });
 
@@ -598,7 +598,7 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
 
     const [url, init] = fetchStub.mock.calls[0] as [string, RequestInit];
     expect(String(url)).toBe('https://byok.example.com/v1/chat/completions');
-    expect((init.headers as Record<string, string>).authorization).toBe('Bearer sk-byok-key');
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer sk-byok-key'); // gitleaks:allow
   });
 
   it('内置回落：未配 BYOK → 用服务端内置 provider（注入 fake）', async () => {
