@@ -42,4 +42,9 @@ export interface IAccountsRepository {
    * 不认领自己的画像，且声明不得被后台任务静默重置（设计 §7.1）。
    */
   deleteUnclaimed(nowIso: string, retainMs: number): Promise<number>;
+  /**
+   * 设置平台管理员标记（迁移 023，决策 #21-5：ADMIN_ACCOUNT_LOGINS env 白名单
+   * 登录时自动置位）。幂等；账号不存在返回 undefined。
+   */
+  setAdmin(accountId: string, isAdmin: boolean): Promise<StoredAccount | undefined>;
 }
