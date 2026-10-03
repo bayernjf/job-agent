@@ -90,6 +90,7 @@ pnpm --filter <pkg> dev      # 只跑某个包/应用
 pnpm migrate:up / migrate:down / migrate:status   # SQLite 迁移（migrate:pg:* 走 Postgres）
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 迁移目录对齐
 bash tools/preflight.sh          # 上线前一键本地预检：typecheck/迁移/单测/build/audit（--e2e 追加两套 E2E；--deploy 追加 Vercel 产物构建 + Docker PG 方言闸 + 扩展 release 打包）
+bash tools/backup-db.sh          # 数据库备份（B4）：pg_dump 到 backups/ 带时间戳、保留最新 N 份（--dry-run 只打印计划；DATABASE_URL 需 5432 session 串）
 ```
 
 扩展 CWS 发布包（release 构建 + zip，需指定生产 API/站点域，详见 [store-assets README](apps/extension/store-assets/README.md)）：
