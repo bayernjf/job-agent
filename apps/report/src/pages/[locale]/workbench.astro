@@ -13,6 +13,7 @@
 import Layout from '../../layouts/Layout.astro';
 import GateCard from '../../components/GateCard.astro';
 import AgentWorkbench from '../../components/AgentWorkbench.tsx';
+import ModelSettings from '../../components/ModelSettings.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
 import { getStorage } from '../../lib/db.js';
 import { resolveViewer } from '../../lib/auth.js';
@@ -228,6 +229,37 @@ const claimedProfileId = viewer.kind === 'user' ? viewer.claimedProfileId : null
             postedAt: t('workbench.fields.postedAt'),
             run: t('workbench.fields.run'),
           },
+        }}
+      />
+      <ModelSettings
+        client:load
+        apiBase={apiBase}
+        locale={locale}
+        labels={{
+          title: t('modelSettings.title'),
+          subtitle: t('modelSettings.subtitle'),
+          baseUrl: t('modelSettings.baseUrl'),
+          model: t('modelSettings.model'),
+          apiKey: t('modelSettings.apiKey'),
+          apiKeyHint: t('modelSettings.apiKeyHint'),
+          providerReadonly: t('modelSettings.providerReadonly'),
+          currentKey: t('modelSettings.currentKey'),
+          notConfigured: t('modelSettings.notConfigured'),
+          save: t('modelSettings.save'),
+          test: t('modelSettings.test'),
+          testing: t('modelSettings.testing'),
+          saving: t('modelSettings.saving'),
+          remove: t('modelSettings.remove'),
+          removeConfirm: t('modelSettings.removeConfirm'),
+          testOk: t('modelSettings.testOk'),
+          testFailed: t('modelSettings.testFailed'),
+          saveSuccess: t('modelSettings.saveSuccess'),
+          removeSuccess: t('modelSettings.removeSuccess'),
+          saveFailed: t('modelSettings.saveFailed'),
+          loadFailed: t('modelSettings.loadFailed'),
+          noKey: t('modelSettings.noKey'),
+          encryptionMissing: t('modelSettings.encryptionMissing'),
+          byokHint: t('modelSettings.byokHint'),
         }}
       />
     )}
