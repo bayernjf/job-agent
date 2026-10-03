@@ -32,6 +32,14 @@ import {
 } from '../lib/api.js';
 import { matchTier, resolveEvidenceLinks, resolveReportBase, resumeDeepLink } from './match-utils.js';
 import { readStoredLocalProfile, writeStoredLocalProfile } from '../lib/local-profile-storage.js';
+import {
+  readStoredApiToken,
+  readStoredApiTokenValue,
+  writeStoredApiToken,
+  clearStoredApiToken,
+  type StoredApiToken,
+} from '../lib/api-token-storage.js';
+import type { ExtensionAuthTokenConsumeResponse } from '@jobagent/shared';
 import { swFetch } from '../lib/sw-fetch.js';
 import {
   LOCALE_STORAGE_KEY,
@@ -144,6 +152,10 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [matches, setMatches] = useState<JobMatchItem[]>([]);
   const [matchEvidence, setMatchEvidence] = useState<Record<string, EvidenceBrief> | undefined>(undefined);
   const [matchError, setMatchError] = useState<string | null>(null);
+  const [tokenInfo, setTokenInfo] = useState<StoredApiToken | null>(null);
+  const [codeInput, setCodeInput] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // 挂载后异步拉取扩展 chrome.storage 的权威档案（报告页可能已写入），合并到本域缓存。
   // chrome.storage 优先、本域 localStorage 补缺；扩展未装/无 chrome 时静默跳过。
@@ -152,6 +164,18 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     void (async () => {
       const stored = await readStoredLocalProfile();
       if (!cancelled) setLocal((prev) => mergeLocalProfile(stored, prev));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 扩展登录态（决策 #22）：挂载时恢复已授权身份（chrome.storage.local）。
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const stored = await readStoredApiToken();
+      if (!cancelled) setTokenInfo(stored);
     })();
     return () => {
       cancelled = true;
@@ -168,6 +192,47 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     }
   }
 
+  async function handleConnect(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    const code = codeInput.trim();
+    if (!code) return;
+    setConnecting(true);
+    setAuthError(null);
+    try {
+      const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
+      const res = await swFetch(`${baseUrl}/auth/extension-token/consume`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (res.status === 401 || res.status === 410 || res.status === 404 || res.status === 400) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as ExtensionAuthTokenConsumeResponse;
+      const stored: StoredApiToken = {
+        token: body.apiToken,
+        name: body.name,
+        expiresAt: body.expiresAt,
+        account: body.account,
+      };
+      await writeStoredApiToken(stored);
+      setTokenInfo(stored);
+      setCodeInput('');
+    } catch (err) {
+      setAuthError((err as Error).message);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnect(): Promise<void> {
+    await clearStoredApiToken();
+    setTokenInfo(null);
+    setAuthError(null);
+  }
+
   async function handleAnalyze(e: FormEvent): Promise<void> {
     e.preventDefault();
     if (!username.trim()) return;
@@ -181,7 +246,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     localStorage.setItem(API_BASE_KEY, apiBase);
     const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
     try {
-      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch });
+      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch, tokenProvider: readStoredApiTokenValue });
       const p = await api.fetchProfile(username.trim(), platform);
       setProfile(p);
       // 异步触发匹配，不阻塞画像展示与一键填充
@@ -244,6 +309,40 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
       >
         {t('panel.tryWebDemo')}
       </a>
+
+      {/* 扩展登录态（决策 #22）：工作台签发授权码 → 本扩展兑换长期 token；断开仅清除本机凭证 */}
+      <div className="ja-auth" data-testid="extension-auth">
+        {tokenInfo ? (
+          <div className="ja-auth-connected">
+            <span className="ja-auth-badge">
+              {t('panel.extAuth.connectedAs', { login: tokenInfo.account.login })}
+            </span>
+            <button type="button" className="ja-btn ja-btn-primary" onClick={() => void handleDisconnect()}>
+              {t('panel.extAuth.disconnect')}
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleConnect}>
+            <label className="ja-label" htmlFor="ja-auth-code">
+              {t('panel.extAuth.codeLabel')}
+            </label>
+            <input
+              id="ja-auth-code"
+              className="ja-input"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={t('panel.extAuth.codePlaceholder')}
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+            />
+            <button type="submit" className="ja-btn ja-btn-primary" disabled={connecting || !codeInput.trim()}>
+              {connecting ? t('panel.extAuth.connecting') : t('panel.extAuth.connect')}
+            </button>
+          </form>
+        )}
+        {authError ? <p className="ja-error" role="alert">{authError}</p> : null}
+      </div>
 
       <form onSubmit={handleAnalyze}>
         <div className="ja-platform-switch" role="group" aria-label={t('panel.platformGroupLabel')}>

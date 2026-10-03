@@ -20,6 +20,8 @@ export interface ApiClientOptions {
   /** 轮询总超时（默认 60s） */
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  /** 扩展登录态（决策 #22）：返回长期 Bearer token；未登录返回 null（匿名调用） */
+  tokenProvider?: () => Promise<string | null>;
 }
 
 const DEFAULT_BASE = typeof EXTENSION_API_BASE === 'string' ? EXTENSION_API_BASE : 'http://localhost:3000';
@@ -45,6 +47,13 @@ export function apiError(message: string, status?: number, details?: unknown): A
 
 export class JobAgentApi {
   constructor(private readonly opts: ApiClientOptions) {}
+
+  /** 鉴权头：tokenProvider 提供明文 token 时附加 Authorization（仅 tkn- 前缀），否则空对象。 */
+  private async authHeaders(): Promise<Record<string, string>> {
+    const token = await this.opts.tokenProvider?.();
+    if (token) return { authorization: `Bearer ${token}` };
+    return {};
+  }
 
   /**
    * 输入用户名（可选平台），返回可信画像（ExportableProfile）。
@@ -95,6 +104,7 @@ export class JobAgentApi {
   ): Promise<string | undefined> {
     const res = await fetchImpl(
       `${baseUrl}/profiles/by-subject/${platform}/${encodeURIComponent(username)}`,
+      { headers: await this.authHeaders() },
     );
     if (res.status === 404) return undefined;
     if (!res.ok) throw apiError(`profile lookup failed (HTTP ${res.status})`, res.status);
@@ -110,7 +120,7 @@ export class JobAgentApi {
   ): Promise<{ jobId: string | undefined; profileId: string | undefined }> {
     const res = await fetchImpl(`${baseUrl}/analyze`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(await this.authHeaders()) },
       body: JSON.stringify({ username, platform }),
     });
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -128,7 +138,9 @@ export class JobAgentApi {
     baseUrl: string,
     jobId: string,
   ): Promise<{ status: string; profileId: string | undefined; error: string | undefined }> {
-    const res = await fetchImpl(`${baseUrl}/jobs/${encodeURIComponent(jobId)}`);
+    const res = await fetchImpl(`${baseUrl}/jobs/${encodeURIComponent(jobId)}`, {
+      headers: await this.authHeaders(),
+    });
     if (!res.ok) throw apiError(`job lookup failed (HTTP ${res.status})`, res.status);
     const body = (await res.json()) as Record<string, unknown>;
     return {
@@ -139,7 +151,9 @@ export class JobAgentApi {
   }
 
   private async getProfile(fetchImpl: typeof fetch, baseUrl: string, profileId: string): Promise<ExportableProfile> {
-    const res = await fetchImpl(`${baseUrl}/profiles/${encodeURIComponent(profileId)}/exportable`);
+    const res = await fetchImpl(`${baseUrl}/profiles/${encodeURIComponent(profileId)}/exportable`, {
+      headers: await this.authHeaders(),
+    });
     if (!res.ok) throw apiError(`profile lookup failed (HTTP ${res.status})`, res.status);
     const body = await res.json();
     const parsed = parseExportableProfile(body);

@@ -48,5 +48,11 @@
   "match.low": "弱覆盖",
   "match.resume": "针对此岗生成简历",
   "panel.tryWebDemo": "没有账号？在网页端免费试用演示",
-  "nav.language": "English"
+  "nav.language": "English",
+  "panel.extAuth.codeLabel": "浏览器扩展授权码",
+  "panel.extAuth.codePlaceholder": "在工作台「浏览器扩展授权」签发后粘贴到这里",
+  "panel.extAuth.connect": "连接扩展",
+  "panel.extAuth.connecting": "连接中…",
+  "panel.extAuth.disconnect": "断开连接",
+  "panel.extAuth.connectedAs": "已连接为 {login}"
 }

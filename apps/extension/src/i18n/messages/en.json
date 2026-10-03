@@ -48,5 +48,11 @@
   "match.low": "Weak match",
   "match.resume": "Build a targeted resume",
   "panel.tryWebDemo": "No account? Try the free demo on the web",
-  "nav.language": "中文"
+  "nav.language": "中文",
+  "panel.extAuth.codeLabel": "Browser extension code",
+  "panel.extAuth.codePlaceholder": "Paste the code issued in the workbench",
+  "panel.extAuth.connect": "Connect",
+  "panel.extAuth.connecting": "Connecting…",
+  "panel.extAuth.disconnect": "Disconnect",
+  "panel.extAuth.connectedAs": "Connected as {login}"
 }

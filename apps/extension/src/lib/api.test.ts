@@ -250,3 +250,56 @@ describe('matchJobs', () => {
     await expect(matchJobs('http://api.test', 'prof-1', { fetchImpl })).rejects.toThrow(/HTTP 500/);
   });
 });
+
+describe('JobAgentApi token auth (决策 #22)', () => {
+  it('attaches Authorization header when tokenProvider returns a token', async () => {
+    const seen: Array<{ url: string; headers: Record<string, string> | undefined }> = [];
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+      seen.push({ url: u, headers: (init?.headers ?? {}) as Record<string, string> });
+      if (u.includes('/profiles/by-subject/')) {
+        return jsonResponse(200, { profileId: 'prof-1' });
+      }
+      if (u.endsWith('/profiles/prof-1/exportable')) {
+        return jsonResponse(200, VALID_PROFILE);
+      }
+      return jsonResponse(500, { error: 'unexpected' });
+    }) as typeof fetch;
+
+    const api = new JobAgentApi({
+      baseUrl: 'http://api.test',
+      fetchImpl,
+      tokenProvider: async () => 'tkn-secret-value',
+    });
+    await api.fetchProfile('demo-dev', 'github');
+
+    // 每个请求都应带 Authorization: Bearer
+    expect(seen.length).toBeGreaterThan(0);
+    for (const req of seen) {
+      expect(req.headers?.['authorization']).toBe('Bearer tkn-secret-value');
+    }
+  });
+
+  it('does not attach Authorization when no token is available', async () => {
+    let seenHeaders: Record<string, string> | undefined;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const u = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;
+      seenHeaders = (init?.headers ?? {}) as Record<string, string>;
+      if (u.includes('/profiles/by-subject/')) {
+        return jsonResponse(200, { profileId: 'prof-1' });
+      }
+      if (u.endsWith('/profiles/prof-1/exportable')) {
+        return jsonResponse(200, VALID_PROFILE);
+      }
+      return jsonResponse(500, { error: 'unexpected' });
+    }) as typeof fetch;
+
+    const api = new JobAgentApi({
+      baseUrl: 'http://api.test',
+      fetchImpl,
+      tokenProvider: async () => null,
+    });
+    await api.fetchProfile('demo-dev', 'github');
+    expect(seenHeaders?.['authorization']).toBeUndefined();
+  });
+});
