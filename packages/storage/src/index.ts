@@ -33,6 +33,8 @@ export type { IJobPreferencesRepository } from './repositories/job-preferences.j
 export type { IJobRunsRepository } from './repositories/job-runs.js';
 export type { IJobRunEventsRepository } from './repositories/job-run-events.js';
 export type { ISubmitIntentsRepository } from './repositories/submit-intents.js';
+export type { ILlmCatalogRepository } from './repositories/llm-catalog.js';
+export type { IUserLlmConfigsRepository } from './repositories/user-llm-configs.js';
 
 // 实体领域类型
 export type {

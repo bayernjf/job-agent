@@ -114,6 +114,15 @@ export function registerAuth(app: Hono<HonoEnv>, d: RouteDeps): void {
           avatarUrl: identity.avatarUrl ?? null,
         },
       });
+      // 决策 #21-5：ADMIN_ACCOUNT_LOGINS env 白名单（逗号分隔 login）登录自动置管理员。
+      // 每次登录都检查（幂等），管理员资格由平台主 env 控制，不暴露任何自助入口。
+      const adminLogins = (process.env.ADMIN_ACCOUNT_LOGINS ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (adminLogins.includes(identity.login)) {
+        await repos.accounts.setAdmin(account.id, true);
+      }
       const nowIso = now();
       const expiresAt = new Date(Date.parse(nowIso) + authCfg.sessionTtlMs).toISOString();
       const token = generateAuthSessionToken();
@@ -161,6 +170,8 @@ export function registerAuth(app: Hono<HonoEnv>, d: RouteDeps): void {
       avatarUrl: account?.avatarUrl ?? null,
       claimedProfileId: account?.claimedProfileId ?? null,
       recruiterDeclaredAt: account?.recruiterDeclaredAt ?? null,
+      // LLM 供给（决策 #21）：admin 面权限位（迁移 023 is_admin）
+      canManageLlmCatalog: account?.isAdmin ?? false,
       expiresAt: principal.expiresAt,
     } satisfies AuthMe);
   });

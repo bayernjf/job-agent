@@ -9,6 +9,7 @@ import type {
   IInterviewsRepository,
   IAuthSessionsRepository,
   IDemoSessionsRepository,
+  ILlmCatalogRepository,
   IProfilesRepository,
   IProfileRemovalRequestsRepository,
   IJobPostingsRepository,
@@ -17,13 +18,14 @@ import type {
   IJobRunEventsRepository,
   ISubmitIntentsRepository,
   IEvidenceRepository,
+  IUserLlmConfigsRepository,
 } from '@jobagent/storage';
 import type { Principal } from '@jobagent/shared';
 import type { DemoConfig } from '../demo-config.js';
 import type { AuthConfig } from '../auth-config.js';
 import type { AuthProvider } from '../auth-provider.js';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
-import type { CoverLetterProvider } from '@jobagent/llm';
+import type { CatalogCache, CoverLetterProvider } from '@jobagent/llm';
 import type { ClaimOneResult } from '@jobagent/worker';
 import type { MaintenanceTask } from '../cron-jobs.js';
 import type { AgentConfig } from '../agent-config.js';
@@ -48,6 +50,10 @@ export interface ApiRepos {
   jobRunEvents: IJobRunEventsRepository;
   /** 待投票据 / 人机闸票据（迁移 021） */
   submitIntents: ISubmitIntentsRepository;
+  /** 内置模型目录（LLM 供给 P0，迁移 024） */
+  llmCatalog: ILlmCatalogRepository;
+  /** BYOK 模型配置（LLM 供给 P0，迁移 025） */
+  userLlmConfigs: IUserLlmConfigsRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
 }
@@ -99,6 +105,16 @@ export interface ApiDeps {
    * 求职 Agent 运行配置（阶段 1）。不传 = 按 AGENT_* env 加载（缺失则用内置默认）。
    */
   agentConfig?: AgentConfig;
+  /**
+   * 内置模型目录缓存（LLM 供给 P0）。不传 = 创建空缓存并尝试从仓储预载；
+   * 测试注入固定缓存避免读库。
+   */
+  llmCatalogCache?: CatalogCache;
+  /**
+   * BYOK 密钥加密钥（LLM_ENC_KEY）。不传 = 读环境变量；显式传 null = 强制禁用
+   * BYOK 保存（503 ENCRYPTION_NOT_CONFIGURED）。
+   */
+  llmEncKey?: string | null;
 }
 
 /** Hono 应用环境变量类型（principal 由全局中间件注入）。 */
