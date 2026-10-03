@@ -20,7 +20,8 @@ export const ATS_HTML = `<!doctype html>
   </body>
 </html>`;
 
-export const ATS_PAGE_URL = 'https://example.com/jobs';
+/** Lever 域下的一条岗位申请页（必须落在 content_scripts.matches 白名单内，S6 收窄后 example.com 不再注入）。 */
+export const ATS_PAGE_URL = 'https://jobs.lever.co/jobs';
 
 /** 一条证据字典项（顶层 evidence，面板据此渲染可回溯外链）。 */
 const EVIDENCE_DICT = {
