@@ -167,6 +167,14 @@ h4 { font-size: var(--ja-text-lg); }
   max-width: none;
   margin-bottom: var(--ja-space-4);
 }
+/* 概述区「证据可复核」卖点条（A2，2026-10-03）：与自述简历对比的显性声明 */
+.ja-alert--verifiable {
+  background: var(--ja-color-neutral-100);
+  color: var(--ja-color-info);
+  border-color: var(--ja-color-info);
+  max-width: none;
+  margin: var(--ja-space-3) auto 0;
+}
 
 /* S3 按主体撤回：未认领画像公开申请入口 */
 .removal-request {
