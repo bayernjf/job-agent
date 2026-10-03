@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SCHEMA_VERSION,
+  UNAUTHORIZED_NOTICE,
   parseExportableProfile,
   toExportableProfile,
   type AbilityProfile,
@@ -117,6 +118,18 @@ describe('toExportableProfile', () => {
     expect('avatarUrl' in out.subject).toBe(false);
     expect(out.subject.claimed).toBe(false);
     expect(out.skills).toEqual([]);
+  });
+
+  it('omits authorizationNotice for claimed profiles', () => {
+    const out = toExportableProfile(fullProfile());
+    expect(out.subject.claimed).toBe(true);
+    expect('authorizationNotice' in out).toBe(false);
+  });
+
+  it('attaches authorizationNotice for unclaimed profiles', () => {
+    const out = toExportableProfile(minimalProfile());
+    expect(out.subject.claimed).toBe(false);
+    expect(out.authorizationNotice).toBe(UNAUTHORIZED_NOTICE);
   });
 
   it('output is always parseable by ExportableProfileSchema', () => {

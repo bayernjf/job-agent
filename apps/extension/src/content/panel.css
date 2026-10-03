@@ -203,6 +203,18 @@
   white-space: pre-wrap;
 }
 
+.ja-unclaimed {
+  margin-bottom: var(--ja-space-2);
+  padding: var(--ja-space-2) var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-left: 3px solid var(--ja-color-warning); /* 3px 强调左边框，结构性 */
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-amber-50);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-xs);
+  line-height: var(--ja-leading-normal);
+}
+
 .ja-result {
   margin-top: var(--ja-space-2);
   border-top: 1px solid var(--ja-color-border); /* 1px 分隔线，结构性 */

@@ -4,6 +4,7 @@
 import type { Context } from 'hono';
 import {
   AUTH_ERROR_CODES,
+  UNAUTHORIZED_NOTICE,
   type AbilityProfile,
   type DemoMe,
   type Principal,
@@ -178,6 +179,9 @@ export function formatProfile(profile: StoredProfile) {
       login: profile.subjectLogin,
       claimed: profile.subjectClaimed,
     },
+    // 未认领画像的机器可读出口附加「未经本人授权」标注（deferred 合规线），
+    // 与报告页提示条（item58）同口径；认领画像省略。
+    ...(profile.subjectClaimed ? {} : { authorizationNotice: UNAUTHORIZED_NOTICE }),
     dataWindow: {
       since: profile.dataWindowSince,
       until: profile.dataWindowUntil,

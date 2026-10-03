@@ -649,11 +649,23 @@ export function composeCadenceSummary(
  * - 本投影是纯函数映射（无 I/O），消费方为 P1 Chrome 扩展；远期与投递工具互操作（讨论记录-02 决策 3）可复用。
  */
 
+/**
+ * 「未经本人授权」标注（机器可读出口用，deferred 合规线）。
+ *
+ * 报告页/候选人卡已由 item58 落地提示条；本常量供 JSON API（GET /profiles/:id、
+ * /exportable、MCP 等机器可读出口）在画像未认领时附加，防止第三方抓取
+ * 真实性结论时断章取义。认领画像省略该字段（无标注需求）。
+ * 稳定英文文案，与报告页 en 版同语义（页面语境句已去除）。
+ */
+export const UNAUTHORIZED_NOTICE =
+  'This profile was generated automatically from public activity data and has not been authorised or claimed by its owner. Every conclusion is a reviewable aid, not a finding of fact.';
+
 export const ExportableProfileSchema = z.object({
   schemaVersion: z.string().min(1), // 与 SCHEMA_VERSION 同步（见 toExportableProfile）
   profileId: z.string().min(1),
   generatedAt: z.string().datetime(),
   analyzerVersion: z.string().min(1),
+  authorizationNotice: z.string().min(1).optional(), // 仅未认领时输出（见 toExportableProfile）
   subject: z.object({
     platform: PlatformSchema,
     login: z.string().min(1),
@@ -686,6 +698,7 @@ export function toExportableProfile(profile: AbilityProfile): ExportableProfile 
     profileId: profile.profileId,
     generatedAt: profile.generatedAt,
     analyzerVersion: profile.analyzerVersion,
+    ...(profile.subject.claimed ? {} : { authorizationNotice: UNAUTHORIZED_NOTICE }),
     subject: {
       platform: profile.subject.platform,
       login: profile.subject.login,
