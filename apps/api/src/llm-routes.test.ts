@@ -2,8 +2,8 @@
  * LLM 模型供给路由集成测试（decision #21，design §4）。
  * 内存 SQLite + FakeAuthProvider 完整登录，全程不打网络：
  * - admin 面：匿名 401 / 普通用户 403 / admin 200；PUT 整体替换并刷新缓存；POST refresh 重读仓储
- * - BYOK 面：GET 404 → PUT 加密保存 → GET 只回掩码 → PUT 改配置不换 key → DELETE 204
- * - LLM_ENC_KEY 未配：PUT 503 ENCRYPTION_NOT_CONFIGURED
+ * - BYOK 面：GET 200 configured:false → PUT 加密保存 → GET 只回掩码 → PUT 改配置不换 key → DELETE 204 → GET 200 configured:false
+ * - LLM_ENC_KEY 未配：GET 200 reason:encryption_missing；PUT 503 ENCRYPTION_NOT_CONFIGURED
  * - POST validate：stub global fetch 走成功/失败两分支（最小 max_tokens=1 请求）
  * - ADMIN_ACCOUNT_LOGINS 白名单：登录自动置 is_admin，/auth/me 回 canManageLlmCatalog
  */
@@ -232,7 +232,7 @@ describe('POST /admin/llm-catalog/refresh（显式重读仓储）', () => {
 });
 
 describe('BYOK /account/llm-config（加密保存 + 掩码回显）', () => {
-  it('全链路：404 → PUT 保存 → GET 掩码 → PUT 改配置不换 key → DELETE → 404', async () => {
+  it('全链路：未配置 configured:false → PUT 保存 → GET 掩码 → PUT 改配置不换 key → DELETE → configured:false', async () => {
     const repos = await createStorage({ sqlitePath: ':memory:' });
     const deps: ApiDeps = {
       repos,
@@ -247,7 +247,8 @@ describe('BYOK /account/llm-config（加密保存 + 掩码回显）', () => {
     const apiKey = 'sk-bob-secret-9876';
 
     const get0 = await app.request('/account/llm-config', { headers: auth });
-    expect(get0.status).toBe(404);
+    expect(get0.status).toBe(200);
+    expect(await get0.json()).toEqual({ configured: false });
 
     const put = await app.request('/account/llm-config', {
       method: 'PUT',
@@ -283,10 +284,11 @@ describe('BYOK /account/llm-config（加密保存 + 掩码回显）', () => {
     expect(del.status).toBe(204);
 
     const get2 = await app.request('/account/llm-config', { headers: auth });
-    expect(get2.status).toBe(404);
+    expect(get2.status).toBe(200);
+    expect(await get2.json()).toEqual({ configured: false });
   });
 
-  it('LLM_ENC_KEY 未配置 → PUT 503 ENCRYPTION_NOT_CONFIGURED', async () => {
+  it('LLM_ENC_KEY 未配置 → GET 200 reason:encryption_missing；PUT 503 ENCRYPTION_NOT_CONFIGURED', async () => {
     const repos = await createStorage({ sqlitePath: ':memory:' });
     const deps: ApiDeps = {
       repos,
@@ -297,9 +299,15 @@ describe('BYOK /account/llm-config（加密保存 + 掩码回显）', () => {
     };
     const app = await createApp(deps);
     const cookies = await loginAs(BOB, repos, app);
+    const auth = { Cookie: cookieHeader(cookies, 'jobagent_session') };
+    // 无配置 + 无 encKey：无配置分支优先（reason 只在"有配置但读不出 key"时出现，
+    // 而 PUT 无 encKey 存不进配置，故该分支在本环境不可达、由代码路径保证）
+    const get = await app.request('/account/llm-config', { headers: auth });
+    expect(get.status).toBe(200);
+    expect(await get.json()).toEqual({ configured: false });
     const res = await app.request('/account/llm-config', {
       method: 'PUT',
-      headers: { Cookie: cookieHeader(cookies, 'jobagent_session'), 'content-type': 'application/json' },
+      headers: { ...auth, 'content-type': 'application/json' },
       body: JSON.stringify({ baseUrl: 'https://api.example.com/v1', model: 'm', apiKey: 'sk-x' }),
     });
     expect(res.status).toBe(503);

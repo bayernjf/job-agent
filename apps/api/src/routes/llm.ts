@@ -15,6 +15,7 @@ import {
   AdminLlmCatalogViewSchema,
   LlmCatalogUpsertSchema,
   UserLlmConfigSaveSchema,
+  UserLlmConfigGetResponseSchema,
   UserLlmConfigViewSchema,
   type LlmCatalogModel,
   type StoredUserLlmConfig,
@@ -131,19 +132,22 @@ export function registerLlmRoutes(app: Hono<HonoEnv>, d: RouteDeps): void {
   });
 
   // ── BYOK（登录用户，迁移 025）──────────────────────────────────────────────
+  // GET 契约：**始终 200**。未配置 / 服务端缺加密 key 都用 configured 标记表达，
+  // 避免浏览器把 4xx 记为资源加载错误（workbench E2E consoleErrors 断言依赖）。
   app.get('/account/llm-config', async (c) => {
     const guard = await requireUser(c, d);
     if (!guard.ok) return guard.response;
     const cfg = await d.repos.userLlmConfigs.getByAccountId(guard.accountId);
     if (!cfg) {
-      c.status(404);
-      return c.json({ error: 'no BYOK config yet', code: NOT_FOUND });
+      return c.json(UserLlmConfigGetResponseSchema.parse({ configured: false }));
     }
     if (!d.llmEncKey) {
-      c.status(503);
-      return c.json({ error: 'encryption key not configured on the server', code: ENCRYPTION_NOT_CONFIGURED });
+      return c.json(
+        UserLlmConfigGetResponseSchema.parse({ configured: false, reason: 'encryption_missing' }),
+      );
     }
-    return c.json(UserLlmConfigViewSchema.parse(toConfigView(cfg, d.llmEncKey)));
+    const view = UserLlmConfigViewSchema.parse(toConfigView(cfg, d.llmEncKey));
+    return c.json(UserLlmConfigGetResponseSchema.parse({ configured: true, ...view }));
   });
 
   app.put('/account/llm-config', async (c) => {
