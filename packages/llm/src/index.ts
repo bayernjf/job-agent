@@ -33,3 +33,11 @@ export type {
   LlmFetchResponse,
   CreateProviderOptions,
 } from './openai-compatible-client.js';
+export {
+  BUILTIN_CATALOG_DEFAULTS,
+  mergeBuiltinCatalog,
+  resolveBuiltinModel,
+  CatalogModelError,
+  type BuiltinCatalogDefaults,
+} from './catalog.js';
+export { createCatalogCache, type CatalogCache } from './catalog-cache.js';
