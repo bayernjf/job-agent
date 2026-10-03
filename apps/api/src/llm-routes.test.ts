@@ -7,8 +7,8 @@
  * - POST validate：stub global fetch 走成功/失败两分支（最小 max_tokens=1 请求）
  * - ADMIN_ACCOUNT_LOGINS 白名单：登录自动置 is_admin，/auth/me 回 canManageLlmCatalog
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCatalogCache } from '@jobagent/llm';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FakeLlmClient, LlmCoverLetterProvider, createCatalogCache } from '@jobagent/llm';
 import { createStorage, type StorageContext } from '@jobagent/storage';
 import { createApp, type ApiDeps } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
@@ -447,5 +447,193 @@ describe('ADMIN_ACCOUNT_LOGINS 白名单（登录自动置位）', () => {
       if (prev === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
       else process.env.ADMIN_ACCOUNT_LOGINS = prev;
     }
+  });
+});
+
+/**
+ * U5 请求路由：BYOK 优先 → 内置回落 → 功能既有策略（cover-letter 503）。
+ * 完整链路：登录 →（可选）保存 BYOK → POST /resumes/cover-letter，
+ * 用 stub global.fetch 记录真实请求目标，证明"每次调用前解析"接线生效。
+ */
+describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
+  let fetchStub: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchStub = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const body = JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                subject: 'Re: Senior TypeScript Engineer',
+                body: 'I am a TypeScript engineer with evidence-backed experience.',
+              }),
+            },
+          },
+        ],
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchStub);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function seedResume(repos: StorageContext): Promise<string> {
+    await repos.profiles.insert({
+      id: 'p-route',
+      analyzerVersion: 'schema-0.1-engine-0.2',
+      subjectLogin: 'route-user',
+      dataWindowSince: '2024-01-01T00:00:00.000Z',
+      dataWindowUntil: '2026-09-01T00:00:00.000Z',
+      status: 'complete',
+      snapshot: {
+        profileId: 'p-route',
+        analyzerVersion: 'schema-0.1-engine-0.2',
+        generatedAt: '2026-09-15T00:00:00.000Z',
+        dataWindow: { since: '2024-01-01T00:00:00.000Z', until: '2026-09-01T00:00:00.000Z' },
+        analysisLayers: ['L0', 'L1'],
+        subject: {
+          platform: 'github',
+          login: 'route-user',
+          displayName: 'Route User',
+          profileUrl: 'https://github.com/route-user',
+          claimed: false,
+        },
+        summary: { headline: 'TypeScript engineer' },
+        skillTags: [{ name: 'typescript', kind: 'language', depth: 'proficient', confidence: 0.9, evidenceRefs: [] }],
+        highlights: [],
+        activity: { longevityMonths: 12, metrics: { commitCount: 40 } },
+        collaboration: { evidenceRefs: [] },
+        authenticity: { status: 'likely_authentic', confidence: 0.8, signals: [] },
+        interviewQuestions: [],
+        caveats: [],
+      },
+    });
+    await repos.jobPostings.upsertBatch(
+      [
+        {
+          jobId: 'j-route',
+          source: 'greenhouse',
+          sourceUrl: 'https://example.test/jobs/1',
+          title: 'Senior TypeScript Engineer',
+          company: 'Acme',
+          remote: false,
+          postedAt: '2026-09-01T00:00:00.000Z',
+          fetchedAt: '2026-09-15T00:00:00.000Z',
+          tags: ['typescript'],
+          normalizedKey: 'nk-route-1',
+        },
+      ],
+      '2026-09-15T00:00:00.000Z',
+    );
+    const rows = await repos.jobPostings.search({});
+    const job = rows.find((r) => r.title === 'Senior TypeScript Engineer')!;
+    return job.id;
+  }
+
+  async function postCoverLetter(
+    app: Awaited<ReturnType<typeof createApp>>,
+    cookies: Record<string, string>,
+    jobRowId: string,
+  ) {
+    return app.request('/resumes/cover-letter', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: cookieHeader(cookies, 'jobagent_session'),
+      },
+      body: JSON.stringify({
+        profileId: 'p-route',
+        jobId: jobRowId,
+        locale: 'en',
+      }),
+    });
+  }
+
+  it('BYOK 优先：登录用户保存 BYOK 后，cover-letter 请求打到 BYOK 端点', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      coverLetter: null,
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
+    await app.request('/account/llm-config', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: cookieHeader(cookies, 'jobagent_session'),
+      },
+      body: JSON.stringify({
+        baseUrl: 'https://byok.example.com/v1',
+        model: 'byok-model',
+        apiKey: 'sk-byok-key',
+      }),
+    });
+
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    if (res.status !== 200) console.error('BYOK res:', res.status, await res.text());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provenance: { provider: string; model: string } };
+    expect(body.provenance.provider).toBe('custom');
+    expect(body.provenance.model).toBe('byok-model');
+
+    const [url, init] = fetchStub.mock.calls[0] as [string, RequestInit];
+    expect(String(url)).toBe('https://byok.example.com/v1/chat/completions');
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer sk-byok-key');
+  });
+
+  it('内置回落：未配 BYOK → 用服务端内置 provider（注入 fake）', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      coverLetter: new LlmCoverLetterProvider(new FakeLlmClient(() => ({
+        subject: 'Re: role',
+        body: 'Builtin draft body.',
+      }))),
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
+
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provenance: { provider: string } };
+    expect(body.provenance.provider).toBe('fake');
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it('两者都无 → 503 LLM_NOT_CONFIGURED（不伪造求职信）', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      coverLetter: null,
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
+
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'LLM_NOT_CONFIGURED' });
   });
 });
