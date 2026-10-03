@@ -123,14 +123,20 @@ export class OpenAICompatibleClient implements LlmClient {
     this.fetchImpl = config.fetchImpl ?? defaultFetch;
   }
 
+  /** 把 api key 从文本中替换为占位符，防止上游错误体回显密钥（S5）。 */
+  private redactSecret(text: string): string {
+    return this.apiKey ? text.split(this.apiKey).join('[REDACTED]') : text;
+  }
+
   async generateJson<T = unknown>(request: LlmJsonRequest): Promise<T> {
     const messages: OpenAIChatMessage[] = request.messages.map((m) => ({ role: m.role, content: m.content }));
     const init: LlmFetchInit = {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${this.apiKey}`,
         ...this.extraHeaders,
+        // 顺序固定：authorization 最后设置，extraHeaders 永远无法覆盖真实 key（S5）
+        authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
         model: this.model,
@@ -157,7 +163,8 @@ export class OpenAICompatibleClient implements LlmClient {
     if (!res.ok) {
       let detail = '';
       try {
-        detail = (await res.text()).slice(0, 300);
+        // 错误体前 300 字符进日志；第三方网关可能在错误体回显请求头，key 必须脱敏（S5）
+        detail = this.redactSecret((await res.text()).slice(0, 300));
       } catch {
         // 读取错误体失败时忽略，仅保留状态码
       }
