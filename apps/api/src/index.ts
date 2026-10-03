@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { createStorage } from '@jobagent/storage';
-import { createResumePolishProviderFromEnv } from '@jobagent/llm';
+import { createCoverLetterProviderFromEnv, createResumePolishProviderFromEnv } from '@jobagent/llm';
 import { loadDemoConfig } from './demo-config.js';
 import { loadAuthConfig } from './auth-config.js';
 import { GithubAuthProvider } from './github-auth.js';
@@ -86,6 +86,9 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   // 简历 LLM 润色：默认按服务端 LLM_* env 构造，未配置 LLM_API_KEY 时为 null（规则版兜底，零费用）。
   const polishProvider =
     deps.resumePolish === undefined ? createResumePolishProviderFromEnv() : deps.resumePolish;
+  // 求职信 LLM 生成（A 档）：同样默认关闭；未配置时端点如实返回 LLM_NOT_CONFIGURED。
+  const coverLetterProvider =
+    deps.coverLetter === undefined ? createCoverLetterProviderFromEnv() : deps.coverLetter;
   // DEMO_IP_SALT 缺省时进程内随机盐（重启后历史 IP 窗口失效，仅本地/实验可接受）
   const effectiveSalt = cfg.ipSalt || randomBytes(16).toString('hex');
   // 账号/OAuth（决策 #1-A/#6-A）：未配置 client id/secret 时该平台 provider=null，登录路由返回 501
@@ -182,6 +185,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     githubProvider,
     giteeProvider,
     polishProvider,
+    coverLetterProvider,
     stateSecret,
     agentConfig,
     agentRepos: repos,

@@ -10,7 +10,8 @@ import { describe, expect, it } from 'vitest';
 import type { AbilityProfile, JobPosting, ResumeDraft, SkillTag } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
-import { FakeLlmClient, LlmResumePolishProvider } from '@jobagent/llm';
+import type { CoverLetterProvider } from '@jobagent/llm';
+import { FakeLlmClient, LlmCoverLetterProvider, LlmResumePolishProvider } from '@jobagent/llm';
 import { AUTH_SESSION_COOKIE } from '@jobagent/shared';
 import { createApp } from './index.js';
 
@@ -60,7 +61,9 @@ function profileWith(tags: SkillTag[]): AbilityProfile {
   };
 }
 
-async function harness(opts: { resumePolish?: ResumePolishProvider | null } = {}): Promise<{
+async function harness(
+  opts: { resumePolish?: ResumePolishProvider | null; coverLetter?: CoverLetterProvider | null } = {},
+): Promise<{
   app: Awaited<ReturnType<typeof createApp>>;
   repos: StorageContext;
   jobId: string;
@@ -99,7 +102,12 @@ async function harness(opts: { resumePolish?: ResumePolishProvider | null } = {}
   );
   const rows = await repos.jobPostings.search({});
   const tsJob = rows.find((r) => r.title === 'Senior TypeScript Engineer')!;
-  const app = await createApp({ repos, now: () => NOW, resumePolish: opts.resumePolish });
+  const app = await createApp({
+    repos,
+    now: () => NOW,
+    resumePolish: opts.resumePolish,
+    coverLetter: opts.coverLetter,
+  });
   return { app, repos, jobId: tsJob.id };
 }
 
@@ -360,5 +368,115 @@ describe('POST /resumes/build optional LLM polish', () => {
     expect(body.polish).toEqual({ requested: true, applied: false, reason: 'provider_error' });
     expect(body.draft.summary).toBe(rule.draft.summary);
     expect(body.draft.provenance.polish).toBeUndefined();
+  });
+});
+
+describe('POST /resumes/cover-letter (A)', () => {
+  /** 用 FakeLlmClient 包装的求职信 provider（确定性、零网络）；responder 决定模型输出。 */
+  function coverProviderWith(output: unknown): CoverLetterProvider {
+    return new LlmCoverLetterProvider(new FakeLlmClient(() => output));
+  }
+
+  /** 仓储层直接造 alice 的登录会话（LLM 付费，仅登录 user 可调）。 */
+  async function loginCookie(repos: StorageContext): Promise<string> {
+    await repos.accounts.upsertFromProvider({
+      id: 'acc-alice',
+      identity: {
+        platform: 'github',
+        providerAccountId: 'alice-1',
+        login: 'alice',
+        name: 'Alice A',
+        email: null,
+        avatarUrl: null,
+      },
+    });
+    await repos.authSessions.create({
+      id: 'sess-alice',
+      accountId: 'acc-alice',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    });
+    return `${AUTH_SESSION_COOKIE}=sess-alice`;
+  }
+
+  async function cover(
+    app: Awaited<ReturnType<typeof createApp>>,
+    jobId: string,
+    extra: Record<string, unknown> = {},
+    cookie?: string,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (cookie) headers.Cookie = cookie;
+    const res = await app.request('/resumes/cover-letter', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ profileId: 'p-resume', jobId, ...extra }),
+    });
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  }
+
+  it('rejects anonymous callers with 403 (AUTH_REQUIRED)', async () => {
+    const { app, jobId } = await harness({ coverLetter: coverProviderWith({ body: 'x' }) });
+    const { status, body } = await cover(app, jobId);
+    expect(status).toBe(403);
+    expect(body.code).toBe('AUTH_REQUIRED');
+  });
+
+  it('returns 503 LLM_NOT_CONFIGURED when no provider is wired', async () => {
+    const { app, repos, jobId } = await harness({ coverLetter: null });
+    const cookie = await loginCookie(repos);
+    const { status, body } = await cover(app, jobId, {}, cookie);
+    expect(status).toBe(503);
+    expect(body.code).toBe('LLM_NOT_CONFIGURED');
+  });
+
+  it('returns the generated letter with provenance for a logged-in user', async () => {
+    const { app, repos, jobId } = await harness({
+      coverLetter: coverProviderWith({
+        subject: 'Application for Senior TypeScript Engineer',
+        body: 'Dear hiring team, I am a TypeScript backend developer whose public work shows dependable concurrency fixes.',
+      }),
+    });
+    const cookie = await loginCookie(repos);
+    const { status, body } = await cover(app, jobId, { locale: 'en' }, cookie);
+    expect(status).toBe(200);
+    expect(body.subject).toContain('Senior TypeScript Engineer');
+    expect(body.body).toContain('TypeScript');
+    expect(body.provenance).toMatchObject({
+      provider: 'fake',
+      model: 'fake-model-1',
+      promptVersion: 'cover-letter-0.1',
+    });
+  });
+
+  it('returns 502 LLM_FAILED when the provider errors', async () => {
+    const { app, repos, jobId } = await harness({ coverLetter: coverProviderWith('not-json') });
+    const cookie = await loginCookie(repos);
+    const { status, body } = await cover(app, jobId, {}, cookie);
+    expect(status).toBe(502);
+    expect(body.code).toBe('LLM_FAILED');
+  });
+
+  it('404s on a missing profile', async () => {
+    const { app, repos, jobId } = await harness({ coverLetter: coverProviderWith({ body: 'x' }) });
+    const cookie = await loginCookie(repos);
+    const headers = { 'Content-Type': 'application/json', Cookie: cookie };
+    const res = await app.request('/resumes/cover-letter', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ profileId: 'nope', jobId }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('400s when neither jobId nor posting is provided', async () => {
+    const { app, repos } = await harness({ coverLetter: coverProviderWith({ body: 'x' }) });
+    const cookie = await loginCookie(repos);
+    const headers = { 'Content-Type': 'application/json', Cookie: cookie };
+    const res = await app.request('/resumes/cover-letter', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ profileId: 'p-resume' }),
+    });
+    expect(res.status).toBe(400);
   });
 });

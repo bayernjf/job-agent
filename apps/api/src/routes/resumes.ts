@@ -22,7 +22,7 @@ import {
   renderMarkdown,
 } from '@jobagent/resume-core';
 import type { RouteDeps } from './context.js';
-import { ResumeBuildRequestSchema } from './schemas.js';
+import { CoverLetterRequestSchema, ResumeBuildRequestSchema } from './schemas.js';
 import type { HonoEnv } from './types.js';
 
 export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
@@ -133,5 +133,105 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
       });
     }
     return c.json({ draft: finalDraft, ...(polish ? { polish } : {}) });
+  });
+
+  // 求职信生成（A 档，2026-10-03）：LLM 生成性 prose，无规则版回退——
+  // 未配置/失败一律如实报错（绝不伪造"伪求职信"）；仅登录 user 可调（付费）。
+  app.post('/resumes/cover-letter', async (c) => {
+    const buildPrincipal = c.get('principal');
+    if (buildPrincipal.kind !== 'user') {
+      return c.json(
+        { error: 'cover letter requires an authenticated user', code: 'AUTH_REQUIRED' },
+        403,
+      );
+    }
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    const parsed = CoverLetterRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
+    }
+    const req = parsed.data;
+    const { coverLetterProvider } = d;
+    if (!coverLetterProvider) {
+      return c.json(
+        { error: 'LLM is not configured on the server', code: 'LLM_NOT_CONFIGURED' },
+        503,
+      );
+    }
+
+    const storedProfile = await repos.profiles.getById(req.profileId);
+    if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
+    if (!storedProfile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
+    const profile: AbilityProfile = storedProfile.snapshot;
+
+    let posting: JobPosting;
+    if (req.posting) {
+      const nowIso = new Date().toISOString();
+      posting = {
+        jobId: `manual-${randomUUID()}`,
+        source: 'manual',
+        sourceUrl: `https://manual.local/${randomUUID()}`,
+        title: req.posting.title,
+        company: req.posting.company ?? '',
+        description: req.posting.description,
+        location: null,
+        remote: false,
+        salaryMin: null,
+        salaryMax: null,
+        salaryCurrency: null,
+        tags: [],
+        postedAt: nowIso,
+        fetchedAt: nowIso,
+      };
+    } else {
+      const postingRow = await repos.jobPostings.getById(req.jobId!);
+      if (!postingRow) return c.json({ error: 'job posting not found' }, 404);
+      const postingParse = JobPostingSchema.safeParse(postingRow);
+      if (!postingParse.success) {
+        return c.json({ error: 'stored job posting is invalid' }, 500);
+      }
+      posting = postingParse.data;
+    }
+
+    const evidenceRows = await repos.evidence.listByProfile(req.profileId);
+    const evidence = toEvidenceItems(evidenceRows);
+    const skills = profile.skillTags.map((tag) => tag.name);
+    const [matched] = matchJobs([posting], { skills, limit: 1 });
+    const match = fromJobMatch(matched ?? null);
+    const locale: ResumeLocale = req.locale ?? 'zh-CN';
+    const ruleDraft = buildResume({
+      profile,
+      evidence,
+      posting,
+      match,
+      local: req.local as LocalResumeFields | undefined,
+      options: { locale, now: now() },
+    });
+
+    try {
+      const out = await coverLetterProvider.generate({ draft: ruleDraft, posting, locale });
+      return c.json({
+        ...out,
+        provenance: {
+          provider: coverLetterProvider.provider,
+          model: coverLetterProvider.model,
+          promptVersion: coverLetterProvider.promptVersion,
+        },
+      });
+    } catch (err) {
+      return c.json(
+        {
+          error: 'cover letter generation failed',
+          code: 'LLM_FAILED',
+          reason: err instanceof Error ? err.message : 'unknown',
+        },
+        502,
+      );
+    }
   });
 }
