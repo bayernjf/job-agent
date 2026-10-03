@@ -507,7 +507,6 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
         },
         summary: { headline: 'TypeScript engineer' },
         skillTags: [{ name: 'typescript', kind: 'language', depth: 'proficient', confidence: 0.9, evidenceRefs: [] }],
-        highlights: [],
         activity: { longevityMonths: 12, metrics: { commitCount: 40 } },
         collaboration: { evidenceRefs: [] },
         authenticity: { status: 'likely_authentic', confidence: 0.8, signals: [] },
