@@ -453,6 +453,30 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 027（api_tokens 整表，扩展登录态长期 token）
+    const tokenTablesBefore27 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(tokenTablesBefore27.map((t) => t.name)).toContain('api_tokens');
+    const result27 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result27.version).toBe('027');
+    const tokenTablesAfter27 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(tokenTablesAfter27.map((t) => t.name)).not.toContain('api_tokens');
+
+    // 回滚 026（extension_auth_codes 整表，一次性授权码）
+    const codeTablesBefore26 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(codeTablesBefore26.map((t) => t.name)).toContain('extension_auth_codes');
+    const result26 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result26.version).toBe('026');
+    const codeTablesAfter26 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(codeTablesAfter26.map((t) => t.name)).not.toContain('extension_auth_codes');
+
     // 回滚 025（user_llm_configs 整表，BYOK 模型配置）
     const cfgTablesBefore25 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")

@@ -16,6 +16,8 @@ import type {
   ISubmitIntentsRepository,
   IUserLlmConfigsRepository,
   IWaitlistRepository,
+  IExtensionAuthCodesRepository,
+  IApiTokensRepository,
 } from './repositories/index.js';
 import type { RunMigrationsResult } from './migrations-fs.js';
 
@@ -65,6 +67,10 @@ export interface StorageContext {
   llmCatalog: ILlmCatalogRepository;
   /** BYOK 模型配置（LLM 供给 P0，迁移 025；一账号一行，apiKey 加密列） */
   userLlmConfigs: IUserLlmConfigsRepository;
+  /** 一次性授权码（扩展登录态，迁移 026；工作台签发、扩展单次消费） */
+  extensionAuthCodes: IExtensionAuthCodesRepository;
+  /** 扩展长期 Bearer 凭证（扩展登录态，迁移 027；只存 SHA-256 哈希） */
+  apiTokens: IApiTokensRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /**

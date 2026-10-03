@@ -567,3 +567,57 @@ export const userLlmConfigs = pgTable(
 
 export type UserLlmConfigInsert = typeof userLlmConfigs.$inferInsert;
 export type UserLlmConfigSelect = typeof userLlmConfigs.$inferSelect;
+
+/**
+ * extension_auth_codes 表——一次性授权码（迁移 026，design-扩展登录态 §5）。
+ * Postgres 方言；列集与 SQLite 迁移一一对应（migrations-parity test）。
+ */
+export const extensionAuthCodes = pgTable(
+  'extension_auth_codes',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    usedAt: text('used_at'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_extension_auth_codes_account').on(table.accountId),
+    index('idx_extension_auth_codes_expires').on(table.expiresAt),
+  ],
+);
+
+export type ExtensionAuthCodeInsert = typeof extensionAuthCodes.$inferInsert;
+export type ExtensionAuthCodeSelect = typeof extensionAuthCodes.$inferSelect;
+
+/**
+ * api_tokens 表——扩展长期 Bearer 凭证（迁移 027，design-扩展登录态 §5）。
+ * Postgres 方言；只存 SHA-256 hex 摘要，明文仅签发响应返回一次。
+ */
+export const apiTokens = pgTable(
+  'api_tokens',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    name: text('name').notNull().default('browser extension'),
+    expiresAt: text('expires_at').notNull(),
+    lastSeenAt: text('last_seen_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    revokedAt: text('revoked_at'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_api_tokens_hash').on(table.tokenHash),
+    index('idx_api_tokens_account').on(table.accountId),
+    index('idx_api_tokens_expires').on(table.expiresAt),
+  ],
+);
+
+export type ApiTokenInsert = typeof apiTokens.$inferInsert;
+export type ApiTokenSelect = typeof apiTokens.$inferSelect;
