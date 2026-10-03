@@ -53,7 +53,7 @@
 | 免注册"试用演示"进入真实产品（已落地：三态身份 / 会话+IP+Worker 三道配额闸 / 预置示例 / 006–008 迁移 / API·report·extension·CLI；上线外部项见 handoff item17） | [design-demo-mode-20260915.md](design-demo-mode-20260915.md) ★ |
 | 针对岗位生成定制简历（已落地 P-R1/P-R2 + P-R3 可闭环子项：resume-core 纯函数 + polish 安全层、CLI build/batch、POST /resumes/build、报告页 ResumeBuilder、扩展深链、本地补填 canonical 统一与跨端自动同步 §5.4.1；真实 LLM/服务端持久化/PDF/版本管理仍待决策，见 handoff item18/19/24） | [design-targeted-resume-20260915.md](design-targeted-resume-20260915.md) ★ |
 | 针对岗位生成求职信（A 档已落地 2026-10-03：llm 受约束生成器 + POST /resumes/cover-letter（仅登录 user）+ 报告页 ResumeBuilder 入口 + i18n；防臆造三层与端点契约见文档） | [design-cover-letter-20261003.md](design-cover-letter-20261003.md) ★ |
-| 配置 LLM 模型（内置模型＝平台配 Agnes 开箱即用（J7 生产 env，零代码）/ BYOK＝用户自带 OpenAI 兼容 key；方案、密钥存储与配额口径待拍板，见决策 #21） | [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md) ★ |
+| 配置 LLM 模型（内置模型＝**Admin UI 管理**（参考 agent-world model-catalog：admin 管目录、env 管凭证）/ BYOK＝用户自由设置 OpenAI 兼容 key；方向已拍板 2026-10-03，细节待拍板决策 #21） | [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md) ★ |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 装 / 试用浏览器扩展，一键填充 ATS 表单（含真机故障排查：SW 代发、host_permissions 重载、缓存画像 by-subject、跨端同步） | [../apps/extension/README.md](../apps/extension/README.md) + [../apps/extension/INSTALL.md](../apps/extension/INSTALL.md)（真机试用/跨端同步详细步骤，handoff item46） |
