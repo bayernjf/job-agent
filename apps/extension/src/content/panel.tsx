@@ -21,6 +21,7 @@ import {
 } from '@jobagent/shared';
 import type { AtsAdapter, LocalFields } from '../ats/index.js';
 import { toFillValues } from '../ats/index.js';
+import { matchFillsToPage } from '../ats/fill-matching.js';
 import {
   DEFAULT_BASE,
   JobAgentApi,
@@ -29,6 +30,7 @@ import {
   type EvidenceBrief,
   type JobMatchItem,
   type JobMatchSkillReason,
+  type PendingFill,
 } from '../lib/api.js';
 import { matchTier, resolveEvidenceLinks, resolveReportBase, resumeDeepLink } from './match-utils.js';
 import { readStoredLocalProfile, writeStoredLocalProfile } from '../lib/local-profile-storage.js';
@@ -156,6 +158,15 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [codeInput, setCodeInput] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  // 阶段 2 A2：当前 ATS 页面命中的已确认待投岗位（半自动填充）
+  const [pendingFills, setPendingFills] = useState<PendingFill[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [fillingId, setFillingId] = useState<string | null>(null);
+  const [filledMap, setFilledMap] = useState<Record<string, number>>({});
+  const [letterRuleMap, setLetterRuleMap] = useState<Record<string, boolean>>({});
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [submittedIds, setSubmittedIds] = useState<Set<string>>(new Set());
 
   // 挂载后异步拉取扩展 chrome.storage 的权威档案（报告页可能已写入），合并到本域缓存。
   // chrome.storage 优先、本域 localStorage 补缺；扩展未装/无 chrome 时静默跳过。
@@ -181,6 +192,84 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
       cancelled = true;
     };
   }, []);
+
+  // 登录后拉取本人已确认待投岗位，并只保留命中当前 ATS 页面 URL 的票据（A2）。
+  useEffect(() => {
+    if (!tokenInfo) {
+      setPendingFills([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setPendingLoading(true);
+      setPendingError(null);
+      try {
+        const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
+        const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch, tokenProvider: readStoredApiTokenValue });
+        const fills = await api.listPendingFills();
+        const pageUrl = typeof location === 'undefined' ? '' : location.href;
+        if (!cancelled) setPendingFills(matchFillsToPage(fills, pageUrl));
+      } catch (err) {
+        if (!cancelled) setPendingError((err as Error).message);
+      } finally {
+        if (!cancelled) setPendingLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // 仅在登录态变化时拉取；apiBase 变更由用户重新分析/刷新覆盖，避免输入中反复请求。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenInfo]);
+
+  /**
+   * 一键填充（A2 核心）：拉票据对应的画像快照 + 岗位定向求职信（LLM 润色，失败回落规则版），
+   * 合并为语义字段写入 ATS 表单。硬边界（决策 #20）：填完即停，绝不自动点击提交。
+   */
+  async function handleAutoFill(fill: PendingFill): Promise<void> {
+    setFillingId(fill.intentId);
+    setPendingError(null);
+    try {
+      const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
+      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch, tokenProvider: readStoredApiTokenValue });
+      const [profileSnapshot, letter] = await Promise.all([
+        api.getExportableProfile(fill.profileId),
+        api.getIntentCoverLetter(fill.intentId, locale),
+      ]);
+      saveLocal(local);
+      const values = toFillValues(profileSnapshot, localProfileToAtsFields(local), {
+        skillsLeadin: t('fill.summarySkillsLeadin', {
+          platform: profileSnapshot.subject.platform === 'gitee' ? 'Gitee' : 'GitHub',
+        }),
+        skillSeparator: t('fill.skillSeparator'),
+      });
+      // 岗位定向求职信作为 cover_letter 语义键（adapter 优先于画像 summary 写入求职信字段）
+      values.push({ key: 'cover_letter', value: letter.body });
+      const written = ats.fill(document, values);
+      setFilledMap((prev) => ({ ...prev, [fill.intentId]: written }));
+      setLetterRuleMap((prev) => ({ ...prev, [fill.intentId]: !letter.polished }));
+    } catch (err) {
+      setPendingError((err as Error).message);
+    } finally {
+      setFillingId(null);
+    }
+  }
+
+  /** 用户在 ATS 自行提交后的回执：票据转 submitted、写 origin=agent 投递记录（幂等）。 */
+  async function handleMarkSubmitted(fill: PendingFill): Promise<void> {
+    setSubmittingId(fill.intentId);
+    setPendingError(null);
+    try {
+      const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
+      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch, tokenProvider: readStoredApiTokenValue });
+      await api.markIntentSubmitted(fill.intentId);
+      setSubmittedIds((prev) => new Set(prev).add(fill.intentId));
+    } catch (err) {
+      setPendingError((err as Error).message);
+    } finally {
+      setSubmittingId(null);
+    }
+  }
 
   function switchLocale(): void {
     const next: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
@@ -344,7 +433,76 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
         {authError ? <p className="ja-error" role="alert">{authError}</p> : null}
       </div>
 
+      {/* 阶段 2 A2：当前 ATS 页面命中的已确认待投岗位，一键填充 + 用户自行提交回执 */}
+      {tokenInfo && (pendingLoading || pendingFills.length > 0 || pendingError) && (
+        <div className="ja-pending" data-testid="pending-fills">
+          <div className="ja-pending-header">
+            <span className="ja-pending-title">
+              {t('pending.title')}
+              {pendingFills.length > 0 && ` (${pendingFills.length})`}
+            </span>
+          </div>
+          {pendingLoading && <div className="ja-pending-loading">{t('pending.loading')}</div>}
+          {pendingError && (
+            <div className="ja-error" role="alert">
+              {t('pending.error')} {pendingError}
+            </div>
+          )}
+          <ul className="ja-pending-list">
+            {pendingFills.map((fill) => {
+              const written = filledMap[fill.intentId];
+              const submitted = submittedIds.has(fill.intentId);
+              const tier = (['high', 'mid', 'low'].includes(fill.matchTier) ? fill.matchTier : 'low') as
+                | 'high'
+                | 'mid'
+                | 'low';
+              return (
+                <li key={fill.intentId} className="ja-pending-item">
+                  <div className="ja-pending-job">
+                    <span className={`ja-match-score ja-match-score-${tier}`}>{fill.matchScore}</span>
+                    <span className="ja-pending-job-title">{fill.job.title}</span>
+                    {fill.job.company && <span className="ja-pending-company">@ {fill.job.company}</span>}
+                  </div>
+                  {submitted ? (
+                    <div className="ja-pending-submitted" role="status">
+                      {t('pending.submitted')}
+                    </div>
+                  ) : written !== undefined ? (
+                    <div className="ja-pending-actions">
+                      <div className="ja-pending-note" role="status">
+                        {t('pending.filledNote', { count: written })}
+                      </div>
+                      {letterRuleMap[fill.intentId] && (
+                        <div className="ja-pending-rule">{t('pending.ruleLetter')}</div>
+                      )}
+                      <button
+                        type="button"
+                        className="ja-btn ja-btn-primary"
+                        disabled={submittingId === fill.intentId}
+                        onClick={() => void handleMarkSubmitted(fill)}
+                      >
+                        {submittingId === fill.intentId ? t('pending.submitting') : t('pending.markSubmitted')}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ja-btn ja-btn-primary"
+                      disabled={fillingId === fill.intentId}
+                      onClick={() => void handleAutoFill(fill)}
+                    >
+                      {fillingId === fill.intentId ? t('pending.filling') : t('pending.fillBtn')}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       <form onSubmit={handleAnalyze}>
+
         <div className="ja-platform-switch" role="group" aria-label={t('panel.platformGroupLabel')}>
           <button
             type="button"

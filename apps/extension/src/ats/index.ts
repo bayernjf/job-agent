@@ -34,7 +34,8 @@ export interface FillValue {
     | 'personal_website_url'
     | 'skills'
     | 'education'
-    | 'experience';
+    | 'experience'
+    | 'cover_letter';
   value: string;
 }
 

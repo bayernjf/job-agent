@@ -45,6 +45,40 @@ export function apiError(message: string, status?: number, details?: unknown): A
   return err;
 }
 
+
+/** 待填充票据（与后端 GET /agent/extension/pending-fills 单条同形，shared ExtensionPendingFillSchema）。 */
+export interface PendingFill {
+  intentId: string;
+  runId: string;
+  profileId: string;
+  job: {
+    source: string;
+    sourceUrl: string;
+    applyUrl?: string | null;
+    title: string;
+    company?: string | null;
+    postingId?: string;
+    [k: string]: unknown;
+  };
+  matchScore: number;
+  matchTier: string;
+  approvedAt: string;
+}
+
+/** GET /agent/intents/:id/cover-letter?format=json&polish=llm 的 JSON 响应。
+ * 无 LLM 时后端 fail-closed 回落规则版：polished=false、body 为规则 markdown。 */
+export interface IntentCoverLetterJson {
+  draft: unknown;
+  body: string;
+  subject: string | null;
+  polished: boolean;
+  fallbackReason?: string;
+  provenance?: { source: string; provider: string; model: string; promptVersion: string };
+  fromSnapshot: boolean;
+}
+
+export type IntentOutcome = 'no_response' | 'interview' | 'offer' | 'rejected';
+
 export class JobAgentApi {
   constructor(private readonly opts: ApiClientOptions) {}
 
@@ -53,6 +87,79 @@ export class JobAgentApi {
     const token = await this.opts.tokenProvider?.();
     if (token) return { authorization: `Bearer ${token}` };
     return {};
+  }
+
+
+  /** 按 profileId 直接取可填充画像（exportable 快照，不触发分析）。 */
+  async getExportableProfile(profileId: string): Promise<ExportableProfile> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    return this.getProfile(fetchImpl, baseUrl, profileId);
+  }
+
+  // ── 阶段 2 A2：求职 Agent 半自动投递（全部需要登录态，走 Bearer token）──
+
+  /** 拉取本人跨 run 的已确认待填充票据（approved SubmitIntent）。 */
+  async listPendingFills(): Promise<PendingFill[]> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const res = await fetchImpl(`${baseUrl}/agent/extension/pending-fills`, {
+      headers: await this.authHeaders(),
+    });
+    if (!res.ok) throw apiError(`pending fills failed (HTTP ${res.status})`, res.status);
+    const body = (await res.json().catch(() => ({}))) as { fills?: unknown };
+    return Array.isArray(body.fills) ? (body.fills as PendingFill[]) : [];
+  }
+
+  /**
+   * 取某票据的岗位定向求职信（JSON）。默认 polish=llm：有 LLM 走润色版，
+   * 无 key/失败时后端回落规则版 markdown（polished=false），调用方无需分支。
+   */
+  async getIntentCoverLetter(
+    intentId: string,
+    locale: 'zh-CN' | 'en' = 'zh-CN',
+  ): Promise<IntentCoverLetterJson> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const qs = `format=json&polish=llm&locale=${encodeURIComponent(locale)}`;
+    const res = await fetchImpl(
+      `${baseUrl}/agent/intents/${encodeURIComponent(intentId)}/cover-letter?${qs}`,
+      { headers: await this.authHeaders() },
+    );
+    if (!res.ok) throw apiError(`cover letter failed (HTTP ${res.status})`, res.status);
+    return (await res.json()) as IntentCoverLetterJson;
+  }
+
+  /** 用户在 ATS 提交后回执：票据转 submitted、写 origin=agent 投递记录（幂等）。 */
+  async markIntentSubmitted(intentId: string): Promise<{ applicationId: string | null }> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const res = await fetchImpl(
+      `${baseUrl}/agent/intents/${encodeURIComponent(intentId)}/mark-submitted`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(await this.authHeaders()) },
+      },
+    );
+    const body = (await res.json().catch(() => ({}))) as { applicationId?: string | null };
+    if (!res.ok) throw apiError(`mark-submitted failed (HTTP ${res.status})`, res.status, body);
+    return { applicationId: body.applicationId ?? null };
+  }
+
+  /** 投递结果回写（D1）：仅 submitted 票据可写，非法状态后端返回 409。 */
+  async recordIntentOutcome(
+    intentId: string,
+    outcome: IntentOutcome,
+    note?: string,
+  ): Promise<void> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const res = await fetchImpl(`${baseUrl}/agent/intents/${encodeURIComponent(intentId)}/outcome`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(await this.authHeaders()) },
+      body: JSON.stringify({ outcome, ...(note ? { note } : {}) }),
+    });
+    if (!res.ok) throw apiError(`outcome write-back failed (HTTP ${res.status})`, res.status);
   }
 
   /**

@@ -54,5 +54,15 @@
   "panel.extAuth.connect": "连接扩展",
   "panel.extAuth.connecting": "连接中…",
   "panel.extAuth.disconnect": "断开连接",
-  "panel.extAuth.connectedAs": "已连接为 {login}"
+  "panel.extAuth.connectedAs": "已连接为 {login}",
+  "pending.title": "本页待投岗位",
+  "pending.loading": "加载已确认岗位…",
+  "pending.error": "加载待投岗位失败：",
+  "pending.fillBtn": "一键填充申请表",
+  "pending.filling": "填充中…",
+  "pending.filledNote": "已写入 {count} 个字段。请逐项核对后自行提交，扩展不会替你点击提交。",
+  "pending.ruleLetter": "求职信为规则版（AI 润色暂不可用）。",
+  "pending.markSubmitted": "我已提交",
+  "pending.submitting": "记录中…",
+  "pending.submitted": "已记录为已投递，可在工作台跟踪结果。"
 }

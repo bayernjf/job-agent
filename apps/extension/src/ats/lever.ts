@@ -47,12 +47,15 @@ export const leverAdapter: AtsAdapter = {
       valueFor(values, 'personal_website_url'),
       ['linkedin', 'github'],
     );
-    // summary：先试 how_did_you_hear/cover_letter 关键词字段，未命中则写入动机/自我介绍类自定义问题
-    const summary = valueFor(values, 'summary');
-    if (summary) {
-      const el = findFields(doc, ['how_did_you_hear', 'cover_letter'])[0] ?? findLabeledQuestion(doc, /questions\[|question_/i);
-      if (el) {
-        el.value = summary;
+    // 求职信（阶段 2 A2，cover_letter 语义键优先；缺省回退画像 summary）：
+    // 只写 cover_letter 命名字段与动机/自我介绍类自定义问题；how_did_you_hear 是引流短答案，
+    // 不写求职信（与 SUMMARY_HINTS 的排除口径一致）。同一元素只写一次。
+    const letter = valueFor(values, 'cover_letter') ?? valueFor(values, 'summary');
+    if (letter) {
+      const named = findFields(doc, ['cover_letter'])[0] ?? null;
+      const question = findLabeledQuestion(doc, /questions\[|question_/i);
+      for (const el of new Set([named, question].filter((x): x is HTMLInputElement | HTMLTextAreaElement => !!x))) {
+        el.value = letter;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         written += 1;

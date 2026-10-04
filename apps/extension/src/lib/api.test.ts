@@ -303,3 +303,105 @@ describe('JobAgentApi token auth (决策 #22)', () => {
     expect(seenHeaders?.['authorization']).toBeUndefined();
   });
 });
+
+describe('JobAgentApi stage-2 semi-automatic apply (A2/C2/D1)', () => {
+  const tokenProvider = async () => 'tkn-abc';
+
+  it('listPendingFills GETs approved fills with a bearer token', async () => {
+    let seenUrl = '';
+    let seenMethod: string | undefined;
+    let seenAuth: string | undefined;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      seenUrl = String(url);
+      seenMethod = init?.method;
+      seenAuth = (init?.headers as Record<string, string> | undefined)?.['authorization'];
+      return jsonResponse(200, {
+        fills: [{ intentId: 'si-1', job: { sourceUrl: 'https://grnh.se/x' } }],
+      });
+    }) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl, tokenProvider });
+
+    const fills = await api.listPendingFills();
+    expect(seenUrl).toBe('http://api.test/agent/extension/pending-fills');
+    expect(seenMethod).toBeUndefined(); // GET is the default
+    expect(seenAuth).toBe('Bearer tkn-abc');
+    expect(fills).toHaveLength(1);
+    expect(fills[0]?.intentId).toBe('si-1');
+  });
+
+  it('listPendingFills returns [] when the payload has no fills array', async () => {
+    const fetchImpl = (async () => jsonResponse(200, {})) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl, tokenProvider });
+    expect(await api.listPendingFills()).toEqual([]);
+  });
+
+  it('getIntentCoverLetter requests the LLM-polished JSON for the given locale', async () => {
+    let seenUrl = '';
+    let seenAuth: string | undefined;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      seenUrl = String(url);
+      seenAuth = (init?.headers as Record<string, string> | undefined)?.['authorization'];
+      return jsonResponse(200, { body: 'LETTER', polished: false, fallbackReason: 'llm_unavailable' });
+    }) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl, tokenProvider });
+
+    const letter = await api.getIntentCoverLetter('si 2', 'en');
+    expect(seenUrl).toBe(
+      'http://api.test/agent/intents/si%202/cover-letter?format=json&polish=llm&locale=en',
+    );
+    expect(seenAuth).toBe('Bearer tkn-abc');
+    expect(letter.body).toBe('LETTER');
+    expect(letter.polished).toBe(false);
+  });
+
+  it('markIntentSubmitted POSTs and returns the applicationId', async () => {
+    let seenUrl = '';
+    let seenMethod: string | undefined;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      seenUrl = String(url);
+      seenMethod = init?.method;
+      return jsonResponse(200, { applicationId: 'app-9' });
+    }) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl, tokenProvider });
+
+    const result = await api.markIntentSubmitted('si-1');
+    expect(seenUrl).toBe('http://api.test/agent/intents/si-1/mark-submitted');
+    expect(seenMethod).toBe('POST');
+    expect(result.applicationId).toBe('app-9');
+  });
+
+  it('recordIntentOutcome POSTs the outcome enum and optional note (D1)', async () => {
+    let seenUrl = '';
+    let seenMethod: string | undefined;
+    let seenBody = '';
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      seenUrl = String(url);
+      seenMethod = init?.method;
+      seenBody = init?.body as string;
+      return jsonResponse(200, { applicationId: 'app-9', outcomeFeedback: 'interview' });
+    }) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl, tokenProvider });
+
+    await api.recordIntentOutcome('si-1', 'interview', 'moved to screen');
+    expect(seenUrl).toBe('http://api.test/agent/intents/si-1/outcome');
+    expect(seenMethod).toBe('POST');
+    expect(JSON.parse(seenBody)).toEqual({ outcome: 'interview', note: 'moved to screen' });
+  });
+
+  it('recordIntentOutcome omits the note field when not provided', async () => {
+    let seenBody = '';
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      seenBody = init?.body as string;
+      return jsonResponse(200, { ok: true });
+    }) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl, tokenProvider });
+    await api.recordIntentOutcome('si-1', 'no_response');
+    expect(JSON.parse(seenBody)).toEqual({ outcome: 'no_response' });
+  });
+
+  it('surfaces the HTTP status when an outcome write-back is rejected', async () => {
+    const fetchImpl = (async () => jsonResponse(409, { error: 'invalid transition' })) as typeof fetch;
+    const api = new JobAgentApi({ baseUrl: 'http://api.test', fetchImpl, tokenProvider });
+    await expect(api.recordIntentOutcome('si-1', 'offer')).rejects.toMatchObject({ status: 409 });
+  });
+});
