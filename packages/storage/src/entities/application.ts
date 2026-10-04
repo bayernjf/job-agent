@@ -1,3 +1,10 @@
+import {
+  OUTCOME_FEEDBACK_VALUES,
+  type OutcomeFeedback,
+} from '@jobagent/shared';
+
+export type { OutcomeFeedback } from '@jobagent/shared';
+
 /**
  * applications 实体：求职者画像侧的投递记录（痛点解决方案批次 2，2026-09-16）。
  *
@@ -62,6 +69,13 @@ export interface StoredApplication {
    * 022 之前的历史行一律为 null。
    */
   submitIntentId: string | null;
+  /**
+   * 阶段 2 D1：招聘方结果回写（no_response/interview/offer/rejected），
+   * null=尚未回写。仅记录样本；D2 权重微调需 ≥20 条且人工确认（决策 #20-3）。
+   */
+  outcomeFeedback: OutcomeFeedback | null;
+  /** 结果回写时间（UTC ISO8601），未回写为 null */
+  outcomeFeedbackAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -90,6 +104,9 @@ export interface ApplicationPatch {
   note?: string | null;
   appliedAt?: string;
   targetUrl?: string | null;
+  /** D1：结果回写（显式传 null 不清除；清除走专门流程，此处不开放） */
+  outcomeFeedback?: OutcomeFeedback;
+  outcomeFeedbackAt?: string;
 }
 
 /** Drizzle 查询返回的原始行（camelCase），两方言结构一致 */
@@ -107,6 +124,8 @@ export interface RawApplicationRow {
   appliedAt: string;
   createdByAccountId: string | null;
   submitIntentId: string | null;
+  outcomeFeedback: string | null;
+  outcomeFeedbackAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -132,6 +151,12 @@ export function toStoredApplication(row: RawApplicationRow): StoredApplication {
     appliedAt: row.appliedAt,
     createdByAccountId: row.createdByAccountId,
     submitIntentId: row.submitIntentId ?? null,
+    outcomeFeedback: (OUTCOME_FEEDBACK_VALUES as readonly string[]).includes(
+      row.outcomeFeedback ?? '',
+    )
+      ? (row.outcomeFeedback as OutcomeFeedback)
+      : null,
+    outcomeFeedbackAt: row.outcomeFeedbackAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

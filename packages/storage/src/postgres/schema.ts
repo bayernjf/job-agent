@@ -260,6 +260,9 @@ export const applications = pgTable(
     createdByAccountId: text('created_by_account_id'),
     /** 022：产出本行的投递票据（submit_intents.id）；手动/报告/扩展写入为 NULL */
     submitIntentId: text('submit_intent_id'),
+    /** 028 D1：结果回写 no_response|interview|offer|rejected；NULL=未回写 */
+    outcomeFeedback: text('outcome_feedback'),
+    outcomeFeedbackAt: text('outcome_feedback_at'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -270,6 +273,7 @@ export const applications = pgTable(
   (table) => [
     index('idx_applications_profile_status').on(table.profileId, table.status),
     index('idx_applications_profile_applied').on(table.profileId, table.appliedAt),
+    index('idx_applications_outcome').on(table.outcomeFeedback),
   ],
 );
 

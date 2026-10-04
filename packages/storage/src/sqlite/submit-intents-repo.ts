@@ -84,6 +84,17 @@ export class SqliteSubmitIntentsRepository implements ISubmitIntentsRepository {
     return rows.map(toStoredSubmitIntent);
   }
 
+  async listFillableByAccount(accountId: string, limit = 100): Promise<StoredSubmitIntent[]> {
+    const rows = this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.accountId, accountId), eq(t.status, 'approved')))
+      .orderBy(desc(t.approvedAt))
+      .limit(limit)
+      .all();
+    return rows.map(toStoredSubmitIntent);
+  }
+
   async approveMany(runId: string, ids: readonly string[], approvedAt: string): Promise<number> {
     if (ids.length === 0) return 0;
     // 一条条件 UPDATE 覆盖该 run 内指定的 pending 票据；返回真正被移动的行数

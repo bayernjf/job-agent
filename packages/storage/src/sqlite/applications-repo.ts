@@ -69,6 +69,8 @@ export class SqliteApplicationsRepository implements IApplicationsRepository {
     if (patch.note !== undefined) set.note = patch.note;
     if (patch.appliedAt !== undefined) set.appliedAt = patch.appliedAt;
     if (patch.targetUrl !== undefined) set.targetUrl = patch.targetUrl;
+    if (patch.outcomeFeedback !== undefined) set.outcomeFeedback = patch.outcomeFeedback;
+    if (patch.outcomeFeedbackAt !== undefined) set.outcomeFeedbackAt = patch.outcomeFeedbackAt;
     this.db.update(t).set(set).where(eq(t.id, id)).run();
     return this.getById(id);
   }

@@ -27,6 +27,11 @@ export interface ISubmitIntentsRepository {
     limit?: number,
   ): Promise<StoredSubmitIntent[]>;
   /**
+   * 阶段 2 A2：跨 run 列出某账号所有 status='approved'（已确认待填充）的票据，
+   * 供浏览器扩展在 ATS 页面按 URL 匹配后自动填充。按 approved_at 倒序。
+   */
+  listFillableByAccount(accountId: string, limit?: number): Promise<StoredSubmitIntent[]>;
+  /**
    * 批量确认：只改**该 run 内、当前为 'pending'** 的指定票据，返回真正被移动的行数。
    * 计数即"这次确认了几张票"，调用方据此判断是否有票据已被人抢先处理。
    */

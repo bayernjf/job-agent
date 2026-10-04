@@ -453,6 +453,15 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 028（applications 去掉 outcome_feedback 两列，表本身仍在）
+    const appOutcomeColsBefore28 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
+    expect(appOutcomeColsBefore28.map((c) => c.name)).toContain('outcome_feedback');
+    const result28 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result28.version).toBe('028');
+    const appOutcomeColsAfter28 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
+    expect(appOutcomeColsAfter28.map((c) => c.name)).not.toContain('outcome_feedback');
+    expect(appOutcomeColsAfter28.map((c) => c.name)).toContain('submit_intent_id'); // 只丢列，不丢表
+
     // 回滚 027（api_tokens 整表，扩展登录态长期 token）
     const tokenTablesBefore27 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
