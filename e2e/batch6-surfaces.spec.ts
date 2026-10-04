@@ -93,6 +93,19 @@ test.describe('/my (T17 surface)', () => {
     ).toBeVisible();
   });
 
+  test('signed-in owner sees the jobs they started, including one still queued', async ({ page }) => {
+    await seedSession(page, FIXTURE_SESSION_TOKEN);
+    await page.goto('/zh-CN/my');
+
+    const jobs = page.getByTestId('my-jobs');
+    await expect(jobs).toBeVisible();
+    // 排队中的任务必须出现在这里：首跑要等数小时，回来找结果的地方就是这一屏
+    await expect(jobs).toContainText('job-e2e-queued');
+    await expect(jobs).toContainText('排队或进行中');
+    // 已完成的那条直接给回报告链接
+    await expect(jobs.locator(`a[href="/zh-CN/report/${FIXTURE_PROFILE_ID}"]`)).toBeVisible();
+  });
+
   test('signed-in user with no profiles sees the empty state', async ({ page }) => {
     await seedSession(page, FIXTURE_EMPTY_SESSION_TOKEN);
     await page.goto('/zh-CN/my');

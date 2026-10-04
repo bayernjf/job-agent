@@ -174,6 +174,20 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     accountId: account.id,
     expiresAt: '2030-01-01T00:00:00.000Z',
   });
+  // 回访闭环：同一登录名下两条作业——一条仍在排队、一条已出报告，
+  // 让 /my 的「我发起的分析」用例走的是真数据而不是 mock。
+  await storage.jobs.create({
+    id: 'job-e2e-queued',
+    subjectPlatform: 'github',
+    subjectLogin: FIXTURE_LOGIN,
+  });
+  await storage.jobs.create({
+    id: 'job-e2e-done',
+    subjectPlatform: 'github',
+    subjectLogin: FIXTURE_LOGIN,
+  });
+  await storage.jobs.succeed('job-e2e-done', FIXTURE_PROFILE_ID);
+
   // F10：已显式声明招聘方的账号 + 会话，供 /recruit「声明后可见列表」E2E。
   const recruiterAccount = await storage.accounts.upsertFromProvider({
     id: 'acc-e2e-recruiter',
