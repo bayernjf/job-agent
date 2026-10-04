@@ -10,7 +10,7 @@ import {
   type JobPosting,
   type ResumeLocale,
 } from '@jobagent/shared';
-import { coverLetterCopy, resumeCopy } from './i18n.js';
+import { aiAssistedDisclosure, coverLetterCopy, resumeCopy } from './i18n.js';
 import { normalizeName, rankEvidence, rankSkills } from './rank.js';
 import type { ResumeMatchInput } from './types.js';
 
@@ -126,5 +126,7 @@ export function buildCoverLetter(input: BuildCoverLetterInput): CoverLetterDraft
  */
 export function renderCoverLetterMarkdown(draft: CoverLetterDraft): string {
   const body = draft.paragraphs.map((p) => p.text).join('\n\n');
-  return `${draft.greeting}\n\n${body}\n\n${draft.closing}\n`;
+  // E1 决策 #20-4：固定 AI 辅助投递披露，招聘方可见，不可被省略。
+  const disclosure = aiAssistedDisclosure(draft.locale);
+  return `${draft.greeting}\n\n${body}\n\n${draft.closing}\n\n${disclosure}\n`;
 }

@@ -17,7 +17,7 @@ export { fromJobMatch, zeroResumeMatch } from './match-input.js';
 export type { JobMatchLike } from './match-input.js';
 export { renderMarkdown } from './render/markdown.js';
 export { renderHtml, escapeHtml } from './render/html.js';
-export { resumeCopy, coverLetterCopy } from './i18n.js';
+export { resumeCopy, coverLetterCopy, aiAssistedDisclosure } from './i18n.js';
 export type { ResumeCopy, CoverLetterCopy } from './i18n.js';
 export { buildCoverLetter, renderCoverLetterMarkdown } from './cover-letter.js';
 export type { BuildCoverLetterInput } from './cover-letter.js';

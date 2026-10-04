@@ -166,3 +166,14 @@ const coverLetterEn: CoverLetterCopy = {
 export function coverLetterCopy(locale: ResumeLocale): CoverLetterCopy {
   return locale === 'en' ? coverLetterEn : coverLetterZh;
 }
+
+/**
+ * AI 辅助投递披露（决策 #20-4，E1）：印在每封求职信末尾的固定一行，
+ * 向招聘方明示材料由 JobAgent 依据公开代码证据辅助生成。规则版与 LLM 版
+ * 都在装配层追加此行，LLM 无法省略它。
+ */
+export function aiAssistedDisclosure(locale: ResumeLocale): string {
+  return locale === 'en'
+    ? '— This application was prepared with AI assistance by JobAgent, grounded only in the candidate’s verifiable public code evidence.'
+    : '— 本投递材料由 JobAgent 依据本人可核验的公开代码证据辅助生成（AI 辅助投递）。';
+}

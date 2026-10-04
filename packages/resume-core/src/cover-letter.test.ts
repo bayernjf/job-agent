@@ -183,4 +183,13 @@ describe('buildCoverLetter', () => {
     expect(md).not.toContain('provenance');
     expect(md.endsWith('\n')).toBe(true);
   });
+
+  it('always prints the AI-assisted submission disclosure for recruiters (E1)', () => {
+    const zh = renderCoverLetterMarkdown(buildCoverLetter(makeInput()));
+    expect(zh).toContain('AI 辅助投递');
+    const en = renderCoverLetterMarkdown(
+      buildCoverLetter(makeInput({ options: { locale: 'en' } })),
+    );
+    expect(en).toContain('prepared with AI assistance by JobAgent');
+  });
 });
