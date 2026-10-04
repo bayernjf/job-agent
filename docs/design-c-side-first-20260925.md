@@ -25,7 +25,7 @@
 - 技能目录 **62 条**（`packages/analyzer-core/src/skills-catalog.ts`），`agent|rag|langchain|prompt|mcp|vector|openai|anthropic` 全部 **0 命中**；唯一的 AI 相关是 `:85` 一条 `data-ml`，别名 `'data','machine learning','ml','llm','ai','pytorch','tensorflow'`，`kind:'domain'`、置信度封顶 0.7。
 - **没有自由文本逃逸口**：framework/domain 标签的唯一生产者是 `computeCatalogTags()`（`packages/analyzer-core/src/skills.ts:94-143`），它**只遍历目录**。目录里没有的词，画像里就不可能出现。
 - 后果：一个做 LLM Agent / RAG / eval harness / MCP 的开发者，画像会被压成 `Python` + `data-ml`。**这正好是 2026 年技术岗最主力的需求面**。用户自己就是这条赛道的求职者 —— 产品今天说不清用户的能力。
-- 连带：岗位匹配只喂技能名（`apps/api/src/index.ts:1117`）+ 整词正则（title×3/tags×2/description×1，`packages/job-source/src/match/job-match.ts:25-29,78-82`），所以画像侧缺词 = 推荐侧必然零命中。
+- 连带：岗位匹配只喂技能名（`apps/api/src/routes/profiles.ts:367`，10-03 拆分前的 `index.ts:1117`）+ 整词正则（title×3/tags×2/description×1，`packages/job-source/src/match/job-match.ts:25-29,78-82`），所以画像侧缺词 = 推荐侧必然零命中。
 
 ### 2.2 第 2 步是空的：契约有、生产者零
 
@@ -48,7 +48,7 @@
 
 ### 2.4 第 4 步：求职数据是公开的
 
-- `GET/POST /profiles/:id/applications` 与 `PATCH /applications/:id` **无身份校验**（`apps/api/src/index.ts:1429/1439/1469`），而 `profileId` 出现在每一条分享链接里。任何人可读、可注入、可改你的投递管道（含改成 `offer`）。
+- `GET/POST /profiles/:id/applications` 与 `PATCH /applications/:id` **无身份校验**（`apps/api/src/routes/recruiting.ts:85,97,134`；10-03 路由拆分前在 api 入口文件的 1429/1439/1469 行），而 `profileId` 出现在每一条分享链接里。任何人可读、可注入、可改你的投递管道（含改成 `offer`）。
 - 而且**报告页就是默认对匿名访客挂载这张表**：挂载条件是"非招聘方视角"（`[profileId].astro:522-525` 的 `!isRecruiter`），不是"是本人"。所以把报告链接发给任何人，等于同时开放自己求职管道的读与写。
 - `GET /candidates` 匿名可分页遍历整个画像库（`:1384`）。
 - 这是 [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md) §1.2 的三个洞，此前定性为"上线后第一迭代"。**C 端优先意味着这条定性要改**：属于求职者自己的那一半（投递归属）要提前，招聘方声明那一半可以留后（§4）。
@@ -171,7 +171,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 | --- | --- | --- | --- |
 | ✅ T01 | 迁移 013：`applications.created_by_account_id`（两侧对齐） | `bash tools/check-migrations.sh` 13 对 0 warning；`./scripts/migrate-down` 能真回滚该列 | `db/migrations/{sqlite,postgres}` |
 | ✅ T02 | storage：insert 落归属、update 加"要求归属匹配"能力（双实现，裸 SQL 不出仓储层） | 就近单测含"他人改不动、无主行仍可改"两分支 | `packages/storage/src/{sqlite,postgres}/applications-repo.ts` |
-| ✅ T03 | api：POST 登录时写本人 id；PATCH 非主返回 **404**（不泄露存在，对齐 `/interviews`） | 植入"换身份改他人行"探针必红；`docs/API.md` §3.6 同步 | `apps/api/src/index.ts:1439/1469` |
+| ✅ T03 | api：POST 登录时写本人 id；PATCH 非主返回 **404**（不泄露存在，对齐 `/interviews`） | 植入"换身份改他人行"探针必红；`docs/API.md` §3.6 同步 | `apps/api/src/routes/recruiting.ts:97,134`（10-03 路由拆分前在 api 入口文件的 1439/1469 行） |
 | ✅ T03b | 投递表**只对本人出现**：报告页当前是"非招聘方视角就挂载 tracker"（`[profileId].astro:522-525` 的条件是 `!isRecruiter`），等于任何拿到报告链接的匿名访客都能读能写这份求职管道。改成"仅登录且为该画像本人（或画像无主）才挂载"，API 的 `GET /profiles/:id/applications` 同步按身份过滤 | 未登录访问他人报告时投递区块完全不出现（不是隐藏按钮）；本人访问仍正常；`pnpm e2e` 两种身份各一条。**⚠️ 采纳本条会推翻 PRD F11 验收 4**（"投递追踪的既有匿名 E2E 不回归为需要登录"），二者只能留一个：建议改 PRD 那句为"未登录可浏览报告，但投递区块需登录才出现"——对真实求职者，"链接泄露＝求职管道泄露"比匿名可用性重要。**此处需用户明确点头，不由实现者自行取舍** | T03 |
 
 ### 批次 1 · C-A 说得清我（决定"产品能不能替你说话"）——**T04/T05/T06/T07/T08 ✅ 全部落地（2026-09-25），0.4 双向零误伤回归通过**
@@ -229,7 +229,7 @@ C 端优先**不是**推翻 [design-recruiter-roles-20260925.md](design-recruite
 
 | # | 任务 | 完成判据 | 依赖 |
 | --- | --- | --- | --- |
-| ✅ T24 | **让岗位池在生产里真的有人写，并给简历一条不依赖池子的入口**（P0-1）：① Vercel cron 今天只有 process-job/cleanup（`apps/report/vercel.json:8-18`），Actions sync 缺 `DATABASE_URL` 就 `::warning` 静默跳过；② `markStale` 只在 sync 里跑，所以本机 `jobs stats` 是 active=2303/**inactive=0** 而 `last_seen_at` 停在 09-14——**过期岗位永远冒充 active**；③ 简历唯一入口是推荐卡与 `?resumeJob=` 深链（`[profileId].astro:108,327`），空池时文案仍写"在上方选择一个岗位"（`zh-CN.json:119`） | 在全新部署里**从报告页能走到一份岗位定向简历**（自选岗位粘贴 JD → 复用既有匹配链路）；`jobs stats` 里 `last_seen_at` 超过 N 天的行不再算 active；空池文案改为如实说明岗位库状态 | T21 |
+| ✅ T24 | **让岗位池在生产里真的有人写，并给简历一条不依赖池子的入口**（P0-1）：① Vercel cron 今天只有 process-job/cleanup（`apps/report/vercel.json:7-13`，10-04 复核：该文件现只声明 cleanup 一条 cron，process-job 已改由 Actions 的 `cron-poll.yml` 每分钟驱动），Actions sync 缺 `DATABASE_URL` 就 `::warning` 静默跳过；② `markStale` 只在 sync 里跑，所以本机 `jobs stats` 是 active=2303/**inactive=0** 而 `last_seen_at` 停在 09-14——**过期岗位永远冒充 active**；③ 简历唯一入口是推荐卡与 `?resumeJob=` 深链（`[profileId].astro:108,327`），空池时文案仍写"在上方选择一个岗位"（`zh-CN.json:119`） | 在全新部署里**从报告页能走到一份岗位定向简历**（自选岗位粘贴 JD → 复用既有匹配链路）；`jobs stats` 里 `last_seen_at` 超过 N 天的行不再算 active；空池文案改为如实说明岗位库状态 | T21 |
 | ✅ T25 | **失败必须显式**（2026-09-25 落地）（P0-2，自家 NFR-6 目前不可能触发）：`apps/worker/src/index.ts:246` 是全仓唯一一次 `profiles.insert` 且 `status` 硬编 `complete` ⇒ 三处 `=== 'complete'` 消费者里的 `partial` 分支生产不可达；DB 异常一律重定向 `?notfound=1`（`[profileId].astro:39`）而**全仓没有页面读 `notfound`**；顺带补 PRD:179 与 AGENTS 第 3 条承诺、但从未实现的 **L0 早返回**（`AnalyzeForm.pollJob` 递归无截止时间，无 worker 时永久转圈） | 拔掉数据库后报告页说"暂时不可用"而不是"画像不存在"；采集有 `missing` 时画像落库为 `partial` 且页面标注；限频/慢源场景先出 L0 轻画像再升级 | — |
 | ✅ T26 | **删除与解绑从口头变成能执行**（2026-09-25 落地）（P0-4）：`apps/api/src/*.ts` 里 `app.delete(` **0 命中**，而 PRD:230 验收含"可解绑"、隐私页 `privacy.astro:131-135` 承诺 on-request 删除画像/证据并撤链；`auth cleanup` 只清会话与未认领账号，从不碰 `profiles`/`evidence` | 先兑现承诺再谈自助：内部运维子命令按 profileId 删除或匿名化画像+证据并撤分享链，**跑一次命令后该 profileId 的页面与 API 都取不到内容**；随后补自助解绑端点 | — |
 | ✅ T27 | **三处 fail-open 收口**（2026-09-25 落地）（评审 §4，成本低且都是上线开关）：`matchRatePerHour` 在 `demo-config.ts:27,50,126` 定义、可读 env、有解析测试，**却零 handler 消费**（全仓 7 命中全在 config/test）＝"看着有限流其实没有"；`POST /resumes/build` 无身份闸（`index.ts:1336`）且 `polish:true` 会真打 LLM ⇒ 匿名可烧付费额度；`TRUST_PROXY` 默认 false（`:137`）与 `CRON_SECRET` 未配时退化为信任 `x-vercel-cron: 1`（该端点能触发物理删除） | 死旋钮要么接上要么删掉；`/resumes/build` 有配额或身份闸；生产环境缺 `TRUST_PROXY`/`CRON_SECRET` **启动即失败**而非运行时静默降级；每条都有"摘掉闸必红"的用例 | — |

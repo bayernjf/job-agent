@@ -16,14 +16,12 @@ export function analyze(input: AnalyzerInput, options: AnalyzeOptions): AbilityP
 
 export { RULE_VERSION } from './rules.js';
 export { SIGNAL_CODES } from './rules.js';
-export { computeAuthenticity, computeAuthenticitySignals } from './signals.js';
-export { computeSkillTags } from './skills.js';
+// 内核对外只暴露 `analyze` + 融合纯函数 + 版本/信号码常量；各计算步骤（真实性/技能/活动/
+// 摘要/题目）是**实现细节**，一律经 `profile.ts` 装配，不作为公共导出（审计 A7：
+// 此前 6 个计算函数被 re-export 却零消费者，等于把内部结构固化成契约）。
 export { fuseInputs } from './fusion.js';
 export type { FusionResult } from './fusion.js';
 export type { FusionReport, MirrorPair, SuspectedMirror } from '@jobagent/shared';
-export { computeActivity } from './activity.js';
-export { generateInterviewQuestions } from './questions.js';
-export { computeSummary } from './summary.js';
 export type {
   AnalyzerCommit,
   AnalyzerInput,

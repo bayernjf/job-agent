@@ -13,7 +13,7 @@
 | 现有两个消费者身份完全不同 | Chrome 扩展走 HTTP API（依赖 `exportable`）；报告页是 Astro SSR **直读 storage**，不经 API |
 | `GET /profiles/:id` 与 `/exportable` 是**公开**的 | `docs/API.md` §2 与 `design-auth-gating` 决策 #10：结论公开、证据原文登录才可见。profileId 同时出现在每条分享链接里 ⇒ 可被枚举 |
 | 身份只有三态：`anonymous` / `demo`（HttpOnly Cookie）/ `user`（OAuth Cookie） | `apps/report/src/lib/auth.ts` 的 `resolveViewer` + `/demo/sessions`、`/auth/github/login` 与 `/auth/gitee/login` |
-| **没有**服务到服务的凭证概念，唯一先例是 cron 共享密钥 | `/internal/cron/*` 用 `CRON_SECRET`（`timingSafeEqual` 比较），且生产环境缺该变量时**启动即失败**（`apps/api/src/index.ts:492-497` 的 T27 闸） |
+| **没有**服务到服务的凭证概念，唯一先例是 cron 共享密钥 | `/internal/cron/*` 用 `CRON_SECRET`（`timingSafeEqual` 比较），且生产环境缺该变量时**启动即失败**（`apps/api/src/index.ts:85-93` 的 T27 闸；10-03 路由拆分后从原入口文件移到此位置） |
 | 画像投影 `exportable` 刻意不含证据 URL 与面试题 | `packages/shared` 的 `ExportableProfileSchema`：只有 subject / headline / skills(name,kind,depth,confidence,evidenceRefs) / authenticity(status,confidence)。`evidenceRefs` 是**内部 id**，不给 URL 就点不开 |
 
 ## 2. 设计原则（三条，违反任何一条就不该做这个面）

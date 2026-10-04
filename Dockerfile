@@ -17,6 +17,8 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/storage/package.json packages/storage/
 COPY packages/github-source/package.json packages/github-source/
 COPY packages/analyzer-core/package.json packages/analyzer-core/
+COPY packages/resume-core/package.json packages/resume-core/
+COPY packages/agent-core/package.json packages/agent-core/
 COPY packages/llm/package.json packages/llm/
 COPY packages/job-source/package.json packages/job-source/
 COPY packages/ui-tokens/package.json packages/ui-tokens/

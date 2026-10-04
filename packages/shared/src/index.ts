@@ -1505,7 +1505,6 @@ export const InterviewCreateSchema = z
     message: 'scheduledEnd must be after scheduledStart',
     path: ['scheduledEnd'],
   });
-export type InterviewCreateInput = z.infer<typeof InterviewCreateSchema>;
 
 /** PATCH /interviews/:id 请求体（改期/流转/结果录入），至少一个字段。 */
 export const InterviewPatchSchema = z

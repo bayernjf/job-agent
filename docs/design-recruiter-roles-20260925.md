@@ -28,7 +28,7 @@ item45 落地面试计划表时**明确选择**了"个人效率工具最小做�
 | ① | 报告页**视角切换** `?view=recruiter` | 同一份画像换排版：招聘方视角隐藏"给候选人看的改进建议"、突出可核验证据 | **URL query**——任何人手敲就能切，无身份判断 | `[profileId].astro:54-58`（`isRecruiter = searchParams.get('view') === 'recruiter'`）；`CandidateWorkspace` 卡片默认带该参数跳详情（`:352/401/483`） |
 | ② | 报告页**内容分级闸** | 折叠"原始证据外链 / 面试题 / `interview-kit.md`" | **是否已登录 `user`**——与是不是招聘方无关 | `apps/report/src/lib/auth.ts` 的 `resolveViewer` + `canViewGatedContent`、`GateCard.astro`；handoff item32 |
 | ③ | **独立工作台页** `/[locale]/recruit` | 给 B 一个自己的页面（人才检索 + 面试计划） | **无**（SSR 直出候选人首屏，仅 `noindex`） | `apps/report/src/pages/[locale]/recruit.astro` → `CandidateWorkspace` / `InterviewPlanner` |
-| ④ | **服务端端点闸** | API 面可见性 | 只有 `/interviews` 三端点要登录；`/candidates`、`/applications` 三条**不查身份** | 无闸：`apps/api/src/index.ts:1384/1429/1439/1469`；有闸：`:1484/1534/1554` |
+| ④ | **服务端端点闸** | API 面可见性 | **本行是 09-25 提案时的现状记录**；#17-F10 已于 09-30 落地后，`/candidates` 与 `/interviews` 三端点都要"登录 + 已声明招聘方"，`/applications` 三条按画像认领状态落归属 | 无闸（历史）：拆分前的 api 入口 1384/1429/1439/1469 行；现有闸：`apps/api/src/routes/recruiting.ts:33,36`（candidates）、`:154,156`（interviews）、`apps/api/src/routes/profiles.ts` 与 `apps/api/src/routes/recruiting.ts:85,97,134`（applications 归属） |
 
 数据层还有一条平行分界：`profiles` 无主、`applications` 按 `profile_id` 归属、`interviews` 按 `created_by_account_id` 行级归属（009/012 注释自证）。
 
@@ -40,7 +40,7 @@ item45 落地面试计划表时**明确选择**了"个人效率工具最小做�
 
 不是"以后可能有问题"，是现在就可复现的行为：
 
-1. **匿名可检索整个画像库**：`GET /candidates` 无任何身份要求（`apps/api/src/index.ts:1384`），可按技能标签 / 真实性分级 / 置信度 / 平台过滤并分页遍历。单张画像本就公开（决策 #1-A），但"公开单张"不等于"公开可批量遍历的检索接口"——后者是另一件事。
+1. **匿名可检索整个画像库**（**已闭环**：#17-F10 于 09-30 落地，`GET /candidates` 现要求登录 + 招聘方声明，见 `apps/api/src/routes/recruiting.ts:33,36` 与 `apps/api/src/routes/helpers.ts:139`）：提案时该端点无任何身份要求，可按技能标签 / 真实性分级 / 置信度 / 平台过滤并分页遍历。单张画像本就公开（决策 #1-A），但"公开单张"不等于"公开可批量遍历的检索接口"——后者是另一件事。
 2. **投递记录任何人都能写**：`POST /profiles/:id/applications`（`:1439`）与 `PATCH /applications/:id`（`:1469`）都无归属、无登录。任何人可向任意画像注入投递记录、并改任意一条记录的状态（含改成 `offer`）。
 3. **招聘方动作没有身份语义**：`interviews` 三个端点要登录（`:1484` 起），但"登录"不等于"我是替公司看人的"。付费主体识别、企业内协作、以及"画像被招聘方查看是否该告知本人"这三件事目前**无处挂靠**。
 

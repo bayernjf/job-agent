@@ -74,9 +74,13 @@ export type { ApiDeps, ApiRepos, HonoEnv } from './routes/types.js';
 /**
  * 创建 Hono 应用（可注入依赖，便于测试）。
  * 生产环境缺省走 createStorage（按 DB_DRIVER 选择方言），测试注入内存仓储。
+ *
+ * 注入点刻意只到 `ApiRepos`（`StorageContext` 的结构子集，直接赋值即可，不需要断言）；
+ * **本函数不持有也不关闭连接**：serverless 温实例复用同一 app，关闭应在进程属主做
+ * （见 `main()` 的信号处理）。
  */
 export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
-  const repos: ApiRepos = deps.repos ?? ((await createStorage()) as unknown as ApiRepos);
+  const repos: ApiRepos = deps.repos ?? (await createStorage());
   const now = deps.now ?? (() => new Date().toISOString());
   const cfg = deps.demoConfig ?? loadDemoConfig();
   // T27 生产启动闸：上线开关必须显式配置，缺了启动即失败（而不是运行时静默降级成 fail-open）。
@@ -258,14 +262,31 @@ async function main(): Promise<void> {
   const outboundProxy = configureOutboundProxy();
   if (outboundProxy) console.log(`[api] outbound proxy enabled: ${outboundProxy}`);
   const port = Number(process.env.PORT ?? 3000);
-  const app = await createApp();
+  // 常驻进程自己拥有连接：显式建库、显式关闭（审计 A2 —— 原先 createApp 内部建库后
+  // 丢弃了 close()，独立部署的 api 进程退出时连接从不优雅释放）。
+  const storage = await createStorage();
+  const app = await createApp({ repos: storage });
 
   // Hono 自带 serve（Node.js）
   const { serve } = await import('@hono/node-server');
-  serve({ fetch: app.fetch, port }, (info) => {
+  const server = serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
     console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, GET /auth/gitee/login, GET /auth/gitee/callback, GET /auth/providers, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, POST /profiles/:id/unclaim, GET /jobs/:id, GET /profiles/by-subject/:platform/:login, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, POST|GET /interviews, PATCH /interviews/:id, GET /health`);
   });
+
+  let closing = false;
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      if (closing) return;
+      closing = true;
+      console.log(`[api] ${signal} received, shutting down`);
+      server.close();
+      void storage
+        .close()
+        .catch((err: unknown) => console.error('[api] storage close failed:', JSON.stringify(describeError(err))))
+        .finally(() => process.exit(0));
+    });
+  }
 }
 
 // 仅在直接运行时启动（被 import 时不启动）
