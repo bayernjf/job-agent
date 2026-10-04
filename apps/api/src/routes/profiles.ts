@@ -23,7 +23,7 @@ import {
   collectEvidence,
   skillTagMap,
 } from '../match-explain.js';
-import { formatProfile, requireProfileOwner } from './helpers.js';
+import { formatProfileForViewer, requireProfileOwner } from './helpers.js';
 import {
   ProfileIdParamSchema,
   RemovalRequestBodySchema,
@@ -90,7 +90,7 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
     return c.json({ error: 'no complete or partial profile for subject', code: 'PROFILE_NOT_FOUND' }, 404);
   });
 
-  // GET /profiles/:id：查询画像快照
+  // GET /profiles/:id：查询画像快照（面试题文本按身份收口，见 formatProfileForViewer）
   app.get('/profiles/:id', async (c) => {
     const parsed = ProfileIdParamSchema.safeParse(c.req.param());
     if (!parsed.success) {
@@ -102,7 +102,7 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'profile not found' }, 404);
     }
 
-    return c.json(formatProfile(profile));
+    return c.json(formatProfileForViewer(profile, c.get('principal')));
   });
 
   // GET /profiles/:id/exportable：导出画像（P1 扩展消费，服务端投影单一事实源）
