@@ -1788,6 +1788,45 @@ export const SubmitIntentSchema = z.object({
 });
 export type SubmitIntent = z.infer<typeof SubmitIntentSchema>;
 
+/**
+ * 阶段 2 A2：扩展在 ATS 页面拉取的「待填充」票据精简视图（跨 run、status=approved）。
+ * 不含匹配报告全文；扩展按 job.sourceUrl/applyUrl 与当前页面 URL 本地匹配。
+ */
+export const ExtensionPendingFillSchema = z.object({
+  intentId: z.string().min(1),
+  runId: z.string().min(1),
+  profileId: z.string().min(1),
+  job: SubmitIntentJobSchema,
+  matchScore: z.number().nonnegative(),
+  matchTier: MatchScoreTierSchema,
+  approvedAt: z.string().datetime(),
+});
+export type ExtensionPendingFill = z.infer<typeof ExtensionPendingFillSchema>;
+
+/** GET /agent/extension/pending-fills 响应体。 */
+export const ExtensionPendingFillsResponseSchema = z.object({
+  fills: z.array(ExtensionPendingFillSchema),
+});
+export type ExtensionPendingFillsResponse = z.infer<typeof ExtensionPendingFillsResponseSchema>;
+
+/**
+ * 阶段 2 D1：投递结果回写（复盘样本，决策 #20-3）。
+ * no_response=无回音、interview=邀约/面试、offer=录用、rejected=拒绝。
+ * 仅记录；权重微调（D2）需累计 ≥20 条带结果记录且人工确认后才生效。
+ */
+export const OUTCOME_FEEDBACK_VALUES = ['no_response', 'interview', 'offer', 'rejected'] as const;
+export const OutcomeFeedbackSchema = z.enum(OUTCOME_FEEDBACK_VALUES);
+export type OutcomeFeedback = z.infer<typeof OutcomeFeedbackSchema>;
+
+/** POST /agent/intents/:id/outcome 请求体。 */
+export const IntentOutcomeRequestSchema = z
+  .object({
+    outcome: OutcomeFeedbackSchema,
+    note: z.string().max(1000).optional(),
+  })
+  .strict();
+export type IntentOutcomeRequest = z.infer<typeof IntentOutcomeRequestSchema>;
+
 /** POST /agent/runs 请求体：绑定一套偏好与一个本人已认领画像。 */
 export const JobRunCreateSchema = z
   .object({
