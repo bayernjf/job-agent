@@ -235,6 +235,7 @@
   "applications.status": "Status",
   "applications.note": "Note",
   "applications.appliedAt": "Applied at",
+  "applications.aiAssisted": "AI-assisted",
   "applications.companyPlaceholder": "Company name",
   "applications.rolePlaceholder": "Role title",
   "applications.urlPlaceholder": "https://…",

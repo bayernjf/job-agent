@@ -1119,6 +1119,15 @@ h4 { font-size: var(--ja-text-lg); }
   flex-wrap: wrap;
 }
 
+/* E1：AI 辅助投递徽标（中性，仅 token，不引颜色字面量） */
+.apptrk-ai-badge {
+  align-self: center;
+  background: var(--ja-color-surface);
+  border: 1px solid var(--ja-color-border);
+  color: var(--ja-color-fg-muted);
+  white-space: nowrap;
+}
+
 .apptrk-note {
   font-size: var(--ja-text-sm);
   margin-top: var(--ja-space-1);

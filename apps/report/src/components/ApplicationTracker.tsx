@@ -44,6 +44,7 @@ interface TrackerLabels {
   status: string;
   note: string;
   appliedAt: string;
+  aiAssisted: string;
   companyPlaceholder: string;
   rolePlaceholder: string;
   urlPlaceholder: string;
@@ -308,6 +309,11 @@ export default function ApplicationTracker({ profileId, apiBase, locale, labels 
                 <div className="apptrk-item-title">
                   <strong>{a.targetCompany}</strong>
                   <span className="ja-muted">· {a.targetTitle}</span>
+                  {a.origin === 'agent' && (
+                    <span className="ja-badge apptrk-ai-badge" data-testid="ai-assisted-badge">
+                      {labels.aiAssisted}
+                    </span>
+                  )}
                 </div>
                 {a.note && <p className="ja-muted apptrk-note">{a.note}</p>}
                 <div className="apptrk-item-meta">
