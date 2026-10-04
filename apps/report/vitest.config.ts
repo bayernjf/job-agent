@@ -10,5 +10,8 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', '**/.astro/**'],
     environment: 'node',
     setupFiles: ['./src/test-setup.ts'],
+    // 审计 T2：默认 5s 在并行全仓跑时会因 CPU 争用把慢盘/重 transform 的用例判成超时假红
+    // （api 15s、storage 30s 已各自显式设置，本包此前漏了）。留 3 倍余量，不是把真慢测试藏起来。
+    testTimeout: 15000,
   },
 });
