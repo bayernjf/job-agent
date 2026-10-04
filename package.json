@@ -35,12 +35,8 @@
   "pnpm": {
     "overrides": {
       "devalue": ">=5.9.3",
-      "fast-uri": ">=3.1.8"
-    },
-    "auditConfig": {
-      "ignoreCves": [
-        "CVE-2026-93748"
-      ]
+      "fast-uri": ">=3.1.8",
+      "http-cache-semantics": ">=4.3.0"
     }
   }
 }
