@@ -11,6 +11,7 @@ import {
   AUTH_ERROR_CODES,
   JobPreferencesCreateSchema,
   JobPreferencesPatchSchema,
+  IntentOutcomeRequestSchema,
   JobRunApproveSchema,
   JobRunCreateSchema,
   JobRunRejectSchema,
@@ -28,6 +29,7 @@ import {
 import {
   advanceRunOnce,
   applyRunEvent,
+  buildIntentArtifacts,
   loadRunView,
   renderIntentCoverLetter,
   renderIntentResume,
@@ -39,7 +41,8 @@ import {
   toRunView,
   toRunViewData,
 } from '../agent-view.js';
-import { renderHtml } from '@jobagent/resume-core';
+import { aiAssistedDisclosure, renderHtml } from '@jobagent/resume-core';
+import { resolveTextLlm } from './llm-resolve.js';
 import { describeError } from './helpers.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
@@ -449,6 +452,56 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     });
   });
 
+  // GET /agent/extension/pending-fills：阶段 2 A2，扩展在 ATS 页面拉取本人跨 run 的
+  // 已确认待填充票据（status=approved）。扩展本地按 job.sourceUrl/applyUrl 匹配当前页面。
+  app.get('/agent/extension/pending-fills', async (c) => {
+    const user = requireAgentUser(c);
+    if (user instanceof Response) return user;
+    const intents = await repos.submitIntents.listFillableByAccount(user.accountId, 100);
+    return c.json({
+      fills: intents.map((intent) => ({
+        intentId: intent.id,
+        runId: intent.runId,
+        profileId: intent.profileId,
+        job: intent.job,
+        matchScore: intent.matchScore,
+        matchTier: intent.matchTier,
+        approvedAt: intent.approvedAt,
+      })),
+    });
+  });
+
+  // POST /agent/intents/:id/outcome：阶段 2 D1，投递结果回写（邀约/拒绝/无响应/offer）。
+  // 仅记录到 applications 作为复盘样本；权重微调 D2 需 ≥20 条且人工确认（决策 #20-3）。
+  app.post('/agent/intents/:id/outcome', async (c) => {
+    const intent = await requireOwnedIntent(c, c.req.param('id') ?? '');
+    if (intent instanceof Response) return intent;
+    if (intent.status !== 'submitted' || !intent.applicationId) {
+      return c.json(
+        { error: 'outcome can only be recorded for a submitted application', code: AGENT_ERROR_CODES.invalidTransition },
+        409,
+      );
+    }
+    const parsed = IntentOutcomeRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid outcome request', details: parsed.error.flatten() }, 400);
+    }
+    const feedbackAt = now();
+    const updated = await repos.applications.update(
+      intent.applicationId,
+      { outcomeFeedback: parsed.data.outcome, outcomeFeedbackAt: feedbackAt },
+      intent.accountId,
+    );
+    if (!updated) {
+      return c.json({ error: 'application not found', code: AGENT_ERROR_CODES.intentNotFound }, 404);
+    }
+    return c.json({
+      applicationId: intent.applicationId,
+      outcomeFeedback: updated.outcomeFeedback,
+      outcomeFeedbackAt: updated.outcomeFeedbackAt,
+    });
+  });
+
   // GET /agent/intents/:id/resume：按需装配的岗位定向简历（服务端不含本地补填字段，
   // 浏览器端的下载按钮走 POST /resumes/build 带本机字段，两者同一套 render 代码）
   app.get('/agent/intents/:id/resume', async (c) => {
@@ -496,6 +549,45 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       );
     }
     if (format === 'json') {
+      // C2：polish=llm 时在规则版之上做 LLM 润色；无 key / 调用失败一律 fail-closed
+      // 回落到规则版（polished=false + fallbackReason），绝不阻断投递准备。
+      if (c.req.query('polish') === 'llm') {
+        const artifacts = await buildIntentArtifacts(repos, intent, { locale: locale.data });
+        const llm = artifacts ? await resolveTextLlm(c, d).catch(() => null) : null;
+        if (artifacts && llm?.cover) {
+          try {
+            const out = await llm.cover.generate({
+              draft: artifacts.resume,
+              posting: artifacts.posting,
+              locale: locale.data,
+            });
+            return c.json({
+              draft: rendered.draft,
+              // E1：LLM 正文末尾同样固定追加 AI 辅助披露，模型无法省略。
+              body: `${out.body.trim()}\n\n${aiAssistedDisclosure(locale.data)}`,
+              subject: out.subject ?? null,
+              polished: true,
+              provenance: {
+                source: llm.source,
+                provider: llm.cover.provider,
+                model: llm.cover.model,
+                promptVersion: llm.cover.promptVersion,
+              },
+              fromSnapshot: rendered.fromSnapshot,
+            });
+          } catch {
+            // 落到规则版
+          }
+        }
+        return c.json({
+          draft: rendered.draft,
+          body: rendered.markdown,
+          subject: null,
+          polished: false,
+          fallbackReason: 'llm_unavailable',
+          fromSnapshot: rendered.fromSnapshot,
+        });
+      }
       return c.json({ draft: rendered.draft, fromSnapshot: rendered.fromSnapshot });
     }
     return c.text(rendered.markdown, 200, { 'Content-Type': 'text/markdown; charset=utf-8' });
