@@ -11,7 +11,10 @@
 import { describe, expect, it } from 'vitest';
 import { UNAUTHORIZED_NOTICE, type AbilityProfile } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
-import { createApp } from './index.js';
+import { createApp, type ApiDeps } from './index.js';
+import { FakeAuthProvider } from './fake-auth.js';
+import { loadAuthConfig } from './auth-config.js';
+import type { OAuthProfile } from './auth-provider.js';
 
 async function freshRepos(): Promise<StorageContext> {
   return createStorage({ sqlitePath: ':memory:' });
@@ -60,6 +63,40 @@ function sampleProfile(profileId: string, login = 'test-user'): AbilityProfile {
     interviewQuestions: [],
     caveats: [],
   };
+}
+
+/**
+ * 带面试题的画像夹具：授权收口用例必须有真实题目，
+ * 否则"响应里不含题目文本"在门被删掉时依然通过（空断言）。
+ */
+function sampleProfileWithQuestions(profileId: string, login = 'gated-subject'): AbilityProfile {
+  return {
+    ...sampleProfile(profileId, login),
+    interviewQuestions: [
+      {
+        question: 'Why did the auth module in job-agent change shape?',
+        intent: 'Assess depth of ownership',
+        basisEvidenceRef: 'ev-gate-1',
+      },
+      {
+        question: 'Walk through your largest refactor and what you would do differently.',
+        intent: 'Assess engineering judgement',
+        basisEvidenceRef: 'ev-gate-2',
+      },
+    ],
+  };
+}
+
+async function insertSnapshot(repos: StorageContext, profile: AbilityProfile): Promise<void> {
+  await repos.profiles.insert({
+    id: profile.profileId,
+    analyzerVersion: profile.analyzerVersion,
+    subjectLogin: profile.subject.login,
+    dataWindowSince: profile.dataWindow.since,
+    dataWindowUntil: profile.dataWindow.until,
+    status: 'complete',
+    snapshot: profile,
+  });
 }
 
 describe('GET /health', () => {
@@ -549,6 +586,79 @@ describe('GET /profiles/:id', () => {
     expect(res.status).toBe(404);
     const body = await res.json() as any;
     expect(body.error).toBe('profile not found');
+  });
+});
+
+describe('GET /profiles/:id 授权收口（面试题文本按身份可见）', () => {
+  const GATED_TEXT = 'Why did the auth module in job-agent change shape?';
+
+  /** 走完整 fake-OAuth 登录换会话 Cookie；换不到就抛错，避免用例静默退化成匿名请求。 */
+  async function loginViewer(
+    repos: StorageContext,
+  ): Promise<{ app: Awaited<ReturnType<typeof createApp>>; cookie: string }> {
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider({
+        platform: 'github',
+        providerAccountId: '777',
+        login: 'gated-viewer',
+      } satisfies OAuthProfile),
+    });
+    const setCookies = (res: Response) => (res.headers.getSetCookie?.() ?? []).join('\n');
+    const state = /jobagent_oauth_state=([^;]+)/.exec(setCookies(await app.request('/auth/github/login')))?.[1];
+    if (!state) throw new Error('oauth state cookie was not issued');
+    const callback = await app.request(
+      `/auth/github/callback?state=${encodeURIComponent(state)}&code=fake-code`,
+      { headers: { Cookie: `jobagent_oauth_state=${state}` } },
+    );
+    const session = /jobagent_session=([^;]+)/.exec(setCookies(callback))?.[1];
+    if (!session) throw new Error('session cookie was not issued (login flow broke)');
+    return { app, cookie: `jobagent_session=${session}` };
+  }
+
+  it('anonymous gets no question text but the withheld count is reported', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    await insertSnapshot(repos, sampleProfileWithQuestions('prof-gate-anon'));
+
+    const res = await app.request('/profiles/prof-gate-anon');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.snapshot.interviewQuestions).toEqual([]);
+    expect(body.gating.interviewQuestions).toEqual({ hidden: true, count: 2 });
+    expect(JSON.stringify(body)).not.toContain(GATED_TEXT);
+    expect(JSON.stringify(body)).not.toContain('basisEvidenceRef":"ev-gate-');
+    // 公开口径不得被误伤（结论/技能/真实性/授权标注照旧返回）
+    expect(body.snapshot.summary.headline).toBe('Test developer');
+    expect(body.snapshot.authenticity.status).toBe('likely_authentic');
+    expect(body.authorizationNotice).toBe(UNAUTHORIZED_NOTICE);
+  });
+
+  it('a demo session is gated the same way as an anonymous request', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    await insertSnapshot(repos, sampleProfileWithQuestions('prof-gate-demo'));
+    const cookie = await demoSessionCookie(repos, 'demo-gate-session');
+
+    const res = await app.request('/profiles/prof-gate-demo', { headers: { Cookie: cookie } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.gating.interviewQuestions).toEqual({ hidden: true, count: 2 });
+    expect(JSON.stringify(body)).not.toContain(GATED_TEXT);
+  });
+
+  it('a logged-in user receives the questions and no gating marker', async () => {
+    const repos = await freshRepos();
+    await insertSnapshot(repos, sampleProfileWithQuestions('prof-gate-user'));
+    const { app, cookie } = await loginViewer(repos);
+
+    const res = await app.request('/profiles/prof-gate-user', { headers: { Cookie: cookie } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.snapshot.interviewQuestions).toHaveLength(2);
+    expect(body.snapshot.interviewQuestions[0].question).toBe(GATED_TEXT);
+    expect('gating' in body).toBe(false);
   });
 });
 

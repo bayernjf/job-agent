@@ -163,7 +163,7 @@
 
 1. `POST /analyze` 拿到 `jobId`（缓存命中时直接拿 `profileId`，跳到第 3 步）。
 2. 轮询 `GET /jobs/:id`，直到 `status` 为 `succeeded`/`failed`。
-3. `succeeded` 后用 `profileId` 调 `GET /profiles/:id` 取完整画像。
+3. `succeeded` 后用 `profileId` 调 `GET /profiles/:id` 取画像快照（未登录调用者拿不到面试题文本，见 §1 授权收口）。
 
 #### 演示模式错误（403 / 429）
 
@@ -403,7 +403,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | 面试准备包 Markdown 下载（报告页端点 `GET /[locale]/report/:id/interview-kit.md`） | 隐藏下载链接，端点返回 `401` | `200` 下载 |
 
 - 报告页身份在 SSR 读 `jobagent_session` + 只读 storage 解析（`resolveViewer`），坏/过期 Cookie 与只读查询异常一律静默降级匿名，不拖垮页面；登录墙按钮携带当前页 `return_to` 深链。
-- **JSON API 不在本刀范围**：`GET /profiles/:id` 与 `GET /profiles/:id/exportable` 保持公开（浏览器扩展一键填充依赖 exportable，其投影本身不含证据 URL 与面试题）；未登录 API 面本就基本拿不到证据 URL（exportable 无、snapshot 内仅 evidenceId）。对 API 响应做字段级裁剪（连面试题文本也裁掉）缓做，触发条件＝对外公开分享后出现 API 抓取/搬运滥用（见 [deferred-items](deferred-items.md)）。
+- **JSON API 字段级授权裁剪（2026-10-05 落地，此前是缓做项）**：`GET /profiles/:id` 对未登录调用者（`anonymous` / `demo`）**不再返回面试题文本**——`snapshot.interviewQuestions` 置空，并用 `gating.interviewQuestions.count` 如实报数，与上表"折叠为题数 + 登录墙"同口径。实现见 `apps/api/src/routes/helpers.ts` 的 `formatProfileForViewer`，用例见 `apps/api/src/index.test.ts` 的「`GET /profiles/:id` 授权收口」describe（拆掉闸门两条用例即转红，已反证）。此前该端点无条件回整份 snapshot，**页面那道墙只约束页面、不是访问控制**（2026-09-25 评审实查指出，当时记为缓做）。
+- **有意继续公开的口径（勿再当漏洞报）**：`GET /profiles/:id/exportable` 的投影本就不含证据 URL 与面试题（扩展一键填充依赖它）；`GET /profiles/:id/job-recommendations` 经 `apps/api/src/match-explain.ts` 匿名返回匹配理由相关的证据 `url` + `claim`——那是决策 #10「匹配理由必须可回溯」要求的公开面，裁掉会让公开报告页失去可核验性，因此它**不在**"登录才能看到证据"的承诺范围内，对外文案不得写成那样。
 
 ---
 
@@ -472,12 +473,15 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
   "analysisLayers": ["L0", "L1"],
   "status": "complete",
   "snapshot": { },
+  "gating": { "interviewQuestions": { "hidden": true, "count": 5 } },
   "createdAt": "...",
   "updatedAt": "..."
 }
 ```
 
 `authorizationNotice`（**仅未认领画像出现**，`subject.claimed=false` 时）：「未经本人授权」标注的机器可读出口（deferred 合规线，与报告页提示条 item58 同口径），固定英文文案（`packages/shared` 的 `UNAUTHORIZED_NOTICE` 常量），防止第三方抓取真实性结论时断章取义；认领画像省略该字段。
+
+`gating`（**仅未登录调用者出现**：`anonymous` 与 `demo`）：授权收口的机器可读声明，实现见 `apps/api/src/routes/helpers.ts` 的 `formatProfileForViewer`。带该字段时 `snapshot.interviewQuestions` 已置为 `[]`（题目文本与 `basisEvidenceRef` 都不出现在响应里），但**题数照实返回**，让调用方知道"这里收口了 N 条"，而不是误读成"该画像没有面试题"（运行架构第 6 条：禁止输出看似完整的结论）。已登录 `user`（Cookie 会话或扩展 Bearer API Token）拿到 `interviewQuestions` 完整、且**不含** `gating` 字段的响应。上面示例即匿名形态（`authorizationNotice` 与 `gating` 同时出现）。
 
 `snapshot` 为完整 `AbilityProfile`，字段契约以 `packages/shared` 为准，主要包含：
 
@@ -486,7 +490,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 - `activity`（longevityMonths、cadenceSummary、metrics）
 - `collaboration`（prSummary、externalMergedContributions）
 - `authenticity`（status、confidence、signals[]）
-- `interviewQuestions[]`、`caveats[]`
+- `interviewQuestions[]`（**未登录调用者拿到 `[]`**，题数走 `gating`，见 §3）、`caveats[]`
 - `improvementSuggestions[]`（可选，规则版本 0.6 起，T09 产 / T10 渲染）：`code`（稳定枚举 `no_pull_requests` / `no_external_contributions`）+ `suggestion`/`why`（**数据层英文原句**，由 `composeImprovementSuggestion(code, 'en')` 拼出）+ `evidenceRefs`（无证据不产条目）。报告页"下一步动作"区块按读者语言用 `composeImprovementSuggestion(code, locale)` 现拼，**只认 `code`、不按英文句子匹配**；接口本身不返回中文句。
 
 #### 不存在（404）

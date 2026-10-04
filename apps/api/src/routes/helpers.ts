@@ -195,6 +195,29 @@ export function formatProfile(profile: StoredProfile) {
 }
 
 /**
+ * 按调用者身份投影画像响应。报告页那道内容分级闸只是页面渲染层的（SSR 直读 storage），
+ * 过去 `GET /profiles/:id` 不受身份影响地返回整份 snapshot，面试题文本因此可被 curl 绕过
+ * （2026-09-25 评审实查，deferred「JSON API 字段级授权裁剪」）。
+ *
+ * 现在未登录（anonymous/demo）读者拿不到面试题文本，与登录墙同口径；**题数保留**，
+ * 这样响应如实声明"这里收口了 N 条"，而不是伪装成一份完整画像（运行架构第 6 条）。
+ * 其余字段口径不变：结论/技能/匹配与 `job-recommendations` 的匹配理由证据按决策 #10 继续公开。
+ */
+export function formatProfileForViewer(profile: StoredProfile, viewer: Principal) {
+  const body = formatProfile(profile);
+  if (viewer.kind === 'user') return body;
+  return {
+    ...body,
+    snapshot: body.snapshot
+      ? { ...body.snapshot, interviewQuestions: [] }
+      : body.snapshot,
+    gating: {
+      interviewQuestions: { hidden: true, count: profile.snapshot?.interviewQuestions.length ?? 0 },
+    },
+  };
+}
+
+/**
  * Expand an unknown error into a loggable shape, including the driver `code`
  * and the full `cause` chain. Serverless runtimes (Vercel) otherwise surface
  * only an empty 500 with no stack, which makes production failures impossible
