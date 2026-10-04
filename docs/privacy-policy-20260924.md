@@ -192,6 +192,22 @@ declaration anytime, which removes access to recruiter surfaces but does not
 delete interview records you created. For objections, contact
 **dispute@job-agent.bayjf.com**.
 
+#### 12. AI-assisted applications
+
+When you use the browser extension's semi-automatic apply feature, JobAgent
+pre-fills the application form and prepares a tailored cover letter from your
+verifiable public code evidence, then stops: the extension never clicks the
+final submit button, and you submit every application yourself.
+
+Each cover letter produced for a job application ends with a fixed, visible
+disclosure line stating that the material was prepared with AI assistance by
+JobAgent and is grounded only in your verifiable public code evidence. This
+line is appended server-side for AI-polished letters and by the rule-based
+renderer otherwise, so it cannot be omitted by the model. Recipients can
+therefore identify AI-assisted material at a glance. We do not automate
+submission, do not create accounts on third-party job sites on your behalf, and
+do not store the cover letter after it is delivered to you.
+
 ---
 
 ## 中文（简体）
@@ -333,3 +349,14 @@ JobAgent 是面向专业开发者的工具，不面向儿童；我们不会在�
 我们记录声明时刻，且不会因重新登录而静默重置；运维清理任务永不删除已声明的账号。
 你可以随时撤销声明，撤销将收回招聘方表面的访问权，但不会删除你已创建的面试记录。
 异议请联系：**dispute@job-agent.bayjf.com**。
+
+#### 12. AI 辅助投递
+
+当你使用浏览器扩展的半自动投递功能时，JobAgent 会根据你可核验的公开代码证据，
+在申请表单中预填内容并生成岗位定向求职信，随后**停手**：扩展不会替你点击最终的
+「提交」按钮，每一次投递都由你本人完成。
+
+每封为投递生成的求职信末尾都带有一行固定、可见的披露，说明该材料由 JobAgent
+依据你本人可核验的公开代码证据辅助生成（AI 辅助投递）。这行披露对 AI 润色版由
+服务端追加、对规则版由渲染器追加，模型无法省略，招聘方一眼即可识别 AI 辅助材料。
+我们不自动提交、不代你在第三方招聘网站创建账号，也不会在求职信交付给你之后留存其内容。
