@@ -66,7 +66,7 @@
 | `JOB_HTTP_PROXY` | 视网络 | 服务端换 OAuth token / 岗位采集走代理；也回退 `HTTPS_PROXY/HTTP_PROXY` |
 | `LLM_*` | 可选 | 不填=纯规则简历；填了才启用润色 |
 | `PUBLIC_API_BASE` | **构建期**变量 | 见 §4，极易踩坑：它在 `docker build` 时固化，不是运行时；**形态 C 不用设**（自动回退同域 `/api`） |
-| `CRON_SECRET` | 形态 C **生产必需** | serverless 内部 cron 端点（`/api/internal/cron/*`）的共享密钥；配了就要求 cron 路径带 `?token=`（常量时间比较），不配仅信任 Vercel 的 `x-vercel-cron` 头。生成：`openssl rand -hex 32` |
+| `CRON_SECRET` | 形态 C **生产必需** | serverless 内部 cron 端点（`/api/internal/cron/*`）的共享密钥；配了就要求 cron 请求带 `Authorization: Bearer <值>`（平台注入与 Actions 轮询都用这个头，2026-10-05 起）或历史的 `?token=<值>`（常量时间比较），不配仅信任 Vercel 的 `x-vercel-cron` 头。生成：`openssl rand -hex 32` |
 
 ## 4. 两种部署形态（A/B 未决策，并列给出）
 
@@ -113,7 +113,7 @@ Supabase           Postgres（区域与 hnd1 对齐）：6543 事务池化给函
 1. Import 本仓，**Root Directory 设为 `apps/report`**（`vercel.json` 在该目录；构建命令已在其中写好，会先 `pnpm --filter @jobagent/report... build` 构建 workspace 依赖）。
 2. Framework Preset = Astro；Node 版本 24（与 `.nvmrc` 一致）；Region 选东京 `hnd1`（与 Supabase 区域对齐，且海外直连 GitHub/Gitee，**不需要 `JOB_HTTP_PROXY`**）。
 3. Environment Variables：按 `.env.example` 末尾「生产部署：Vercel + Supabase（形态 C）」段逐项填——`DB_DRIVER=postgres`、`DATABASE_URL`（6543 池化串）、**`DB_AUTO_MIGRATE=false`**（迁移只走本地 5432 流程）、**`API_MOUNT_PREFIX=/api`**（决定对外 OAuth 回调 URI 与临时 Cookie Path，漏配会导致登录回调 404）、`GITHUB_TOKEN`/`GITEE_TOKEN`、OAuth client/secret、`AUTH_STATE_SECRET`、`AUTH_CALLBACK_BASE_URL=https://<域名>`（不含 `/api`）、`TRUST_PROXY=true`、`DEMO_IP_SALT`、`CRON_SECRET`。
-4. Cron：`apps/report/vercel.json` 声明 `17 3 * * *` 调 `/api/internal/cron/cleanup?task=all`（清过期 demo/认证数据）。**path 内不内联 token**：项目配了 `CRON_SECRET` 后 Vercel 会在触发时自动带 `Authorization: Bearer $CRON_SECRET`，端点接受该头（也接受 Actions 轮询用的 `?token=<CRON_SECRET>`）；旧写法「path 里填 `REPLACE_WITH_CRON_SECRET` 再手改」已于 2026-10-02 废弃——占位从未被替换，导致 cleanup 每日 401。分析任务的消费在 Pro 计划下另加 `* * * * *` 调 `/api/internal/cron/process-job?token=<CRON_SECRET>`（Actions 轮询形态）。
+4. Cron：`apps/report/vercel.json` 声明 `17 3 * * *` 调 `/api/internal/cron/cleanup?task=all`（清过期 demo/认证数据）。**path 内不内联 token**：项目配了 `CRON_SECRET` 后 Vercel 会在触发时自动带 `Authorization: Bearer $CRON_SECRET`，端点接受该头（也接受 Actions 轮询用的 `?token=<CRON_SECRET>`）；旧写法「path 里填 `REPLACE_WITH_CRON_SECRET` 再手改」已于 2026-10-02 废弃——占位从未被替换，导致 cleanup 每日 401。分析任务的消费在 Pro 计划下另加 `* * * * *` 调 `/api/internal/cron/process-job`（凭证走 `Authorization: Bearer $CRON_SECRET` 头；Actions 轮询形态同样发这个头，2026-10-05 起不再用 `?token=`）。
 5. **计划限制（2026-09 核实）**：函数时长 Hobby/Pro 默认与上限均含 300s（Pro 可调到 800s），单任务处理够用；但 **Cron 在 Hobby 计划每天只能跑 1 次，每分钟表达式会直接导致部署失败**。生产当前用 Hobby：cleanup 走每日 1 次（合规），`process-job` 改由 GitHub Actions `cron-poll.yml` 轮询替代（**实测间隔 4–7.5h，排队最坏等数小时**，见部署执行单 E1/F5）；要回到每分钟消费需升 Pro 并在 vercel.json 恢复该条 cron。
 6. 自定义域名：Vercel 项目绑定 `app.job-agent.bayjf.com`（占位），再到 Cloudflare DNS 加 CNAME（建议 DNS-only / 关闭橙云代理，让 Vercel 直接终结 TLS，避免边缘与函数区域链路的不确定行为；如坚持开橙云需实测）。
 
@@ -233,8 +233,8 @@ services:
 
 | 任务 | 形态 C 调度方式 | 端点 / 命令 |
 | --- | --- | --- |
-| 分析任务消费 | **Vercel Cron** 每分钟（需 Pro 计划） | `GET /api/internal/cron/process-job?token=<CRON_SECRET>`，每次认领并处理**一个** job；内置 5min 僵尸回收、demo 并发闸（超闸 defer 不烧 attempts） |
-| demo + auth 清理 | **Vercel Cron** 每天 03:17 | `GET /api/internal/cron/cleanup?token=<CRON_SECRET>&task=all`（task=demo/auth/all，默认 all；保留窗口 24h / 30d） |
+| 分析任务消费 | **Vercel Cron** 每分钟（需 Pro 计划） | `GET /api/internal/cron/process-job`（带 `Authorization: Bearer $CRON_SECRET`），每次认领并处理**一个** job；内置 5min 僵尸回收、demo 并发闸（超闸 defer 不烧 attempts） |
+| demo + auth 清理 | **Vercel Cron** 每天 03:17 | `GET /api/internal/cron/cleanup?task=all`（凭证由平台注入 `Authorization: Bearer $CRON_SECRET`，path 内不内联 token；task=demo/auth/all，默认 all；保留窗口 24h / 30d） |
 | 岗位日更 / HN 月更 | **GitHub Actions 定时 workflow 跑 CLI**（已落地 `.github/workflows/jobs-sync.yml`，每日 18:17 UTC / 每月 1 日 18:42 UTC，可手动触发） | 同左表 CLI 命令；需配 Actions secret `DATABASE_URL`（5432 串）；不塞进 serverless（时长/预算不可控） |
 
 鉴权：配了 `CRON_SECRET` 则必须带 `?token=`（常量时间比较）；未配时仅信任 Vercel 边缘下发的 `x-vercel-cron: 1` 头（外部无法伪造该头），仅适合临时调试。端点在配置缺失（如无 token）时返回 500，不伪装成功。
