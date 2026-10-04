@@ -68,6 +68,38 @@ describe('syncOnce', () => {
     expect(remotive.invalid).toBe(1);
   });
 
+  it('logs the database error code instead of the echoed SQL', async () => {
+    const hugeSql = 'insert into "job_postings" '.padEnd(12_000, 'x');
+    const upsertBatch = vi.fn(async () => {
+      const err = new Error(`Failed query: ${hugeSql}`) as Error & { cause?: unknown };
+      err.cause = Object.assign(
+        new Error('null value in column "salary_min" of relation "job_postings" violates not-null constraint'),
+        { code: '23502' },
+      );
+      throw err;
+    });
+    const a = adapter('weworkremotely', async () => ({
+      postings: [makePosting('weworkremotely', 1)],
+      invalid: 0,
+    }));
+
+    const result = await syncOnce({
+      adapters: [a],
+      repo: { upsertBatch, markStale: vi.fn(async () => 0) },
+      now: fixedNow,
+      staleDays: 7,
+    });
+
+    const outcome = result.outcomes.find((o) => o.source === 'weworkremotely')!;
+    const message = outcome.error ?? '';
+    expect(message).toContain('db 23502');
+    expect(message).toContain('violates not-null constraint');
+    // 旧写法只打 err.message：上万字符的 SQL 把真正的错误码挤出日志窗口，
+    // 生产那条 weworkremotely 失败因此一直读不出原因。
+    expect(message).not.toContain('xxxx');
+    expect(message.length).toBeLessThan(400);
+  });
+
   it('isolates a failing source and still succeeds overall', async () => {
     const bad = adapter('greenhouse', async () => {
       throw new Error('boom');

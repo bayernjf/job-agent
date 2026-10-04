@@ -52,6 +52,21 @@ function emptyOutcome(source: SourceSyncOutcome['source'], durationMs: number, e
  * 给单个 promise 套整体预算：到点先中止全部在途请求（http.abortAll），再拒绝。
  * Promise.race 放行后挂起的底层请求若不中止，Node 进程会因活跃 socket 永不退出（runner 黑洞即此形态）。
  */
+/**
+ * Drizzle 的 message 就是整条回显 SQL（一个批次可达上万字符），而真正的数据库错误码在
+ * `cause` 里——两者相撞时，日志里只看得到 SQL，看不到原因。有 cause 时只留原因：
+ * SQL 由代码可确定、参数是占位符，不额外携带诊断信息。
+ */
+export function describeIngestionError(err: unknown): string {
+  const e = err as (Error & { cause?: Error & { code?: string } }) | undefined;
+  const cause = e?.cause;
+  if (cause) {
+    const code = typeof cause.code === 'string' ? cause.code : 'error';
+    return `db ${code}: ${(cause.message ?? '').split('\n')[0] ?? ''}`.slice(0, 240);
+  }
+  return (e?.message ?? String(err)).split('\n')[0] ?? '';
+}
+
 async function withSourceBudget<T>(
   task: Promise<T>,
   budgetMs: number,
@@ -130,7 +145,7 @@ export async function syncOnce(deps: SyncOnceDeps): Promise<SyncResult> {
           (deps.dryRun ? ' (dry-run)' : ''),
       );
     } catch (err) {
-      const message = (err as Error).message ?? String(err);
+      const message = describeIngestionError(err);
       outcomes.push(emptyOutcome(adapter.source, now().getTime() - t0, message));
       deps.logger?.error?.(`[ingestor] ${adapter.source} failed: ${message}`);
     }

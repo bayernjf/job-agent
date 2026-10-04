@@ -194,6 +194,9 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
   // 挂载后异步拉取扩展 chrome.storage 的权威档案（扩展面板可能已填写），合并到本域缓存。
   // chrome.storage 优先、本域 localStorage 补缺；扩展未装/非 Chrome 时静默跳过。
   useEffect(() => {
+    // 浏览器级测试与真实用户都需要一个"React 已接管受控字段"的可读信号：hydration 之前
+    // 直接写 input.value 会被首帧渲染覆盖，onChange 不触发，按钮就永远不启用。
+    sectionRef.current?.setAttribute('data-hydrated', 'true');
     let cancelled = false;
     void (async () => {
       const ext = await fetchExtensionLocalProfile();

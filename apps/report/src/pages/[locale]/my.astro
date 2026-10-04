@@ -27,6 +27,18 @@ const profiles =
   viewer.kind === 'user'
     ? await storage.profiles.listBySubject(viewer.platform, viewer.login)
     : [];
+// 回访闭环：任务排队数小时是这套部署的真实形态（消费靠定时轮询），用户回来看的第一样东西
+// 应该是"我发起的分析到哪一步了"，而不是只有已完成的画像。仓储的 listBySubject 此前零调用。
+const recentJobs =
+  viewer.kind === 'user'
+    ? await storage.jobs.listBySubject(viewer.platform, viewer.login, 10)
+    : [];
+const jobStatusLabels: Record<string, string> = {
+  queued: t('job.queued'),
+  running: t('job.running'),
+  succeeded: t('job.succeeded'),
+  failed: t('job.failed'),
+};
 const loginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(`/${locale}/my`)}`;
 const dateFmt = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
   dateStyle: 'medium',
@@ -86,6 +98,31 @@ const dateFmt = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
           </li>
         ))}
       </ul>
+    )}
+
+    {viewer.kind === 'user' && recentJobs.length > 0 && (
+      <section class="my-jobs" data-testid="my-jobs" aria-labelledby="my-jobs-title">
+        <h2 id="my-jobs-title" class="my-jobs-title">{t('my.jobsTitle')}</h2>
+        <p class="ja-muted">{t('my.jobsHint')}</p>
+        <ul class="my-jobs-list">
+          {recentJobs.map((j) => (
+            <li class="my-job-item" key={j.id} id={`my-job-${j.id}`}>
+              <span class={`my-status my-status--${j.status}`}>
+                {jobStatusLabels[j.status] ?? j.status}
+              </span>
+              <span class="ja-muted">{dateFmt.format(new Date(j.createdAt))}</span>
+              {j.status === 'succeeded' && j.profileId ? (
+                <a href={`/${locale}/report/${j.profileId}`}>{t('my.jobsOpen')}</a>
+              ) : j.status === 'failed' ? (
+                <span class="ja-muted my-job-error">{j.errorMessage ?? ''}</span>
+              ) : (
+                <span class="ja-muted">{t('my.jobsWaiting')}</span>
+              )}
+              <code class="my-job-id">{j.id}</code>
+            </li>
+          ))}
+        </ul>
+      </section>
     )}
 
     {viewer.kind === 'user' && profiles.length > 0 && (
@@ -213,5 +250,55 @@ const dateFmt = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--ja-space-2);
+  }
+  /* 回访闭环：作业状态用的是队列枚举（queued/running/succeeded/failed），
+     与画像的 complete/partial 不同，所以各补一枚徽标色。 */
+  .my-jobs {
+    margin-top: var(--ja-space-6);
+  }
+  .my-jobs-title {
+    margin: 0 0 var(--ja-space-1);
+    font-size: var(--ja-text-lg);
+  }
+  .my-jobs-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-2);
+    margin: var(--ja-space-3) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .my-job-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ja-space-3);
+    padding: var(--ja-space-2) var(--ja-space-3);
+    border: 1px solid var(--ja-color-border);
+    border-radius: var(--ja-radius-md);
+  }
+  .my-job-error {
+    max-width: 40ch;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .my-job-id {
+    font-family: var(--ja-font-mono);
+    font-size: var(--ja-text-xs);
+    color: var(--ja-color-fg-muted);
+  }
+  .my-status--queued,
+  .my-status--running {
+    background: var(--ja-color-accent-subtle);
+    color: var(--ja-color-accent);
+  }
+  .my-status--succeeded {
+    background: var(--ja-color-success-bg);
+    color: var(--ja-color-success-fg);
+  }
+  .my-status--failed {
+    background: var(--ja-color-danger-bg);
+    color: var(--ja-color-danger-fg);
   }
 </style>

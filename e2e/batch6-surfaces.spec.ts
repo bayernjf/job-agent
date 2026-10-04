@@ -93,6 +93,19 @@ test.describe('/my (T17 surface)', () => {
     ).toBeVisible();
   });
 
+  test('signed-in owner sees the jobs they started, including one still queued', async ({ page }) => {
+    await seedSession(page, FIXTURE_SESSION_TOKEN);
+    await page.goto('/zh-CN/my');
+
+    const jobs = page.getByTestId('my-jobs');
+    await expect(jobs).toBeVisible();
+    // 排队中的任务必须出现在这里：首跑要等数小时，回来找结果的地方就是这一屏
+    await expect(jobs).toContainText('job-e2e-queued');
+    await expect(jobs).toContainText('排队或进行中');
+    // 已完成的那条直接给回报告链接
+    await expect(jobs.locator(`a[href="/zh-CN/report/${FIXTURE_PROFILE_ID}"]`)).toBeVisible();
+  });
+
   test('signed-in user with no profiles sees the empty state', async ({ page }) => {
     await seedSession(page, FIXTURE_EMPTY_SESSION_TOKEN);
     await page.goto('/zh-CN/my');
@@ -170,18 +183,15 @@ test.describe('self-select job form (T24 surface)', () => {
     const companyInput = builder.locator('input').nth(1);
     const jdTextarea = builder.locator('textarea');
     const genBtn = builder.getByRole('button', { name: '针对此 JD 生成简历' });
+    // React 接管之前写进受控字段的值会被首帧渲染覆盖，onChange 不触发、按钮永不启用。
+    // 旧写法是"先等 4s，没启用就重填一次"——本质在赌 hydration 的耗时，CI 竞争下四次 run
+    // 都要靠重试才过。改为等组件自己发布的显式信号（ResumeBuilder 挂载 effect 里的
+    // data-hydrated），填值动作一定发生在接管之后。
+    await expect(builder).toHaveAttribute('data-hydrated', 'true');
     await titleInput.fill('Rust Platform Engineer');
     await companyInput.fill('Acme Corp');
     await jdTextarea.fill('Build and operate a multi-tenant job pipeline in Rust with async workers.');
-    // hydration 竞态兜底：冷路由首次访问时 island JS 可能晚于 fill 接管，受控值被重置、
-    // 事件丢失导致按钮不启用；先等 4s，未启用则重填一次确保 onChange 生效。
-    try {
-      await expect(genBtn).toBeEnabled({ timeout: 4000 });
-    } catch {
-      await titleInput.fill('Rust Platform Engineer');
-      await jdTextarea.fill('Build and operate a multi-tenant job pipeline in Rust with async workers.');
-      await expect(genBtn).toBeEnabled({ timeout: 15000 });
-    }
+    await expect(genBtn).toBeEnabled();
     await genBtn.click();
 
     // 预览 iframe 出现且包含目标岗位
