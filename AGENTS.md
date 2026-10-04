@@ -52,7 +52,7 @@ job-agent/
 │  └─ extension/      # P1 浏览器扩展（MV3 + content script + Shadow DOM 面板 + 三 ATS 适配器 + esbuild；试用指南见其 README）
 ├─ db/migrations/sqlite/   # SQLite 编号迁移（NNN_verb_snake_case.sql）
 ├─ db/migrations/postgres/ # Postgres 编号迁移（与 sqlite 编号/文件名一一对应），规范见 MIGRATION_CONVENTION.md
-├─ tools/             # check-migrations.sh / preflight.sh / backup-db.sh / smoke-deploy.sh 等工程脚本
+├─ tools/             # check-migrations.sh / preflight.sh / backup-db.sh / smoke-deploy.sh / check-doc-anchors.mjs 等工程脚本
 ├─ tests/fixtures/    # 录制并脱敏的 GitHub 响应夹具
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
 ```
@@ -149,7 +149,7 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 - **`analyzer-core` 测试优先级最高**：基于 `tests/fixtures` 脱敏夹具覆盖每条真实性信号，以及"证据不足→`insufficient_data`"分支。
 - **默认确定性**：测试不打真实 GitHub、不调真实 LLM，外部响应一律用录制夹具/fake；API/Worker 对夹具做集成测试；Playwright 覆盖"输入用户名→生成→报告→分享"主链路。**求职工作台另有「真全栈」E2E**（`pnpm e2e:agent`，配置 `playwright.agent.config.ts`、用例与夹具在 `e2e/agent/`）：真 Chromium → 真 `apps/api`（真 Hono + 真 SQLite + 真迁移）→ 真报告页 SSR，**不 mock 任何 API**，因此能抓到只在真链路暴露的字段/契约错配（2026-10-03 的「工作台下载简历 404」就靠它抓出并钉成回归；夹具刻意让来源原生 `jobId` ≠ 岗位池主键）。夹具岗位由 `e2e/agent/global-setup.ts` 直接写库，零网络、档位与条数可预期；CI 独立一步跑并上传 artifacts。扩展另有独立 E2E（`pnpm e2e:extension`，配置 `playwright.extension.config.ts`、用例在 `e2e/extension/`）：`launchPersistentContext` + `--headless=new` 加载 unpacked MV3，route 拦截 ATS 页与全部 API，覆盖 content script 注入/Shadow DOM 面板/岗位匹配区块，不连真实 ATS、不打网络。
 - **storage 的 7 例真实 Postgres 行为测试**（`packages/storage/src/postgres-behavior.test.ts`）：CI 与有 Docker 的机器用 `DATABASE_TEST_URL` 指向真实 PG 实跑（CI 已配 `postgres:16-alpine` service）；无该变量时自动起 embedded-postgres，起不来则 7 例 skip（不是失败）。**已知 macOS 兼容问题**：embedded-postgres 18.1.0-beta.15 内置 PG 二进制在部分 macOS（2026-09 在 macOS 26 实测）启动即 FATAL `postmaster became multithreaded during startup`，与 LC_ALL/Node 无关，属系统级问题；本机要让 7 例转绿，用 Docker PG 并设 `DATABASE_TEST_URL=postgres://...`（`docker compose --profile with-pg up -d`）。测试已对该失败路径做健壮性处理（非 Error reject 防御、teardown 限时不挂 hook），排查时看 `[postgres-behavior] ... tests skip:` 警告里的真实原因。
-- **文档即被测面**：四条仓库级守护随 `pnpm -r test` 在 CI 实跑（与既有约定同放 `apps/api/src`）——`api-doc-consistency.test.ts` 钉 docs/API.md 路由双向对齐、`env-doc-consistency.test.ts` 钉「代码读取的 env ↔ `.env.example` ↔ docs/API.md ↔ 部署执行单 E3 总表」与演示模式默认值、`doc-links.test.ts` 钉全仓 Markdown 相对链接可达、`doc-commands.test.ts` 钉现行文档里出现的命令真的可跑（根/包 package.json 有该 script、`tools/*.sh` 存在、写到的 `apps|packages/*/dist/...` 入口所属包在）。新增/改名 script、脚本文件、文档或 env 变量时以这四条的报错为准，不要靠人眼对齐；每条守护都带「至少检查 N 处」的反空转断言。
+- **文档即被测面**：五条仓库级守护随 `pnpm -r test` 在 CI 实跑（与既有约定同放 `apps/api/src`）——`api-doc-consistency.test.ts` 钉 docs/API.md 路由双向对齐、`env-doc-consistency.test.ts` 钉「代码读取的 env ↔ `.env.example` ↔ docs/API.md ↔ 部署执行单 E3 总表」与演示模式默认值、`doc-links.test.ts` 钉全仓 Markdown 相对链接可达、`doc-commands.test.ts` 钉现行文档里出现的命令真的可跑（根/包 package.json 有该 script、`tools/*.sh` 存在、写到的 `apps|packages/*/dist/...` 入口所属包在）、`doc-anchors.test.ts` 钉**活文档里的 `file:line` 锚点必须解析到真实行**（实现单一事实源 `tools/check-doc-anchors.mjs`；归档与"某日评审"按时间点记录惯例排除）。**引用已失效的历史行号时不要写成 `path:line`，写成"该文件 517 行"**——前者是活锚点、会被守护判红。新增/改名 script、脚本文件、文档或 env 变量时以这五条的报错为准，不要靠人眼对齐；每条守护都带「至少检查 N 处」的反空转断言。
 - 交付前：`pnpm -r typecheck` + 相关测试 + `pnpm -r build` + `git diff --check`，并在汇报中说明验证覆盖与未覆盖项。
 
 ## 工程化门禁
