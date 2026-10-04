@@ -12,6 +12,7 @@ import { test, expect, type Page } from '@playwright/test';
 import {
   FIXTURE_PROFILE_ID,
   FIXTURE_SESSION_TOKEN,
+  default as resetAgentFixtures,
 } from './global-setup';
 
 const API = 'http://127.0.0.1:3101';
@@ -64,6 +65,13 @@ async function createPreferenceAndRun(page: Page): Promise<void> {
 }
 
 test.describe('agent workbench — full stack', () => {
+  // 用例间隔离：每个用例前幂等重灌夹具（DELETE 业务表 + 重灌，不重建库文件，
+  // 对运行中的 API/report 连接安全）。否则 stage-1 已 approve/submit/reject 的票据与
+  // 已投递岗位会跨 run 污染 stage-2（agent-runner 排除已投递岗位、pending-fills 跨 run 累积）。
+  test.beforeEach(async () => {
+    await resetAgentFixtures();
+  });
+
   test('anonymous visitors get the login gate with a same-origin return link', async ({ page }) => {
     await page.goto(WORKBENCH);
     const gate = page.getByTestId('workbench-gate');
@@ -164,7 +172,8 @@ test.describe('agent workbench — full stack', () => {
     await openWorkbenchHydrated(page);
     await createPreferenceAndRun(page);
 
-    // 人机闸：在工作台确认第一条（模拟用户在报告页/工作台批准），其余保持 pending
+    // 人机闸：在工作台确认第一条（模拟用户在报告页/工作台批准），其余保持 pending。
+    // beforeEach 已重灌夹具，本 run 是该账号首个 run，3 条过闸岗位全部进待投清单。
     const intents = page.getByTestId('agent-intent');
     await expect(intents).toHaveCount(3);
     await intents.first().getByRole('button', { name: 'Approve' }).click();
