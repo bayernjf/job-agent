@@ -12,6 +12,7 @@ import { test, expect, type Page } from '@playwright/test';
 import {
   FIXTURE_PROFILE_ID,
   FIXTURE_SESSION_TOKEN,
+  default as resetAgentFixtures,
 } from './global-setup';
 
 const API = 'http://127.0.0.1:3101';
@@ -64,6 +65,13 @@ async function createPreferenceAndRun(page: Page): Promise<void> {
 }
 
 test.describe('agent workbench — full stack', () => {
+  // 用例间隔离：每个用例前幂等重灌夹具（DELETE 业务表 + 重灌，不重建库文件，
+  // 对运行中的 API/report 连接安全）。否则 stage-1 已 approve/submit/reject 的票据与
+  // 已投递岗位会跨 run 污染 stage-2（agent-runner 排除已投递岗位、pending-fills 跨 run 累积）。
+  test.beforeEach(async () => {
+    await resetAgentFixtures();
+  });
+
   test('anonymous visitors get the login gate with a same-origin return link', async ({ page }) => {
     await page.goto(WORKBENCH);
     const gate = page.getByTestId('workbench-gate');
@@ -155,5 +163,88 @@ test.describe('agent workbench — full stack', () => {
 
     // 真链路不应有控制台报错（曾经那条 404 就出现在这里）
     expect(consoleErrors).toEqual([]);
+  });
+
+  test('stage-2 extension contract: pending-fills → tailored cover letter (with AI disclosure) → submitted receipt → outcome write-back', async ({
+    page,
+  }) => {
+    await login(page);
+    await openWorkbenchHydrated(page);
+    await createPreferenceAndRun(page);
+
+    // 人机闸：在工作台确认第一条（模拟用户在报告页/工作台批准），其余保持 pending。
+    // beforeEach 已重灌夹具，本 run 是该账号首个 run，3 条过闸岗位全部进待投清单。
+    const intents = page.getByTestId('agent-intent');
+    await expect(intents).toHaveCount(3);
+    await intents.first().getByRole('button', { name: 'Approve' }).click();
+    await expect(page.getByTestId('agent-approved-note')).toBeVisible();
+
+    // A2：扩展在 ATS 页面拉取「跨 run、已确认、待填充」票据，只拿到刚批准的一条
+    const fillsRes = await page.request.get(`${API}/agent/extension/pending-fills`, { headers: authHeaders });
+    expect(fillsRes.status()).toBe(200);
+    const fillsBody = (await fillsRes.json()) as {
+      fills: Array<{ intentId: string; profileId: string; job: { sourceUrl: string }; matchScore: number; approvedAt: string }>;
+    };
+    expect(fillsBody.fills).toHaveLength(1);
+    const fill = fillsBody.fills[0];
+    expect(fill.intentId).toBeTruthy();
+    expect(fill.profileId).toBe(FIXTURE_PROFILE_ID);
+    expect(fill.job.sourceUrl).toMatch(/^https?:\/\//);
+    expect(typeof fill.matchScore).toBe('number');
+    expect(fill.approvedAt).toBeTruthy();
+
+    // C2 + E1：岗位定向求职信 JSON（polish=llm）。CI 无 LLM key → fail-closed 回落规则版，
+    // body 仍必须以招聘方可见的 AI 辅助披露行收尾。
+    const clRes = await page.request.get(
+      `${API}/agent/intents/${fill.intentId}/cover-letter?format=json&polish=llm&locale=en`,
+      { headers: authHeaders },
+    );
+    expect(clRes.status()).toBe(200);
+    const cl = (await clRes.json()) as { body: string; polished: boolean; fallbackReason?: string; subject: string | null };
+    expect(cl.body.length).toBeGreaterThan(100);
+    expect(cl.body).toContain('prepared with AI assistance by JobAgent');
+    expect(cl.polished).toBe(false);
+    expect(cl.fallbackReason).toBe('llm_unavailable');
+
+    // A2 收尾：用户在 ATS 自行提交后点「我已提交」→ 幂等写 origin=agent 投递记录
+    const msRes = await page.request.post(`${API}/agent/intents/${fill.intentId}/mark-submitted`, {
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+    });
+    expect(msRes.status()).toBe(200);
+    const ms = (await msRes.json()) as { applicationId: string | null };
+    expect(ms.applicationId).toBeTruthy();
+
+    // 已提交的票据立即从待填充列表消失（只保留 approved）
+    const fillsAfter = await page.request.get(`${API}/agent/extension/pending-fills`, { headers: authHeaders });
+    const fillsAfterBody = (await fillsAfter.json()) as { fills: Array<{ intentId: string }> };
+    expect(fillsAfterBody.fills.map((f) => f.intentId)).not.toContain(fill.intentId);
+
+    // D1：投递结果回写（邀约面试）→ applications 反映复盘枚举
+    const ocRes = await page.request.post(`${API}/agent/intents/${fill.intentId}/outcome`, {
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      data: { outcome: 'interview' },
+    });
+    expect(ocRes.status()).toBe(200);
+    const oc = (await ocRes.json()) as { outcomeFeedback: string; outcomeFeedbackAt: string };
+    expect(oc.outcomeFeedback).toBe('interview');
+    expect(oc.outcomeFeedbackAt).toBeTruthy();
+
+    // 非法枚举被 Zod 拒绝（400），不污染复盘样本
+    const bad = await page.request.post(`${API}/agent/intents/${fill.intentId}/outcome`, {
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      data: { outcome: 'not_a_real_outcome' },
+    });
+    expect(bad.status()).toBe(400);
+
+    const appsRes = await page.request.get(`${API}/profiles/${FIXTURE_PROFILE_ID}/applications`, {
+      headers: authHeaders,
+    });
+    const apps = (await appsRes.json()) as {
+      items: Array<{ origin: string; outcomeFeedback: string | null; submitIntentId: string | null }>;
+    };
+    const linked = apps.items.find((a) => a.submitIntentId === fill.intentId);
+    expect(linked).toBeTruthy();
+    expect(linked?.origin).toBe('agent');
+    expect(linked?.outcomeFeedback).toBe('interview');
   });
 });

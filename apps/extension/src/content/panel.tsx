@@ -21,6 +21,7 @@ import {
 } from '@jobagent/shared';
 import type { AtsAdapter, LocalFields } from '../ats/index.js';
 import { toFillValues } from '../ats/index.js';
+import { matchFillsToPage } from '../ats/fill-matching.js';
 import {
   DEFAULT_BASE,
   JobAgentApi,
@@ -29,9 +30,18 @@ import {
   type EvidenceBrief,
   type JobMatchItem,
   type JobMatchSkillReason,
+  type PendingFill,
 } from '../lib/api.js';
 import { matchTier, resolveEvidenceLinks, resolveReportBase, resumeDeepLink } from './match-utils.js';
 import { readStoredLocalProfile, writeStoredLocalProfile } from '../lib/local-profile-storage.js';
+import {
+  readStoredApiToken,
+  readStoredApiTokenValue,
+  writeStoredApiToken,
+  clearStoredApiToken,
+  type StoredApiToken,
+} from '../lib/api-token-storage.js';
+import type { ExtensionAuthTokenConsumeResponse } from '@jobagent/shared';
 import { swFetch } from '../lib/sw-fetch.js';
 import {
   LOCALE_STORAGE_KEY,
@@ -144,6 +154,19 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
   const [matches, setMatches] = useState<JobMatchItem[]>([]);
   const [matchEvidence, setMatchEvidence] = useState<Record<string, EvidenceBrief> | undefined>(undefined);
   const [matchError, setMatchError] = useState<string | null>(null);
+  const [tokenInfo, setTokenInfo] = useState<StoredApiToken | null>(null);
+  const [codeInput, setCodeInput] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  // 阶段 2 A2：当前 ATS 页面命中的已确认待投岗位（半自动填充）
+  const [pendingFills, setPendingFills] = useState<PendingFill[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [fillingId, setFillingId] = useState<string | null>(null);
+  const [filledMap, setFilledMap] = useState<Record<string, number>>({});
+  const [letterRuleMap, setLetterRuleMap] = useState<Record<string, boolean>>({});
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [submittedIds, setSubmittedIds] = useState<Set<string>>(new Set());
 
   // 挂载后异步拉取扩展 chrome.storage 的权威档案（报告页可能已写入），合并到本域缓存。
   // chrome.storage 优先、本域 localStorage 补缺；扩展未装/无 chrome 时静默跳过。
@@ -158,6 +181,96 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     };
   }, []);
 
+  // 扩展登录态（决策 #22）：挂载时恢复已授权身份（chrome.storage.local）。
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const stored = await readStoredApiToken();
+      if (!cancelled) setTokenInfo(stored);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 登录后拉取本人已确认待投岗位，并只保留命中当前 ATS 页面 URL 的票据（A2）。
+  useEffect(() => {
+    if (!tokenInfo) {
+      setPendingFills([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setPendingLoading(true);
+      setPendingError(null);
+      try {
+        const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
+        const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch, tokenProvider: readStoredApiTokenValue });
+        const fills = await api.listPendingFills();
+        const pageUrl = typeof location === 'undefined' ? '' : location.href;
+        if (!cancelled) setPendingFills(matchFillsToPage(fills, pageUrl));
+      } catch (err) {
+        if (!cancelled) setPendingError((err as Error).message);
+      } finally {
+        if (!cancelled) setPendingLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // 仅在登录态变化时拉取；apiBase 变更由用户重新分析/刷新覆盖，避免输入中反复请求。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenInfo]);
+
+  /**
+   * 一键填充（A2 核心）：拉票据对应的画像快照 + 岗位定向求职信（LLM 润色，失败回落规则版），
+   * 合并为语义字段写入 ATS 表单。硬边界（决策 #20）：填完即停，绝不自动点击提交。
+   */
+  async function handleAutoFill(fill: PendingFill): Promise<void> {
+    setFillingId(fill.intentId);
+    setPendingError(null);
+    try {
+      const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
+      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch, tokenProvider: readStoredApiTokenValue });
+      const [profileSnapshot, letter] = await Promise.all([
+        api.getExportableProfile(fill.profileId),
+        api.getIntentCoverLetter(fill.intentId, locale),
+      ]);
+      saveLocal(local);
+      const values = toFillValues(profileSnapshot, localProfileToAtsFields(local), {
+        skillsLeadin: t('fill.summarySkillsLeadin', {
+          platform: profileSnapshot.subject.platform === 'gitee' ? 'Gitee' : 'GitHub',
+        }),
+        skillSeparator: t('fill.skillSeparator'),
+      });
+      // 岗位定向求职信作为 cover_letter 语义键（adapter 优先于画像 summary 写入求职信字段）
+      values.push({ key: 'cover_letter', value: letter.body });
+      const written = ats.fill(document, values);
+      setFilledMap((prev) => ({ ...prev, [fill.intentId]: written }));
+      setLetterRuleMap((prev) => ({ ...prev, [fill.intentId]: !letter.polished }));
+    } catch (err) {
+      setPendingError((err as Error).message);
+    } finally {
+      setFillingId(null);
+    }
+  }
+
+  /** 用户在 ATS 自行提交后的回执：票据转 submitted、写 origin=agent 投递记录（幂等）。 */
+  async function handleMarkSubmitted(fill: PendingFill): Promise<void> {
+    setSubmittingId(fill.intentId);
+    setPendingError(null);
+    try {
+      const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
+      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch, tokenProvider: readStoredApiTokenValue });
+      await api.markIntentSubmitted(fill.intentId);
+      setSubmittedIds((prev) => new Set(prev).add(fill.intentId));
+    } catch (err) {
+      setPendingError((err as Error).message);
+    } finally {
+      setSubmittingId(null);
+    }
+  }
+
   function switchLocale(): void {
     const next: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
     setLocale(next);
@@ -166,6 +279,47 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     } catch {
       // localStorage 不可用时仅本次会话生效
     }
+  }
+
+  async function handleConnect(e: FormEvent): Promise<void> {
+    e.preventDefault();
+    const code = codeInput.trim();
+    if (!code) return;
+    setConnecting(true);
+    setAuthError(null);
+    try {
+      const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
+      const res = await swFetch(`${baseUrl}/auth/extension-token/consume`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (res.status === 401 || res.status === 410 || res.status === 404 || res.status === 400) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as ExtensionAuthTokenConsumeResponse;
+      const stored: StoredApiToken = {
+        token: body.apiToken,
+        name: body.name,
+        expiresAt: body.expiresAt,
+        account: body.account,
+      };
+      await writeStoredApiToken(stored);
+      setTokenInfo(stored);
+      setCodeInput('');
+    } catch (err) {
+      setAuthError((err as Error).message);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function handleDisconnect(): Promise<void> {
+    await clearStoredApiToken();
+    setTokenInfo(null);
+    setAuthError(null);
   }
 
   async function handleAnalyze(e: FormEvent): Promise<void> {
@@ -181,7 +335,7 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
     localStorage.setItem(API_BASE_KEY, apiBase);
     const baseUrl = (apiBase.trim() || DEFAULT_BASE).replace(/\/$/, '');
     try {
-      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch });
+      const api = new JobAgentApi({ baseUrl, fetchImpl: swFetch, tokenProvider: readStoredApiTokenValue });
       const p = await api.fetchProfile(username.trim(), platform);
       setProfile(p);
       // 异步触发匹配，不阻塞画像展示与一键填充
@@ -245,7 +399,110 @@ function Panel({ ats }: { ats: AtsAdapter }): JSX.Element {
         {t('panel.tryWebDemo')}
       </a>
 
+      {/* 扩展登录态（决策 #22）：工作台签发授权码 → 本扩展兑换长期 token；断开仅清除本机凭证 */}
+      <div className="ja-auth" data-testid="extension-auth">
+        {tokenInfo ? (
+          <div className="ja-auth-connected">
+            <span className="ja-auth-badge">
+              {t('panel.extAuth.connectedAs', { login: tokenInfo.account.login })}
+            </span>
+            <button type="button" className="ja-btn ja-btn-primary" onClick={() => void handleDisconnect()}>
+              {t('panel.extAuth.disconnect')}
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleConnect}>
+            <label className="ja-label" htmlFor="ja-auth-code">
+              {t('panel.extAuth.codeLabel')}
+            </label>
+            <input
+              id="ja-auth-code"
+              className="ja-input"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={t('panel.extAuth.codePlaceholder')}
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+            />
+            <button type="submit" className="ja-btn ja-btn-primary" disabled={connecting || !codeInput.trim()}>
+              {connecting ? t('panel.extAuth.connecting') : t('panel.extAuth.connect')}
+            </button>
+          </form>
+        )}
+        {authError ? <p className="ja-error" role="alert">{authError}</p> : null}
+      </div>
+
+      {/* 阶段 2 A2：当前 ATS 页面命中的已确认待投岗位，一键填充 + 用户自行提交回执 */}
+      {tokenInfo && (pendingLoading || pendingFills.length > 0 || pendingError) && (
+        <div className="ja-pending" data-testid="pending-fills">
+          <div className="ja-pending-header">
+            <span className="ja-pending-title">
+              {t('pending.title')}
+              {pendingFills.length > 0 && ` (${pendingFills.length})`}
+            </span>
+          </div>
+          {pendingLoading && <div className="ja-pending-loading">{t('pending.loading')}</div>}
+          {pendingError && (
+            <div className="ja-error" role="alert">
+              {t('pending.error')} {pendingError}
+            </div>
+          )}
+          <ul className="ja-pending-list">
+            {pendingFills.map((fill) => {
+              const written = filledMap[fill.intentId];
+              const submitted = submittedIds.has(fill.intentId);
+              const tier = (['high', 'mid', 'low'].includes(fill.matchTier) ? fill.matchTier : 'low') as
+                | 'high'
+                | 'mid'
+                | 'low';
+              return (
+                <li key={fill.intentId} className="ja-pending-item">
+                  <div className="ja-pending-job">
+                    <span className={`ja-match-score ja-match-score-${tier}`}>{fill.matchScore}</span>
+                    <span className="ja-pending-job-title">{fill.job.title}</span>
+                    {fill.job.company && <span className="ja-pending-company">@ {fill.job.company}</span>}
+                  </div>
+                  {submitted ? (
+                    <div className="ja-pending-submitted" role="status">
+                      {t('pending.submitted')}
+                    </div>
+                  ) : written !== undefined ? (
+                    <div className="ja-pending-actions">
+                      <div className="ja-pending-note" role="status">
+                        {t('pending.filledNote', { count: written })}
+                      </div>
+                      {letterRuleMap[fill.intentId] && (
+                        <div className="ja-pending-rule">{t('pending.ruleLetter')}</div>
+                      )}
+                      <button
+                        type="button"
+                        className="ja-btn ja-btn-primary"
+                        disabled={submittingId === fill.intentId}
+                        onClick={() => void handleMarkSubmitted(fill)}
+                      >
+                        {submittingId === fill.intentId ? t('pending.submitting') : t('pending.markSubmitted')}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ja-btn ja-btn-primary"
+                      disabled={fillingId === fill.intentId}
+                      onClick={() => void handleAutoFill(fill)}
+                    >
+                      {fillingId === fill.intentId ? t('pending.filling') : t('pending.fillBtn')}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       <form onSubmit={handleAnalyze}>
+
         <div className="ja-platform-switch" role="group" aria-label={t('panel.platformGroupLabel')}>
           <button
             type="button"

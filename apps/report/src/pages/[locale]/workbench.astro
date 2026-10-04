@@ -14,6 +14,7 @@ import Layout from '../../layouts/Layout.astro';
 import GateCard from '../../components/GateCard.astro';
 import AgentWorkbench from '../../components/AgentWorkbench.tsx';
 import ModelSettings from '../../components/ModelSettings.tsx';
+import ExtensionAuthManager from '../../components/ExtensionAuthManager.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
 import { getStorage } from '../../lib/db.js';
 import { resolveViewer } from '../../lib/auth.js';
@@ -260,6 +261,33 @@ const claimedProfileId = viewer.kind === 'user' ? viewer.claimedProfileId : null
           noKey: t('modelSettings.noKey'),
           encryptionMissing: t('modelSettings.encryptionMissing'),
           byokHint: t('modelSettings.byokHint'),
+        }}
+      />
+      <ExtensionAuthManager
+        client:load
+        apiBase={apiBase}
+        locale={locale}
+        labels={{
+          title: t('extensionAuth.title'),
+          subtitle: t('extensionAuth.subtitle'),
+          hint: t('extensionAuth.hint'),
+          issue: t('extensionAuth.issue'),
+          issuing: t('extensionAuth.issuing'),
+          issuedTitle: t('extensionAuth.issuedTitle'),
+          issuedBody: t('extensionAuth.issuedBody'),
+          codeExpires: t('extensionAuth.codeExpires'),
+          copy: t('extensionAuth.copy'),
+          copied: t('extensionAuth.copied'),
+          listEmpty: t('extensionAuth.listEmpty'),
+          fingerprint: t('extensionAuth.fingerprint'),
+          createdAt: t('extensionAuth.createdAt'),
+          expiresAt: t('extensionAuth.expiresAt'),
+          revoke: t('extensionAuth.revoke'),
+          revokeConfirm: t('extensionAuth.revokeConfirm'),
+          loadFailed: t('extensionAuth.loadFailed'),
+          issueFailed: t('extensionAuth.issueFailed'),
+          revokeFailed: t('extensionAuth.revokeFailed'),
+          notLoggedIn: t('extensionAuth.notLoggedIn'),
         }}
       />
     )}

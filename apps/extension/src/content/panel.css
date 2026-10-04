@@ -472,3 +472,97 @@
   color: var(--ja-color-accent);
   word-break: break-all;
 }
+
+/* ─── 扩展登录态（决策 #22）：授权码连接 / 已连接身份 ─────────────────── */
+.ja-auth {
+  margin: 0 0 var(--ja-space-4);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+}
+.ja-auth form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+.ja-auth-connected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-2);
+}
+.ja-auth-badge {
+  font-weight: 600;
+}
+
+/* ── 阶段 2 A2：本页待投岗位（半自动填充）── */
+.ja-pending {
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-lg);
+  padding: var(--ja-space-2) var(--ja-space-3);
+  margin-bottom: var(--ja-space-2);
+  background: var(--ja-color-surface);
+}
+
+.ja-pending-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ja-space-2);
+}
+
+.ja-pending-title {
+  font-weight: 600;
+}
+
+.ja-pending-loading,
+.ja-pending-note,
+.ja-pending-rule,
+.ja-pending-submitted {
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-pending-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.ja-pending-item {
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  padding: var(--ja-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.ja-pending-job {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-2);
+  flex-wrap: wrap;
+}
+
+.ja-pending-job-title {
+  font-weight: 600;
+}
+
+.ja-pending-company {
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-pending-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.ja-pending-rule {
+  font-style: italic;
+}

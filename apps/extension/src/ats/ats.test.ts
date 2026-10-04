@@ -210,6 +210,18 @@ describe('greenhouse summary → question_* mapping', () => {
     expect(salary.value).toBe('');
   });
 
+  it('prefers the cover_letter value over the short summary for motivation questions (A2)', () => {
+    const { doc, why, salary } = fakeQuestionDoc();
+    const values = [
+      ...fillValues,
+      { key: 'cover_letter' as const, value: 'Dear hiring team, this is the tailored cover letter body.' },
+    ];
+    const written = greenhouseAdapter.fill(doc, values);
+    expect(written).toBe(1);
+    expect(why.value).toBe('Dear hiring team, this is the tailored cover letter body.');
+    expect(salary.value).toBe('');
+  });
+
   it('keeps written count at zero when no summary-like question exists', () => {
     const salary = {
       id: 'question_456',
@@ -414,6 +426,49 @@ describe('lever summary → questions[*] mapping', () => {
     expect(written).toBe(1);
     expect(why.value).toBe('TypeScript 后端工程师，开源维护者。');
     expect(salary.value).toBe('');
+  });
+
+  it('prefers cover_letter over summary and never fills how_did_you_hear (A2)', () => {
+    const why = {
+      id: 'question_abc',
+      name: 'questions[abc]',
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? 'question_abc' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    } as unknown as HTMLTextAreaElement;
+    const hear = {
+      id: 'how_did_you_hear',
+      name: 'how_did_you_hear',
+      type: 'text',
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? 'how_did_you_hear' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    } as unknown as HTMLInputElement;
+    const doc = {
+      querySelectorAll: (sel: string) => {
+        const out: unknown[] = [];
+        if (sel.includes('textarea')) out.push(why);
+        if (sel.includes('input')) out.push(hear);
+        return out;
+      },
+      querySelector: (sel: string) => {
+        const m = sel.match(/^label\[for="([^"]+)"\]$/);
+        if (m?.[1] === 'question_abc') return { textContent: 'Why do you want to work at Acme? *' };
+        return null;
+      },
+    } as unknown as Document;
+    const values = [
+      { key: 'summary' as const, value: 'SHORT SUMMARY' },
+      { key: 'cover_letter' as const, value: 'TAILORED COVER LETTER BODY' },
+    ];
+    const written = leverAdapter.fill(doc, values);
+    expect(written).toBe(1);
+    expect(why.value).toBe('TAILORED COVER LETTER BODY');
+    expect(hear.value).toBe('');
   });
 
   // Lever renders phone as type="tel" and LinkedIn/GitHub as type="url". The fake

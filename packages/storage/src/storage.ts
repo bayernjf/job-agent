@@ -18,6 +18,8 @@ import { SqliteJobRunsRepository } from './sqlite/job-runs-repo.js';
 import { SqliteJobRunEventsRepository } from './sqlite/job-run-events-repo.js';
 import { SqliteSubmitIntentsRepository } from './sqlite/submit-intents-repo.js';
 import { SqliteLlmCatalogRepository } from './sqlite/llm-catalog-repo.js';
+import { SqliteExtensionAuthCodesRepository } from './sqlite/extension-auth-codes-repo.js';
+import { SqliteApiTokensRepository } from './sqlite/api-tokens-repo.js';
 import { SqliteUserLlmConfigsRepository } from './sqlite/user-llm-configs-repo.js';
 import { openPostgres } from './postgres/connection.js';
 import { runPgMigrations } from './postgres/migrator.js';
@@ -37,6 +39,8 @@ import { PgJobRunsRepository } from './postgres/job-runs-repo.js';
 import { PgJobRunEventsRepository } from './postgres/job-run-events-repo.js';
 import { PgSubmitIntentsRepository } from './postgres/submit-intents-repo.js';
 import { PgLlmCatalogRepository } from './postgres/llm-catalog-repo.js';
+import { PgExtensionAuthCodesRepository } from './postgres/extension-auth-codes-repo.js';
+import { PgApiTokensRepository } from './postgres/api-tokens-repo.js';
 import { PgUserLlmConfigsRepository } from './postgres/user-llm-configs-repo.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
 
@@ -95,6 +99,8 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       submitIntents: new PgSubmitIntentsRepository(db),
       llmCatalog: new PgLlmCatalogRepository(db),
       userLlmConfigs: new PgUserLlmConfigsRepository(db),
+      extensionAuthCodes: new PgExtensionAuthCodesRepository(db),
+      apiTokens: new PgApiTokensRepository(db),
       migrate: async () => runPgMigrations(client, migrationsDir),
       ping: async () => {
         await client.unsafe('SELECT 1');
@@ -130,6 +136,8 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     submitIntents: new SqliteSubmitIntentsRepository(db),
     llmCatalog: new SqliteLlmCatalogRepository(db),
     userLlmConfigs: new SqliteUserLlmConfigsRepository(db),
+    extensionAuthCodes: new SqliteExtensionAuthCodesRepository(db),
+    apiTokens: new SqliteApiTokensRepository(db),
     migrate: async () => runMigrations(client, migrationsDir),
     ping: async () => {
       client.prepare('SELECT 1 AS ok').get();

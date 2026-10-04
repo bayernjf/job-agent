@@ -19,6 +19,8 @@ import type {
   ISubmitIntentsRepository,
   IEvidenceRepository,
   IUserLlmConfigsRepository,
+  IExtensionAuthCodesRepository,
+  IApiTokensRepository,
 } from '@jobagent/storage';
 import type { Principal } from '@jobagent/shared';
 import type { DemoConfig } from '../demo-config.js';
@@ -54,6 +56,10 @@ export interface ApiRepos {
   llmCatalog: ILlmCatalogRepository;
   /** BYOK 模型配置（LLM 供给 P0，迁移 025） */
   userLlmConfigs: IUserLlmConfigsRepository;
+  /** 一次性授权码（扩展登录态，迁移 026） */
+  extensionAuthCodes: IExtensionAuthCodesRepository;
+  /** 扩展长期 Bearer 凭证（扩展登录态，迁移 027） */
+  apiTokens: IApiTokensRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
 }

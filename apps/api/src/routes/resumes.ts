@@ -15,6 +15,7 @@ import {
 import { toEvidenceItems } from '@jobagent/storage';
 import { matchJobs } from '@jobagent/job-source';
 import {
+  aiAssistedDisclosure,
   buildResume,
   fromJobMatch,
   polishResume,
@@ -221,7 +222,9 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     try {
       const out = await coverLetterProvider.generate({ draft: ruleDraft, posting, locale });
       return c.json({
-        ...out,
+        subject: out.subject,
+        // E1 决策 #20-4：固定 AI 辅助投递披露，模型无法省略。
+        body: `${out.body.trim()}\n\n${aiAssistedDisclosure(locale)}`,
         provenance: {
           provider: coverLetterProvider.provider,
           model: coverLetterProvider.model,

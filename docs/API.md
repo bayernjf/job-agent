@@ -1,11 +1,11 @@
 # JobAgent HTTP API 参考（M1 + P2 职位聚合 + 演示模式 + 岗位定向简历 + 企业人才检索/投递追踪 + 求职工作台）
 
-- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领 + GitHub/Gitee 双平台 OAuth + 形态 C serverless 内部 cron + 求职 Agent 阶段 1 工作台）
+- 状态：现行（M1 + P2 + Demo Mode + Targeted Resume P-R2 + 痛点解决方案批次 2 + 账号登录/本人认领 + GitHub/Gitee 双平台 OAuth + 形态 C serverless 内部 cron + 求职 Agent 阶段 1 工作台 + 阶段 2 半自动投递）
 - 服务：`apps/api`（Hono），默认 `http://localhost:3000`
 - 内容类型：请求/响应均为 `application/json`（健康检查、OAuth 302 跳转与 `/agent/intents/:id/resume|cover-letter` 的 md/html 输出除外）
 - 路径前缀：Hono 内部路由即本文档所列路径（`/analyze`、`/auth/*`…），**不带 `/api` 前缀**。形态 C 同域部署时由报告站 `pages/api/[...slug].ts` 把外部 `/api/*` 剥前缀后转发，并设 `API_MOUNT_PREFIX=/api` 让 OAuth 回调 URI/Cookie Path 带上前缀；故浏览器实际访问的是 `https://<域名>/api/analyze` 等。
 - CORS：默认 `*` 开放（不携带凭证 Cookie）；配置 `CORS_ALLOW_ORIGINS` 后回显具体 Origin 并允许凭证（跨域部署形态 B，见演示模式设计 §7.6）；形态 C 同域不涉及 CORS。允许方法为 `GET/POST/PUT/PATCH/DELETE/OPTIONS`（`/agent/preferences/:id` 用 PUT/DELETE，投递与面试用 PATCH）。
-- 最后更新：2026-10-03（新增 §3.8 求职 Agent 工作台与 `/internal/cron/agent-tick`）
+- 最后更新：2026-10-04（§3.8 增补阶段 2 半自动投递：`/agent/extension/pending-fills`、`/agent/intents/:id/outcome`、cover-letter `polish=llm` 与 AI 辅助披露）
 
 > 本文件只描述对外 HTTP 契约。内部分析管道见 AGENTS.md「运行架构」，画像字段结构见 `packages/shared` 的 `AbilityProfileSchema`，演示模式完整设计见 [design-demo-mode-20260915.md](design-demo-mode-20260915.md)。
 
@@ -1121,15 +1121,18 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 ---
 
-## 3.8 求职 Agent 工作台（阶段 1，需登录）
+## 3.8 求职 Agent 工作台（阶段 1 准备 + 阶段 2 半自动投递，需登录）
 
-求职 Copilot 的「找 → 评 → 改」三步，设计见 [设计-求职Agent-20261002.md](设计-求职Agent-20261002.md) §3/§5/§6。**阶段 1 只准备、不投递**：Agent 按求职偏好扫本地岗位池、出可解释匹配报告、备好岗位定向简历与求职信、推到「待投清单」；真正把简历投出去的动作由用户在浏览器里自己完成，本组端点**没有任何对外部系统的写动作**。
+求职 Copilot 的「找 → 评 → 改 → 填」，设计见 [设计-求职Agent-20261002.md](设计-求职Agent-20261002.md) §3/§5/§6/§10.4。
+
+- **阶段 1（已上线）只准备、不投递**：Agent 按求职偏好扫本地岗位池、出可解释匹配报告、备好岗位定向简历与求职信、推到「待投清单」；本组端点没有任何对外部 ATS 的写动作。
+- **阶段 2（2026-10-04 落地）半自动投递**：用户在工作台确认票据后，浏览器扩展通过 `GET /agent/extension/pending-fills` 拉取已确认票据，在 ATS 页面一键**填充**简历/求职信，然后**停手**——点击「提交」始终由用户本人完成；投完点「我已提交」回执（`mark-submitted`），后续用 `POST /agent/intents/:id/outcome` 回填结果。系统**永不自动点击提交**（决策 #20 硬边界，阶段 3 全自动投递明确不做）。
 
 **通用规则**：
 
-- 全部端点要求登录 `user`（匿名、demo 一律 `401 AUTH_REQUIRED`）；偏好、任务、票据都是账号私有数据，非本人资源与不存在的资源同形返回 `404`（不泄露存在性）。
+- 全部端点要求登录 `user`（匿名、demo 一律 `401 AUTH_REQUIRED`）；偏好、任务、票据都是账号私有数据，非本人资源与不存在的资源同形返回 `404`（不泄露存在性）。扩展 Bearer `tkn-` 与会话 Cookie 均解析为 `user` 态。
 - 新建任务（`POST /agent/runs`）要求画像**已由本人认领**（`profiles.subject_claimed` 且 platform/login 与登录账号一致），否则 `403 AGENT_PROFILE_NOT_OWNED`。
-- 状态机：`created → configured → watching → recommending → awaiting_approval → tracking`（另有 `cancelled`/`failed` 终态；`submitting`/`submitted` 预留给阶段 2 的扩展自动投递）。每次迁移写入一条 `job_run_events`，`GET /agent/runs/:id` 可回放。
+- 状态机：`created → configured → watching → recommending → awaiting_approval → submitting → submitted → tracking`（阶段 2 扩展回执启用 `submitting/submitted` 两个审计时刻；阶段 1 兼容路径在最后一条票据标记已投时由 `awaiting_approval` 一步到 `tracking`；另有 `cancelled`/`failed` 终态）。每次迁移写入一条 `job_run_events`，`GET /agent/runs/:id` 可回放。
 - 工件不落库：定向简历与求职信在请求时由不可变的画像快照 + 票据内岗位精简快照重新装配（同一份事实 → 同一份交付物），因此现有「简历不持久化」决策不被推翻。
 
 ### `GET /agent/preferences` / `POST /agent/preferences`
@@ -1235,7 +1238,48 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 ### `GET /agent/intents/:id/cover-letter`
 
-规则版求职信（首期不开 LLM），`format=md|json`（默认 `md`）、`locale=zh-CN|en`。段落只引用画像已有事实且挂 `evidenceRefs`；没有命中技能/可回溯证据时**不产出该段**（宁缺勿编）。`409 AGENT_ARTIFACTS_UNAVAILABLE` 同上。
+规则版求职信，`format=md|json`（默认 `md`）、`locale=zh-CN|en`。段落只引用画像已有事实且挂 `evidenceRefs`；没有命中技能/可回溯证据时**不产出该段**（宁缺勿编）。`409 AGENT_ARTIFACTS_UNAVAILABLE` 同上。
+
+`format=json&polish=llm`（阶段 2 C2，扩展一键填充使用）：在规则版之上做 LLM 润色。
+
+- 润色成功：`{ "draft", "body", "subject": string|null, "polished": true, "provenance": { "source", "provider", "model", "promptVersion" }, "fromSnapshot" }`，`body` 末尾由**服务端**固定追加一行招聘方可见的 AI 辅助披露（E1，模型无法省略）。
+- 未配置 LLM / 调用失败 / 结构化校验失败：**fail-closed 回落规则版**，HTTP 仍 200，`{ "draft", "body": <规则版 markdown，同样含披露行>, "subject": null, "polished": false, "fallbackReason": "llm_unavailable", "fromSnapshot" }`，绝不阻断投递准备。
+- 披露文案由 `resume-core` 的 `aiAssistedDisclosure(locale)` 单一产出（中文「— 本投递材料由 JobAgent 依据本人可核验的公开代码证据辅助生成（AI 辅助投递）。」，英文「— This application was prepared with AI assistance by JobAgent, grounded only in the candidate's verifiable public code evidence.」）。
+
+### `GET /agent/extension/pending-fills`（阶段 2 A2，需登录）
+
+浏览器扩展在 ATS 页面拉取**本人跨 run** 的已确认待填充票据（`status='approved'`，按 `approvedAt` 倒序，上限 100）。需登录 `user`（Cookie 或扩展 Bearer `tkn-` 均可），匿名 `401`。扩展本地按 `job.sourceUrl`/`job.applyUrl` 与当前页面 URL 做同源 + 路径段匹配（纯函数 `matchFillsToPage`），再一键填充。
+
+`200`：
+
+```json
+{
+  "fills": [
+    {
+      "intentId": "si-...",
+      "runId": "run-...",
+      "profileId": "prof-...",
+      "job": { "source": "greenhouse", "sourceUrl": "https://...", "applyUrl": "https://...", "title": "...", "company": "..." },
+      "matchScore": 0.82,
+      "matchTier": "high",
+      "approvedAt": "2026-10-04T08:00:00.000Z"
+    }
+  ]
+}
+```
+
+已提交（`submitted`）的票据立即从本列表消失。
+
+### `POST /agent/intents/:id/outcome`（阶段 2 D1，需登录）
+
+用户在 ATS 自行投递后回填投递结果（邀约面试 / offer / 被拒 / 无响应），只写入对应 `applications` 行作为复盘样本，**不自动调整匹配权重**（权重微调 D2 需累计 ≥20 条带结果真实记录且人工确认，见决策 #20-3）。
+
+请求体：`{ "outcome": "interview", "note"?: string(≤1000) }`，`outcome ∈ no_response | interview | offer | rejected`（Zod `.strict()`，非法枚举/多余字段 `400`）。
+
+- 票据必须已是 `submitted` 且有 `applicationId`，否则 `409 AGENT_INVALID_TRANSITION`。
+- `200`：`{ "applicationId": "app-...", "outcomeFeedback": "interview", "outcomeFeedbackAt": "..." }`；应用行不存在 `404 AGENT_INTENT_NOT_FOUND`。
+
+> 阶段 2 硬边界（决策 #20）：扩展只把简历/求职信**填入** ATS 表单并**停手**，点击最终「提交」始终由用户本人完成（无 headless、无自动点击提交）；招聘方侧通过求职信末尾固定披露行得知材料为 AI 辅助生成。
 
 ### `GET /internal/cron/agent-tick`
 
@@ -1297,6 +1341,57 @@ apiKey 以 AES-256-GCM 密文落库，明文只存在于请求处理瞬间。
 
 最小真实请求校验（`max_tokens=1`，用户自己的 key 打用户自己的端点）。成功 200
 `{ ok: true, provider, model }`；上游失败 502 `LLM_VALIDATION_FAILED`（错误体脱敏，不回显 key）。
+
+---
+
+## 3.10 扩展登录态（决策 #22）
+
+浏览器扩展经「工作台签发一次性授权码 → 兑换长期 Bearer API Token」获得登录身份（全量设计见
+`docs/design-扩展登录态-20261004.md`）。登录始终发生在工作台（Web OAuth），扩展不重做 OAuth；
+服务端只存 token 的 SHA-256 哈希，明文仅签发响应返回一次。code 5 分钟单次消费防重放，
+token 90 天滑动续期、可撤销。
+
+### `POST /auth/extension-token/issue`
+
+工作台签发一次性授权码（**需 cookie 登录**，401 `AUTH_REQUIRED`）。响应：
+
+```json
+{ "code": "ext-code-<32B base64url>", "expiresAt": "2026-10-04T04:05:00.000Z" }
+```
+
+### `POST /auth/extension-token/consume`
+
+扩展用一次性 code 兑换长期 token（code 即凭证，无需额外鉴权）。请求：
+
+```json
+{ "code": "ext-code-<32B base64url>" }
+```
+
+成功 200：
+
+```json
+{ "apiToken": "tkn-<32B base64url>", "name": "browser extension",
+  "expiresAt": "2027-01-02T04:00:00.000Z",
+  "account": { "platform": "github", "login": "alice" } }
+```
+
+失败：404 `EXT_CODE_NOT_FOUND`（不存在）；410 `EXT_CODE_USED`（已消费，防重放）；
+410 `EXT_CODE_EXPIRED`（超过 5 分钟）。后续请求带
+`Authorization: Bearer <apiToken>`，命中即按该账号的 user 身份处理（/auth/me 可见）。
+
+### `GET /auth/extension-tokens`
+
+授权管理列表（需登录）：返回本账号未撤销 token 的摘要，**仅指纹尾 4 位、不可逆查明文**：
+
+```json
+{ "tokens": [{ "id": "tkn-<…>", "fingerprint": "<last4>", "name": "browser extension",
+               "createdAt": "…", "lastSeenAt": "…", "expiresAt": "…" }] }
+```
+
+### `DELETE /auth/extension-tokens/:id`
+
+撤销本人 token（需登录；不存在/非本人 404 `EXT_TOKEN_NOT_FOUND`）。撤销立即生效：
+携带该 token 的下一个请求回退为匿名。
 
 ---
 

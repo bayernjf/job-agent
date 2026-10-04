@@ -889,6 +889,66 @@ export const AuthMeSchema = z.object({
 });
 export type AuthMe = z.infer<typeof AuthMeSchema>;
 
+// ─── 扩展登录态（决策 #22，design-扩展登录态-20261004.md）───────────────
+// 扩展经「工作台签发一次性授权码 → 扩展兑换长期 API Token（Bearer）」获得登录身份
+// （第三方 Cookie 被现代浏览器拦截，无法直接复用 jobagent_session）。服务端只存
+// token 的 SHA-256 哈希（token_hash），明文仅签发响应返回一次；code 5 分钟单次消费。
+
+/** 一次性授权码前缀（id = ext-code-<32B>，明文即凭证、单次消费） */
+export const EXT_AUTH_CODE_PREFIX = 'ext-code-';
+/** 长期 API token 前缀（id = tkn-<32B>，仅签发时明文返回一次） */
+export const API_TOKEN_PREFIX = 'tkn-';
+/** 授权码有效期（5 分钟） */
+export const EXT_AUTH_CODE_TTL_MS = 5 * 60 * 1000;
+/** API token 有效期（90 天，滑动续期） */
+export const API_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** POST /auth/extension-token/issue 响应体：一次性授权码（只经工作台→扩展通道传输） */
+export const ExtensionAuthCodeIssueResponseSchema = z.object({
+  code: z.string().min(1),
+  expiresAt: z.string(), // UTC ISO8601
+});
+export type ExtensionAuthCodeIssueResponse = z.infer<typeof ExtensionAuthCodeIssueResponseSchema>;
+
+/** POST /auth/extension-token/consume 请求体：code 即凭证（无额外鉴权） */
+export const ExtensionAuthTokenConsumeRequestSchema = z.object({
+  code: z.string().min(1),
+}).strict();
+export type ExtensionAuthTokenConsumeRequest = z.infer<typeof ExtensionAuthTokenConsumeRequestSchema>;
+
+/** POST /auth/extension-token/consume 响应体：唯一一次明文返回 apiToken */
+export const ExtensionAuthTokenConsumeResponseSchema = z.object({
+  apiToken: z.string().min(1),
+  name: z.string(),
+  expiresAt: z.string(), // UTC ISO8601
+  account: z.object({
+    platform: PlatformSchema,
+    login: z.string().min(1),
+  }),
+});
+export type ExtensionAuthTokenConsumeResponse = z.infer<typeof ExtensionAuthTokenConsumeResponseSchema>;
+
+/** GET /auth/extension-tokens 列表单项：仅指纹（尾 4 位），不可逆查明文 */
+export const ApiTokenSummarySchema = z.object({
+  id: z.string().min(1),
+  fingerprint: z.string(), // 尾 4 位
+  name: z.string(),
+  createdAt: z.string(),
+  lastSeenAt: z.string(),
+  expiresAt: z.string(),
+});
+export type ApiTokenSummary = z.infer<typeof ApiTokenSummarySchema>;
+
+/** 扩展登录态结构化错误码（单一事实源） */
+export const EXT_AUTH_ERROR_CODES = {
+  codeNotFound: 'EXT_CODE_NOT_FOUND', // 404：code 不存在
+  codeUsed: 'EXT_CODE_USED', // 410：已消费（防重放）
+  codeExpired: 'EXT_CODE_EXPIRED', // 410：已过期
+  tokenNotFound: 'EXT_TOKEN_NOT_FOUND', // 404：撤销目标不存在
+} as const;
+export type ExtAuthErrorCode = (typeof EXT_AUTH_ERROR_CODES)[keyof typeof EXT_AUTH_ERROR_CODES];
+
+
 /**
  * PUT /auth/recruiter 请求体（F10）：声明是幂等的显式动作，无请求字段，
  * 仅要求已登录；空对象即可，仍走 Zod 校验拒绝额外/非对象负载。
@@ -987,6 +1047,9 @@ export const LOCAL_PROFILE_STORAGE_KEY = 'jobagent.localProfile';
 export const LEGACY_RESUME_FIELDS_STORAGE_KEY = 'jobagent.localResumeFields';
 /** 扩展 ATS 旧键，首次读取迁移到 canonical 后删除 */
 export const LEGACY_ATS_FIELDS_STORAGE_KEY = 'jobagent.localFields';
+
+/** 扩展长期 API token 的 chrome.storage.local 存储键（决策 #22；明文只存本机，服务端只存哈希） */
+export const EXT_API_TOKEN_STORAGE_KEY = 'jobagent.apiToken';
 
 export const LocalProfileEducationSchema = z.object({
   school: z.string().min(1),
@@ -1724,6 +1787,45 @@ export const SubmitIntentSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 export type SubmitIntent = z.infer<typeof SubmitIntentSchema>;
+
+/**
+ * 阶段 2 A2：扩展在 ATS 页面拉取的「待填充」票据精简视图（跨 run、status=approved）。
+ * 不含匹配报告全文；扩展按 job.sourceUrl/applyUrl 与当前页面 URL 本地匹配。
+ */
+export const ExtensionPendingFillSchema = z.object({
+  intentId: z.string().min(1),
+  runId: z.string().min(1),
+  profileId: z.string().min(1),
+  job: SubmitIntentJobSchema,
+  matchScore: z.number().nonnegative(),
+  matchTier: MatchScoreTierSchema,
+  approvedAt: z.string().datetime(),
+});
+export type ExtensionPendingFill = z.infer<typeof ExtensionPendingFillSchema>;
+
+/** GET /agent/extension/pending-fills 响应体。 */
+export const ExtensionPendingFillsResponseSchema = z.object({
+  fills: z.array(ExtensionPendingFillSchema),
+});
+export type ExtensionPendingFillsResponse = z.infer<typeof ExtensionPendingFillsResponseSchema>;
+
+/**
+ * 阶段 2 D1：投递结果回写（复盘样本，决策 #20-3）。
+ * no_response=无回音、interview=邀约/面试、offer=录用、rejected=拒绝。
+ * 仅记录；权重微调（D2）需累计 ≥20 条带结果记录且人工确认后才生效。
+ */
+export const OUTCOME_FEEDBACK_VALUES = ['no_response', 'interview', 'offer', 'rejected'] as const;
+export const OutcomeFeedbackSchema = z.enum(OUTCOME_FEEDBACK_VALUES);
+export type OutcomeFeedback = z.infer<typeof OutcomeFeedbackSchema>;
+
+/** POST /agent/intents/:id/outcome 请求体。 */
+export const IntentOutcomeRequestSchema = z
+  .object({
+    outcome: OutcomeFeedbackSchema,
+    note: z.string().max(1000).optional(),
+  })
+  .strict();
+export type IntentOutcomeRequest = z.infer<typeof IntentOutcomeRequestSchema>;
 
 /** POST /agent/runs 请求体：绑定一套偏好与一个本人已认领画像。 */
 export const JobRunCreateSchema = z

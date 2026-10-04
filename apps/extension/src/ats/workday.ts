@@ -42,6 +42,9 @@ export const workdayAdapter: AtsAdapter = {
     set(['email'], valueFor(values, 'email'));
     set(['phone'], valueFor(values, 'phone'));
     set(['location'], valueFor(values, 'location'));
+    // 求职信（阶段 2 A2）：骨架阶段只写最外层可见的 cover letter/summary 字段，
+    // 深层 shadow DOM 自定义问题待 Workday 完整定位迭代。
+    set(['cover letter', 'summary'], valueFor(values, 'cover_letter') ?? valueFor(values, 'summary'));
     // Workday 的 GitHub/LinkedIn 链接字段在深层组件内，待后续迭代
     void valueFor(values, 'github_url');
     void valueFor(values, 'linkedin_url');

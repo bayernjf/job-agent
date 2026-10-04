@@ -214,6 +214,8 @@ describe('agent workbench — auth and ownership', () => {
       ['POST', '/agent/runs/run-x/approve'],
       ['GET', '/agent/runs/run-x/pending-approvals'],
       ['POST', '/agent/intents/intent-x/mark-submitted'],
+      ['POST', '/agent/intents/intent-x/outcome'],
+      ['GET', '/agent/extension/pending-fills'],
       ['GET', '/agent/intents/intent-x/resume'],
       ['GET', '/agent/intents/intent-x/cover-letter'],
     ] as const) {
@@ -742,5 +744,118 @@ describe('agent workbench — cron tick', () => {
       fromStatus: 'submitting',
       toStatus: 'failed',
     });
+  });
+});
+
+describe('agent stage 2 — extension pending-fills, outcome write-back, LLM polish fallback', () => {
+  /** 建画像→认领→灌岗位→偏好→建 run（即扫一轮落 1 张 pending 票据），返回 run/intent 句柄。 */
+  async function preparedRun(h: Awaited<ReturnType<typeof harness>>) {
+    const { repos, json } = h;
+    await insertProfile(repos, 'p-1', ALICE.login);
+    await json('/profiles/p-1/claim', { method: 'POST' });
+    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-1' }),
+    });
+    const run = (await runRes.json()) as { run: { runId: string }; intents: Array<{ intentId: string }> };
+    return { runId: run.run.runId, intentId: run.intents[0]!.intentId };
+  }
+
+  it('lists approved intents as pending fills and removes them after mark-submitted', async () => {
+    const h = await harness();
+    const { json } = h;
+    const { runId, intentId } = await preparedRun(h);
+
+    // approve 前：没有待填充
+    const empty = await json('/agent/extension/pending-fills');
+    expect(empty.status).toBe(200);
+    expect((await empty.json()) as { fills: unknown[] }).toEqual({ fills: [] });
+
+    const approve = await json(`/agent/runs/${runId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ intentIds: [intentId] }),
+    });
+    expect(approve.status).toBe(200);
+
+    const fillsRes = await json('/agent/extension/pending-fills');
+    expect(fillsRes.status).toBe(200);
+    const fillsBody = (await fillsRes.json()) as {
+      fills: Array<{ intentId: string; job: { sourceUrl: string }; matchTier: string; approvedAt: string }>;
+    };
+    expect(fillsBody.fills).toHaveLength(1);
+    expect(fillsBody.fills[0]).toMatchObject({
+      intentId,
+      matchTier: 'high',
+    });
+    expect(fillsBody.fills[0]!.job.sourceUrl).toBe('https://boards.example.com/acme/jobs/1');
+    expect(new Date(fillsBody.fills[0]!.approvedAt).getTime()).not.toBeNaN();
+
+    // 用户提交后回执：票据转 submitted，不再出现在待填充列表
+    const marked = await json(`/agent/intents/${intentId}/mark-submitted`, { method: 'POST' });
+    expect(marked.status).toBe(200);
+    const after = (await (await json('/agent/extension/pending-fills')).json()) as { fills: unknown[] };
+    expect(after.fills).toHaveLength(0);
+  });
+
+  it('records outcome feedback only after submission and validates the enum', async () => {
+    const h = await harness();
+    const { repos, json } = h;
+    const { runId, intentId } = await preparedRun(h);
+    await json(`/agent/runs/${runId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ intentIds: [intentId] }),
+    });
+
+    // 仅 approved、未回执：没有 application，409
+    const tooEarly = await json(`/agent/intents/${intentId}/outcome`, {
+      method: 'POST',
+      body: JSON.stringify({ outcome: 'offer' }),
+    });
+    expect(tooEarly.status).toBe(409);
+
+    const marked = (await (
+      await json(`/agent/intents/${intentId}/mark-submitted`, { method: 'POST' })
+    ).json()) as { applicationId: string };
+
+    // 非法枚举 400
+    const bad = await json(`/agent/intents/${intentId}/outcome`, {
+      method: 'POST',
+      body: JSON.stringify({ outcome: 'ghosted' }),
+    });
+    expect(bad.status).toBe(400);
+
+    const ok = await json(`/agent/intents/${intentId}/outcome`, {
+      method: 'POST',
+      body: JSON.stringify({ outcome: 'interview', note: 'recruiter screen booked' }),
+    });
+    expect(ok.status).toBe(200);
+    const okBody = (await ok.json()) as { outcomeFeedback: string; outcomeFeedbackAt: string };
+    expect(okBody.outcomeFeedback).toBe('interview');
+    expect(new Date(okBody.outcomeFeedbackAt).getTime()).not.toBeNaN();
+
+    const app = await repos.applications.getById(marked.applicationId);
+    expect(app?.outcomeFeedback).toBe('interview');
+    expect(app?.outcomeFeedbackAt).toBeTruthy();
+  });
+
+  it('gracefully falls back to the rule-based cover letter when no LLM is configured', async () => {
+    const h = await harness();
+    const { runId, intentId } = await preparedRun(h);
+    const res = await h.json(`/agent/intents/${intentId}/cover-letter?format=json&polish=llm`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      polished: boolean;
+      fallbackReason: string;
+      body: string;
+      subject: string | null;
+    };
+    expect(body.polished).toBe(false);
+    expect(body.fallbackReason).toBe('llm_unavailable');
+    expect(body.subject).toBeNull();
+    expect(body.body.length).toBeGreaterThan(20);
+    void runId;
   });
 });

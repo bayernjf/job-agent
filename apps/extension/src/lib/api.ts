@@ -20,6 +20,8 @@ export interface ApiClientOptions {
   /** 轮询总超时（默认 60s） */
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  /** 扩展登录态（决策 #22）：返回长期 Bearer token；未登录返回 null（匿名调用） */
+  tokenProvider?: () => Promise<string | null>;
 }
 
 const DEFAULT_BASE = typeof EXTENSION_API_BASE === 'string' ? EXTENSION_API_BASE : 'http://localhost:3000';
@@ -43,8 +45,122 @@ export function apiError(message: string, status?: number, details?: unknown): A
   return err;
 }
 
+
+/** 待填充票据（与后端 GET /agent/extension/pending-fills 单条同形，shared ExtensionPendingFillSchema）。 */
+export interface PendingFill {
+  intentId: string;
+  runId: string;
+  profileId: string;
+  job: {
+    source: string;
+    sourceUrl: string;
+    applyUrl?: string | null;
+    title: string;
+    company?: string | null;
+    postingId?: string;
+    [k: string]: unknown;
+  };
+  matchScore: number;
+  matchTier: string;
+  approvedAt: string;
+}
+
+/** GET /agent/intents/:id/cover-letter?format=json&polish=llm 的 JSON 响应。
+ * 无 LLM 时后端 fail-closed 回落规则版：polished=false、body 为规则 markdown。 */
+export interface IntentCoverLetterJson {
+  draft: unknown;
+  body: string;
+  subject: string | null;
+  polished: boolean;
+  fallbackReason?: string;
+  provenance?: { source: string; provider: string; model: string; promptVersion: string };
+  fromSnapshot: boolean;
+}
+
+export type IntentOutcome = 'no_response' | 'interview' | 'offer' | 'rejected';
+
 export class JobAgentApi {
   constructor(private readonly opts: ApiClientOptions) {}
+
+  /** 鉴权头：tokenProvider 提供明文 token 时附加 Authorization（仅 tkn- 前缀），否则空对象。 */
+  private async authHeaders(): Promise<Record<string, string>> {
+    const token = await this.opts.tokenProvider?.();
+    if (token) return { authorization: `Bearer ${token}` };
+    return {};
+  }
+
+
+  /** 按 profileId 直接取可填充画像（exportable 快照，不触发分析）。 */
+  async getExportableProfile(profileId: string): Promise<ExportableProfile> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    return this.getProfile(fetchImpl, baseUrl, profileId);
+  }
+
+  // ── 阶段 2 A2：求职 Agent 半自动投递（全部需要登录态，走 Bearer token）──
+
+  /** 拉取本人跨 run 的已确认待填充票据（approved SubmitIntent）。 */
+  async listPendingFills(): Promise<PendingFill[]> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const res = await fetchImpl(`${baseUrl}/agent/extension/pending-fills`, {
+      headers: await this.authHeaders(),
+    });
+    if (!res.ok) throw apiError(`pending fills failed (HTTP ${res.status})`, res.status);
+    const body = (await res.json().catch(() => ({}))) as { fills?: unknown };
+    return Array.isArray(body.fills) ? (body.fills as PendingFill[]) : [];
+  }
+
+  /**
+   * 取某票据的岗位定向求职信（JSON）。默认 polish=llm：有 LLM 走润色版，
+   * 无 key/失败时后端回落规则版 markdown（polished=false），调用方无需分支。
+   */
+  async getIntentCoverLetter(
+    intentId: string,
+    locale: 'zh-CN' | 'en' = 'zh-CN',
+  ): Promise<IntentCoverLetterJson> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const qs = `format=json&polish=llm&locale=${encodeURIComponent(locale)}`;
+    const res = await fetchImpl(
+      `${baseUrl}/agent/intents/${encodeURIComponent(intentId)}/cover-letter?${qs}`,
+      { headers: await this.authHeaders() },
+    );
+    if (!res.ok) throw apiError(`cover letter failed (HTTP ${res.status})`, res.status);
+    return (await res.json()) as IntentCoverLetterJson;
+  }
+
+  /** 用户在 ATS 提交后回执：票据转 submitted、写 origin=agent 投递记录（幂等）。 */
+  async markIntentSubmitted(intentId: string): Promise<{ applicationId: string | null }> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const res = await fetchImpl(
+      `${baseUrl}/agent/intents/${encodeURIComponent(intentId)}/mark-submitted`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(await this.authHeaders()) },
+      },
+    );
+    const body = (await res.json().catch(() => ({}))) as { applicationId?: string | null };
+    if (!res.ok) throw apiError(`mark-submitted failed (HTTP ${res.status})`, res.status, body);
+    return { applicationId: body.applicationId ?? null };
+  }
+
+  /** 投递结果回写（D1）：仅 submitted 票据可写，非法状态后端返回 409。 */
+  async recordIntentOutcome(
+    intentId: string,
+    outcome: IntentOutcome,
+    note?: string,
+  ): Promise<void> {
+    const { baseUrl } = this.opts;
+    const fetchImpl = this.opts.fetchImpl ?? fetch;
+    const res = await fetchImpl(`${baseUrl}/agent/intents/${encodeURIComponent(intentId)}/outcome`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(await this.authHeaders()) },
+      body: JSON.stringify({ outcome, ...(note ? { note } : {}) }),
+    });
+    if (!res.ok) throw apiError(`outcome write-back failed (HTTP ${res.status})`, res.status);
+  }
 
   /**
    * 输入用户名（可选平台），返回可信画像（ExportableProfile）。
@@ -95,6 +211,7 @@ export class JobAgentApi {
   ): Promise<string | undefined> {
     const res = await fetchImpl(
       `${baseUrl}/profiles/by-subject/${platform}/${encodeURIComponent(username)}`,
+      { headers: await this.authHeaders() },
     );
     if (res.status === 404) return undefined;
     if (!res.ok) throw apiError(`profile lookup failed (HTTP ${res.status})`, res.status);
@@ -110,7 +227,7 @@ export class JobAgentApi {
   ): Promise<{ jobId: string | undefined; profileId: string | undefined }> {
     const res = await fetchImpl(`${baseUrl}/analyze`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(await this.authHeaders()) },
       body: JSON.stringify({ username, platform }),
     });
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -128,7 +245,9 @@ export class JobAgentApi {
     baseUrl: string,
     jobId: string,
   ): Promise<{ status: string; profileId: string | undefined; error: string | undefined }> {
-    const res = await fetchImpl(`${baseUrl}/jobs/${encodeURIComponent(jobId)}`);
+    const res = await fetchImpl(`${baseUrl}/jobs/${encodeURIComponent(jobId)}`, {
+      headers: await this.authHeaders(),
+    });
     if (!res.ok) throw apiError(`job lookup failed (HTTP ${res.status})`, res.status);
     const body = (await res.json()) as Record<string, unknown>;
     return {
@@ -139,7 +258,9 @@ export class JobAgentApi {
   }
 
   private async getProfile(fetchImpl: typeof fetch, baseUrl: string, profileId: string): Promise<ExportableProfile> {
-    const res = await fetchImpl(`${baseUrl}/profiles/${encodeURIComponent(profileId)}/exportable`);
+    const res = await fetchImpl(`${baseUrl}/profiles/${encodeURIComponent(profileId)}/exportable`, {
+      headers: await this.authHeaders(),
+    });
     if (!res.ok) throw apiError(`profile lookup failed (HTTP ${res.status})`, res.status);
     const body = await res.json();
     const parsed = parseExportableProfile(body);

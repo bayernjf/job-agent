@@ -47,12 +47,14 @@ export const greenhouseAdapter: AtsAdapter = {
     set(['linkedin'], valueFor(values, 'linkedin_url'));
     set(['website', 'portfolio'], valueFor(values, 'personal_website_url'), ['linkedin', 'github']);
     set(['github'], valueFor(values, 'github_url'), ['linkedin', 'website', 'portfolio']);
-    // summary：先试 cover_letter/summary 关键词字段，未命中则写入动机/自我介绍类自定义问题
-    const summary = valueFor(values, 'summary');
-    if (summary) {
-      const el = findFields(doc, ['cover_letter', 'summary'])[0] ?? findLabeledQuestion(doc, /question_|answers\[/i);
-      if (el) {
-        el.value = summary;
+    // 求职信（阶段 2 A2，cover_letter 语义键优先；缺省回退画像 summary）：
+    // 写 cover_letter/summary 命名字段与动机/自我介绍类自定义问题，同一元素只写一次。
+    const letter = valueFor(values, 'cover_letter') ?? valueFor(values, 'summary');
+    if (letter) {
+      const named = findFields(doc, ['cover_letter', 'summary'])[0] ?? null;
+      const question = findLabeledQuestion(doc, /question_|answers\[/i);
+      for (const el of new Set([named, question].filter((x): x is HTMLInputElement | HTMLTextAreaElement => !!x))) {
+        el.value = letter;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         written += 1;

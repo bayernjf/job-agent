@@ -230,6 +230,8 @@ export function resumeMatchFromReport(report: MatchReport): ResumeMatchInput {
 export interface IntentArtifacts {
   resume: ResumeDraft;
   coverLetter: CoverLetterDraft;
+  /** 装配所用岗位（活岗位行或票据快照重建）；C2 LLM 求职信润色需要它 */
+  posting: JobPosting;
   /** 岗位已不在岗位池，工件按票据快照生成 */
   fromSnapshot: boolean;
 }
@@ -265,7 +267,7 @@ export async function buildIntentArtifacts(
     match,
     options: { locale: options.locale, now },
   });
-  return { resume, coverLetter, fromSnapshot };
+  return { resume, coverLetter, posting, fromSnapshot };
 }
 
 /** 供 API 端点复用的渲染入口（md / html）。 */

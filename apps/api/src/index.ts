@@ -49,9 +49,11 @@ import { loadAgentConfig } from './agent-config.js';
 import {
   clientIp,
   hashIp,
+  resolveApiTokenPrincipal,
   resolveAuthPrincipal,
   resolvePrincipal,
 } from './principal.js';
+import { API_TOKEN_TTL_MS } from '@jobagent/shared';
 import { registerSystem } from './routes/system.js';
 import { registerDemo } from './routes/demo.js';
 import { registerAuth } from './routes/auth.js';
@@ -133,20 +135,28 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     }),
   );
 
-  // Principal 全局解析：优先登录用户（jobagent_session），否则演示会话，再否则匿名；
-  // 每个请求解析一次，下游 handler 只读 c.get('principal')。坏/过期 Cookie 静默降级。
+  // Principal 全局解析：优先扩展 API Token（Authorization: Bearer <tkn->，决策 #22），
+  // 其次登录用户（jobagent_session Cookie），再演示会话，再匿名；每个请求解析一次，
+  // 下游 handler 只读 c.get('principal')。坏/过期 Cookie 静默降级；未知 token 回退后续解析。
   app.use('*', async (c, next) => {
     const cookieHeader = c.req.header('Cookie');
-    const user = await resolveAuthPrincipal(
-      cookieHeader,
-      repos.authSessions,
+    const bearer = (c.req.header('authorization') ?? '').replace(/^Bearer\s+/i, '');
+    const tokenUser = await resolveApiTokenPrincipal(
+      bearer,
+      repos.apiTokens,
       repos.accounts,
       now,
+      API_TOKEN_TTL_MS,
     );
-    if (user) {
-      c.set('principal', user);
+    if (tokenUser) {
+      c.set('principal', tokenUser);
     } else {
-      c.set('principal', await resolvePrincipal(cookieHeader, repos.demoSessions, now));
+      const user = await resolveAuthPrincipal(cookieHeader, repos.authSessions, repos.accounts, now);
+      if (user) {
+        c.set('principal', user);
+      } else {
+        c.set('principal', await resolvePrincipal(cookieHeader, repos.demoSessions, now));
+      }
     }
     await next();
   });

@@ -105,6 +105,14 @@ export type {
   RawAuthSessionRow,
 } from './auth-session.js';
 export { AUTH_SESSION_STATUSES, toStoredAuthSession } from './auth-session.js';
+export type {
+  StoredExtensionAuthCode,
+  NewExtensionAuthCode,
+  RawExtensionAuthCodeRow,
+} from './extension-auth-code.js';
+export { toStoredExtensionAuthCode } from './extension-auth-code.js';
+export type { StoredApiToken, NewApiToken, RawApiTokenRow } from './api-token.js';
+export { toStoredApiToken } from './api-token.js';
 
 export type {
   RemovalRequestStatus,

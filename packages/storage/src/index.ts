@@ -35,6 +35,8 @@ export type { IJobRunEventsRepository } from './repositories/job-run-events.js';
 export type { ISubmitIntentsRepository } from './repositories/submit-intents.js';
 export type { ILlmCatalogRepository } from './repositories/llm-catalog.js';
 export type { IUserLlmConfigsRepository } from './repositories/user-llm-configs.js';
+export type { IExtensionAuthCodesRepository } from './repositories/extension-auth-codes.js';
+export type { IApiTokensRepository } from './repositories/api-tokens.js';
 
 // 实体领域类型
 export type {
