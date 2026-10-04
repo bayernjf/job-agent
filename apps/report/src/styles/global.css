@@ -473,6 +473,41 @@ h4 { font-size: var(--ja-text-lg); }
   white-space: nowrap;
 }
 
+/* 排队提示是中性信息态：任务没被丢弃，不能长得像 error-box */
+.analyze-form .queue-notice {
+  margin-top: var(--ja-space-3);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+}
+
+.analyze-form .queue-notice__title {
+  margin: 0 0 var(--ja-space-1);
+  font-weight: 600;
+}
+
+.analyze-form .queue-notice__body {
+  margin: 0 0 var(--ja-space-2);
+  color: var(--ja-color-fg-muted);
+  line-height: 1.55;
+}
+
+.analyze-form .queue-notice__ref {
+  margin: 0 0 var(--ja-space-2);
+  font-family: var(--ja-font-mono);
+  font-size: var(--ja-text-xs);
+  color: var(--ja-color-fg-muted);
+  word-break: break-all;
+}
+
+.analyze-form .queue-notice__actions {
+  display: flex;
+  gap: var(--ja-space-2);
+}
+
 /* ─── ShareButton React island ─────────────────────────────────────── */
 
 .share-btn {

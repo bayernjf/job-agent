@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AnalyzeForm from './AnalyzeForm';
@@ -15,7 +15,10 @@ function makeProps() {
     queuedLabel: 'Queued',
     runningLabel: 'Running',
     failedLabel: 'Analysis failed',
-    timeoutLabel: 'Temporarily unavailable',
+    queueNoticeTitle: 'Still queued, not dropped',
+    queueNoticeBody: 'The queue is drained by a scheduled poll.',
+    queueJobRefLabel: 'Job ID {jobId}',
+    keepWaitingLabel: 'Keep waiting',
     stageL0Label: 'L0',
     stageL1Label: 'L1',
     pollingLabel: 'Polling',
@@ -135,5 +138,64 @@ describe('AnalyzeForm', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Quota used up');
+  });
+
+  it('turns an exhausted poll budget into a queue notice, not an error', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce(okJson({ jobId: 'job-queue-1', status: 'queued' }))
+        .mockResolvedValue(okJson({ status: 'queued', stage: null, profileId: null }));
+
+      render(<AnalyzeForm {...makeProps()} />);
+      fireEvent.change(screen.getByLabelText('username'), { target: { value: 'alice' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Analyze' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 2_000);
+      });
+
+      const notice = screen.getByTestId('queue-notice');
+      expect(notice).toHaveTextContent('Still queued, not dropped');
+      expect(notice).toHaveTextContent('Job ID job-queue-1');
+      expect(screen.queryByRole('alert')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps waiting on the same job and navigates when it finally lands', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(okJson({ jobId: 'job-queue-2', status: 'queued' }))
+        .mockResolvedValue(okJson({ status: 'queued', stage: null, profileId: null }));
+      global.fetch = fetchMock;
+
+      render(<AnalyzeForm {...makeProps()} />);
+      fireEvent.change(screen.getByLabelText('username'), { target: { value: 'alice' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Analyze' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 2_000);
+      });
+      expect(screen.getByTestId('queue-notice')).toBeInTheDocument();
+
+      // 消费通道随后把这份报告交付了：继续等待复用同一个任务，不重新提交
+      fetchMock.mockResolvedValue(
+        okJson({ status: 'succeeded', profileId: 'prof-late', stage: 'complete' }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Keep waiting' }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      expect(window.location.href).toBe('/zh-CN/report/prof-late');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

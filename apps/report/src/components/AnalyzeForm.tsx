@@ -16,8 +16,14 @@ interface AnalyzeFormProps {
   queuedLabel: string;
   runningLabel: string;
   failedLabel: string;
-  /** T25：轮询超时（worker 不可用/任务挂起）时的显式提示，替代永久转圈 */
-  timeoutLabel: string;
+  /**
+   * 轮询预算（5 分钟）用尽而任务仍未完成：如实说明"在排队、没被丢弃、怎么回来查"。
+   * T25 要求的是"失败必须显式"，不是"必须写成服务不可用"——排队本就不是失败。
+   */
+  queueNoticeTitle: string;
+  queueNoticeBody: string;
+  queueJobRefLabel: string;
+  keepWaitingLabel: string;
   stageL0Label: string;
   stageL1Label: string;
   pollingLabel: string;
@@ -34,7 +40,7 @@ interface AnalyzeFormProps {
   rateLimitedLabel: string;
 }
 
-type Phase = 'idle' | 'creating' | 'polling' | 'done' | 'error';
+type Phase = 'idle' | 'creating' | 'polling' | 'queued' | 'done' | 'error';
 type Platform = 'github' | 'gitee' | 'all';
 
 // GitHub username 规则（与 API Zod 校验一致）；Gitee 额外允许下划线；all 以 GitHub 为主源，取 Gitee 宽松超集
@@ -59,7 +65,10 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     queuedLabel,
     runningLabel,
     failedLabel,
-    timeoutLabel,
+    queueNoticeTitle,
+    queueNoticeBody,
+    queueJobRefLabel,
+    keepWaitingLabel,
     stageL0Label,
     stageL1Label,
     pollingLabel,
@@ -80,6 +89,8 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
   const [errorText, setErrorText] = useState('');
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartedAtRef = useRef<number>(0);
+  /** 队列提示要能报出任务编号，并允许"继续等待"复用同一个任务 */
+  const pendingJobIdRef = useRef<string | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -90,11 +101,11 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
 
   const pollJob = useCallback(
     (jobId: string) => {
+      pendingJobIdRef.current = jobId;
       const timer = setTimeout(async () => {
-        // T25：轮询有界——无 worker / 任务长时间不前进时显式报"暂时不可用"，不再永久转圈
+        // T25：轮询有界，不永久转圈。到点不谎报"服务不可用"——任务还在队列里，只是消费没到。
         if (Date.now() - pollStartedAtRef.current > POLL_TIMEOUT_MS) {
-          setPhase('error');
-          setErrorText(timeoutLabel);
+          setPhase('queued');
           return;
         }
         try {
@@ -144,7 +155,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
       }, POLL_INTERVAL_MS);
       pollTimerRef.current = timer;
     },
-    [apiBase, locale, pollingLabel, queuedLabel, runningLabel, stageL0Label, stageL1Label, attemptsLabel, failedLabel, timeoutLabel],
+    [apiBase, locale, pollingLabel, queuedLabel, runningLabel, stageL0Label, stageL1Label, attemptsLabel, failedLabel],
   );
 
   const handleSubmit = useCallback(
@@ -243,7 +254,18 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     setPhase('idle');
     setErrorText('');
     setStatusText('');
+    pendingJobIdRef.current = null;
   }, [stopPolling]);
+
+  /** 继续等待：复用同一个任务再给一轮轮询预算（重新提交也只会去重回它，没必要）。 */
+  const handleKeepWaiting = useCallback(() => {
+    const jobId = pendingJobIdRef.current;
+    if (!jobId) return;
+    pollStartedAtRef.current = Date.now();
+    setErrorText('');
+    setPhase('polling');
+    pollJob(jobId);
+  }, [pollJob]);
 
   const isBusy = phase === 'creating' || phase === 'polling';
 
@@ -297,6 +319,26 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
           <span className="spinner" aria-hidden="true" />
           {statusText}
         </p>
+      )}
+
+      {phase === 'queued' && (
+        <div className="queue-notice" role="status" aria-live="polite" data-testid="queue-notice">
+          <p className="queue-notice__title">{queueNoticeTitle}</p>
+          <p className="queue-notice__body">{queueNoticeBody}</p>
+          {pendingJobIdRef.current && (
+            <p className="queue-notice__ref">
+              {queueJobRefLabel.replace('{jobId}', pendingJobIdRef.current)}
+            </p>
+          )}
+          <div className="queue-notice__actions">
+            <button type="button" className="ja-btn" onClick={handleKeepWaiting}>
+              {keepWaitingLabel}
+            </button>
+            <button type="button" className="ja-btn ja-btn--ghost" onClick={handleReset}>
+              {retryLabel}
+            </button>
+          </div>
+        </div>
       )}
 
       {phase === 'error' && (
