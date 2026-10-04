@@ -1,7 +1,8 @@
 /**
  * 内部定时任务端点测试（serverless 部署，2026-09-20）：
  * - 未带凭证 → 401
- * - CRON_SECRET 配置后，?token= 错误/正确
+ * - CRON_SECRET 配置后，Authorization: Bearer 错误/正确（Vercel Cron 自动注入的形态）
+ * - 历史形态 `?token=` 即使值正确也 401（2026-10-05 停用：密钥不该留在 URL 与访问日志里）
  * - CRON_SECRET 配置后，Authorization: Bearer 错误/正确（Vercel Cron 自动注入的形态）
  * - 未配置 secret 时接受平台 x-vercel-cron: 1 头
  * - process-job 透传 worker 结果；cleanup 校验 task 并调用注入的 maintenance
@@ -30,17 +31,31 @@ describe('GET /internal/cron/process-job', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rejects a wrong token when CRON_SECRET is configured', async () => {
+  it('rejects a wrong bearer token when CRON_SECRET is configured', async () => {
     process.env.CRON_SECRET = SECRET;
     const processJobOnce = vi.fn(async () => ({ kind: 'idle' as const }));
     const app = await createApp({ repos: await freshRepos(), processJobOnce });
 
-    const res = await app.request('/internal/cron/process-job?token=wrong');
+    const res = await app.request('/internal/cron/process-job', {
+      headers: { authorization: 'Bearer wrong' },
+    });
     expect(res.status).toBe(401);
     expect(processJobOnce).not.toHaveBeenCalled();
   });
 
-  it('accepts the correct token and returns the worker outcome', async () => {
+  it('rejects the retired ?token= form even when the value is correct', async () => {
+    // 2026-10-05 停用：URL 里的共享密钥会留在访问日志、代理记录与命令行回显里。
+    // 这条是"形态已死"的正向钉——闸若恢复接受 query，本用例即红。
+    process.env.CRON_SECRET = SECRET;
+    const processJobOnce = vi.fn(async () => ({ kind: 'idle' as const }));
+    const app = await createApp({ repos: await freshRepos(), processJobOnce });
+
+    const res = await app.request(`/internal/cron/process-job?token=${SECRET}`);
+    expect(res.status).toBe(401);
+    expect(processJobOnce).not.toHaveBeenCalled();
+  });
+
+  it('accepts the correct bearer token and returns the worker outcome', async () => {
     process.env.CRON_SECRET = SECRET;
     const processJobOnce = vi.fn(async () => ({
       kind: 'processed' as const,
@@ -49,7 +64,9 @@ describe('GET /internal/cron/process-job', () => {
     }));
     const app = await createApp({ repos: await freshRepos(), processJobOnce });
 
-    const res = await app.request(`/internal/cron/process-job?token=${SECRET}`);
+    const res = await app.request('/internal/cron/process-job', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; outcome: unknown };
     expect(body.ok).toBe(true);
@@ -99,7 +116,9 @@ describe('GET /internal/cron/process-job', () => {
     });
     const app = await createApp({ repos: await freshRepos(), processJobOnce });
 
-    const res = await app.request(`/internal/cron/process-job?token=${SECRET}`);
+    const res = await app.request('/internal/cron/process-job', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
     expect(res.status).toBe(500);
     const body = (await res.json()) as { ok: boolean; error: string };
     expect(body.ok).toBe(false);
@@ -131,7 +150,9 @@ describe('GET /internal/cron/cleanup', () => {
     const runMaintenance = vi.fn(async () => ({}));
     const app = await createApp({ repos: await freshRepos(), runMaintenance });
 
-    const res = await app.request(`/internal/cron/cleanup?task=bogus&token=${SECRET}`);
+    const res = await app.request('/internal/cron/cleanup?task=bogus', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
     expect(res.status).toBe(400);
     expect(runMaintenance).not.toHaveBeenCalled();
   });
@@ -141,7 +162,9 @@ describe('GET /internal/cron/cleanup', () => {
     const runMaintenance = vi.fn(async (task: string) => ({ task, demoSessions: 2 }));
     const app = await createApp({ repos: await freshRepos(), runMaintenance });
 
-    const res = await app.request(`/internal/cron/cleanup?token=${SECRET}`);
+    const res = await app.request('/internal/cron/cleanup', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; result: { task: string } };
     expect(body.ok).toBe(true);
@@ -153,7 +176,9 @@ describe('GET /internal/cron/cleanup', () => {
     process.env.CRON_SECRET = SECRET;
     const app = await createApp({ repos: await freshRepos() });
 
-    const res = await app.request(`/internal/cron/cleanup?task=all&token=${SECRET}`);
+    const res = await app.request('/internal/cron/cleanup?task=all', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok: boolean;

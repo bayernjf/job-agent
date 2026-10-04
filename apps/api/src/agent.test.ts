@@ -677,7 +677,9 @@ describe('agent workbench — cron tick', () => {
     });
     expect(patched.status).toBe(200);
 
-    const tick = await app.request(`/internal/cron/agent-tick?token=${CRON_SECRET}`);
+    const tick = await app.request('/internal/cron/agent-tick', {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
     expect(tick.status).toBe(200);
     const body = (await tick.json()) as {
       ok: boolean;
@@ -696,7 +698,9 @@ describe('agent workbench — cron tick', () => {
     expect(view.intents).toHaveLength(1);
 
     // 队列清空后 tick 是幂等的 idle
-    const idle = await app.request(`/internal/cron/agent-tick?token=${CRON_SECRET}`);
+    const idle = await app.request('/internal/cron/agent-tick', {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
     expect(((await idle.json()) as { outcome: { idle: boolean } }).outcome.idle).toBe(true);
   });
 
@@ -726,7 +730,9 @@ describe('agent workbench — cron tick', () => {
     const stale = new Date(Date.now() - 48 * 3_600_000).toISOString();
     await repos.jobRuns.setStatus(run.run.runId, { status: 'submitting', updatedAt: stale });
 
-    const tick = await app.request(`/internal/cron/agent-tick?token=${CRON_SECRET}`);
+    const tick = await app.request('/internal/cron/agent-tick', {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
     expect(tick.status).toBe(200);
     const body = (await tick.json()) as { ok: boolean; outcome: { recycled: number } };
     expect(body.ok).toBe(true);
