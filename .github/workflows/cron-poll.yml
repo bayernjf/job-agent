@@ -73,8 +73,8 @@ jobs:
           # hourly pass instead of leaving analyses waiting for the next hour.
           # 401/403/5xx abort immediately.
           for i in $(seq 1 10); do
-            body="$(curl -fsS -m 60 \
-              "$VERCEL_PROD_URL/api/internal/cron/process-job?token=$CRON_SECRET")" \
+            body="$(curl -fsS -m 60 -H "Authorization: Bearer $CRON_SECRET" \
+              "$VERCEL_PROD_URL/api/internal/cron/process-job")" \
               || { echo "::error::process-job failed on attempt $i (curl exit $?)"; exit 1; }
             kind="$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"]["kind"])' 2>/dev/null || echo __unparseable)"
             if [ "$kind" = "idle" ]; then
@@ -95,6 +95,6 @@ jobs:
           # 找岗位 → 出可解释匹配报告 → 备好定向简历/求职信 → 待投清单）。
           # 队列为空时返回 {"ok":true,"outcome":{"idle":true,...}}，可安全重放；
           # 401/403/5xx 立即中止（与 process-job 同口径，不吞错）。
-          curl -fsS -m 60 \
-            "$VERCEL_PROD_URL/api/internal/cron/agent-tick?token=$CRON_SECRET" \
+          curl -fsS -m 60 -H "Authorization: Bearer $CRON_SECRET" \
+            "$VERCEL_PROD_URL/api/internal/cron/agent-tick" \
             || { echo "::error::agent-tick failed (curl exit $?)"; exit 1; }

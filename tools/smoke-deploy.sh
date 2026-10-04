@@ -130,8 +130,9 @@ check "GET /en/ (English report home)" 200 "$BASE_URL/en/"
 check "GET cron process-job without token -> 401" 401 \
   "$BASE_URL/api/internal/cron/process-job"
 if [ -n "$CRON_SECRET" ]; then
-  check "GET cron process-job with token -> 200" 200 \
-    "$BASE_URL/api/internal/cron/process-job?token=$CRON_SECRET"
+  check "GET cron process-job with bearer header -> 200" 200 \
+    -H "Authorization: Bearer $CRON_SECRET" \
+    "$BASE_URL/api/internal/cron/process-job"
 else
   echo "SKIP  cron process-job with token (pass --cron-secret to enable)"
 fi
