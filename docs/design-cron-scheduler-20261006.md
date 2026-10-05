@@ -1,7 +1,6 @@
 # 分析任务消费的定时器选型（GitHub Actions 轮询 → Cloudflare Worker Cron）
 
-> **状态：待拍板（2026-10-06）**。本文只出方案与判据，**未写任何代码、未改任何配置**。
-> 决策对象＝「谁在生产里按分钟叫醒 `process-job`」。现有实现见 [.github/workflows/cron-poll.yml](../.github/workflows/cron-poll.yml)，缓做登记见 [deferred-items「分析任务消费的调度密度」](deferred-items.md)，部署背景见 [deployment-runbook-20260920.md](deployment-runbook-20260920.md) 与 [部署执行单-形态C-20260921.md](部署执行单-形态C-20260921.md) E1。
+> **状态：✅ 已拍板并落地（决策 #24，2026-10-06）**。用户拍板＝**采纳方案 C / 5 分钟档 / 代码放 `apps/cron-worker/`**。Worker 已部署，UTC 20:10 真实档位 tail 抓到 `[cron-worker] tick processed=0 idle=true agentTick=200`（到点触发 + secret 正确 + agent-tick 通三者同证）；GitHub 轮询暂留交叉验证、2–3 天后移除 `schedule`。决策对象＝「谁在生产里按分钟叫醒 `process-job`」。现有实现见 [.github/workflows/cron-poll.yml](../.github/workflows/cron-poll.yml)，缓做登记见 [deferred-items「分析任务消费的调度密度」](deferred-items.md)，部署背景见 [deployment-runbook-20260920.md](deployment-runbook-20260920.md) 与 [部署执行单-形态C-20260921.md](部署执行单-形态C-20260921.md) E1。
 
 ## 1. 问题
 
