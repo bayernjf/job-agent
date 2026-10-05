@@ -28,7 +28,7 @@
 | # | 事项 | 说明 | 现状 |
 | --- | --- | --- | --- |
 | 1 | **部署形态** | ✅ 已决策：**形态 C（Vercel + Supabase + Cloudflare，§4-C）**；A/B 为自托管备选 | 形态 C 代码就绪，未真实部署 |
-| 1b | **Vercel 计划** | 每分钟消费分析任务依赖 per-minute cron——**Hobby 计划 cron 每天只能跑 1 次（更频繁表达式直接部署失败），需 Pro（$20/月）**；函数时长两档均为 300s 上限，够用 | ⏳ 待开通/确认 |
+| 1b | **Vercel 计划** | Hobby 计划 cron 每天只能跑 1 次（更频繁表达式直接部署失败）；函数时长两档均为 300s 上限。**2026-10-06 决策 #24：不升 Pro**——分析消费改由已在用的 Cloudflare 账号跑 Worker Cron（`apps/cron-worker`，`*/5`），无需为每分钟 cron 付 $20/月 | ✅ 已解（Cloudflare Worker 替代） |
 | 2 | **生产域名 + HTTPS 证书** | 形态 C 占位 `app.job-agent.bayjf.com`（Vercel 自动签证书）；落地页继续在 Cloudflare Pages `job-agent.bayjf.com` | ⏳ 域名占位，待绑定 |
 | 3 | **Supabase Postgres** | 建项目（区域建议与 Vercel region `hnd1` 东京一致）；函数用 6543 事务池化串，迁移走 5432 | 代码就绪，项目未建 |
 | 4 | **GitHub OAuth App（生产）** | 回调 `https://<域名>/auth/github/callback`，scope `user:email` | 仅有本地 App（id 3868123，仅 localhost） |
@@ -114,7 +114,7 @@ Supabase           Postgres（区域与 hnd1 对齐）：6543 事务池化给函
 2. Framework Preset = Astro；Node 版本 24（与 `.nvmrc` 一致）；Region 选东京 `hnd1`（与 Supabase 区域对齐，且海外直连 GitHub/Gitee，**不需要 `JOB_HTTP_PROXY`**）。
 3. Environment Variables：按 `.env.example` 末尾「生产部署：Vercel + Supabase（形态 C）」段逐项填——`DB_DRIVER=postgres`、`DATABASE_URL`（6543 池化串）、**`DB_AUTO_MIGRATE=false`**（迁移只走本地 5432 流程）、**`API_MOUNT_PREFIX=/api`**（决定对外 OAuth 回调 URI 与临时 Cookie Path，漏配会导致登录回调 404）、`GITHUB_TOKEN`/`GITEE_TOKEN`、OAuth client/secret、`AUTH_STATE_SECRET`、`AUTH_CALLBACK_BASE_URL=https://<域名>`（不含 `/api`）、`TRUST_PROXY=true`、`DEMO_IP_SALT`、`CRON_SECRET`。
 4. Cron：`apps/report/vercel.json` 声明 `17 3 * * *` 调 `/api/internal/cron/cleanup?task=all`（清过期 demo/认证数据）。**path 内不内联 token**：项目配了 `CRON_SECRET` 后 Vercel 会在触发时自动带 `Authorization: Bearer $CRON_SECRET`，端点接受该头（Actions 轮询也主动发这个头；`?token=` 形态已于 2026-10-05 从服务端移除）；旧写法「path 里填 `REPLACE_WITH_CRON_SECRET` 再手改」已于 2026-10-02 废弃——占位从未被替换，导致 cleanup 每日 401。分析任务的消费在 Pro 计划下另加 `* * * * *` 调 `/api/internal/cron/process-job`（凭证走 `Authorization: Bearer $CRON_SECRET` 头；Actions 轮询形态同样发这个头，2026-10-05 起不再用 `?token=`）。
-5. **计划限制（2026-09 核实）**：函数时长 Hobby/Pro 默认与上限均含 300s（Pro 可调到 800s），单任务处理够用；但 **Cron 在 Hobby 计划每天只能跑 1 次，每分钟表达式会直接导致部署失败**。生产当前用 Hobby：cleanup 走每日 1 次（合规），`process-job` 改由 GitHub Actions `cron-poll.yml` 轮询替代（**2026-10-06 起每 15 分钟一档；此前每小时档实测相邻 run 间隔 4–7.5h、排队最坏等数小时——GitHub 对 schedule 事件在负载下会丢触发，加密档位只缩最坏等待、不解决调度本身不可靠**，见部署执行单 E1/F5）；要回到每分钟消费需升 Pro 并在 vercel.json 恢复该条 cron。
+5. **计划限制（2026-09 核实，2026-10-06 更新）**：函数时长 Hobby/Pro 默认与上限均含 300s（Pro 可调到 800s），单任务处理够用；Cron 在 Hobby 计划每天只能跑 1 次。生产当前用 Hobby：cleanup 走每日 1 次（合规）；**分析任务消费已不依赖 Vercel cron 也不再依赖 GitHub 轮询——2026-10-06 决策 #24 改由 Cloudflare Worker Cron（`apps/cron-worker`，`*/5` 档，最坏等待 ≤5 分钟）**。此前链路：GitHub Actions `cron-poll.yml` 曾承担，但实测每小时档相邻 run 间隔 4–7.5h、`*/15` 档同样 3 小时零触发（GitHub 对 schedule 丢触发）；该轮询现仅临时保留 2–3 天交叉验证，之后移除 schedule。要 1 分钟级消费才需升 Pro 并在 vercel.json 恢复该条 cron。
 6. 自定义域名：Vercel 项目绑定 `app.job-agent.bayjf.com`（占位），再到 Cloudflare DNS 加 CNAME（建议 DNS-only / 关闭橙云代理，让 Vercel 直接终结 TLS，避免边缘与函数区域链路的不确定行为；如坚持开橙云需实测）。
 
 **Supabase 开库与首次迁移**
@@ -233,7 +233,7 @@ services:
 
 | 任务 | 形态 C 调度方式 | 端点 / 命令 |
 | --- | --- | --- |
-| 分析任务消费 | **Vercel Cron** 每分钟（需 Pro 计划） | `GET /api/internal/cron/process-job`（带 `Authorization: Bearer $CRON_SECRET`），每次认领并处理**一个** job；内置 5min 僵尸回收、demo 并发闸（超闸 defer 不烧 attempts） |
+| 分析任务消费 | **Cloudflare Worker Cron 每 5 分钟（决策 #24，2026-10-06，`apps/cron-worker`）** | Worker 内循环 `GET /api/internal/cron/process-job`（`Authorization: Bearer $CRON_SECRET`）直到 idle，再调 `agent-tick`；每次认领并处理**一个** job；内置 5min 僵尸回收、demo 并发闸。升 Pro 时也可改回 Vercel 每分钟 cron |
 | demo + auth 清理 | **Vercel Cron** 每天 03:17 | `GET /api/internal/cron/cleanup?task=all`（凭证由平台注入 `Authorization: Bearer $CRON_SECRET`，path 内不内联 token；task=demo/auth/all，默认 all；保留窗口 24h / 30d） |
 | 岗位日更 / HN 月更 | **GitHub Actions 定时 workflow 跑 CLI**（已落地 `.github/workflows/jobs-sync.yml`，每日 18:17 UTC / 每月 1 日 18:42 UTC，可手动触发） | 同左表 CLI 命令；需配 Actions secret `DATABASE_URL`（5432 串）；不塞进 serverless（时长/预算不可控） |
 

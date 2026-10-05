@@ -14,7 +14,7 @@
 
 ## 项目概览
 
-JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`；J1–J5 人工 smoke 与生产 cron/轮询已于 2026-10-02 实测通过，剩 J6 异议邮箱、J7 生产 `LLM_*`、B4 Supabase 备份、CWS 上架——均卡用户/外部条件；阶段与待办以 handoff.md 为准）；**求职 Agent 阶段 1「求职工作台」与阶段 2「半自动投递」均已落地（2026-10-03/04，见运行架构第 10 条）**——扩展在 ATS 页一键填充简历/求职信（**填完停手，绝不自动点提交**）、结果回写已通，硬边界由决策 #20 拍板；**决策 #22「扩展登录态」（2026-10-04）与 #23「简历声明逐条核验」（2026-10-05）已拍板并全链落地**（后者＝`packages/claim-core` 反向核验通路）；**LLM 供给双轨 P0 已落地（决策 #21），生产非密钥 env（`LLM_ENC_KEY`/`ADMIN_ACCOUNT_LOGINS`）已于 2026-10-06 配置，`LLM_*` 是否进生产待用户拍板**。
+JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`；J1–J5 人工 smoke 与生产 cron/轮询已于 2026-10-02 实测通过，剩 J6 异议邮箱、J7 生产 `LLM_*`、B4 Supabase 备份、CWS 上架——均卡用户/外部条件；阶段与待办以 handoff.md 为准）；**求职 Agent 阶段 1「求职工作台」与阶段 2「半自动投递」均已落地（2026-10-03/04，见运行架构第 10 条）**——扩展在 ATS 页一键填充简历/求职信（**填完停手，绝不自动点提交**）、结果回写已通，硬边界由决策 #20 拍板；**决策 #22「扩展登录态」（2026-10-04）与 #23「简历声明逐条核验」（2026-10-05）已拍板并全链落地**（后者＝`packages/claim-core` 反向核验通路）；**LLM 供给双轨 P0 已落地（决策 #21），生产非密钥 env（`LLM_ENC_KEY`/`ADMIN_ACCOUNT_LOGINS`）已于 2026-10-06 配置，`LLM_*` 是否进生产待用户拍板**；**决策 #24「分析消费定时器」（2026-10-06）已拍板并上线：GitHub Actions `schedule` 实测连续数小时丢触发，故改由已在用的 Cloudflare 账号跑 Worker Cron（`apps/cron-worker`，`*/5` 档），排队最坏等待从数小时降到 ≤5 分钟；GitHub 轮询仅留 2–3 天交叉验证后移除 schedule**。
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
@@ -50,7 +50,9 @@ job-agent/
 │  ├─ worker/         # 消费 analysis_jobs，调用 github-source + analyzer-core
 │  ├─ cli/            # 本地批量分析，导出 JSONL/报告（供决策 #8 标注实验）
 │  ├─ report/         # Astro 报告页 + React islands（含 `/[locale]/workbench` 求职工作台）
-│  └─ extension/      # P1 浏览器扩展（MV3 + content script + Shadow DOM 面板 + 三 ATS 适配器 + esbuild；试用指南见其 README）
+│  ├─ extension/      # P1 浏览器扩展（MV3 + content script + Shadow DOM 面板 + 三 ATS 适配器 + esbuild；试用指南见其 README）
+│  ├─ mcp/            # MCP stdio 服务（只读薄壳，见决策 #19）
+│  └─ cron-worker/    # Cloudflare Worker：`*/5` 档叫醒 `process-job` + `agent-tick`（决策 #24，纯决策核+薄壳，凭证走 wrangler secret；GitHub 轮询仅临时交叉验证）
 ├─ db/migrations/sqlite/   # SQLite 编号迁移（NNN_verb_snake_case.sql）
 ├─ db/migrations/postgres/ # Postgres 编号迁移（与 sqlite 编号/文件名一一对应），规范见 MIGRATION_CONVENTION.md
 ├─ tools/             # check-migrations.sh / preflight.sh / backup-db.sh / smoke-deploy.sh / check-doc-anchors.mjs 等工程脚本

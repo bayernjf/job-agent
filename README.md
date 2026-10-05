@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + LLM 受约束润色/求职信）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸、简历声明逐条核验（决策 #23）、求职 Agent 阶段 1「求职工作台」与阶段 2「半自动投递」均已落地**；真实性规则 0.8（0.1→0.8 各轮双向校准与真实双源回归见 handoff item5/25/26/66）。**形态 C 生产已于 2026-09-30 上线（`https://app.job-agent.bayjf.com`，Vercel + Supabase），J1–J5 人工 smoke 与 cron/轮询已于 2026-10-02 实测通过（GitHub 轮询 2026-10-06 起每 15 分钟一档），剩 J6 异议邮箱、生产 `LLM_*`、B4 Supabase 备份、CWS 上架（均卡用户/外部条件）**，其余推进项卡外部条件（Workday 直渲染租户端到端、扩展真人试用、真实 Gitee OAuth 首次冒烟，见 handoff 与 `docs/部署前就绪确认单-20260924.md`）。pnpm workspaces 全仓（18 workspace：根 + 11 packages + 6 apps）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、六源岗位库与技能匹配、求职工作台均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + LLM 受约束润色/求职信）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸、简历声明逐条核验（决策 #23）、求职 Agent 阶段 1「求职工作台」与阶段 2「半自动投递」均已落地**；真实性规则 0.8（0.1→0.8 各轮双向校准与真实双源回归见 handoff item5/25/26/66）。**形态 C 生产已于 2026-09-30 上线（`https://app.job-agent.bayjf.com`，Vercel + Supabase），J1–J5 人工 smoke 与 cron/轮询已于 2026-10-02 实测通过，剩 J6 异议邮箱、生产 `LLM_*`、B4 Supabase 备份、CWS 上架（均卡用户/外部条件）；分析消费定时器已于 2026-10-06 切到 Cloudflare Worker Cron（决策 #24，排队最坏等待 ≤5 分钟）**，其余推进项卡外部条件（Workday 直渲染租户端到端、扩展真人试用，见 handoff 与 `docs/部署前就绪确认单-20260924.md`）。pnpm workspaces 全仓（11 packages + 7 apps）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、六源岗位库与技能匹配、求职工作台均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -57,6 +57,7 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/design-gitee-oauth-20260919.md](docs/design-gitee-oauth-20260919.md) | Gitee OAuth 登录与本人画像认领（协议差异 / AuthProvider / /auth/providers） |
 | [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md) | 部署 / 上线 Runbook（形态 A/B、生产 env、迁移、cron、上线 smoke） |
 | [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md) | 形态 C 上线照勾执行单（Vercel 单项目 + Supabase + Cloudflare DNS + Vercel Cron） |
+| [docs/design-cron-scheduler-20261006.md](docs/design-cron-scheduler-20261006.md) | 分析消费定时器选型（**决策 #24 已落地**：GitHub Actions schedule 丢触发 ⇒ Cloudflare Worker Cron `*/5`） |
 | [docs/评审-MVP-20260922.md](docs/评审-MVP-20260922.md) | 上线就绪度评审：代码级 MVP 已达成，唯一硬阻塞 P0-3 生产部署（**生产已于 2026-09-30 上线，此单为历史基线**） |
 | [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md) | 求职 Agent 构想：六步闭环、人机确认闸、JobRun 状态机、三阶段路径（**阶段 1 求职工作台已落地，§10 记实施差异**） |
 | [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
