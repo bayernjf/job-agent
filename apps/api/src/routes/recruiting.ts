@@ -75,7 +75,14 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
       limit,
       offset,
     });
-    return c.json({ items: result.items, total: result.total, limit, offset });
+    const claimCounts = await repos.claimVerifications.countByProfiles(
+      result.items.map((candidate) => candidate.profileId),
+    );
+    const items = result.items.map((candidate) => ({
+      ...candidate,
+      verifiedClaimCount: claimCounts.get(candidate.profileId) ?? 0,
+    }));
+    return c.json({ items, total: result.total, limit, offset });
   });
 
   // ── 投递记录：列出某画像的投递（按 applied_at 倒序）──

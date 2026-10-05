@@ -35,6 +35,7 @@ interface Candidate {
   skills: CandidateSkill[];
   skillCount: number;
   matchedSkills: string[];
+  verifiedClaimCount: number;
   updatedAt: string;
 }
 
@@ -72,6 +73,7 @@ interface WorkspaceLabels {
   resultsCount: string;
   viewReport: string;
   skillCount: string;
+  verifiedClaims: string;
   matchedSkills: string;
   updatedAt: string;
   confidence: string;
@@ -474,6 +476,9 @@ export default function CandidateWorkspace({
                   )}
                   <div className="recruit-card-footer">
                     <span className="ja-muted">{fill(labels.skillCount, c.skillCount)}</span>
+                    <span className="ja-muted">
+                      {fill(labels.verifiedClaims, c.verifiedClaimCount)}
+                    </span>
                     <span className="ja-muted">
                       {labels.updatedAt.replace('{date}', formatDate(c.updatedAt, locale))}
                     </span>

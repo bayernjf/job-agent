@@ -178,3 +178,11 @@ export const RemovalRequestBodySchema = z.object({
   reason: z.string().trim().max(2000).optional(),
   contact: z.string().trim().max(500).optional(),
 });
+
+// POST /profiles/:id/claim-verifications 的 body 校验（决策 #23 批次 2）。
+// 只收"一条结构化声明"的原文与可选来源定位；claim_source 由服务端固定为 manual
+// （resume_import 属未获批的 A 导入器），判定结果一律由内核算出，不接受调用者指定。
+export const ClaimVerificationCreateSchema = z.object({
+  text: z.string().trim().min(1, 'claim text is required').max(2000),
+  claimRef: z.string().trim().min(1).max(500).optional(),
+});

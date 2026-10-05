@@ -36,6 +36,8 @@ export interface CandidateSummary {
   skillCount: number;
   /** 命中检索条件的技能名（未按技能过滤时与 skills 名称一致或为空） */
   matchedSkills: string[];
+  /** 该画像已核验的简历声明条数（由 API/SSR 水合；纯候选投影默认 0） */
+  verifiedClaimCount: number;
   updatedAt: string;
 }
 
@@ -88,6 +90,7 @@ export function toCandidateSummary(row: StoredProfile): CandidateSummary | null 
     skills,
     skillCount: skills.length,
     matchedSkills: [],
+    verifiedClaimCount: 0,
     updatedAt: row.updatedAt,
   };
 }

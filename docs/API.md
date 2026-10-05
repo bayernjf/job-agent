@@ -1417,6 +1417,57 @@ token 90 天滑动续期、可撤销。
 
 ---
 
+## 3.11 逐条声明核验（决策 #23，需登录）
+
+反向通路：把"用户带来的简历里逐条话"交给 `packages/claim-core`（纯函数、独立
+`CLAIM_RULE_VERSION`）判断"GitHub 行为痕迹支撑得起吗"。三态判定
+`supportable` / `partial` / `no_trace` / `insufficient_data` —— **抽不出可核验技术词一律
+`insufficient_data`，绝不判 `no_trace`**（"核验不了"与"没做过"是两句话）；结论**绝不回写画像快照**，
+也不进 `/exportable` 与 MCP 面。设计见 [design-claim-verification-20261005.md](design-claim-verification-20261005.md)。
+
+授权（首版）：登录 `user` 且（**画像本人且已认领** 或 **已声明招聘方**）。未登录 `401 AUTH_REQUIRED`；
+已认领画像非本人 `403 AUTH_NOT_PROFILE_OWNER`；未认领画像的非招聘方 `403 RECRUITER_DECLARATION_REQUIRED`。
+**首版不向 anonymous 开放。**
+
+### `POST /profiles/:id/claim-verifications`
+
+建一条结构化声明并核验。请求体：
+
+```json
+{ "text": "Built the payments service in TypeScript", "claimRef": "resume p.2" }
+```
+
+`text` 必填（≤2000），`claimRef` 可选（导入来源定位，手工填写可省略）。`claim_source` 由服务端固定为
+`manual`（`resume_import` 属未获批的 A 导入器）。`201` 返回该结论：
+
+```json
+{ "id": "claimv-<…>", "profileId": "prof-<…>",
+  "subject": { "platform": "github", "login": "alice" },
+  "claimText": "…", "claimSource": "manual", "claimRef": null,
+  "verdict": "supportable", "matchedEvidenceRefs": ["ev-a", "ev-b"],
+  "matchedEvidence": [
+    { "id": "ev-a", "url": "https://github.com/…/commit/a", "claim": "…" },
+    { "id": "ev-b", "url": "https://github.com/…/pull/42", "claim": "…" }
+  ],
+  "confidence": 1, "ruleVersion": "0.1", "requiredEvidenceCount": 2, "createdAt": "…" }
+```
+
+`matchedEvidenceRefs` 是可直接点开回溯的 evidence id（`no_trace` / `insufficient_data` 时为空数组）；
+`matchedEvidence` 把这些 id 在**同一道授权闸后**水合成可点击的原始记录 `{id,url,claim}`，
+查不到对应证据行的 id 被跳过（不补造）。
+缺主体画像快照 `409`；画像不存在 `404`；body 非法 `400`。
+
+### `GET /profiles/:id/claim-verifications`
+
+列出该画像的全部结论（按创建时间升序，稳定顺序＝可复核）。响应 `{ "items": [ … ] }`，元素同上。授权同 POST。
+
+### `DELETE /claim-verifications/:id`
+
+撤回一条声明（**创建者本人**或**画像本人**；其余 `403 AUTH_NOT_PROFILE_OWNER`，未登录 `401`，
+不存在 `404`）。声明是可撤回的用户输入，撤回即物理删除。
+
+---
+
 ## 4. 健康检查
 
 ### `GET /health`

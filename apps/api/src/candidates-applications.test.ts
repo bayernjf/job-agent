@@ -18,6 +18,7 @@ interface CandidateItem {
   profileId: string;
   login: string;
   skillCount: number;
+  verifiedClaimCount?: number;
 }
 interface CandidateListResponse {
   items: CandidateItem[];
@@ -165,6 +166,28 @@ describe('GET /candidates', () => {
     expect(body.total).toBe(0);
     expect(body.limit).toBe(20);
     expect(body.offset).toBe(0);
+  });
+
+  it('returns verified claim counts without exposing claim text', async () => {
+    const { repos } = await harness();
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const app = await createApp({ repos });
+    const headers = await recruiterHeaders(repos);
+
+    for (const text of ['Built services in TypeScript', 'Owned the payments roadmap']) {
+      const claim = await app.request('/profiles/p1/claim-verifications', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      expect(claim.status).toBe(201);
+    }
+
+    const res = await app.request('/candidates', { headers });
+    const body = (await res.json()) as CandidateListResponse;
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]!.verifiedClaimCount).toBe(2);
+    expect(JSON.stringify(body.items)).not.toContain('payments roadmap');
   });
 
   it('gates anonymous and logged-in-but-undeclared callers (F10)', async () => {

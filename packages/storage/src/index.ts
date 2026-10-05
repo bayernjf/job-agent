@@ -26,6 +26,7 @@ export type {
 export type { IDemoSessionsRepository } from './repositories/demo-sessions.js';
 export type { IApplicationsRepository } from './repositories/applications.js';
 export type { IInterviewsRepository, InterviewListFilter } from './repositories/interviews.js';
+export type { IClaimVerificationsRepository } from './repositories/claim-verifications.js';
 export type { IAccountsRepository } from './repositories/accounts.js';
 export type { IAuthSessionsRepository } from './repositories/auth-sessions.js';
 export type { IProfileRemovalRequestsRepository } from './repositories/profile-removal-requests.js';
@@ -85,6 +86,12 @@ export type {
   InterviewOutcome,
   InterviewStatus,
 } from './entities/interview.js';
+export type {
+  StoredClaimVerification,
+  NewClaimVerification,
+  ClaimSource,
+  ClaimVerdict,
+} from './entities/claim-verification.js';
 export type {
   StoredAccount,
   ProviderIdentity,

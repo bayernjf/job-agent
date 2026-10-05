@@ -96,7 +96,17 @@ export async function loadInitialCandidates(
 ): Promise<CandidateSearchResult> {
   try {
     const storage = await getStorage();
-    return await storage.profiles.searchCandidates(query);
+    const result = await storage.profiles.searchCandidates(query);
+    const claimCounts = await storage.claimVerifications.countByProfiles(
+      result.items.map((candidate) => candidate.profileId),
+    );
+    return {
+      ...result,
+      items: result.items.map((candidate) => ({
+        ...candidate,
+        verifiedClaimCount: claimCounts.get(candidate.profileId) ?? 0,
+      })),
+    };
   } catch {
     return { items: [] as CandidateSummary[], total: 0 };
   }

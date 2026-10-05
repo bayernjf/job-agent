@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { CLAIM_RULE_VERSION } from '@jobagent/claim-core';
 import {
@@ -46,6 +46,20 @@ export class PgClaimVerificationsRepository implements IClaimVerificationsReposi
       .where(eq(t.profileId, profileId))
       .orderBy(asc(t.createdAt));
     return rows.map(toStoredClaimVerification);
+  }
+
+  async countByProfiles(profileIds: readonly string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (profileIds.length === 0) return counts;
+    const rows = await this.db
+      .select({ profileId: t.profileId, count: sql<string>`count(*)` })
+      .from(t)
+      .where(inArray(t.profileId, [...profileIds]))
+      .groupBy(t.profileId);
+    for (const row of rows) {
+      if (row.profileId) counts.set(row.profileId, Number(row.count));
+    }
+    return counts;
   }
 
   async delete(id: string): Promise<boolean> {

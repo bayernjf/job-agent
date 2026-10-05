@@ -21,6 +21,7 @@
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@jobagent/agent-core": "workspace:*",
+    "@jobagent/claim-core": "workspace:*",
     "@jobagent/job-source": "workspace:*",
     "@jobagent/llm": "workspace:*",
     "@jobagent/resume-core": "workspace:*",

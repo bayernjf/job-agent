@@ -237,3 +237,84 @@
   font-size: var(--ja-text-sm);
   white-space: nowrap;
 }
+
+/* 简历声明核验（决策 #23 批次 2）：B 端核验与 C 端自检共用 */
+.claim-verifier-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+  margin: var(--ja-space-3) 0;
+}
+
+.claim-verifier-input {
+  width: 100%;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font: inherit;
+  resize: vertical;
+}
+
+.claim-verifier-form .ja-btn {
+  align-self: flex-start;
+}
+
+.claim-verifier-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+  margin: var(--ja-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.claim-verification {
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-left-width: 3px;
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+}
+
+.claim-verification--supportable {
+  border-left-color: var(--ja-color-success);
+}
+
+.claim-verification--partial {
+  border-left-color: var(--ja-color-warning);
+}
+
+.claim-verification--no_trace,
+.claim-verification--insufficient_data {
+  border-left-color: var(--ja-color-border);
+}
+
+.claim-verdict--supportable {
+  background: var(--ja-color-success-bg);
+  color: var(--ja-color-success-fg);
+}
+
+.claim-verdict--partial {
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-warning);
+}
+
+.claim-verdict--no_trace,
+.claim-verdict--insufficient_data {
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg-muted);
+}
+
+.claim-text {
+  margin: var(--ja-space-2) 0 0;
+}
+
+.claim-evidence {
+  margin-top: var(--ja-space-2);
+}
+
+.claim-withdraw {
+  font-size: var(--ja-text-sm);
+}

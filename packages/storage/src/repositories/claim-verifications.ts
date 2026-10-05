@@ -15,6 +15,12 @@ export interface IClaimVerificationsRepository {
   /** 某画像快照下的全部结论，按创建时间升序（稳定顺序＝可复核） */
   listByProfile(profileId: string): Promise<StoredClaimVerification[]>;
   /**
+   * 批量计数：返回入参画像各自的核验结论条数（/recruit 列表的"已核验条数"）。
+   * 刻意只回 `profileId → count`，不回任何声明文本，宽聚合口不扩大原文泄漏面（§6）。
+   * 没有任何结论的画像不出现在结果里（调用方按 0 处理）。
+   */
+  countByProfiles(profileIds: readonly string[]): Promise<Map<string, number>>;
+  /**
    * 物理删除一条：声明是可撤回的用户输入，不进快照。
    * 找不到该 id 返回 false（幂等，供"撤回"这类重复点击使用）。
    */
