@@ -33,6 +33,18 @@ const recentJobs =
   viewer.kind === 'user'
     ? await storage.jobs.listBySubject(viewer.platform, viewer.login, 10)
     : [];
+// 复盘样本的唯一来源是回标；回标的界面在工作台「已投与结果」区。这里只计数与引导，
+// 不再复制一份编辑控件——同一个字段有两处写口迟早漂移。
+const pendingOutcomes =
+  viewer.kind === 'user'
+    ? (
+        await Promise.all(
+          profiles.slice(0, 10).map((p) => storage.applications.listByProfile(p.id)),
+        )
+      )
+        .flat()
+        .filter((a) => a.status === 'applied' && !a.outcomeFeedback)
+    : [];
 const jobStatusLabels: Record<string, string> = {
   queued: t('job.queued'),
   running: t('job.running'),
@@ -122,6 +134,16 @@ const dateFmt = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
             </li>
           ))}
         </ul>
+      </section>
+    )}
+
+    {viewer.kind === 'user' && pendingOutcomes.length > 0 && (
+      <section class="my-jobs" data-testid="my-pending-outcomes" aria-labelledby="my-outcomes-title">
+        <h2 id="my-outcomes-title" class="my-jobs-title">{t('my.outcomesTitle')}</h2>
+        <p class="ja-muted">
+          {t('my.outcomesHint').replace('{count}', String(pendingOutcomes.length))}
+        </p>
+        <a class="ja-btn" href={`/${locale}/workbench`}>{t('my.outcomesCta')}</a>
       </section>
     )}
 

@@ -106,6 +106,17 @@ test.describe('/my (T17 surface)', () => {
     await expect(jobs.locator(`a[href="/zh-CN/report/${FIXTURE_PROFILE_ID}"]`)).toBeVisible();
   });
 
+  test('signed-in owner is told which applications still need an outcome', async ({ page }) => {
+    await seedSession(page, FIXTURE_SESSION_TOKEN);
+    await page.goto('/zh-CN/my');
+
+    const nudge = page.getByTestId('my-pending-outcomes');
+    await expect(nudge).toBeVisible();
+    // 夹具里两条已投、只有一条没记结果 → 计数必须是 1（把已回标的算进来就是过滤写错）
+    await expect(nudge).toContainText('1 条');
+    await expect(nudge.getByRole('link', { name: '去工作台回标' })).toBeVisible();
+  });
+
   test('signed-in user with no profiles sees the empty state', async ({ page }) => {
     await seedSession(page, FIXTURE_EMPTY_SESSION_TOKEN);
     await page.goto('/zh-CN/my');

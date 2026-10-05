@@ -188,6 +188,29 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   });
   await storage.jobs.succeed('job-e2e-done', FIXTURE_PROFILE_ID);
 
+  // 回标提示夹具：两条已投，只有一条没记结果——正负对照放在一起，
+  // 提示里的计数若是 2 就说明过滤写错了（把已回标的也算进去）。
+  await storage.applications.insert({
+    id: 'app-e2e-pending',
+    profileId: FIXTURE_PROFILE_ID,
+    targetTitle: 'Staff Engineer',
+    targetCompany: 'Acme Pending',
+    status: 'applied',
+    appliedAt: '2026-10-01T00:00:00.000Z',
+  });
+  await storage.applications.insert({
+    id: 'app-e2e-recorded',
+    profileId: FIXTURE_PROFILE_ID,
+    targetTitle: 'Principal Engineer',
+    targetCompany: 'Acme Done',
+    status: 'applied',
+    appliedAt: '2026-10-02T00:00:00.000Z',
+  });
+  await storage.applications.update('app-e2e-recorded', {
+    outcomeFeedback: 'interview',
+    outcomeFeedbackAt: '2026-10-03T00:00:00.000Z',
+  });
+
   // F10：已显式声明招聘方的账号 + 会话，供 /recruit「声明后可见列表」E2E。
   const recruiterAccount = await storage.accounts.upsertFromProvider({
     id: 'acc-e2e-recruiter',
