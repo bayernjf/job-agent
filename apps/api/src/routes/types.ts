@@ -18,6 +18,7 @@ import type {
   IJobRunEventsRepository,
   ISubmitIntentsRepository,
   IEvidenceRepository,
+  IClaimVerificationsRepository,
   IUserLlmConfigsRepository,
   IExtensionAuthCodesRepository,
   IApiTokensRepository,
@@ -60,6 +61,8 @@ export interface ApiRepos {
   extensionAuthCodes: IExtensionAuthCodesRepository;
   /** 扩展长期 Bearer 凭证（扩展登录态，迁移 027） */
   apiTokens: IApiTokensRepository;
+  /** 逐条声明核验结论（决策 #23，迁移 029） */
+  claimVerifications: IClaimVerificationsRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
 }

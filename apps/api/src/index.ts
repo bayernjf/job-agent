@@ -64,6 +64,7 @@ import { registerResumes } from './routes/resumes.js';
 import { registerRecruiting } from './routes/recruiting.js';
 import { registerAgent } from './routes/agent.js';
 import { registerLlmRoutes } from './routes/llm.js';
+import { registerClaimVerifications } from './routes/claim-verifications.js';
 import { describeError } from './routes/helpers.js';
 import type { RouteDeps } from './routes/context.js';
 import type { ApiDeps, ApiRepos, HonoEnv } from './routes/types.js';
@@ -241,6 +242,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   registerRecruiting(app, routeDeps);
   registerAgent(app, routeDeps);
   registerLlmRoutes(app, routeDeps);
+  registerClaimVerifications(app, routeDeps);
 
   // 404 兜底
   app.notFound((c) => {
@@ -272,7 +274,7 @@ async function main(): Promise<void> {
   const { serve } = await import('@hono/node-server');
   const server = serve({ fetch: app.fetch, port }, (info) => {
     console.log(`[api] JobAgent API listening on http://localhost:${info.port}`);
-    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, GET /auth/gitee/login, GET /auth/gitee/callback, GET /auth/providers, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, POST /profiles/:id/unclaim, GET /jobs/:id, GET /profiles/by-subject/:platform/:login, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, POST|GET /interviews, PATCH /interviews/:id, GET /health`);
+    console.log(`[api] Endpoints: POST /analyze, POST /demo/sessions, GET /demo/me, GET /demo/presets, POST /demo/exit, GET /auth/github/login, GET /auth/github/callback, GET /auth/gitee/login, GET /auth/gitee/callback, GET /auth/providers, POST /auth/logout, GET /auth/me, POST /profiles/:id/claim, POST /profiles/:id/unclaim, GET /jobs/:id, GET /profiles/by-subject/:platform/:login, GET /profiles/:id, GET /profiles/:id/exportable, GET /profiles/:id/job-recommendations, GET /job-postings, POST /job-postings/match, POST /resumes/build, GET /candidates, GET|POST /profiles/:id/applications, PATCH /applications/:id, POST|GET /interviews, PATCH /interviews/:id, POST|GET /profiles/:id/claim-verifications, DELETE /claim-verifications/:id, GET /health`);
   });
 
   let closing = false;

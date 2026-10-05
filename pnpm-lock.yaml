@@ -43,6 +43,9 @@ importers:
       '@jobagent/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@jobagent/claim-core':
+        specifier: workspace:*
+        version: link:../../packages/claim-core
       '@jobagent/job-source':
         specifier: workspace:*
         version: link:../../packages/job-source
