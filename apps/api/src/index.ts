@@ -171,11 +171,13 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     return ip ? hashIp(ip, effectiveSalt) : null;
   };
 
-  // ── cron 鉴权（凭证均为 CRON_SECRET，一律常量时间比较）──────────────────
-  //   1. `?token=<CRON_SECRET>`——GitHub Actions 轮询用（见 .github/workflows/cron-poll.yml）；
-  //   2. `Authorization: Bearer <CRON_SECRET>`——Vercel Cron 在项目配了 CRON_SECRET 时自动注入的
-  //      请求头，故 vercel.json 的 cron path 无需（也不得）内联 token；
-  //   3. 未配置 CRON_SECRET：仅接受平台注入的 x-vercel-cron: 1 头（生产已由启动闸禁止）。
+  // ── cron 鉴权（凭证为 CRON_SECRET，一律常量时间比较，**只认请求头**）──────────
+  //   1. `Authorization: Bearer <CRON_SECRET>`——Vercel Cron 在项目配了 CRON_SECRET 时自动注入的
+  //      请求头（故 vercel.json 的 cron path 无需、也不得内联 token），GitHub Actions 轮询
+  //      也主动发这个头（见 .github/workflows/cron-poll.yml）；
+  //   2. 未配置 CRON_SECRET：仅接受平台注入的 x-vercel-cron: 1 头（生产已由启动闸禁止）。
+  //   历史形态 `?token=<CRON_SECRET>` 已于 2026-10-05 移除：URL 会把共享密钥留在访问日志、
+  //   代理记录与命令行回显里。移除前两个调用方都已改发头（见 handoff item120/item121）。
   const constantTimeEquals = (value: string, expected: Buffer): boolean => {
     const got = Buffer.from(value);
     return got.length === expected.length && timingSafeEqual(got, expected);
@@ -184,11 +186,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     const secret = process.env.CRON_SECRET;
     if (secret) {
       const expected = Buffer.from(secret);
+      // 只认请求头：`?token=` 形态会把共享密钥留在 URL 里（访问日志、代理记录、
+      // Actions 命令行回显），2026-10-05 起不再接受——两个调用方都已改发头。
       const bearer = (c.req.header('authorization') ?? '').replace(/^Bearer\s+/i, '');
-      return (
-        constantTimeEquals(c.req.query('token') ?? '', expected) ||
-        constantTimeEquals(bearer, expected)
-      );
+      return constantTimeEquals(bearer, expected);
     }
     return c.req.header('x-vercel-cron') === '1';
   };

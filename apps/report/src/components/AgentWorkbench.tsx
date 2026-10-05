@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LEGACY_RESUME_FIELDS_STORAGE_KEY,
   LOCAL_PROFILE_STORAGE_KEY,
+  OUTCOME_FEEDBACK_VALUES,
   legacyResumeToLocalProfile,
   localProfileToResumeFields,
   matchScoreTier,
@@ -39,6 +40,7 @@ import type {
   MatchReport,
   MatchScoreTier,
   SubmitIntent,
+  OutcomeFeedback,
   SubmitIntentStatus,
 } from '@jobagent/shared';
 
@@ -145,6 +147,16 @@ export interface Labels {
     remote: string;
     salaryUnavailable: string;
     approved: string;
+  };
+  /** 已投清单（D1 结果回标面；outcomeFeedback 为空即待回标） */
+  submissions: {
+    title: string;
+    hint: string;
+    empty: string;
+    outcomeLabel: string;
+    outcomeUnset: string;
+    saved: string;
+    outcome: Record<OutcomeFeedback, string>;
   };
   match: {
     title: string;
@@ -357,6 +369,17 @@ function downloadText(text: string, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * 已投清单的一行：`GET /agent/runs/:id/submissions` 的形状。
+ * 服务端把票据视图与关联投递的结果字段一起返回；`applicationId`/`outcome*` 不在
+ * shared 的 SubmitIntent 契约里（那是票据视图的透传字段），所以在这里显式补齐。
+ */
+type SubmissionRow = SubmitIntent & {
+  applicationId: string | null;
+  outcomeFeedback: OutcomeFeedback | null;
+  outcomeFeedbackAt: string | null;
+};
+
 export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const { apiBase, locale, initialProfiles, claimedProfileId, profileHintHref, labels } =
     props;
@@ -370,6 +393,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
     intents: SubmitIntent[];
   } | null>(null);
   const [pending, setPending] = useState<SubmitIntent[] | null>(null);
+  const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
 
   const [prefsLoading, setPrefsLoading] = useState(true);
   const [runsLoading, setRunsLoading] = useState(true);
@@ -424,6 +448,20 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
       );
       if (!res.ok) throw await failure(res);
       const body = (await res.json()) as { items?: SubmitIntent[] };
+      return body.items ?? [];
+    },
+    [apiBase],
+  );
+
+  /** 已投清单（含各自的结果回标状态）；失败只影响这一块，不连带待投清单。 */
+  const fetchSubmissions = useCallback(
+    async (runId: string): Promise<SubmissionRow[]> => {
+      const res = await fetch(
+        `${apiBase}/agent/runs/${encodeURIComponent(runId)}/submissions`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) throw await failure(res);
+      const body = (await res.json()) as { items?: SubmissionRow[] };
       return body.items ?? [];
     },
     [apiBase],
@@ -497,9 +535,10 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
     setRunsError(null);
     setPendingError(null);
     void (async () => {
-      const [viewResult, pendingResult] = await Promise.allSettled([
+      const [viewResult, pendingResult, submissionsResult] = await Promise.allSettled([
         fetchRunView(selectedRunId),
         fetchPending(selectedRunId),
+        fetchSubmissions(selectedRunId),
       ]);
       if (cancelled || seq !== seqRef.current) return;
 
@@ -520,12 +559,13 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
         );
       }
       setPendingLoading(false);
+      setSubmissions(submissionsResult.status === 'fulfilled' ? submissionsResult.value : []);
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRunId, apiBase, fetchRunView, fetchPending]);
+  }, [selectedRunId, apiBase, fetchRunView, fetchPending, fetchSubmissions]);
 
   /**
    * 统一 mutation 入口：过期响应守卫（seqRef）+ 失败取 code 通用文案 +
@@ -550,13 +590,15 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
         if (seq !== seqRef.current) return null; // 已有更新的请求，丢弃过期响应
         apply?.(body);
         if (selectedRunId) {
-          const [viewResult, pendingResult] = await Promise.allSettled([
+          const [viewResult, pendingResult, submissionsResult] = await Promise.allSettled([
             fetchRunView(selectedRunId),
             fetchPending(selectedRunId),
+            fetchSubmissions(selectedRunId),
           ]);
           if (seq !== seqRef.current) return null;
           if (viewResult.status === 'fulfilled') setRunView(viewResult.value);
           if (pendingResult.status === 'fulfilled') setPending(pendingResult.value);
+          if (submissionsResult.status === 'fulfilled') setSubmissions(submissionsResult.value);
         }
         return body;
       } catch (err) {
@@ -569,7 +611,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [apiBase, selectedRunId, fetchRunView, fetchPending],
+    [apiBase, selectedRunId, fetchRunView, fetchPending, fetchSubmissions],
   );
 
   const refreshRuns = useCallback(async (): Promise<void> => {
@@ -768,6 +810,20 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
     setBusyIntentId(null);
     if (!body || !selectedRunId) return;
     await refreshRuns();
+  };
+
+  /**
+   * D1 结果回标：把「已投」这条投递记上真实结果（无响应/邀约/面试/offer）。
+   * 写端点早就有，缺的一直是入口——复盘样本（决策 #20-3 要 ≥20 条）只能从这里开始攒。
+   */
+  const recordOutcome = async (intentId: string, outcome: OutcomeFeedback): Promise<void> => {
+    setBusyIntentId(intentId);
+    await mutate<{ applicationId: string }>(
+      `/agent/intents/${encodeURIComponent(intentId)}/outcome`,
+      { method: 'POST', body: JSON.stringify({ outcome }) },
+      labels.errors.intents,
+    );
+    setBusyIntentId(null);
   };
 
   /**
@@ -1448,6 +1504,48 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
 
         {pendingItems.length > 0 && (
           <ul className="agent-intent-list">{pendingItems.map(renderIntent)}</ul>
+        )}
+      </section>
+
+      <section className="ja-card agent-pending" data-testid="agent-submissions">
+        <h2>{labels.submissions.title}</h2>
+        <p className="ja-muted">{labels.submissions.hint}</p>
+        {submissions.length === 0 ? (
+          <p className="ja-muted" data-testid="agent-submissions-empty">
+            {labels.submissions.empty}
+          </p>
+        ) : (
+          <ul className="agent-intent-list">
+            {submissions.map((row) => (
+              <li className="ja-card agent-intent" key={row.intentId} data-testid="agent-submission">
+                <span className="ja-muted">{row.job.title}</span>
+                <span className="ja-muted">{row.job.company}</span>
+                <label>
+                  <span className="ja-muted">{labels.submissions.outcomeLabel}</span>
+                  <select
+                    value={row.outcomeFeedback ?? ''}
+                    disabled={busyIntentId === row.intentId || !row.applicationId}
+                    onChange={(e) => {
+                      const next = e.target.value as OutcomeFeedback | '';
+                      if (next) void recordOutcome(row.intentId, next);
+                    }}
+                  >
+                    <option value="">{labels.submissions.outcomeUnset}</option>
+                    {OUTCOME_FEEDBACK_VALUES.map((code) => (
+                      <option key={code} value={code}>
+                        {labels.submissions.outcome[code]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {row.outcomeFeedback && (
+                  <span className="ja-muted" data-testid="agent-outcome-saved">
+                    {labels.submissions.saved}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </section>

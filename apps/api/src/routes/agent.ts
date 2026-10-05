@@ -292,6 +292,28 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     });
   });
 
+  // GET /agent/runs/:id/submissions：已提交的票据 + 各自的结果回标状态。
+  // D1 的写端点（POST /agent/intents/:id/outcome）此前没有任何读取面把结果回给界面，
+  // 于是「回标」这件事在产品里不存在——这条是它的读侧，也是复盘样本能攒起来的前提。
+  app.get('/agent/runs/:id/submissions', async (c) => {
+    const run = await requireOwnedRun(c, c.req.param('id') ?? '');
+    if (run instanceof Response) return run;
+    const submitted = await repos.submitIntents.listByRunAndStatus(run.id, 'submitted', 100);
+    const items = await Promise.all(
+      submitted.map(async (intent) => {
+        const application = intent.applicationId
+          ? await repos.applications.getById(intent.applicationId)
+          : undefined;
+        return {
+          ...toIntentView(intent),
+          outcomeFeedback: application?.outcomeFeedback ?? null,
+          outcomeFeedbackAt: application?.outcomeFeedbackAt ?? null,
+        };
+      }),
+    );
+    return c.json({ runId: run.id, status: run.status, items });
+  });
+
   // POST /agent/runs/:id/approve：人机闸的「确认」——只把票据置 approved，投递动作由用户自己做
   app.post('/agent/runs/:id/approve', async (c) => {
     const run = await requireOwnedRun(c, c.req.param('id') ?? '');

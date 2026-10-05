@@ -44,11 +44,14 @@ export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
 
   // ── 内部定时任务（serverless 部署由 Vercel Cron 调用；常驻部署不用这两条）────────
   //
-  // 鉴权（凭证均为 CRON_SECRET，一律常量时间比较）：
-  //   1. `?token=<CRON_SECRET>`——GitHub Actions 轮询用（见 .github/workflows/cron-poll.yml）；
-  //   2. `Authorization: Bearer <CRON_SECRET>`——Vercel Cron 在项目配了 CRON_SECRET 时自动注入的
-  //      请求头，故 vercel.json 的 cron path 无需（也不得）内联 token；
-  //   3. 未配置 CRON_SECRET：仅接受平台注入的 x-vercel-cron: 1 头（生产已由启动闸禁止）。
+  // 鉴权（凭证为 CRON_SECRET，一律常量时间比较，**只认请求头**）：
+  //   1. `Authorization: Bearer <CRON_SECRET>`——Vercel Cron 配了 CRON_SECRET 时自动注入，
+  //      GitHub Actions 轮询也发这个头（见 .github/workflows/cron-poll.yml），故 vercel.json
+  //      的 cron path 无需（也不得）内联 token；
+  //   2. 未配置 CRON_SECRET：仅接受平台注入的 x-vercel-cron: 1 头（生产已由启动闸禁止）。
+  //   历史形态 `?token=<CRON_SECRET>` 已于 2026-10-05 停用：URL 里的共享密钥会留在访问日志、
+  //   代理记录与命令行回显里；停用前已实查两个调用方都改发请求头（默认分支那份 workflow 里
+  //   `?token=` 命中 0 处，并手动派发一次 run 在生产读到 `Queue idle`）。
 
   // GET /internal/cron/process-job：认领并处理至多一个分析任务（含僵尸回收/demo 并发闸）
   app.get('/internal/cron/process-job', async (c) => {
