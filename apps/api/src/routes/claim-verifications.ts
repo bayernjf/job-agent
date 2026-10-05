@@ -25,8 +25,21 @@ import type { RouteDeps } from './context.js';
  * 对外投影：与表列一一对应，只给"结论 + 证据指针"，不拼自然语言句子
  * （句子由渲染侧按 locale 用 verdict 现拼，见 design §5 的 code+facts 口径）。
  * `requiredEvidenceCount` 随行返回，让 UI 能解释 `partial` 差多少而不必内置规则常量。
+ *
+ * `evidenceById` 仅在**同一道授权闸之后**提供（POST/GET 都先过 authorizeVerifier），
+ * 用来把 `matchedEvidenceRefs` 的 id 水合成可点开回溯的原始记录（验收 §8.1）；
+ * 命中了在该画像证据表里查不到的 id 时直接跳过——不补造链接（no-fabrication）。
  */
-function formatClaimVerification(row: StoredClaimVerification) {
+function formatClaimVerification(
+  row: StoredClaimVerification,
+  evidenceById?: Map<string, { url: string; claim: string }>,
+) {
+  const matchedEvidence = evidenceById
+    ? row.matchedEvidenceRefs.flatMap((ref) => {
+        const ev = evidenceById.get(ref);
+        return ev ? [{ id: ref, url: ev.url, claim: ev.claim }] : [];
+      })
+    : [];
   return {
     id: row.id,
     profileId: row.profileId,
@@ -36,6 +49,7 @@ function formatClaimVerification(row: StoredClaimVerification) {
     claimRef: row.claimRef,
     verdict: row.verdict,
     matchedEvidenceRefs: row.matchedEvidenceRefs,
+    matchedEvidence,
     confidence: row.confidence,
     ruleVersion: row.ruleVersion,
     requiredEvidenceCount: SUPPORTABLE_MIN_EVIDENCE,
@@ -152,7 +166,10 @@ export function registerClaimVerifications(app: Hono<HonoEnv>, d: RouteDeps): vo
     });
 
     const row = await repos.claimVerifications.getById(id);
-    return c.json(formatClaimVerification(row!), 201);
+    const evidenceById = new Map(
+      evidence.map((e) => [e.evidenceId, { url: e.url, claim: e.claim }]),
+    );
+    return c.json(formatClaimVerification(row!, evidenceById), 201);
   });
 
   // GET /profiles/:id/claim-verifications：列出该画像的全部结论（稳定顺序＝可复核）
@@ -165,7 +182,11 @@ export function registerClaimVerifications(app: Hono<HonoEnv>, d: RouteDeps): vo
     if (gate) return gate;
 
     const items = await repos.claimVerifications.listByProfile(profile.id);
-    return c.json({ items: items.map(formatClaimVerification) });
+    const rows = await repos.evidence.listByProfile(profile.id);
+    const evidenceById = new Map(
+      rows.filter((e) => e.url.length > 0).map((e) => [e.id, { url: e.url, claim: e.claim }]),
+    );
+    return c.json({ items: items.map((it) => formatClaimVerification(it, evidenceById)) });
   });
 
   // DELETE /claim-verifications/:id：撤回一条声明（创建者本人或画像本人）

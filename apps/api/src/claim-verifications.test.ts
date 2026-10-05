@@ -22,6 +22,7 @@ interface ClaimVerificationView {
   claimRef: string | null;
   verdict: string;
   matchedEvidenceRefs: string[];
+  matchedEvidence: { id: string; url: string; claim: string }[];
   confidence: number | null;
   ruleVersion: string;
   requiredEvidenceCount: number;
@@ -270,6 +271,10 @@ describe('verdicts (kernel wired through storage)', () => {
     expect(body.verdict).toBe('supportable');
     expect(body.matchedEvidenceRefs.sort()).toEqual(['e1', 'e2']);
     expect(body.requiredEvidenceCount).toBe(2);
+    // 验收 §8.1：每条判定都能带出可点开回溯的原始证据（同闸内水合，不补造）
+    expect(body.matchedEvidence).toHaveLength(2);
+    expect(body.matchedEvidence.map((e) => e.id).sort()).toEqual(['e1', 'e2']);
+    expect(body.matchedEvidence.every((e) => e.url.startsWith('https://'))).toBe(true);
   });
 
   it('partial when only one evidence row supports the token', async () => {
