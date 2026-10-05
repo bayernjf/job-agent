@@ -161,6 +161,19 @@ test.describe('agent workbench — full stack', () => {
       }, { timeout: 20_000 })
       .toBe('1:agent:linked');
 
+    // 「复盘」：已投清单必须能就地回标并读回——D1 的写端点此前没有任何界面入口
+    const submissions = page.getByTestId('agent-submissions');
+    const submissionRow = page.getByTestId('agent-submission').first();
+    await expect(submissionRow).toBeVisible({ timeout: 20_000 });
+    await expect(submissions.getByTestId('agent-outcome-saved')).toHaveCount(0);
+    await submissionRow.locator('select').selectOption('interview');
+    await expect(submissions.getByTestId('agent-outcome-saved')).toHaveCount(1);
+    // 重新加载后仍是该值：证明写进了库，不是组件本地状态
+    await page.reload();
+    await expect(
+      page.getByTestId('agent-submission').first().locator('select'),
+    ).toHaveValue('interview', { timeout: 20_000 });
+
     // 真链路不应有控制台报错（曾经那条 404 就出现在这里）
     expect(consoleErrors).toEqual([]);
   });

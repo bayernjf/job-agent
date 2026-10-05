@@ -139,6 +139,20 @@ const claimedProfileId = viewer.kind === 'user' ? viewer.claimedProfileId : null
             salaryUnavailable: t('workbench.pending.salaryUnavailable'),
             approved: t('workbench.pending.approved'),
           },
+          submissions: {
+            title: t('workbench.submissions.title'),
+            hint: t('workbench.submissions.hint'),
+            empty: t('workbench.submissions.empty'),
+            outcomeLabel: t('workbench.submissions.outcomeLabel'),
+            outcomeUnset: t('workbench.submissions.outcomeUnset'),
+            saved: t('workbench.submissions.saved'),
+            outcome: {
+              no_response: t('workbench.submissions.outcome.no_response'),
+              interview: t('workbench.submissions.outcome.interview'),
+              offer: t('workbench.submissions.outcome.offer'),
+              rejected: t('workbench.submissions.outcome.rejected'),
+            },
+          },
           match: {
             title: t('workbench.match.title'),
             matchedSkills: t('workbench.match.matchedSkills'),
