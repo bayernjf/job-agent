@@ -1031,6 +1031,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | `note` | string \| null | 备注，传 `null` 清空 |
 | `appliedAt` | string(ISO8601 datetime) | 更正投递时间 |
 | `targetUrl` | string(url) \| null | 岗位链接，传 `null` 清空 |
+| `outcomeFeedback` | enum | 投递结果回标：`no_response` / `interview` / `offer` / `rejected`（item126，2026-10-05 起——此前唯一写口是按票据的 `POST /agent/intents/:id/outcome`，`manual`/`report`/`extension` 三种来源的行因此永远标不上）。**`outcomeFeedbackAt` 由服务端盖**，不接受调用者自填；**不开放传 `null` 清除**（仓储契约即如此，"清除走专门流程"且该流程至今不存在——标错请覆盖成正确值）。时间戳与结果一起落 `applications`，是复盘样本（决策 #20-3）的数据源 |
 
 #### 响应
 

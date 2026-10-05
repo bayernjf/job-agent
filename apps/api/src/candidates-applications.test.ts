@@ -33,6 +33,8 @@ interface ApplicationResponse {
   targetTitle: string;
   targetCompany: string;
   note: string | null;
+  outcomeFeedback: string | null;
+  outcomeFeedbackAt: string | null;
   /** 013 起的行级归属；单行响应回显，列表响应刻意剥掉（见 api 的 publicApplication） */
   createdByAccountId?: string | null;
 }
@@ -368,6 +370,54 @@ describe('applications endpoints', () => {
       body: JSON.stringify({ status: 'offer' }),
     });
     expect(notFound.status).toBe(404);
+  });
+
+  it('lets any origin record an outcome via PATCH with a server-stamped timestamp (item126)', async () => {
+    const { app, repos } = await harness();
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const created = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targetTitle: 'Engineer',
+        targetCompany: 'Acme',
+        origin: 'extension',
+      }),
+    });
+    expect(created.status).toBe(201);
+    const appId = ((await created.json()) as ApplicationResponse).id;
+
+    // 值域外的结果 → 400（与票据端点同一套枚举，两条写口不许漂移）
+    const bad = await app.request(`/applications/${appId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outcomeFeedback: 'ghosted' }),
+    });
+    expect(bad.status).toBe(400);
+
+    // 合法回标 → 服务端盖时间戳；再覆盖成另一个值也允许（错标的修正路径）
+    const patched = await app.request(`/applications/${appId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outcomeFeedback: 'interview' }),
+    });
+    expect(patched.status).toBe(200);
+    const row = (await patched.json()) as ApplicationResponse;
+    expect(row.outcomeFeedback).toBe('interview');
+    expect(row.outcomeFeedbackAt).toBeTruthy();
+
+    const fixed = await app.request(`/applications/${appId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outcomeFeedback: 'offer' }),
+    });
+    const fixedRow = (await fixed.json()) as ApplicationResponse;
+    expect(fixedRow.outcomeFeedback).toBe('offer');
+    expect(fixedRow.outcomeFeedbackAt).toBeTruthy();
+
+    // 归属闸不因新字段而变：别人的行依旧与"不存在"同形
+    const taken = await repos.applications.getById(appId);
+    expect(taken?.createdByAccountId).toBeNull(); // 匿名写入无主，PATCH 语义保持既有口径
   });
 
   it('lists applications scoped to the profile and 404s on unknown profile', async () => {
