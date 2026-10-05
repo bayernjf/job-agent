@@ -30,6 +30,13 @@ export const FIXTURE_ACCOUNT_ID = 'acc-agent-e2e';
 export const FIXTURE_SESSION_TOKEN = 'agent-e2e-session-token-0123456789abcdef';
 export const FIXTURE_LOGIN = 'agent-e2e';
 
+// 第二个身份：已声明招聘方（login 与画像主体不同），用于在真链路上验证 B 端
+// claim 核验视图对"已认领但非本人画像"的授权（authorizeVerifier 的 isRecruiter 分支）。
+export const FIXTURE_RECRUITER_ACCOUNT_ID = 'acc-recruiter-e2e';
+export const FIXTURE_RECRUITER_SESSION_TOKEN =
+  'agent-e2e-recruiter-session-token-0123456789abcdef';
+export const FIXTURE_RECRUITER_LOGIN = 'recruiter-e2e';
+
 const ISO = (day: number) => `2026-10-0${day}T00:00:00.000Z`;
 
 /** 三条会进待投清单（high 1 + mid 2）+ 一条被偏好关键词挡掉的噪声岗位。 */
@@ -160,6 +167,7 @@ export default async function globalSetup(): Promise<void> {
   const raw = openSqlite(AGENT_DB, { readonly: false });
   try {
     raw.client.exec(`
+      DELETE FROM claim_verifications;
       DELETE FROM submit_intents;
       DELETE FROM job_run_events;
       DELETE FROM job_runs;
@@ -210,6 +218,26 @@ export default async function globalSetup(): Promise<void> {
   await repos.authSessions.create({
     id: FIXTURE_SESSION_TOKEN,
     accountId: FIXTURE_ACCOUNT_ID,
+    expiresAt: '2026-12-31T00:00:00.000Z',
+    createdAt: ISO(1),
+    lastSeenAt: ISO(1),
+  });
+  // 已声明招聘方（与画像主体不同 login）：用于 B 端 claim 核验视图真链路授权。
+  await repos.accounts.upsertFromProvider({
+    id: FIXTURE_RECRUITER_ACCOUNT_ID,
+    identity: {
+      platform: 'github',
+      providerAccountId: '888002',
+      login: FIXTURE_RECRUITER_LOGIN,
+      name: 'Recruiter E2E',
+      email: null,
+      avatarUrl: null,
+    },
+  });
+  await repos.accounts.declareRecruiter(FIXTURE_RECRUITER_ACCOUNT_ID, ISO(1));
+  await repos.authSessions.create({
+    id: FIXTURE_RECRUITER_SESSION_TOKEN,
+    accountId: FIXTURE_RECRUITER_ACCOUNT_ID,
     expiresAt: '2026-12-31T00:00:00.000Z',
     createdAt: ISO(1),
     lastSeenAt: ISO(1),
