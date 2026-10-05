@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { CLAIM_RULE_VERSION } from '@jobagent/claim-core';
 import {
@@ -51,6 +51,21 @@ export class SqliteClaimVerificationsRepository implements IClaimVerificationsRe
       .orderBy(asc(t.createdAt))
       .all();
     return rows.map(toStoredClaimVerification);
+  }
+
+  async countByProfiles(profileIds: readonly string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (profileIds.length === 0) return counts;
+    const rows = this.db
+      .select({ profileId: t.profileId, count: sql<number>`count(*)` })
+      .from(t)
+      .where(inArray(t.profileId, [...profileIds]))
+      .groupBy(t.profileId)
+      .all();
+    for (const row of rows) {
+      if (row.profileId) counts.set(row.profileId, Number(row.count));
+    }
+    return counts;
   }
 
   async delete(id: string): Promise<boolean> {

@@ -97,6 +97,21 @@ describe('SqliteClaimVerificationsRepository', () => {
     close();
   });
 
+  it('counts claims for many profiles without exposing claim text', async () => {
+    const { repo, close } = freshRepo();
+    await repo.insert(cv({ id: 'cv-count-1', subjectLogin: 'dev', profileId: 'prof-1' }));
+    await repo.insert(cv({ id: 'cv-count-2', subjectLogin: 'dev', profileId: 'prof-1' }));
+    await repo.insert(cv({ id: 'cv-count-3', subjectLogin: 'dev', profileId: 'prof-2' }));
+
+    const counts = await repo.countByProfiles(['prof-1', 'prof-2', 'prof-3']);
+
+    expect(counts.get('prof-1')).toBe(2);
+    expect(counts.get('prof-2')).toBe(1);
+    expect(counts.has('prof-3')).toBe(false);
+    expect(await repo.countByProfiles([])).toEqual(new Map());
+    close();
+  });
+
   it('reads a verdict back as insufficient_data rather than trusting a bad enum', () => {
     // 坏数据兜底：宁可读成"无法核验"，也不要让它被当成"有些证据"。
     const stored = toStoredClaimVerification({
