@@ -73,10 +73,12 @@ claim_verifications
 
 | 端点 | 身份 | 说明 |
 |---|---|---|
-| `POST /profiles/:id/claims` | `user` 且为画像本人，或已声明招聘方 | 建声明并触发核验；未认领画像只允许招聘方建（核验公开画像） |
-| `GET /profiles/:id/claims` | 同上；**未认领画像对 anonymous 公开** | 公开口径与 `/job-recommendations` 的匹配理由证据一致（决策 #10 要求可回溯）；认领画像只本人/招聘方可读全量 |
-| `DELETE /claims/:id` | 创建者本人或画像本人 | 声明是可撤回的用户输入，不进快照 |
-| `POST /claims/import`（**仅 A 获批后**） | `user` | 只回条目草稿，不回判定 |
+| `POST /profiles/:id/claim-verifications` | `user` 且为画像本人，或已声明招聘方 | 建声明并触发核验；未认领画像只允许招聘方建（核验公开画像） |
+| `GET /profiles/:id/claim-verifications` | 同上（**首版不向 anonymous 开放**，见 §9 ⑤ 已定；表原拟"未认领画像对 anonymous 公开"延后） | 将来若要公开，口径与 `/job-recommendations` 的匹配理由证据一致（决策 #10 要求可回溯）；认领画像只本人/招聘方可读全量 |
+| `DELETE /claim-verifications/:id` | 创建者本人或画像本人 | 声明是可撤回的用户输入，不进快照 |
+| `POST /claim-verifications/import`（**仅 A 获批后**） | `user` | 只回条目草稿，不回判定 |
+
+> **路径命名（2026-10-05 定）**：原草案写的是 `/profiles/:id/claims`，与既有 `POST /profiles/:id/claim`（**认领**画像，非本功能）只差一个复数 s，语义却完全不同，误打错字会安静写进错的表。故改为与表名 `claim_verifications` 同名的自解释路径。**既有 `/claim` 端点不动**。
 
 绝不放进 `/exportable` 投影，绝不进 MCP 面（服务账号不是人，给密钥也不解锁这类内容——`docs/design-mcp-surface-20260928.md` 三条硬原则沿用）。
 

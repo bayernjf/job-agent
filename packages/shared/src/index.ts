@@ -2038,3 +2038,142 @@ export const AdminLlmCatalogViewSchema = z.object({
   envConfigured: z.boolean(),
 });
 export type AdminLlmCatalogView = z.infer<typeof AdminLlmCatalogViewSchema>;
+
+/* ------------------------------------------------------------------------- *
+ * 技能词典（2026-10-05，决策 #23）
+ *
+ * 把人话里提到的技术名词映射成"可核验 token"。放在这里而不是 `claim-core`，是因为它是
+ * 全链路契约的一部分（AGENTS：共享类型与画像契约只放在 packages/shared）；词典一旦分裂，
+ * 同一个词在不同环节会抽出不同的可核验 token。
+ *
+ * 为什么值得郑重：**抽不出可核验 token 就必须判 `insufficient_data`，绝不判 `no_trace`**
+ * （design-claim-verification §5 规则 3）。词典的召回率直接决定"我方确实无法核验"与
+ * "你没做过"之间的分界，所以它是一条**产品口径**，不是一串配置常量。
+ *
+ * 匹配口径：**词边界、大小写不敏感**。"Go" 命中 "I use Go daily"，不命中 "Google it"；
+ * 这是防止把公司名、日常词误判为技术声明的第一道护栏。
+ * ------------------------------------------------------------------------- */
+
+export const DictionaryEntrySchema = z.object({
+  /** 词典规范名，同时用于与画像 SkillTag.name 对齐 */
+  canonical: z.string().min(1),
+  kind: SkillTagKindSchema,
+  /** 同义写法。规范名自身永远参与匹配，不必重复写进 aliases */
+  aliases: z.array(z.string().min(1)),
+});
+export type DictionaryEntry = z.infer<typeof DictionaryEntrySchema>;
+
+/** 命中结果：只有 token，不含任何"这段看起来像 URL 就能访问"的假设 */
+export const MatchedSkillTokenSchema = z.object({
+  canonical: z.string().min(1),
+  kind: SkillTagKindSchema,
+  /** 原文里实际命中的写法，便于复核为什么它被认成这个名字 */
+  matched: z.string().min(1),
+});
+export type MatchedSkillToken = z.infer<typeof MatchedSkillTokenSchema>;
+
+/**
+ * 首版词典：只收**能在行为痕迹里留下证据**的技术词。
+ * 刻意不收能力形容词（"优秀""沟通能力强"）——那些词本来就该走 `insufficient_data`，
+ * 收进来只会让"没有证据"被错误包装成"有一点证据"。
+ */
+export const SKILL_DICTIONARY: readonly DictionaryEntry[] = [
+  // 语言
+  { canonical: 'TypeScript', kind: 'language', aliases: ['ts'] },
+  { canonical: 'JavaScript', kind: 'language', aliases: ['js', 'ECMAScript'] },
+  { canonical: 'Python', kind: 'language', aliases: ['py'] },
+  { canonical: 'Go', kind: 'language', aliases: ['Golang'] },
+  { canonical: 'Rust', kind: 'language', aliases: ['rs'] },
+  { canonical: 'Java', kind: 'language', aliases: [] },
+  { canonical: 'Kotlin', kind: 'language', aliases: ['kt'] },
+  { canonical: 'Swift', kind: 'language', aliases: [] },
+  { canonical: 'Ruby', kind: 'language', aliases: ['rb'] },
+  { canonical: 'PHP', kind: 'language', aliases: [] },
+  { canonical: 'C++', kind: 'language', aliases: ['cpp'] },
+  { canonical: 'C#', kind: 'language', aliases: ['csharp'] },
+  { canonical: 'Scala', kind: 'language', aliases: [] },
+  { canonical: 'Elixir', kind: 'language', aliases: ['ex'] },
+  { canonical: 'Lua', kind: 'language', aliases: [] },
+  { canonical: 'Shell', kind: 'language', aliases: ['bash', 'zsh', 'sh'] },
+  // 框架 / 运行时 / 工具
+  { canonical: 'React', kind: 'framework', aliases: ['React.js', 'ReactJS'] },
+  { canonical: 'Next.js', kind: 'framework', aliases: ['Nextjs', 'Next'] },
+  { canonical: 'Astro', kind: 'framework', aliases: [] },
+  { canonical: 'Vue', kind: 'framework', aliases: ['Vue.js', 'VueJS'] },
+  { canonical: 'Svelte', kind: 'framework', aliases: [] },
+  { canonical: 'Angular', kind: 'framework', aliases: [] },
+  { canonical: 'Node.js', kind: 'framework', aliases: ['Node', 'NodeJS'] },
+  { canonical: 'Deno', kind: 'framework', aliases: [] },
+  { canonical: 'Bun', kind: 'framework', aliases: [] },
+  { canonical: 'Hono', kind: 'framework', aliases: [] },
+  { canonical: 'Express', kind: 'framework', aliases: ['ExpressJS'] },
+  { canonical: 'NestJS', kind: 'framework', aliases: ['Nest'] },
+  { canonical: 'Django', kind: 'framework', aliases: [] },
+  { canonical: 'Flask', kind: 'framework', aliases: [] },
+  { canonical: 'FastAPI', kind: 'framework', aliases: [] },
+  { canonical: 'Spring', kind: 'framework', aliases: ['SpringBoot'] },
+  { canonical: 'Rails', kind: 'framework', aliases: ['Ruby on Rails'] },
+  { canonical: 'Vite', kind: 'framework', aliases: [] },
+  { canonical: 'Webpack', kind: 'framework', aliases: [] },
+  { canonical: 'Playwright', kind: 'framework', aliases: [] },
+  { canonical: 'Vitest', kind: 'framework', aliases: [] },
+  { canonical: 'Jest', kind: 'framework', aliases: [] },
+  { canonical: 'Drizzle', kind: 'framework', aliases: ['Drizzle ORM'] },
+  { canonical: 'Prisma', kind: 'framework', aliases: [] },
+  { canonical: 'GraphQL', kind: 'framework', aliases: ['gql'] },
+  { canonical: 'tRPC', kind: 'framework', aliases: ['trpc'] },
+  // 领域
+  { canonical: 'PostgreSQL', kind: 'domain', aliases: ['Postgres', 'psql', 'pg'] },
+  { canonical: 'MySQL', kind: 'domain', aliases: [] },
+  { canonical: 'SQLite', kind: 'domain', aliases: [] },
+  { canonical: 'MongoDB', kind: 'domain', aliases: ['mongo'] },
+  { canonical: 'Redis', kind: 'domain', aliases: [] },
+  { canonical: 'Docker', kind: 'domain', aliases: [] },
+  { canonical: 'Kubernetes', kind: 'domain', aliases: ['k8s'] },
+  { canonical: 'Terraform', kind: 'domain', aliases: ['tf'] },
+  { canonical: 'CI/CD', kind: 'domain', aliases: ['CI', 'CD', 'CICD'] },
+  { canonical: 'GitHub Actions', kind: 'domain', aliases: ['Actions', 'GHA'] },
+  { canonical: 'Linux', kind: 'domain', aliases: ['GNU/Linux'] },
+  { canonical: 'DevOps', kind: 'domain', aliases: [] },
+  { canonical: 'Observability', kind: 'domain', aliases: ['o11y'] },
+  { canonical: 'OpenTelemetry', kind: 'domain', aliases: ['OTel', 'otel'] },
+  { canonical: 'Machine Learning', kind: 'domain', aliases: ['ML'] },
+  { canonical: 'LLM', kind: 'domain', aliases: ['large language model', 'GenAI'] },
+  { canonical: 'OAuth', kind: 'domain', aliases: ['OAuth2', 'OIDC'] },
+  { canonical: 'WebAssembly', kind: 'domain', aliases: ['WASM', 'wasm'] },
+] as const;
+
+/** 正则元字符转义：词典包含 `C++`、`Next.js`、`CI/CD` 这类带元字符的词。 */
+function escapeRegexLiteral(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}
+
+/**
+ * 从一段人话里抽可核验 token。
+ *
+ * 两个刻意的保守点：
+ * - **词边界**（遇上 `+ # .` 也算边界，所以 `C++`、`Next.js` 能命中而不被吞掉）。
+ * - **去重到 canonical**：同一句里的 "JS" 与 "JavaScript" 只算一次，否则证据条数会被重复
+ *   计数，进而把 `partial` 误抬成 `supportable`。
+ */
+export function extractSkillTokens(text: string): MatchedSkillToken[] {
+  if (!text.trim()) return [];
+  const found = new Map<string, MatchedSkillToken>();
+  for (const entry of SKILL_DICTIONARY) {
+    for (const writing of [entry.canonical, ...entry.aliases]) {
+      const pattern = new RegExp(`(?:^|[^\\w+#.])${escapeRegexLiteral(writing)}(?:$|[^\\w+#.])`, 'i');
+      const hit = pattern.exec(text);
+      if (hit) {
+        if (!found.has(entry.canonical)) {
+          found.set(entry.canonical, {
+            canonical: entry.canonical,
+            kind: entry.kind,
+            matched: hit[0]!.trim(),
+          });
+        }
+        break; // 同一规范的多种写法只需命中一次
+      }
+    }
+  }
+  return [...found.values()];
+}
