@@ -1445,10 +1445,16 @@ token 90 天滑动续期、可撤销。
   "subject": { "platform": "github", "login": "alice" },
   "claimText": "…", "claimSource": "manual", "claimRef": null,
   "verdict": "supportable", "matchedEvidenceRefs": ["ev-a", "ev-b"],
+  "matchedEvidence": [
+    { "id": "ev-a", "url": "https://github.com/…/commit/a", "claim": "…" },
+    { "id": "ev-b", "url": "https://github.com/…/pull/42", "claim": "…" }
+  ],
   "confidence": 1, "ruleVersion": "0.1", "requiredEvidenceCount": 2, "createdAt": "…" }
 ```
 
-`matchedEvidenceRefs` 是可直接点开回溯的 evidence id（`no_trace` / `insufficient_data` 时为空数组）。
+`matchedEvidenceRefs` 是可直接点开回溯的 evidence id（`no_trace` / `insufficient_data` 时为空数组）；
+`matchedEvidence` 把这些 id 在**同一道授权闸后**水合成可点击的原始记录 `{id,url,claim}`，
+查不到对应证据行的 id 被跳过（不补造）。
 缺主体画像快照 `409`；画像不存在 `404`；body 非法 `400`。
 
 ### `GET /profiles/:id/claim-verifications`
