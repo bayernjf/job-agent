@@ -1230,6 +1230,23 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 `200`：`{ "intent": { ... }, "applicationId": "app-...", "run": { ... } }`；票据非 `pending`/`approved` 时 `409 AGENT_INVALID_TRANSITION`。
 
+### `GET /agent/runs/:id/submissions`
+
+已提交的投递（票据 `status='submitted'`）+ **各自的结果回标状态**，最多 100 条。这是 `POST /agent/intents/:id/outcome` 的读侧——没有它，"回标"这件事在界面上无处安放，决策 #20-3 要求的复盘样本也永远攒不起来（2026-10-05 补）。
+
+```json
+{
+  "runId": "run-...",
+  "status": "tracking",
+  "items": [
+    { "intentId": "intent-...", "status": "submitted", "applicationId": "app-...",
+      "outcomeFeedback": "interview", "outcomeFeedbackAt": "2026-10-05T00:00:00.000Z" }
+  ]
+}
+```
+
+`outcomeFeedback` / `outcomeFeedbackAt` 来自票据关联的投递记录（`applications`），未回标时为 `null`；取值域 `no_response | interview | offer | rejected`。任务不属于调用者时与 `GET /agent/runs/:id` 同形返回。
+
 ### `GET /agent/intents/:id/resume`
 
 按需装配的岗位定向简历（`no-fabrication`，每条画像来源断言挂 `evidenceRefs`）。`format=md|html|json`（默认 `md`）、`locale=zh-CN|en`（默认 `zh-CN`）。岗位已下架时按票据内的岗位精简快照生成（响应 JSON 带 `fromSnapshot: true`）。

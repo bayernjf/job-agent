@@ -364,6 +364,39 @@ describe('agent workbench — stage 1 loop', () => {
     expect(again.status).toBe(200);
     expect(await repos.applications.listByProfile('p-1')).toHaveLength(1);
 
+    // D1 结果回标必须有读侧：写进去读不回来，「回标」在界面上就无处安放，样本也攒不起来
+    const subs = (await (
+      await json(`/agent/runs/${body.run.runId}/submissions`)
+    ).json()) as {
+      items: Array<{
+        intentId: string;
+        status: string;
+        applicationId: string | null;
+        outcomeFeedback: string | null;
+      }>;
+    };
+    expect(subs.items).toHaveLength(1);
+    expect(subs.items[0]).toMatchObject({
+      intentId: intent.intentId,
+      status: 'submitted',
+      applicationId: submitted.applicationId,
+      outcomeFeedback: null,
+    });
+
+    const outcomeRes = await json(`/agent/intents/${intent.intentId}/outcome`, {
+      method: 'POST',
+      body: JSON.stringify({ outcome: 'interview' }),
+    });
+    expect(outcomeRes.status).toBe(200);
+
+    const after = (await (
+      await json(`/agent/runs/${body.run.runId}/submissions`)
+    ).json()) as {
+      items: Array<{ outcomeFeedback: string | null; outcomeFeedbackAt: string | null }>;
+    };
+    expect(after.items[0]!.outcomeFeedback).toBe('interview');
+    expect(after.items[0]!.outcomeFeedbackAt).toBeTruthy();
+
     // 事件流完整可回放（阶段 2：approve → submitting，回执分 submitted + track 两步）
     const viewRes = await json(`/agent/runs/${body.run.runId}`);
     const view = (await viewRes.json()) as { events: Array<{ event: string }> };
