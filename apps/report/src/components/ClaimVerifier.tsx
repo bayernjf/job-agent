@@ -7,7 +7,7 @@
  * 401/403 做 fail-closed 收起，不做静默降级。判定只按 verdict code 渲染，绝不匹配英文句子；
  * 所有用户可见文案经 props（t()）传入，组件不硬编码。
  */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 type ClaimVerdict = 'supportable' | 'partial' | 'no_trace' | 'insufficient_data';
 
@@ -52,6 +52,7 @@ interface ClaimVerifierProps {
 }
 
 export default function ClaimVerifier({ apiBase, profileId, labels }: ClaimVerifierProps) {
+  const sectionRef = useRef<HTMLElement>(null);
   const [items, setItems] = useState<ClaimVerification[] | null>(null);
   const [hidden, setHidden] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -61,6 +62,9 @@ export default function ClaimVerifier({ apiBase, profileId, labels }: ClaimVerif
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
 
   useEffect(() => {
+    // Controlled textarea takeover signal: callers (including E2E) must not fill before
+    // hydration, or React's first render discards the raw value and the button stays disabled.
+    sectionRef.current?.setAttribute('data-hydrated', 'true');
     let cancelled = false;
     fetch(`${apiBase}/profiles/${encodeURIComponent(profileId)}/claim-verifications`, {
       credentials: 'include',
@@ -147,7 +151,7 @@ export default function ClaimVerifier({ apiBase, profileId, labels }: ClaimVerif
   };
 
   return (
-    <section className="ja-card claim-verifier" data-testid="claim-verifier">
+    <section ref={sectionRef} className="ja-card claim-verifier" data-testid="claim-verifier">
       <h2>{labels.title}</h2>
       <p className="ja-muted">{labels.hint}</p>
 

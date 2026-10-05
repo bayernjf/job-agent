@@ -36,6 +36,7 @@ export type {
 export {
   JOB_POSTING_STATUSES,
   makeJobPostingId,
+  dedupePostingsById,
   jobPostingSignature,
   toStoredJobPosting,
 } from './job-posting.js';

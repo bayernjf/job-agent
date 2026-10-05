@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, like, or, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
+  dedupePostingsById,
   jobPostingSignature,
   makeJobPostingId,
   toStoredJobPosting,
@@ -38,9 +39,12 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
 
   async upsertBatch(postings: NewJobPosting[], now: string): Promise<UpsertCounts> {
     const counts: UpsertCounts = { inserted: 0, updated: 0, unchanged: 0 };
+    // 与 PG 批量实现对齐：组批前按派生主键去重（保留最后一次出现），
+    // 同批重复岗位只计一次，且计数口径双方言一致。
+    const unique = dedupePostingsById(postings);
 
     this.db.transaction((tx) => {
-      for (const p of postings) {
+      for (const p of unique) {
         const id = makeJobPostingId(p.source, p.sourceUrl);
         const existing = tx.select().from(t).where(eq(t.id, id)).get();
         const tagsJson = JSON.stringify(p.tags ?? []);

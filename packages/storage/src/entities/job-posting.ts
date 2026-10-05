@@ -60,6 +60,19 @@ export function makeJobPostingId(source: string, sourceUrl: string): string {
 }
 
 /**
+ * 同一批次内按派生主键 (source, sourceUrl) 去重，保留最后一次出现。
+ * 采集源可能把同一岗位在同一次抓取里列两次（实测 WWR RSS 同帖跨条目重复）：
+ * Postgres 的批量 `ON CONFLICT DO UPDATE` 对同语句内的重复冲突目标报 21000
+ * （cannot affect row a second time），组批前必须收口；同时让两方言的
+ * 批内计数口径一致（一次逻辑岗位只计一次）。
+ */
+export function dedupePostingsById(postings: NewJobPosting[]): NewJobPosting[] {
+  const byId = new Map<string, NewJobPosting>();
+  for (const p of postings) byId.set(makeJobPostingId(p.source, p.sourceUrl), p);
+  return [...byId.values()];
+}
+
+/**
  * 可变内容签名：用于 upsert 时区分 updated 与 unchanged（只刷 last_seen 不算内容更新）。
  * 不含 first/last seen、fetched、status、id 等由仓储维护的字段。字段顺序固定。
  */

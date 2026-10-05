@@ -569,6 +569,47 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(hits.some((p) => p.sourceUrl === base.sourceUrl)).toBe(true);
   });
 
+  // 回归（生产 2026-10-03 实锤）：WWR RSS 同一岗位在一次抓取里列了两次，
+  // 已有行的两份拷贝同进 ON CONFLICT DO UPDATE 批次会报 21000
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time"。
+  // 仓储必须在组批前按派生主键去重，并把重复折叠成一次计数。
+  pgIt('collapses in-batch duplicates by derived id instead of failing ON CONFLICT DO UPDATE', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const base = {
+      jobId: `dup_${suffix}`,
+      source: 'greenhouse' as const,
+      sourceUrl: `https://example.com/${suffix}/dup`,
+      title: 'Senior Backend Engineer',
+      company: `PG Co ${suffix}`,
+      location: 'Remote',
+      remote: true,
+      salaryMin: null,
+      salaryMax: null,
+      salaryCurrency: null,
+      tags: ['go', 'backend'],
+      description: 'd',
+      postedAt: '2026-09-01T00:00:00.000Z',
+      fetchedAt: '2026-09-10T00:00:00.000Z',
+      normalizedKey: `nk_${suffix}`,
+    };
+
+    const first = await s.jobPostings.upsertBatch([base], '2026-09-10T00:00:00.000Z');
+    expect(first.inserted).toBe(1);
+
+    // 修复前这里抛 21000（同一 DO UPDATE 语句内同一冲突目标出现两次）。
+    const dupRun = await s.jobPostings.upsertBatch(
+      [{ ...base, title: 'Changed Title' }, { ...base, title: 'Changed Title' }],
+      '2026-09-11T00:00:00.000Z',
+    );
+    expect(dupRun).toEqual({ inserted: 0, updated: 1, unchanged: 0 });
+
+    const rows = await s.jobPostings.search({ sources: ['greenhouse'], limit: 500 });
+    const mine = rows.filter((p) => p.sourceUrl === base.sourceUrl);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.title).toBe('Changed Title');
+    expect(mine[0]!.firstSeenAt).toBe('2026-09-10T00:00:00.000Z');
+  });
+
   // 回归：api + worker（或水平扩容的多个副本）同时冷启动、对同一空库并发首迁移时，
   // 不得因 schema_migrations 主键冲突而崩溃；迁移应恰好应用一次。
   pgIt('runs concurrent first-time migrations safely across instances', async () => {

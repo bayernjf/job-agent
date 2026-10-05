@@ -193,15 +193,15 @@ test.describe('self-select job form (T24 surface)', () => {
     const builder = page.locator('.resume-builder');
     await expect(builder).toBeVisible();
 
-    // 手动区填 JD：标题 + 公司 + 描述 → 生成
-    const titleInput = builder.locator('input').first();
-    const companyInput = builder.locator('input').nth(1);
-    const jdTextarea = builder.locator('textarea');
-    const genBtn = builder.getByRole('button', { name: '针对此 JD 生成简历' });
+    // 手动区填 JD：标题 + 公司 + 描述 → 生成。组件内有 20+ 个 input（本地档案表单），
+    // 用显式 data-testid 而非 .first()/.nth(1) 位置选择器——后者会随本地档案字段增删漂移。
+    const titleInput = builder.getByTestId('manual-job-title');
+    const companyInput = builder.getByTestId('manual-job-company');
+    const jdTextarea = builder.getByTestId('manual-job-description');
+    const genBtn = builder.getByTestId('manual-generate');
     // React 接管之前写进受控字段的值会被首帧渲染覆盖，onChange 不触发、按钮永不启用。
-    // 旧写法是"先等 4s，没启用就重填一次"——本质在赌 hydration 的耗时，CI 竞争下四次 run
-    // 都要靠重试才过。改为等组件自己发布的显式信号（ResumeBuilder 挂载 effect 里的
-    // data-hydrated），填值动作一定发生在接管之后。
+    // 等组件自己发布的显式信号（ResumeBuilder 挂载 effect 里的 data-hydrated），
+    // 填值动作一定发生在接管之后，而不是赌 hydration 的耗时。
     await expect(builder).toHaveAttribute('data-hydrated', 'true');
     await titleInput.fill('Rust Platform Engineer');
     await companyInput.fill('Acme Corp');

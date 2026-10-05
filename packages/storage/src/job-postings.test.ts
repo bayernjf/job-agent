@@ -85,6 +85,30 @@ describe('SqliteJobPostingsRepository', () => {
     expect(rows[0]!.firstSeenAt).toBe('2026-09-10T00:00:00.000Z');
   });
 
+  // 回归（生产 2026-10-03 实锤）：WWR RSS 同一岗位在一次抓取里列了两次。
+  // 已有行的重复拷贝同进 PG 的 ON CONFLICT DO UPDATE 批次会报 21000
+  // （cannot affect row a second time），组批前必须按派生主键去重；
+  // 计数口径双方言一致：一次逻辑岗位只计一次，保留最后一次出现的内容。
+  it('collapses in-batch duplicates of the same (source,sourceUrl)', async () => {
+    const repo = freshRepo();
+    const p = samplePosting();
+
+    const fresh = await repo.upsertBatch([p, p], '2026-09-10T00:00:00.000Z');
+    expect(fresh).toEqual({ inserted: 1, updated: 0, unchanged: 0 });
+
+    const stale = await repo.upsertBatch(
+      [{ ...p, title: 'Wrong Copy' }, { ...p, title: 'Staff Rust Engineer' }],
+      '2026-09-11T00:00:00.000Z',
+    );
+    expect(stale).toEqual({ inserted: 0, updated: 1, unchanged: 0 });
+
+    const rows = await repo.search({ limit: 500 });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.title).toBe('Staff Rust Engineer');
+    expect(rows[0]!.firstSeenAt).toBe('2026-09-10T00:00:00.000Z');
+    expect(rows[0]!.lastSeenAt).toBe('2026-09-11T00:00:00.000Z');
+  });
+
   it('searches by keyword across title/company/tags (AND words, case-insensitive)', async () => {
     const repo = freshRepo();
     await repo.upsertBatch(

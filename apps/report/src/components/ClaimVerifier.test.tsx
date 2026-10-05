@@ -57,6 +57,10 @@ describe('ClaimVerifier', () => {
     });
     render(<ClaimVerifier {...props} />);
 
+    expect(await screen.findByTestId('claim-verifier')).toHaveAttribute(
+      'data-hydrated',
+      'true',
+    );
     expect(await screen.findByText('Built services in TypeScript')).toBeInTheDocument();
     expect(screen.getByText('Supported by evidence')).toBeInTheDocument();
     const link = screen.getByText('TypeScript refactor ↗');
