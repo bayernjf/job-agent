@@ -112,7 +112,8 @@ test.describe('/my (T17 surface)', () => {
 
     const nudge = page.getByTestId('my-pending-outcomes');
     await expect(nudge).toBeVisible();
-    // 夹具里两条已投、只有一条没记结果 → 计数必须是 1（把已回标的算进来就是过滤写错）
+    // 夹具三条：manual 未回标 / agent 未回标 / agent 已回标 → 只有第二条该计数。
+    // 少了 origin 过滤会数成 2，少了 outcome 过滤也会数成 2，两个都少数成 3。
     await expect(nudge).toContainText('1 条');
     await expect(nudge.getByRole('link', { name: '去工作台回标' })).toBeVisible();
   });

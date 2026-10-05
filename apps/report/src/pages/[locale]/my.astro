@@ -35,6 +35,9 @@ const recentJobs =
     : [];
 // 复盘样本的唯一来源是回标；回标的界面在工作台「已投与结果」区。这里只计数与引导，
 // 不再复制一份编辑控件——同一个字段有两处写口迟早漂移。
+// 必须限定 origin='agent'：目前唯一的写口是 POST /agent/intents/:id/outcome（按票据回标），
+// 而 manual/report/extension 三种来源的行没有票据，也就永远标不上——把它们计入提示，
+// 就是给用户一条到不了目的地的指令。
 const pendingOutcomes =
   viewer.kind === 'user'
     ? (
@@ -43,7 +46,7 @@ const pendingOutcomes =
         )
       )
         .flat()
-        .filter((a) => a.status === 'applied' && !a.outcomeFeedback)
+        .filter((a) => a.origin === 'agent' && a.status === 'applied' && !a.outcomeFeedback)
     : [];
 const jobStatusLabels: Record<string, string> = {
   queued: t('job.queued'),
