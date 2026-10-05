@@ -112,10 +112,13 @@ test.describe('/my (T17 surface)', () => {
 
     const nudge = page.getByTestId('my-pending-outcomes');
     await expect(nudge).toBeVisible();
-    // 夹具三条：manual 未回标 / agent 未回标 / agent 已回标 → 只有第二条该计数。
-    // 少了 origin 过滤会数成 2，少了 outcome 过滤也会数成 2，两个都少数成 3。
-    await expect(nudge).toContainText('1 条');
-    await expect(nudge.getByRole('link', { name: '去工作台回标' })).toBeVisible();
+    // item126 放开了 origin 限制（四种来源都能回标）→ manual 未回标 + agent 未回标 = 2；
+    // agent 已回标那条仍不计——outcome 过滤依旧是承重断言。
+    await expect(nudge).toContainText('2 条');
+    // 计数有了还得真能到目的地：每行链到它所属画像的投递追踪（那里才有它的回标控件）
+    await expect(
+      nudge.getByRole('link', { name: '去该画像回标' }).first(),
+    ).toBeVisible();
   });
 
   test('signed-in user with no profiles sees the empty state', async ({ page }) => {

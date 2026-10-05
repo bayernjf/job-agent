@@ -139,9 +139,14 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'invalid patch', details: parsed.error.flatten() }, 400);
     }
     const principal = c.get('principal');
+    // 回标时间戳由服务端盖（不接受调用者自填）；null 不在契约里，见 ApplicationPatchSchema
+    const patch =
+      parsed.data.outcomeFeedback === undefined
+        ? parsed.data
+        : { ...parsed.data, outcomeFeedbackAt: now() };
     const updated = await repos.applications.update(
       id,
-      parsed.data,
+      patch,
       principal.kind === 'user' ? principal.accountId : null,
     );
     if (!updated) return c.json({ error: 'application not found' }, 404);

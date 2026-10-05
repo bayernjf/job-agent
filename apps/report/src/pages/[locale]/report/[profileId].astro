@@ -69,6 +69,7 @@ const {
   until,
   interviewKitUrl,
   applicationStatusLabels,
+  applicationOutcomeLabels,
   disputeEmail,
 } = pageData;
 ---
@@ -632,6 +633,9 @@ const {
             cancel: t('applications.cancel'),
             required: t('applications.required'),
             statusLabels: applicationStatusLabels,
+            outcome: t('applications.outcome'),
+            outcomeUnset: t('applications.outcome.unset'),
+            outcomeLabels: applicationOutcomeLabels,
           }}
         />
       )

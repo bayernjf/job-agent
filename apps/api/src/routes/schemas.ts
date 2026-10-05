@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   JobSourceSchema,
   LocalResumeFieldsSchema,
+  OutcomeFeedbackSchema,
   ResumeLocaleSchema,
 } from '@jobagent/shared';
 import {
@@ -149,6 +150,14 @@ export const ApplicationPatchSchema = z
     note: z.string().nullable().optional(),
     appliedAt: z.string().datetime().optional(),
     targetUrl: z.string().url().nullable().optional(),
+    /**
+     * 投递结果回标。item126：写口从"只有票据一条路"放开到任意投递行，
+     * 于是 manual / report / extension 三种来源也能进复盘样本（决策 #20-3 的前提）。
+     * 时间戳由服务端盖，不接受调用者自填——否则"何时知道结果"这个维度可被伪造。
+     * 有意**不开放 null**：仓储契约就写着"清除走专门流程，此处不开放"，而那个流程至今不存在，
+     * 所以这里只做设置/覆盖（标错可以改成另一个值），不把"退回未记录"塞进止血里。
+     */
+    outcomeFeedback: OutcomeFeedbackSchema.optional(),
   })
   .refine((d) => Object.keys(d).length > 0, {
     message: 'at least one field to update is required',
