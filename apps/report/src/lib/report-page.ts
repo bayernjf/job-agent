@@ -70,6 +70,7 @@ export type ReportPageData =
       until: string;
       interviewKitUrl: string;
       applicationStatusLabels: Record<string, string>;
+      applicationOutcomeLabels: Record<string, string>;
     };
 
 export async function loadReportPageData(input: ReportPageInput): Promise<ReportPageData> {
@@ -197,6 +198,14 @@ export async function loadReportPageData(input: ReportPageInput): Promise<Report
     withdrawn: t('applications.status.withdrawn'),
   };
 
+  // 投递结果回标文案（item126：四种来源都能标，值域来自 shared 的枚举）
+  const applicationOutcomeLabels = {
+    no_response: t('applications.outcome.no_response'),
+    interview: t('applications.outcome.interview'),
+    offer: t('applications.outcome.offer'),
+    rejected: t('applications.outcome.rejected'),
+  };
+
   return {
     kind: 'ok',
     locale,
@@ -232,6 +241,7 @@ export async function loadReportPageData(input: ReportPageInput): Promise<Report
     until,
     interviewKitUrl,
     applicationStatusLabels,
+    applicationOutcomeLabels,
   };
 }
 

@@ -5,6 +5,7 @@
  * 所有用户可见文案由 Astro 服务端通过 props 传入（组件不硬编码文案）。
  */
 import { useEffect, useState, type FormEvent } from 'react';
+import { OUTCOME_FEEDBACK_VALUES, type OutcomeFeedback } from '@jobagent/shared';
 
 type ApplicationStatus =
   | 'saved'
@@ -29,6 +30,9 @@ interface Application {
   appliedAt: string;
   createdAt: string;
   updatedAt: string;
+  /** D1 回标；item126 起四种来源都能在此标 */
+  outcomeFeedback: OutcomeFeedback | null;
+  outcomeFeedbackAt: string | null;
 }
 
 interface TrackerLabels {
@@ -53,6 +57,9 @@ interface TrackerLabels {
   cancel: string;
   required: string;
   statusLabels: Record<ApplicationStatus, string>;
+  outcome: string;
+  outcomeUnset: string;
+  outcomeLabels: Record<OutcomeFeedback, string>;
 }
 
 interface Props {
@@ -205,6 +212,31 @@ export default function ApplicationTracker({ profileId, apiBase, locale, labels 
     }
   }
 
+  /**
+   * 回标投递结果。item126 之前只有 agent 票据能标（唯一写口是 /agent/intents/:id/outcome），
+   * 手工/报告页/扩展三种来源的行永远进不了复盘样本。时间戳由服务端盖，这里只发值。
+   */
+  async function recordOutcome(id: string, outcome: OutcomeFeedback) {
+    const before = items;
+    setItems((prev) =>
+      (prev ?? []).map((a) => (a.id === id ? { ...a, outcomeFeedback: outcome } : a)),
+    );
+    try {
+      const res = await fetch(`${apiBase}/applications/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcomeFeedback: outcome }),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updated = (await res.json()) as Application;
+      setItems((prev) => (prev ?? []).map((a) => (a.id === id ? updated : a)));
+    } catch {
+      setItems(before);
+      void load();
+    }
+  }
+
   return (
     <section className="ja-card apptrk">
       <div className="ja-flex-between apptrk-head">
@@ -336,6 +368,26 @@ export default function ApplicationTracker({ profileId, apiBase, locale, labels 
                   {STATUS_ORDER.map((s) => (
                     <option key={s} value={s}>
                       {labels.statusLabels[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="apptrk-status">
+                <span className="ja-muted apptrk-status-label">{labels.outcome}</span>
+                <select
+                  className="ja-input apptrk-select"
+                  value={a.outcomeFeedback ?? ''}
+                  onChange={(e) => {
+                    const next = e.target.value as OutcomeFeedback | '';
+                    if (next) recordOutcome(a.id, next);
+                  }}
+                  aria-label={labels.outcome}
+                  data-testid={`apptrk-outcome-${a.id}`}
+                >
+                  {!a.outcomeFeedback && <option value="">{labels.outcomeUnset}</option>}
+                  {OUTCOME_FEEDBACK_VALUES.map((o) => (
+                    <option key={o} value={o}>
+                      {labels.outcomeLabels[o]}
                     </option>
                   ))}
                 </select>
