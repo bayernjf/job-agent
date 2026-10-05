@@ -41,6 +41,7 @@ job-agent/
 │  ├─ gitee-source/   # 第二个 EvidenceSource：Gitee v5 REST-only 采集→证据源无关 AnalyzerInput（CLI --platform 选源；设计见 docs/design-gitee-source-20260914.md）
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
 │  ├─ resume-core/    # 纯函数：画像+岗位+匹配→岗位定向简历 ResumeDraft（match-input 映射 / rank 排序 / tailor 装配 / render md+html / polish 受约束润色安全层；阶段 1 起也产规则版求职信 CoverLetterDraft；只重排不造事实，设计见 docs/design-targeted-resume-20260915.md）
+│  ├─ claim-core/     # 纯函数：简历声明逐条核验（决策 #23，反向通路）——声明+画像技能标签+真实证据行→supportable/partial/no_trace/insufficient_data；独立 CLAIM_RULE_VERSION、判定绝不回写画像、绝不升 RULE_VERSION；设计见 docs/design-claim-verification-20261005.md
 │  ├─ agent-core/     # 纯函数：求职任务状态机（JobRun 迁移表）、偏好→匹配条件/硬过滤、质量闸与候选选择、可解释匹配报告（只出 code+事实）、票据计划、投递限频判断（阶段 1 求职工作台，设计见 docs/设计-求职Agent-20261002.md §10）
 │  ├─ llm/            # LLM 端口（LlmClient）+ FakeLlmClient（测试）+ OpenAICompatibleClient（/chat/completions，注入 fetch 测试）+ LlmResumePolishProvider（Zod 校验）；createResumePolishProviderFromEnv 无 LLM_API_KEY 返回 null（默认关闭走规则版），凭证只从服务端 LLM_* env 读（见 .env.example、简历设计 §7/§10）
 │  └─ ui-tokens/      # 设计 token 单一事实源（无构建静态 CSS，--ja-* 变量；report 与 extension 共用，设计见 docs/design-tokens-20260910.md）
