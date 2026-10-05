@@ -15,6 +15,7 @@ import GateCard from '../../../components/GateCard.astro';
 import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
 import ApplicationTracker from '../../../components/ApplicationTracker.tsx';
+import ClaimVerifier from '../../../components/ClaimVerifier.tsx';
 import '../../../styles/report-page.css';
 import { formatNumber, formatPercent } from '../../../lib/format';
 import {
@@ -54,6 +55,7 @@ const {
   candidateUrl,
   canViewGated,
   canUseApplications,
+  isProfileOwner,
   loginHref,
   gateLoginLabel,
   gateEvidenceBody,
@@ -364,6 +366,38 @@ const {
       )
     }
 
+    <!-- 简历声明核验（B 端）：仅招聘方视角且已登录；未登录由上方证据门接管，
+         island 自身再对 401/403 fail-closed 收起（决策 #23 批次 2，design §7）。 -->
+    {
+      isRecruiter && canViewGated && (
+        <ClaimVerifier
+          client:load
+          apiBase={apiBase}
+          profileId={profileId!}
+          labels={{
+            title: t('report.claims.recruiter.title'),
+            hint: t('report.claims.recruiter.hint'),
+            inputLabel: t('report.claims.inputLabel'),
+            inputPlaceholder: t('report.claims.inputPlaceholder'),
+            submit: t('report.claims.submit'),
+            submitting: t('report.claims.submitting'),
+            loading: t('report.claims.loading'),
+            error: t('report.claims.error'),
+            empty: t('report.claims.empty'),
+            evidenceTitle: t('report.claims.evidence'),
+            withdraw: t('report.claims.withdraw'),
+            withdrawing: t('report.claims.withdrawing'),
+            verdict: {
+              supportable: t('report.claims.verdict.supportable'),
+              partial: t('report.claims.verdict.partial'),
+              no_trace: t('report.claims.verdict.no_trace'),
+              insufficient_data: t('report.claims.verdict.insufficient_data'),
+            },
+          }}
+        />
+      )
+    }
+
     <!-- 推荐岗位（第一档匹配接线）——仅求职者视角 -->
     {
       !isRecruiter && profile.skillTags.length > 0 && (
@@ -636,6 +670,38 @@ const {
             outcome: t('applications.outcome'),
             outcomeUnset: t('applications.outcome.unset'),
             outcomeLabels: applicationOutcomeLabels,
+          }}
+        />
+      )
+    }
+
+    <!-- 简历声明自检（C 端）：仅求职者本人（已认领）视角；把产品从"被核验"变"先自查"，
+         挂载判据与 API authorizeVerifier 的 isOwner 对齐（决策 #23 批次 2，design §7）。 -->
+    {
+      !isRecruiter && isProfileOwner && (
+        <ClaimVerifier
+          client:load
+          apiBase={apiBase}
+          profileId={profileId!}
+          labels={{
+            title: t('report.claims.self.title'),
+            hint: t('report.claims.self.hint'),
+            inputLabel: t('report.claims.inputLabel'),
+            inputPlaceholder: t('report.claims.inputPlaceholder'),
+            submit: t('report.claims.submit'),
+            submitting: t('report.claims.submitting'),
+            loading: t('report.claims.loading'),
+            error: t('report.claims.error'),
+            empty: t('report.claims.empty'),
+            evidenceTitle: t('report.claims.evidence'),
+            withdraw: t('report.claims.withdraw'),
+            withdrawing: t('report.claims.withdrawing'),
+            verdict: {
+              supportable: t('report.claims.verdict.supportable'),
+              partial: t('report.claims.verdict.partial'),
+              no_trace: t('report.claims.verdict.no_trace'),
+              insufficient_data: t('report.claims.verdict.insufficient_data'),
+            },
           }}
         />
       )

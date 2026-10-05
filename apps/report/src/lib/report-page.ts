@@ -52,9 +52,11 @@ export type ReportPageData =
       pathname: string;
       recruiterUrl: string;
       candidateUrl: string;
-      canViewGated: boolean;
-      canUseApplications: boolean;
-      loginPlatform: 'github' | 'gitee';
+  canViewGated: boolean;
+  canUseApplications: boolean;
+  /** 求职者本人（已认领且登录者为本人；融合画像按 login 匹配），用于挂载 C 端自检入口 */
+  isProfileOwner: boolean;
+  loginPlatform: 'github' | 'gitee';
       loginHref: string;
       gateLoginLabel: string;
       gateEvidenceBody: string;
@@ -145,6 +147,15 @@ export async function loadReportPageData(input: ReportPageInput): Promise<Report
   const canViewGated = canViewGatedContent(viewer);
   // 投递管道隐私（#17-F11）：画像一经认领即收归本人，判据与 API requireProfileOwner 一致
   const canUseApplications = canViewApplications(viewer, profileRecord);
+  // 求职者本人判定（声明核验 C 端自检入口），与 API authorizeVerifier 的 isOwner 同口径：
+  // 画像必须已认领；单源要求 platform+login 一致，融合画像（'all'）按 login 匹配。
+  const isProfileOwner =
+    profileRecord.subjectClaimed &&
+    viewer.kind === 'user' &&
+    (profileRecord.subjectPlatform === 'all'
+      ? viewer.login === profileRecord.subjectLogin
+      : viewer.platform === profileRecord.subjectPlatform &&
+        viewer.login === profileRecord.subjectLogin);
   // 登录后回跳当前页（含 ?view=recruiter）；return_to 为同源相对路径，后端再做一次白名单校验。
   // 登录墙按画像主体平台选登录方式：Gitee 画像引导 Gitee 登录，其余（含双源融合，主源 GitHub）走 GitHub。
   const loginPlatform: 'github' | 'gitee' = profile.subject.platform === 'gitee' ? 'gitee' : 'github';
@@ -225,6 +236,7 @@ export async function loadReportPageData(input: ReportPageInput): Promise<Report
     candidateUrl,
     canViewGated,
     canUseApplications,
+    isProfileOwner,
     loginPlatform,
     loginHref,
     gateLoginLabel,
