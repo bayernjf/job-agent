@@ -10,6 +10,7 @@ import { SqliteJobPostingsRepository } from './sqlite/job-postings-repo.js';
 import { SqliteDemoSessionsRepository } from './sqlite/demo-sessions-repo.js';
 import { SqliteApplicationsRepository } from './sqlite/applications-repo.js';
 import { SqliteInterviewsRepository } from './sqlite/interviews-repo.js';
+import { SqliteClaimVerificationsRepository } from './sqlite/claim-verifications-repo.js';
 import { SqliteAccountsRepository } from './sqlite/accounts-repo.js';
 import { SqliteAuthSessionsRepository } from './sqlite/auth-sessions-repo.js';
 import { SqliteProfileRemovalRequestsRepository } from './sqlite/profile-removal-requests-repo.js';
@@ -31,6 +32,7 @@ import { PgJobPostingsRepository } from './postgres/job-postings-repo.js';
 import { PgDemoSessionsRepository } from './postgres/demo-sessions-repo.js';
 import { PgApplicationsRepository } from './postgres/applications-repo.js';
 import { PgInterviewsRepository } from './postgres/interviews-repo.js';
+import { PgClaimVerificationsRepository } from './postgres/claim-verifications-repo.js';
 import { PgAccountsRepository } from './postgres/accounts-repo.js';
 import { PgAuthSessionsRepository } from './postgres/auth-sessions-repo.js';
 import { PgProfileRemovalRequestsRepository } from './postgres/profile-removal-requests-repo.js';
@@ -90,6 +92,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       demoSessions: new PgDemoSessionsRepository(db),
       applications: new PgApplicationsRepository(db),
       interviews: new PgInterviewsRepository(db),
+      claimVerifications: new PgClaimVerificationsRepository(db),
       accounts: new PgAccountsRepository(db),
       authSessions: new PgAuthSessionsRepository(db),
       profileRemovalRequests: new PgProfileRemovalRequestsRepository(db),
@@ -127,6 +130,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     demoSessions: new SqliteDemoSessionsRepository(db),
     applications: new SqliteApplicationsRepository(db),
     interviews: new SqliteInterviewsRepository(db),
+    claimVerifications: new SqliteClaimVerificationsRepository(db),
     accounts: new SqliteAccountsRepository(db),
     authSessions: new SqliteAuthSessionsRepository(db),
     profileRemovalRequests: new SqliteProfileRemovalRequestsRepository(db),

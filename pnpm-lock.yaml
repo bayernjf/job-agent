@@ -337,6 +337,9 @@ importers:
 
   packages/storage:
     dependencies:
+      '@jobagent/claim-core':
+        specifier: workspace:*
+        version: link:../claim-core
       '@jobagent/shared':
         specifier: workspace:*
         version: link:../shared

@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jobagent/claim-core": "workspace:*",
     "@jobagent/shared": "workspace:*",
     "better-sqlite3": "^12.0.0",
     "drizzle-orm": "^0.45.2",

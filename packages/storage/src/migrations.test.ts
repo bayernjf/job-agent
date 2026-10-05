@@ -453,6 +453,18 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 029（claim_verifications 整表，决策 #23 逐条声明核验）
+    const cvTablesBefore29 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(cvTablesBefore29.map((t) => t.name)).toContain('claim_verifications');
+    const result29 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result29.version).toBe('029');
+    const cvTablesAfter29 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(cvTablesAfter29.map((t) => t.name)).not.toContain('claim_verifications');
+
     // 回滚 028（applications 去掉 outcome_feedback 两列，表本身仍在）
     const appOutcomeColsBefore28 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
     expect(appOutcomeColsBefore28.map((c) => c.name)).toContain('outcome_feedback');

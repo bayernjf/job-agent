@@ -5,6 +5,7 @@ import {
   integer,
   pgTable,
   primaryKey,
+  real,
   text,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -625,3 +626,38 @@ export const apiTokens = pgTable(
 
 export type ApiTokenInsert = typeof apiTokens.$inferInsert;
 export type ApiTokenSelect = typeof apiTokens.$inferSelect;
+
+/**
+ * claim_verifications（迁移 029，决策 #23）：一条"简历声明"的核验结论。
+ * 与 profiles 无外键、无级联——这一层只读画像、绝不回写，故刻意不建立引用约束。
+ */
+export const claimVerifications = pgTable(
+  'claim_verifications',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id'),
+    subjectPlatform: text('subject_platform').notNull(),
+    subjectLogin: text('subject_login').notNull(),
+    claimText: text('claim_text').notNull(),
+    claimSource: text('claim_source').notNull().default('manual'),
+    claimRef: text('claim_ref'),
+    verdict: text('verdict').notNull(),
+    matchedEvidenceRefs: text('matched_evidence_refs').notNull(),
+    confidence: real('confidence'),
+    verifierAccountId: text('verifier_account_id'),
+    ruleVersion: text('rule_version').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_cv_profile').on(table.profileId, table.createdAt),
+    index('idx_cv_subject').on(table.subjectPlatform, table.subjectLogin),
+  ],
+);
+
+export type ClaimVerificationInsert = typeof claimVerifications.$inferInsert;
+export type ClaimVerificationSelect = typeof claimVerifications.$inferSelect;

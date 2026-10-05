@@ -178,3 +178,15 @@ export type { RawUserLlmConfigRow } from './user-llm-config.js';
 export { toStoredUserLlmConfig } from './user-llm-config.js';
 
 export type { StoredUserLlmConfig } from '@jobagent/shared';
+
+export type {
+  StoredClaimVerification,
+  NewClaimVerification,
+  RawClaimVerificationRow,
+  ClaimSource,
+  ClaimVerdict,
+} from './claim-verification.js';
+export {
+  toStoredClaimVerification,
+  newClaimVerificationFromAssessment,
+} from './claim-verification.js';

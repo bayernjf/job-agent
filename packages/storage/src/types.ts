@@ -6,6 +6,7 @@ import type {
   IDemoSessionsRepository,
   IEvidenceRepository,
   IInterviewsRepository,
+  IClaimVerificationsRepository,
   IJobPostingsRepository,
   IJobPreferencesRepository,
   IJobRunEventsRepository,
@@ -49,6 +50,8 @@ export interface StorageContext {
   applications: IApplicationsRepository;
   /** 招聘方面试计划（handoff item45，迁移 012，行级归属创建账号） */
   interviews: IInterviewsRepository;
+  /** 简历声明逐条核验结论（决策 #23，迁移 029；只读画像、绝不回写） */
+  claimVerifications: IClaimVerificationsRepository;
   /** OAuth 登录账号（决策 #1-A/#6-A，迁移 010） */
   accounts: IAccountsRepository;
   /** 登录用户不透明会话（迁移 011） */
