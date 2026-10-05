@@ -1,6 +1,6 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + OpenAI 兼容可选润色）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸、求职 Agent 阶段 1「求职工作台」（PRD F12）均已落地**；真实性规则 0.8（0.1→0.8 各轮双向校准与真实双源回归见 handoff item5/25/26/66）。**形态 C 生产已于 2026-09-30 上线（`https://app.job-agent.bayjf.com`，Vercel + Supabase），剩 J 阶段人工 smoke（异议邮箱、生产 `LLM_*`、Supabase 备份）与 cron/轮询确认**，其余推进项卡外部条件（CWS 上架、Workday 直渲染租户端到端、扩展真人试用、真实 Gitee OAuth 首次冒烟，见 handoff 与 `docs/部署前就绪确认单-20260924.md`）。pnpm workspaces 全仓（17 workspace：根 + 10 packages + 6 apps）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、五源岗位库与技能匹配、求职工作台均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + LLM 受约束润色/求职信）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸、简历声明逐条核验（决策 #23）、求职 Agent 阶段 1「求职工作台」与阶段 2「半自动投递」均已落地**；真实性规则 0.8（0.1→0.8 各轮双向校准与真实双源回归见 handoff item5/25/26/66）。**形态 C 生产已于 2026-09-30 上线（`https://app.job-agent.bayjf.com`，Vercel + Supabase），J1–J5 人工 smoke 与 cron/轮询已于 2026-10-02 实测通过（GitHub 轮询 2026-10-06 起每 15 分钟一档），剩 J6 异议邮箱、生产 `LLM_*`、B4 Supabase 备份、CWS 上架（均卡用户/外部条件）**，其余推进项卡外部条件（Workday 直渲染租户端到端、扩展真人试用、真实 Gitee OAuth 首次冒烟，见 handoff 与 `docs/部署前就绪确认单-20260924.md`）。pnpm workspaces 全仓（18 workspace：根 + 11 packages + 6 apps）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、六源岗位库与技能匹配、求职工作台均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
 
 ## 从哪读起
 
@@ -12,22 +12,23 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 
 - **M1 完成**：W1 持久化层（SQLite/Postgres 双方言）→ W2 采集+分析内核+CLI → W3 服务化 → W4 报告+分享 → 端到端联调 + 真实性三轮校准（26 账号 0 误报/0 漏报）。MVP 最小闭环：输入 GitHub 或 Gitee 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
 - **P1 稳定期**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过（Greenhouse + Lever 真实写入），summary→自定义问题映射、中英 i18n + 共享设计 token、岗位匹配面板、浏览器级 E2E、本地档案跨端自动同步（chrome.storage + externally_connectable）均已落地；[试用安装指南](apps/extension/INSTALL.md) 已就绪，待真实用户装扩展试用与 Workday 直渲染租户端到端。
-- **P2 完成**：五源岗位库（RemoteOK/Remotive/Greenhouse/Lever/HN）入库与增量同步、纯函数 `matchJobs` 技能匹配、API 岗位搜索/匹配端点、画像↔岗位推荐端到端接线（报告页推荐岛 + 扩展匹配面板，可解释 fieldScores/skillReasons）均落地。
+- **P2 完成**：六源岗位库（RemoteOK/Remotive/WeWorkRemotely/Greenhouse/Lever 日更 + HN Who-is-hiring 月更）入库与增量同步、纯函数 `matchJobs` 技能匹配、API 岗位搜索/匹配端点、画像↔岗位推荐端到端接线（报告页推荐岛 + 扩展匹配面板，可解释 fieldScores/skillReasons）均落地。
 - **Gitee 第二证据源完成**：`packages/gitee-source`（v5 REST-only）+ CLI/API/Worker/报告页/扩展全链路平台切换，海内外同步；双源在线融合画像（`platform=all`，镜像去重 + 跨源同帖去重 7 天窗 + 融合作业 demo 配额扣 2）与 FusionReport 去重统计已落地。
-- **演示模式完成**：免注册「试用演示」以 HttpOnly Cookie 临时身份进入真实产品，三态身份 + 会话/IP/Worker 三道配额闸 + 三态预置示例，代码全落地；配额已于 2026-09-21 决策：每会话 3 次新分析（融合扣 2）、有效期 24h；部署形态 C 代码就绪、待真实部署。
+- **演示模式完成**：免注册「试用演示」以 HttpOnly Cookie 临时身份进入真实产品，三态身份 + 会话/IP/Worker 三道配额闸 + 三态预置示例，代码全落地；配额已于 2026-09-21 决策：每会话 3 次新分析（融合扣 2）、有效期 24h；已随形态 C 上线（2026-09-30），J4 三道闸生产实测通过（2026-10-02）。
 - **岗位定向简历完成（P-R1/P-R2/P-R3 可闭环子项）**：在画像范围内按岗位生成匹配度高的简历（no-fabrication，每条断言挂证据、只重排不造事实），CLI build/batch + API + 报告页 ResumeBuilder + 扩展深链 + OpenAI 兼容可选润色（默认关闭）。
-- **LLM 模型供给双轨完成（2026-10-03，决策 #21，handoff item105）**：内置模型＝管理员在 `/admin` 面板管理目录（凭证只在 env `LLM_*`）；BYOK＝登录用户工作台「模型设置」自由配 OpenAI 兼容端点（apiKey 服务端 AES-256-GCM 加密，`LLM_ENC_KEY`）；请求路由 BYOK 优先 → 内置回落。生产激活＝配 `LLM_*`/`LLM_ENC_KEY`/`ADMIN_ACCOUNT_LOGINS` env，详见 docs/design-llm-model-provisioning-20261003.md。
+- **LLM 模型供给双轨完成（2026-10-03，决策 #21，handoff item105）**：内置模型＝管理员在 `/admin` 面板管理目录（凭证只在 env `LLM_*`）；BYOK＝登录用户工作台「模型设置」自由配 OpenAI 兼容端点（apiKey 服务端 AES-256-GCM 加密，`LLM_ENC_KEY`）；请求路由 BYOK 优先 → 内置回落。生产已配非密钥项 `LLM_ENC_KEY` + `ADMIN_ACCOUNT_LOGINS`（2026-10-06），剩 `LLM_*` 是否进生产待拍板，详见 docs/design-llm-model-provisioning-20261003.md。
 - **招聘痛点解决方案批次 1+2 完成**：企业核验视图（`?view=recruiter`）、面试准备包导出、画像库人才检索（`/candidates`）、企业筛选工作台（`/recruit`）、投递记录追踪（applications）均已落地；批次 3 依赖外部条件。
-- **求职 Agent 阶段 1「求职工作台」落地（2026-10-03，PRD F12 / handoff item94）**：把画像与岗位池接成「找 → 评 → 改 → 投（人工）」——多套**求职偏好**（岗位关键词/技能/地区/远程/薪资/公司黑白名单/质量闸/每源每日上限）→ 新建任务即扫岗位池 → **可解释匹配报告**（命中技能与字段分值、岗位提到而画像无证据的缺口、补强建议）→ 岗位定向简历 + 规则版求职信 → **待投清单**（确认 / 拒绝 / 标记已投）。**只准备不投递**：无 ATS 自动填充、无自动提交；标记已投才写一条 `origin='agent'` 投递记录并转入既有跟踪管道。页面 `/[locale]/workbench`，契约见 [docs/API.md](docs/API.md) §3.8，设计与实施差异见 [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md)；阶段 2/3 的边界已由决策 #20 拍板（2026-10-03：**扩展自动填充、填完等用户点提交**／快照暂不落库／复盘人工确认且样本 ≥20／对招聘方披露「AI 辅助投递」），待开工。
+- **求职 Agent 阶段 1「求职工作台」落地（2026-10-03，PRD F12 / handoff item94）**：把画像与岗位池接成「找 → 评 → 改 → 投（人工）」——多套**求职偏好**（岗位关键词/技能/地区/远程/薪资/公司黑白名单/质量闸/每源每日上限）→ 新建任务即扫岗位池 → **可解释匹配报告**（命中技能与字段分值、岗位提到而画像无证据的缺口、补强建议）→ 岗位定向简历 + 规则版求职信 → **待投清单**（确认 / 拒绝 / 标记已投）。页面 `/[locale]/workbench`，契约见 [docs/API.md](docs/API.md) §3.8，设计与实施差异见 [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md)；阶段 2/3 的边界已由决策 #20 拍板（2026-10-03：**扩展自动填充、填完等用户点提交**／快照暂不落库／复盘人工确认且样本 ≥20／对招聘方披露「AI 辅助投递」）。
+- **求职 Agent 阶段 2「半自动投递」落地（2026-10-04，handoff item112）**：扩展登录态（决策 #22：工作台签发一次性授权码 → 扩展兑换长期 Bearer token）→ 扩展在真实 Greenhouse/Lever ATS 页**一键填充**简历与求职信（cover_letter 优先；**填完停手，绝不自动点提交**——决策 #20 硬边界）→ 用户本人提交后点「我已提交」回执转 tracking → 投递结果回写（`outcomeFeedback`，追踪下拉 / `/my` 提示 / 票据端点三口同一值域）；求职信 LLM 润色 fail-closed 回落规则版、每封末尾固定 AI 辅助披露；限频/质量闸复核；真全栈 E2E（`pnpm e2e:agent`）钉住全链。阶段 3「全自动点提交」明确不做。
 - 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
 
 ## 文档导航
 
 | 文档 | 作用 |
 | --- | --- |
-| [docs/PRD.md](docs/PRD.md) | 产品需求：范围、F1–F12、数据契约、指标、风险 |
+| [docs/PRD.md](docs/PRD.md) | 产品需求：范围、F1–F13、数据契约、指标、风险 |
 | [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) | 技术栈、架构、工程结构与 M1 落地顺序 |
-| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#8 已决策、#9–#13 延后、#14–#19 已决策、**#20 求职 Agent 阶段 2/3 边界已决策 2026-10-03**） |
+| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#8 已决策、#9–#13 延后、#14–#23 已决策——#21 LLM 供给 2026-10-03、#22 扩展登录态 2026-10-04、#23 简历声明核验 2026-10-05） |
 | [docs/讨论记录-01-切入口与MVP收敛-20260910.md](docs/讨论记录-01-切入口与MVP收敛-20260910.md) | 关键产品判断的讨论过程与依据 |
 | [docs/讨论记录-02-投递功能与竞品分析-20260911.md](docs/讨论记录-02-投递功能与竞品分析-20260911.md) | 投递方向、四种技术路径、职位聚合/扩展可行性 |
 | [docs/产品构想-以GitHub为桥梁的招聘系统.md](docs/产品构想-以GitHub为桥梁的招聘系统.md) | 最初的产品构想与市场背景 |
