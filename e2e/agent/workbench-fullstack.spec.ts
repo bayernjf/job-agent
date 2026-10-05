@@ -11,26 +11,11 @@ import { statSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import {
   FIXTURE_PROFILE_ID,
-  FIXTURE_SESSION_TOKEN,
   default as resetAgentFixtures,
 } from './global-setup';
+import { API, authHeaders, login } from './helpers';
 
-const API = 'http://127.0.0.1:3101';
 const WORKBENCH = '/en/workbench';
-const authHeaders = { Cookie: `jobagent_session=${FIXTURE_SESSION_TOKEN}` };
-
-async function login(page: Page): Promise<void> {
-  await page.context().addCookies([
-    {
-      name: 'jobagent_session',
-      value: FIXTURE_SESSION_TOKEN,
-      domain: '127.0.0.1',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Lax',
-    },
-  ]);
-}
 
 /**
  * 打开工作台并**等水合完成**。
