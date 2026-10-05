@@ -470,6 +470,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
           <label>
             <span>{labels.manualTitle}</span>
             <input
+              data-testid="manual-job-title"
               value={manual.title}
               onChange={(e) => setManual((m) => ({ ...m, title: e.target.value }))}
               placeholder={labels.manualTitlePlaceholder}
@@ -478,6 +479,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
           <label>
             <span>{labels.manualCompany}</span>
             <input
+              data-testid="manual-job-company"
               value={manual.company}
               onChange={(e) => setManual((m) => ({ ...m, company: e.target.value }))}
               placeholder={labels.manualCompanyPlaceholder}
@@ -487,6 +489,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
         <label>
           <span>{labels.manualJd}</span>
           <textarea
+            data-testid="manual-job-description"
             value={manual.description}
             onChange={(e) => setManual((m) => ({ ...m, description: e.target.value }))}
             rows={6}
@@ -496,6 +499,7 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
         <button
           type="button"
           className="ja-btn ja-btn--ghost"
+          data-testid="manual-generate"
           disabled={!manual.title.trim() || !manual.description.trim()}
           onClick={() =>
             void build(
