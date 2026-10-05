@@ -359,6 +359,7 @@
   "recruit.resultsCount": "找到 {total} 位候选人",
   "recruit.viewReport": "查看核验报告",
   "recruit.skillCount": "{count} 项技能",
+  "recruit.verifiedClaims": "已核验声明 {count} 条",
   "recruit.matchedSkills": "命中",
   "recruit.updatedAt": "更新于 {date}",
   "recruit.confidence": "置信度",

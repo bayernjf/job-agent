@@ -359,6 +359,7 @@
   "recruit.resultsCount": "{total} candidates found",
   "recruit.viewReport": "View verification report",
   "recruit.skillCount": "{count} skills",
+  "recruit.verifiedClaims": "{count} claims verified",
   "recruit.matchedSkills": "Matched",
   "recruit.updatedAt": "Updated {date}",
   "recruit.confidence": "Confidence",
