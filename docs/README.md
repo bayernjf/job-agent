@@ -30,6 +30,7 @@
 | 写提交信息 / 走分支与 PR 流程 | [../git-commit-message.md](../git-commit-message.md) + [../PULL_REQUEST_WORKFLOW.md](../PULL_REQUEST_WORKFLOW.md) |
 | 处理 CI 密钥扫描（gitleaks）误报 / 增删 allowlist | [../AGENTS.md](../AGENTS.md)（工程化门禁）+ [../.gitleaks.toml](../.gitleaks.toml) |
 | 部署 / 上线（形态 A/B 反代、生产 env、自动迁移、jobs/demo/auth 定时任务、上线 smoke） | [deployment-runbook-20260920.md](deployment-runbook-20260920.md) ★（形态 C 与 demo 配额已决策，**生产已上线 2026-09-30**；剩 J 阶段人工 smoke 收尾（J6/J7）与 B4 备份，见 handoff 当前状态；cron/轮询通道已实查确认生效 2026-10-02） |
+| 分析任务排队太久 / 想知道生产里是谁在按分钟叫醒 `process-job` | [design-cron-scheduler-20261006.md](design-cron-scheduler-20261006.md) ★（**待拍板**：GitHub Actions `schedule` 实测连续数小时不触发，比较「维持现状 / 升 Vercel Pro / Cloudflare Worker Cron」三条路的成本、可靠性与免费额度） |
 | 真正动手上线形态 C（照勾的分阶段操作序列：Supabase→密钥→OAuth→Vercel→DNS→Actions→预热→落地页→smoke） | [部署执行单-形态C-20260921.md](部署执行单-形态C-20260921.md) ★（配 `tools/gen-deploy-secrets.sh`、`tools/smoke-deploy.sh`、`tools/backup-db.sh`；控制台步骤只能本人操作；**生产已上线 2026-09-30；J1/J2/J3/J4/J5 已实测通过 2026-10-02，剩 J6 异议 mailto、J7 生产 `LLM_*` + B4 备份**） |
 | 给数据库做本地备份（B4：Supabase Free 无平台备份） | `tools/backup-db.sh`（pg_dump 带时间戳 → `backups/`，保留最新 N 份；DATABASE_URL 需 5432 session 串，6543 事务池化串会被警告） |
 | 上线前最后核对一遍门禁实测结果（基线/PG 方言/Vercel 产物/smoke/审计/密钥扫描/CWS 素材） | [部署前就绪确认单-20260924.md](部署前就绪确认单-20260924.md) ★（A1–A7 实测记录与两个 smoke 发现的处置；**生产已上线后转为历史门禁基线**） |
