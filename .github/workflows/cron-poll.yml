@@ -3,13 +3,17 @@ name: Cron poll
 # Analysis-job consumption for form C while the deployment stays on the
 # Vercel Hobby plan. Vercel Hobby allows only one cron invocation per day, so
 # the per-minute `process-job` cron cannot be deployed (it fails at deploy
-# time). This workflow polls the same internal endpoint every hour instead.
+# time). This workflow polls the same internal endpoint every 15 minutes.
 #
 # Trade-off (recorded in docs/deployment-runbook-20260920.md §4-C-5 and
 # docs/部署执行单-形态C-20260921.md E1): queued analyses are consumed within
-# ≤1 h instead of ≤1 min. Once the project is upgraded to Vercel Pro, restore
-# the per-minute cron in apps/report/vercel.json and this poller can be
-# removed or kept as a fallback.
+# ≤15 min instead of ≤1 min. GitHub drops scheduled runs under load — at the
+# earlier hourly cadence the measured gap was 4–7.5 h (3–4 runs/day), which
+# made a queued analysis wait for hours. Raising the cadence to every 15
+# minutes (2026-10-06) is free on a public repo and shrinks that worst case;
+# it does not make GitHub's scheduler reliable. Upgrading to Vercel Pro and
+# restoring the per-minute cron in apps/report/vercel.json remains the real
+# fix, after which this poller can be removed or kept as a fallback.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   CRON_SECRET     The production CRON_SECRET (same value as the Vercel env).
@@ -27,8 +31,11 @@ name: Cron poll
 
 on:
   schedule:
-    # Hourly, UTC. Off the top of the hour to spread load.
-    - cron: '23 * * * *'
+    # Every 15 minutes, UTC. GitHub's scheduler is best-effort: runs can be
+    # delayed or dropped under load, but more chances per day keep the
+    # worst-case wait for a queued analysis far below the 4–7.5 h measured
+    # at the earlier hourly cadence.
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
