@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, ilike, or, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { tsGte, tsLt } from './time-text.js';
 import {
+  dedupePostingsById,
   jobPostingSignature,
   makeJobPostingId,
   toStoredJobPosting,
@@ -46,7 +47,8 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
 
   async upsertBatch(postings: NewJobPosting[], now: string): Promise<UpsertCounts> {
     const counts: UpsertCounts = { inserted: 0, updated: 0, unchanged: 0 };
-    if (postings.length === 0) return counts;
+    const unique = dedupePostingsById(postings);
+    if (unique.length === 0) return counts;
 
     // 批量实现（2026-09-27 G2 修复）：原逐条 SELECT+INSERT/UPDATE 在远程 PG（Supabase 东京）
     // 下每行至少 2 次往返，greenhouse 一批 7833 行 ≈ 1.5 万+ 条 SQL 可吃满 20min 同步保险丝。
@@ -55,7 +57,7 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     // 批量刷新 lastSeenAt/updatedAt（1 条）。总 SQL ≈ 4 + 2×批数。
     // 代价：不再单事务原子；失败会留下部分已写行——upsert 幂等、syncOnce 失败源被隔离，
     // 重跑补齐，符合"部分成功"语义。
-    const rows = postings.map((p) => {
+    const rows = unique.map((p) => {
       const id = makeJobPostingId(p.source, p.sourceUrl);
       return {
         id,
