@@ -61,14 +61,14 @@ AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证�
 | [docs/评审-MVP-20260922.md](docs/评审-MVP-20260922.md) | 上线就绪度评审：代码级 MVP 已达成，唯一硬阻塞 P0-3 生产部署（**生产已于 2026-09-30 上线，此单为历史基线**） |
 | [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md) | 求职 Agent 构想：六步闭环、人机确认闸、JobRun 状态机、三阶段路径（**阶段 1 求职工作台已落地，§10 记实施差异**） |
 | [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
-
-> 上表是常用入口、非完整清单；**全部文档（含 2026-09-25 起的批次）以 [handoff.md](handoff.md) 的「Project documents」区为单一事实源**，场景导航见 [docs/README.md](docs/README.md)。
 | [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
 | [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md) | 数据库迁移规范（`db/migrations/NNN_*.sql`） |
 | [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md) | dev 直接提交 + `dev → main` PR 的交付流程 |
 | [git-commit-message.md](git-commit-message.md) | 原子提交与 Conventional Commits 规范 |
 | [handoff.md](handoff.md) | 项目交接主入口（当前状态 / 下一步 / 文档索引） |
+
+> 上表是常用入口、非完整清单；**全部文档（含 2026-09-25 起的批次）以 [handoff.md](handoff.md) 的「Project documents」区为单一事实源**，场景导航见 [docs/README.md](docs/README.md)。
 
 ## 技术栈（选定方向，详见技术选型文档）
 
