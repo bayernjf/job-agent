@@ -112,6 +112,24 @@ describe('SqliteJobRunsRepository', () => {
     close();
   });
 
+  it('markViewed writes last_viewed_at without touching status or updated_at', async () => {
+    const { repo, close } = freshRepo();
+    await repo.insert(run({ id: 'run-1', accountId: 'acc-1' }));
+    await repo.compareAndSetStatus('run-1', 'created', {
+      status: 'awaiting_approval',
+      updatedAt: T1,
+    });
+
+    const viewed = await repo.markViewed('run-1', T2);
+    expect(viewed!.lastViewedAt).toBe(T2);
+    // 查看不是状态迁移：状态与 updated_at 都不变，调度排序不受影响
+    expect(viewed!.status).toBe('awaiting_approval');
+    expect(viewed!.updatedAt).toBe(T1);
+
+    expect(await repo.markViewed('run-missing', T2)).toBeUndefined();
+    close();
+  });
+
   it('listByStatuses filters, orders NULL last_scan_at first and honours limit', async () => {
     const { repo, close } = freshRepo();
     await repo.insert(run({ id: 'run-a', accountId: 'acc-1' }));

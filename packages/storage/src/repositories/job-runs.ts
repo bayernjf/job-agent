@@ -32,6 +32,12 @@ export interface IJobRunsRepository {
   /** 无条件推进状态（仅用于不需要并发保护的系统内部动作）；不存在返回 undefined */
   setStatus(id: string, patch: JobRunStatusPatch): Promise<StoredJobRun | undefined>;
   /**
+   * 记录拥有者查看：只写 last_viewed_at，**不**推进状态、**不**碰 updated_at
+   * （查看不是状态迁移，也不能让调度队列因 updated_at 抖动而乱序）。
+   * 返回更新后的行；id 不存在返回 undefined。
+   */
+  markViewed(id: string, viewedAt: string): Promise<StoredJobRun | undefined>;
+  /**
    * 调度队列：按状态取最久没被扫描的 run（`last_scan_at` 升序、NULL 最前，
    * 同刻再按 created_at 升序），默认最多 20 条。NULL 最前保证"从未扫描过"的
    * 新 run 先被认领，而不是被已经扫过的行永久压在队尾。

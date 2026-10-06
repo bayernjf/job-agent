@@ -76,6 +76,17 @@ export class PgJobRunsRepository implements IJobRunsRepository {
     return this.getById(id);
   }
 
+  async markViewed(id: string, viewedAt: string): Promise<StoredJobRun | undefined> {
+    // 只写 last_viewed_at：不推进状态、不碰 updated_at（查看不影响调度排序）
+    const rows = await this.db
+      .update(t)
+      .set({ lastViewedAt: viewedAt })
+      .where(eq(t.id, id))
+      .returning({ id: t.id });
+    if (rows.length === 0) return undefined;
+    return this.getById(id);
+  }
+
   async listByStatuses(
     statuses: readonly JobRunStatus[],
     limit = 20,
