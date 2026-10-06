@@ -460,6 +460,7 @@
   "workbench.runs.scanResult": "本轮扫描：候选 {candidates} 个，新建待投 {intentsCreated} 个（岗位池 {poolSize} 条）",
   "workbench.runs.timeline": "事件流（可回放审计）",
   "workbench.runs.timelineEmpty": "暂无状态迁移事件。",
+  "workbench.runs.newCandidates": "有新候选待确认",
   "workbench.runs.from": "从",
   "workbench.runs.actorLabel": "动作方",
   "workbench.pending.title": "待投清单",

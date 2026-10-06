@@ -1658,6 +1658,16 @@ h4 { font-size: var(--ja-text-lg); }
   color: var(--ja-color-accent);
 }
 
+/* 未读新候选徽标：只在 awaiting_approval 且拥有者未查看当前批次时出现 */
+.agent-unseen-badge {
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-auth-mixed-bg);
+  color: var(--ja-color-warning);
+  font-size: var(--ja-text-xs);
+  font-weight: 600;
+}
+
 .agent-status--failed {
   background: var(--ja-color-danger-bg);
   color: var(--ja-color-danger-fg);
