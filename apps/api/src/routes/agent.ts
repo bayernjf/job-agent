@@ -249,6 +249,17 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     return c.json(toRunViewData(await loadRunView(repos, run)));
   });
 
+  // POST /agent/runs/:id/view：拥有者查看后清未读（只写 last_viewed_at，不推进状态）
+  app.post('/agent/runs/:id/view', async (c) => {
+    const run = await requireOwnedRun(c, c.req.param('id') ?? '');
+    if (run instanceof Response) return run;
+    const viewed = await repos.jobRuns.markViewed(run.id, now());
+    if (!viewed) {
+      return c.json({ error: 'job run not found', code: AGENT_ERROR_CODES.runNotFound }, 404);
+    }
+    return c.json({ run: toRunView(viewed) });
+  });
+
   // POST /agent/runs/:id/scan：手动推进一轮（人在等工作台里不想等 cron 时用）
   app.post('/agent/runs/:id/scan', async (c) => {
     const run = await requireOwnedRun(c, c.req.param('id') ?? '');

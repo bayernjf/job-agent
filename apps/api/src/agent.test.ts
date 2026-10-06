@@ -211,6 +211,7 @@ describe('agent workbench — auth and ownership', () => {
       ['POST', '/agent/runs'],
       ['GET', '/agent/runs/run-x'],
       ['POST', '/agent/runs/run-x/scan'],
+      ['POST', '/agent/runs/run-x/view'],
       ['POST', '/agent/runs/run-x/approve'],
       ['GET', '/agent/runs/run-x/pending-approvals'],
       ['POST', '/agent/intents/intent-x/mark-submitted'],
@@ -678,6 +679,53 @@ describe('agent workbench — stage 1 loop', () => {
     // 取消后偏好不再被活跃任务占用 → 可以删除
     const deleted = await json(`/agent/preferences/${preference.preferenceId}`, { method: 'DELETE' });
     expect(deleted.status).toBe(200);
+  });
+
+  it('flags a fresh awaiting_approval run as unseen and clears it after the owner views it', async () => {
+    const { repos, json } = await harness();
+    await insertProfile(repos, 'p-1', ALICE.login);
+    await json('/profiles/p-1/claim', { method: 'POST' });
+    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    const prefRes = await json('/agent/preferences', {
+      method: 'POST',
+      body: JSON.stringify(PREFERENCE),
+    });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const createRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-1' }),
+    });
+    const created = (await createRes.json()) as { run: { runId: string } };
+
+    // 列表：刚扫出一批候选、从未查看 → 未读
+    const listBefore = await json('/agent/runs');
+    const listedBefore = (await listBefore.json()) as {
+      runs: Array<{ runId: string; hasUnseenApprovals?: boolean }>;
+    };
+    expect(listedBefore.runs.find((r) => r.runId === created.run.runId)!.hasUnseenApprovals).toBe(true);
+
+    // 显式已读：只写 last_viewed_at，不推进状态
+    const runId = created.run.runId;
+    const viewRes = await json(`/agent/runs/${runId}/view`, { method: 'POST' });
+    expect(viewRes.status).toBe(200);
+    const viewed = (await viewRes.json()) as {
+      run: { status: string; hasUnseenApprovals: boolean; lastViewedAt: string | null };
+    };
+    expect(viewed.run.status).toBe('awaiting_approval');
+    expect(viewed.run.hasUnseenApprovals).toBe(false);
+    expect(viewed.run.lastViewedAt).toBeTruthy();
+
+    // 再读列表：派生标记已消
+    const listAfter = await json('/agent/runs');
+    const listedAfter = (await listAfter.json()) as {
+      runs: Array<{ runId: string; hasUnseenApprovals?: boolean }>;
+    };
+    expect(listedAfter.runs.find((r) => r.runId === runId)!.hasUnseenApprovals).toBe(false);
+
+    // 别人的 run 看不到：404（归属闸）
+    const other = await harness();
+    const forOwn = await other.json(`/agent/runs/${runId}/view`, { method: 'POST' });
+    expect(forOwn.status).toBe(404);
   });
 });
 
