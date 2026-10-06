@@ -128,6 +128,7 @@ export interface Labels {
     scanResult: string;
     timeline: string;
     timelineEmpty: string;
+    newCandidates: string;
     from: string;
     actorLabel: string;
   };
@@ -421,11 +422,42 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
 
   const seqRef = useRef(0);
 
-  const selectRun = useCallback((runId: string | null) => {
-    setSelectedRunId(runId);
-    setScanNote(null);
-    setApprovedNote(null);
-  }, []);
+  /**
+   * 清未读：拥有者打开一个有待确认新候选的 run 时，调显式已读端点并就地把
+   * runs 列表里的派生标记消掉（不重拉列表；下次 GET /agent/runs 仍会算出 false）。
+   * 失败静默——未读只是提醒，绝不能因此挡住用户看待投清单。
+   */
+  const markRunViewed = useCallback(
+    async (runId: string) => {
+      try {
+        const res = await fetch(
+          `${apiBase}/agent/runs/${encodeURIComponent(runId)}/view`,
+          { method: 'POST', credentials: 'include' },
+        );
+        if (!res.ok) return;
+        setRuns((prev) =>
+          prev.map((r) => (r.runId === runId ? { ...r, hasUnseenApprovals: false } : r)),
+        );
+      } catch {
+        // 静默：未读标记失败不影响主流程
+      }
+    },
+    [apiBase],
+  );
+
+  const selectRun = useCallback(
+    (runId: string | null) => {
+      setSelectedRunId(runId);
+      setScanNote(null);
+      setApprovedNote(null);
+      // 用户主动点开一个带着未读新候选的任务才算「看过」；首屏自动展开不清徽标。
+      // 静默、不阻塞详情加载，失败也不影响主流程。
+      if (runId && runs.find((r) => r.runId === runId)?.hasUnseenApprovals) {
+        void markRunViewed(runId);
+      }
+    },
+    [runs, markRunViewed],
+  );
 
   /** 拉取单个 run 的视图（状态 + 事件流 + 全部票据）。 */
   const fetchRunView = useCallback(
@@ -1406,6 +1438,15 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
                   <span className={`agent-status agent-status--${run.status}`}>
                     {labels.statuses[run.status]}
                   </span>
+                  {run.hasUnseenApprovals && (
+                    <span
+                      className="agent-unseen-badge"
+                      data-testid="agent-run-unseen"
+                      role="status"
+                    >
+                      {labels.runs.newCandidates}
+                    </span>
+                  )}
                   <span className="ja-muted">
                     {fillTemplate(labels.runs.attempts, { count: run.attempts })}
                   </span>

@@ -11,7 +11,7 @@ import type {
   StoredJobRunEvent,
   StoredSubmitIntent,
 } from '@jobagent/storage';
-import { knownSources } from '@jobagent/agent-core';
+import { hasUnseenApprovals, knownSources } from '@jobagent/agent-core';
 import type { AgentRunViewData } from './agent-runner.js';
 
 /**
@@ -34,7 +34,7 @@ export function toPreferenceView(preference: StoredJobPreference): JobPreference
 
 export function toRunView(run: StoredJobRun): JobRun {
   const { id, ...rest } = run;
-  return { ...rest, runId: id };
+  return { ...rest, runId: id, hasUnseenApprovals: hasUnseenApprovals(run) };
 }
 
 export function toEventView(event: StoredJobRunEvent): JobRunEvent {

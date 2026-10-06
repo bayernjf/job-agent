@@ -448,6 +448,7 @@ export const jobRuns = pgTable(
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
     lastScanAt: text('last_scan_at'),
+    lastViewedAt: text('last_viewed_at'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),

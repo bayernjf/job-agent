@@ -453,6 +453,15 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 030（job_runs 去掉 last_viewed_at，表本身仍在）
+    const jrColsBefore30 = db.prepare('PRAGMA table_info(job_runs)').all() as Array<{ name: string }>;
+    expect(jrColsBefore30.map((c) => c.name)).toContain('last_viewed_at');
+    const result30 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result30.version).toBe('030');
+    const jrColsAfter30 = db.prepare('PRAGMA table_info(job_runs)').all() as Array<{ name: string }>;
+    expect(jrColsAfter30.map((c) => c.name)).not.toContain('last_viewed_at');
+    expect(jrColsAfter30.map((c) => c.name)).toContain('last_scan_at'); // 只丢列，不丢表
+
     // 回滚 029（claim_verifications 整表，决策 #23 逐条声明核验）
     const cvTablesBefore29 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")

@@ -1205,6 +1205,12 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 手动推进一轮（不等 cron）。终态返回 `409 AGENT_RUN_NOT_ACTIVE`；已是 `awaiting_approval` 时只回当前视图。响应同 `POST /agent/runs`（带 `scan`）。
 
+### `POST /agent/runs/:id/view`
+
+拥有者查看一个任务后清「未读新候选」标记：只写 `last_viewed_at`，**不**推进状态机、**不**改 `updated_at`（查看不影响调度排序）。`200`：`{ "run": <RunView> }`；不存在或非本人 `404 AGENT_RUN_NOT_FOUND`；未登录 `401`。
+
+未读口径（派生字段 `run.hasUnseenApprovals`，不入库）：仅当 `status='awaiting_approval'` 且 `lastViewedAt` 为空、或早于当前批次落定的 `updatedAt` 时为 `true`。cron 每 5 分钟扫到新候选会把任务推入 `awaiting_approval`，打开工作台看到未读徽标即表示有一批在等确认；`reject` 回 `watching` 后下一批重新进入闸口，标记会再次点亮。
+
 ### `POST /agent/runs/:id/cancel`
 
 用户中止（非终态都可），写 `cancel` 事件并落 `cancelled` 终态。`200`：任务视图。

@@ -29,6 +29,8 @@ export interface StoredJobRun {
   lastError: string | null;
   /** 上次扫描完成时间（UTC ISO8601）；null = 从未扫描（调度游标） */
   lastScanAt: string | null;
+  /** 拥有者上次查看该 run 的时间（UTC ISO8601）；null = 从未查看（未读批次信号） */
+  lastViewedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,6 +64,7 @@ export interface RawJobRunRow {
   attempts: number;
   lastError: string | null;
   lastScanAt: string | null;
+  lastViewedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,6 +83,7 @@ export function toStoredJobRun(row: RawJobRunRow): StoredJobRun {
     attempts: row.attempts,
     lastError: row.lastError ?? null,
     lastScanAt: row.lastScanAt ?? null,
+    lastViewedAt: row.lastViewedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

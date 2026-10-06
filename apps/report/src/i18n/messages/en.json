@@ -460,6 +460,7 @@
   "workbench.runs.scanResult": "This scan: {candidates} candidates, {intentsCreated} new intents (pool size {poolSize})",
   "workbench.runs.timeline": "Event timeline (replayable audit)",
   "workbench.runs.timelineEmpty": "No status transitions recorded yet.",
+  "workbench.runs.newCandidates": "New candidates to review",
   "workbench.runs.from": "from",
   "workbench.runs.actorLabel": "Actor",
   "workbench.pending.title": "Pending approvals",

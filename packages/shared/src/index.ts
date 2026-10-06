@@ -1653,8 +1653,11 @@ export const JobRunSchema = z.object({
   attempts: z.number().int().nonnegative(), // 本轮（watching→recommending）尝试次数
   lastError: z.string().nullable(), // 显式失败原因；无错误为 null
   lastScanAt: z.string().datetime().nullable(), // 上次扫描完成时间
+  lastViewedAt: z.string().datetime().nullable(), // 拥有者上次查看时间；null=从未查看
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+  // 投影派生（非存储列）：awaiting_approval 且自当前批次落定后未被拥有者查看
+  hasUnseenApprovals: z.boolean().optional(),
 });
 export type JobRun = z.infer<typeof JobRunSchema>;
 

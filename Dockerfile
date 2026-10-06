@@ -30,6 +30,7 @@ COPY apps/cli/package.json apps/cli/
 COPY apps/report/package.json apps/report/
 COPY apps/extension/package.json apps/extension/
 COPY apps/mcp/package.json apps/mcp/
+COPY apps/cron-worker/package.json apps/cron-worker/
 RUN pnpm install --frozen-lockfile
 
 # ---- Build all workspace packages ----

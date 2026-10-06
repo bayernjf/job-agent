@@ -56,3 +56,4 @@ export {
 } from './plan.js';
 
 export { remainingDailyQuota, submitLimitReached } from './limits.js';
+export { hasUnseenApprovals, type UnseenRunFacts } from './unseen.js';
