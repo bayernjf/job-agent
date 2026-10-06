@@ -66,6 +66,62 @@ test.describe('agent workbench — full stack', () => {
     expect(href).toContain(`return_to=${encodeURIComponent('/en/workbench')}`);
   });
 
+  test('shows an unread badge for a fresh approval batch and clears it on explicit open', async ({
+    page,
+  }) => {
+    await login(page);
+
+    // 模拟 cron 在人不在页面时扫出一批候选：直接走真 API 建偏好 + 建任务（首轮即扫）
+    const prefRes = await page.request.post(`${API}/agent/preferences`, {
+      headers: authHeaders,
+      data: {
+        label: 'E2E · unseen',
+        targetTitles: ['typescript', 'engineer'],
+        skills: ['TypeScript', 'Astro', 'React'],
+        remoteOnly: false,
+        minTier: 'mid',
+      },
+    });
+    expect(prefRes.status()).toBe(201);
+    const { preference } = (await prefRes.json()) as {
+      preference: { preferenceId: string };
+    };
+    const runRes = await page.request.post(`${API}/agent/runs`, {
+      headers: authHeaders,
+      data: { preferenceId: preference.preferenceId, profileId: FIXTURE_PROFILE_ID },
+    });
+    expect(runRes.status()).toBe(201);
+    const created = (await runRes.json()) as { run: { runId: string; status: string } };
+    expect(created.run.status).toBe('awaiting_approval');
+
+    // 服务端视角：刚扫出、从未查看 → 未读
+    const listRes = await page.request.get(`${API}/agent/runs`, { headers: authHeaders });
+    const listed = (await listRes.json()) as {
+      runs: Array<{ runId: string; hasUnseenApprovals?: boolean }>;
+    };
+    expect(listed.runs.find((r) => r.runId === created.run.runId)!.hasUnseenApprovals).toBe(true);
+
+    // 打开工作台：首屏自动展开该 run，但「自动选中」不算已读，徽标仍在
+    await openWorkbenchHydrated(page);
+    const badge = page.getByTestId('agent-run-unseen');
+    await expect(badge).toHaveCount(1);
+    await expect(badge).toHaveText('New candidates to review');
+
+    // 用户主动点开该任务 → 已读端点 → 徽标消失（状态仍停在人机闸）
+    const viewPosted = page.waitForResponse(
+      (r) => r.url().includes('/view') && r.request().method() === 'POST' && r.status() === 200,
+    );
+    await page.getByTestId('agent-run').first().click();
+    await viewPosted;
+    await expect(page.getByTestId('agent-run-unseen')).toHaveCount(0);
+
+    const afterRes = await page.request.get(`${API}/agent/runs`, { headers: authHeaders });
+    const after = (await afterRes.json()) as {
+      runs: Array<{ runId: string; hasUnseenApprovals?: boolean }>;
+    };
+    expect(after.runs.find((r) => r.runId === created.run.runId)!.hasUnseenApprovals).toBe(false);
+  });
+
   test('runs the whole stage-1 loop against the real API (preference → run → tickets → artifacts → human gate)', async ({
     page,
   }) => {
