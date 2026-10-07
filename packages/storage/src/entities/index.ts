@@ -191,3 +191,6 @@ export {
   toStoredClaimVerification,
   newClaimVerificationFromAssessment,
 } from './claim-verification.js';
+
+export type { StoredCronHeartbeat, RawCronHeartbeatRow } from './cron-heartbeat.js';
+export { toStoredCronHeartbeat } from './cron-heartbeat.js';

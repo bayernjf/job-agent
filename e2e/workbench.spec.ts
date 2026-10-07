@@ -208,7 +208,7 @@ async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> 
 /** 登录（真实 fixture 会话 cookie，与 interview-planner.spec.ts 同一手法）。 */
 async function signIn(page: Page): Promise<void> {
   await page.context().addCookies([
-    { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+    { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
   ]);
 }
 

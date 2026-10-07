@@ -62,7 +62,8 @@ describe('GET /internal/cron/process-job', () => {
       jobId: 'job-1',
       profileId: 'prof-1',
     }));
-    const app = await createApp({ repos: await freshRepos(), processJobOnce });
+    const repos = await freshRepos();
+    const app = await createApp({ repos, processJobOnce });
 
     const res = await app.request('/internal/cron/process-job', {
       headers: { authorization: `Bearer ${SECRET}` },
@@ -72,6 +73,71 @@ describe('GET /internal/cron/process-job', () => {
     expect(body.ok).toBe(true);
     expect(body.outcome).toEqual({ kind: 'processed', jobId: 'job-1', profileId: 'prof-1' });
     expect(processJobOnce).toHaveBeenCalledOnce();
+
+    // 心跳回写：成功消费 → last_success_at 记录、无 last_error
+    const beats = await repos.cronHeartbeat.listAll();
+    expect(beats).toEqual([
+      {
+        consumer: 'process-job',
+        lastSuccessAt: expect.any(String),
+        lastResult: 'processed=job-1',
+        lastError: null,
+        updatedAt: expect.any(String),
+      },
+    ]);
+  });
+
+  it('records idle outcome as a successful heartbeat', async () => {
+    process.env.CRON_SECRET = SECRET;
+    const processJobOnce = vi.fn(async () => ({ kind: 'idle' as const }));
+    const repos = await freshRepos();
+    const app = await createApp({ repos, processJobOnce });
+
+    const res = await app.request('/internal/cron/process-job', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
+    expect(res.status).toBe(200);
+    const beat = (await repos.cronHeartbeat.listAll())[0]!;
+    expect(beat.consumer).toBe('process-job');
+    expect(beat.lastResult).toBe('idle');
+    expect(beat.lastError).toBeNull();
+  });
+
+  it('records a failed outcome into last_error without overwriting the last success', async () => {
+    process.env.CRON_SECRET = SECRET;
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess('process-job', '2026-10-07T04:00:00.000Z', 'idle');
+    const processJobOnce = vi.fn(async () => ({
+      kind: 'failed' as const,
+      jobId: 'job-9',
+      permanent: true,
+      message: 'analysis rejected',
+    }));
+    const app = await createApp({ repos, processJobOnce });
+
+    const res = await app.request('/internal/cron/process-job', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
+    expect(res.status).toBe(200);
+    const beat = (await repos.cronHeartbeat.listAll())[0]!;
+    expect(beat.lastSuccessAt).toBe('2026-10-07T04:00:00.000Z'); // 保留最后一次成功
+    expect(beat.lastError).toBe('analysis rejected');
+  });
+
+  it('records a thrown runner error as heartbeat failure and returns 500', async () => {
+    process.env.CRON_SECRET = SECRET;
+    const repos = await freshRepos();
+    const processJobOnce = vi.fn(async () => {
+      throw new Error('GITHUB_TOKEN missing');
+    });
+    const app = await createApp({ repos, processJobOnce });
+
+    const res = await app.request('/internal/cron/process-job', {
+      headers: { authorization: `Bearer ${SECRET}` },
+    });
+    expect(res.status).toBe(500);
+    const beat = (await repos.cronHeartbeat.listAll())[0]!;
+    expect(beat.lastError).toBe('GITHUB_TOKEN missing');
   });
 
   it('accepts Authorization: Bearer <CRON_SECRET> (the header Vercel Cron injects)', async () => {
@@ -187,5 +253,71 @@ describe('GET /internal/cron/cleanup', () => {
     expect(body.ok).toBe(true);
     expect(body.result.demoSessions).toBe(0);
     expect(body.result.authSessions).toBe(0);
+  });
+});
+
+describe('GET /health?deep=1 (cron heartbeat readout)', () => {
+  it('returns cronHeartbeat rows alongside the db probe', async () => {
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess('process-job', '2026-10-07T04:00:00.000Z', 'idle');
+    await repos.cronHeartbeat.recordFailure('agent-tick', '2026-10-07T04:05:00.000Z', 'boom');
+    const app = await createApp({ repos });
+
+    const res = await app.request('/health?deep=1');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      status: string;
+      db: string;
+      cronHeartbeat: Array<{ consumer: string; lastError: string | null }>;
+    };
+    expect(body.status).toBe('ok');
+    expect(body.db).toBe('ok');
+    expect(body.cronHeartbeat).toMatchObject([
+      { consumer: 'agent-tick', lastError: 'boom' },
+      { consumer: 'process-job', lastError: null },
+    ]);
+  });
+
+  it('keeps the shallow probe free of the heartbeat readout', async () => {
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/health');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.cronHeartbeat).toBeUndefined();
+  });
+});
+
+describe('GET /health?deep=1 (migration drift guard)', () => {
+  it('returns 503 with the missing list when a required column is absent', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({
+      repos: {
+        ...repos,
+        verifyRequiredColumns: async () => ['claim_verifications.id', 'accounts.is_admin'],
+      } as StorageContext,
+    });
+
+    const res = await app.request('/health?deep=1');
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as {
+      status: string;
+      db: string;
+      schemaDrift: string[];
+    };
+    expect(body.status).toBe('error');
+    expect(body.db).toBe('ok'); // DB 可达，漂移是另一回事
+    expect(body.schemaDrift).toEqual(['claim_verifications.id', 'accounts.is_admin']);
+  });
+
+  it('does not run the drift guard on the shallow probe', async () => {
+    const repos = await freshRepos();
+    const verifyRequiredColumns = vi.fn(async () => []);
+    const app = await createApp({
+      repos: { ...repos, verifyRequiredColumns } as StorageContext,
+    });
+
+    const res = await app.request('/health');
+    expect(res.status).toBe(200);
+    expect(verifyRequiredColumns).not.toHaveBeenCalled();
   });
 });

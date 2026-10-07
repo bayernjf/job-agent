@@ -662,3 +662,20 @@ export const claimVerifications = pgTable(
 
 export type ClaimVerificationInsert = typeof claimVerifications.$inferInsert;
 export type ClaimVerificationSelect = typeof claimVerifications.$inferSelect;
+
+/**
+ * cron_heartbeat（迁移 031）：cron 消费通道的存活信号。
+ * 与 SQLite 方言列集合一致（migrations-parity test）。
+ */
+export const cronHeartbeat = pgTable('cron_heartbeat', {
+  consumer: text('consumer').primaryKey(),
+  lastSuccessAt: text('last_success_at'),
+  lastResult: text('last_result'),
+  lastError: text('last_error'),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type CronHeartbeatInsert = typeof cronHeartbeat.$inferInsert;
+export type CronHeartbeatSelect = typeof cronHeartbeat.$inferSelect;

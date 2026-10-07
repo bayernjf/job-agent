@@ -718,3 +718,21 @@ export const claimVerifications = sqliteTable(
 
 export type ClaimVerificationInsert = typeof claimVerifications.$inferInsert;
 export type ClaimVerificationSelect = typeof claimVerifications.$inferSelect;
+
+/**
+ * cron_heartbeat（迁移 031）：cron 消费通道的存活信号。
+ * 一行一个消费方（process-job / agent-tick）；API cron 端点每次尝试后 upsert，
+ * /health?deep=1 读回。last_success_at 为 NULL 表示从未成功过。
+ */
+export const cronHeartbeat = sqliteTable('cron_heartbeat', {
+  consumer: text('consumer').primaryKey(),
+  lastSuccessAt: text('last_success_at'),
+  lastResult: text('last_result'),
+  lastError: text('last_error'),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+export type CronHeartbeatInsert = typeof cronHeartbeat.$inferInsert;
+export type CronHeartbeatSelect = typeof cronHeartbeat.$inferSelect;

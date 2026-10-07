@@ -453,6 +453,18 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 031（cron_heartbeat 整表，cron 消费存活信号）
+    const hbTablesBefore31 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(hbTablesBefore31.map((t) => t.name)).toContain('cron_heartbeat');
+    const result31 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result31.version).toBe('031');
+    const hbTablesAfter31 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(hbTablesAfter31.map((t) => t.name)).not.toContain('cron_heartbeat');
+
     // 回滚 030（job_runs 去掉 last_viewed_at，表本身仍在）
     const jrColsBefore30 = db.prepare('PRAGMA table_info(job_runs)').all() as Array<{ name: string }>;
     expect(jrColsBefore30.map((c) => c.name)).toContain('last_viewed_at');

@@ -63,7 +63,7 @@ async function mockBuild(page: Page): Promise<void> {
 
 async function seedSession(page: Page, token: string): Promise<void> {
   await page.context().addCookies([
-    { name: 'jobagent_session', value: token, url: 'http://localhost:4321' },
+    { name: 'jobagent_session', value: token, url: 'http://127.0.0.1:4321' },
   ]);
 }
 

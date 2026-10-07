@@ -21,7 +21,9 @@ import { SqliteSubmitIntentsRepository } from './sqlite/submit-intents-repo.js';
 import { SqliteLlmCatalogRepository } from './sqlite/llm-catalog-repo.js';
 import { SqliteExtensionAuthCodesRepository } from './sqlite/extension-auth-codes-repo.js';
 import { SqliteApiTokensRepository } from './sqlite/api-tokens-repo.js';
+import { SqliteCronHeartbeatRepository } from './sqlite/cron-heartbeat-repo.js';
 import { SqliteUserLlmConfigsRepository } from './sqlite/user-llm-configs-repo.js';
+import { sqliteVerifyRequiredColumns } from './sqlite/verify-required-columns.js';
 import { openPostgres } from './postgres/connection.js';
 import { runPgMigrations } from './postgres/migrator.js';
 import { PgProfilesRepository } from './postgres/profiles-repo.js';
@@ -43,7 +45,9 @@ import { PgSubmitIntentsRepository } from './postgres/submit-intents-repo.js';
 import { PgLlmCatalogRepository } from './postgres/llm-catalog-repo.js';
 import { PgExtensionAuthCodesRepository } from './postgres/extension-auth-codes-repo.js';
 import { PgApiTokensRepository } from './postgres/api-tokens-repo.js';
+import { PgCronHeartbeatRepository } from './postgres/cron-heartbeat-repo.js';
 import { PgUserLlmConfigsRepository } from './postgres/user-llm-configs-repo.js';
+import { pgVerifyRequiredColumns } from './postgres/verify-required-columns.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -104,9 +108,13 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       userLlmConfigs: new PgUserLlmConfigsRepository(db),
       extensionAuthCodes: new PgExtensionAuthCodesRepository(db),
       apiTokens: new PgApiTokensRepository(db),
+      cronHeartbeat: new PgCronHeartbeatRepository(db),
       migrate: async () => runPgMigrations(client, migrationsDir),
       ping: async () => {
         await client.unsafe('SELECT 1');
+      },
+      verifyRequiredColumns: async (requirements) => {
+        return pgVerifyRequiredColumns(client, requirements);
       },
       close: async () => {
         await client.end({ timeout: 5 });
@@ -142,9 +150,13 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     userLlmConfigs: new SqliteUserLlmConfigsRepository(db),
     extensionAuthCodes: new SqliteExtensionAuthCodesRepository(db),
     apiTokens: new SqliteApiTokensRepository(db),
+    cronHeartbeat: new SqliteCronHeartbeatRepository(db),
     migrate: async () => runMigrations(client, migrationsDir),
     ping: async () => {
       client.prepare('SELECT 1 AS ok').get();
+    },
+    verifyRequiredColumns: async (requirements) => {
+      return sqliteVerifyRequiredColumns(client, requirements);
     },
     close: async () => {
       client.close();

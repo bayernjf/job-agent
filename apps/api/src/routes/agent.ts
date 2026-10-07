@@ -629,11 +629,19 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
   // GET /internal/cron/agent-tick：serverless 定时推进求职任务（工作台的主调度）
   app.get('/internal/cron/agent-tick', async (c) => {
     if (!cronAuthorized(c)) return c.json({ error: 'unauthorized' }, 401);
+    const started = now();
     try {
       const outcome = await runAgentTickOnce({ repos: agentRepos, now, config: agentConfig });
+      // 心跳回写：消费方活着；结果摘要让 /health?deep=1 一眼看出推进了多少任务
+      await repos.cronHeartbeat.recordSuccess(
+        'agent-tick',
+        started,
+        `advanced=${outcome.advanced},recycled=${outcome.recycled}`,
+      );
       return c.json({ ok: true, outcome });
     } catch (err) {
       console.error('[cron] agent-tick failed:', JSON.stringify(describeError(err)));
+      await repos.cronHeartbeat.recordFailure('agent-tick', started, (err as Error).message);
       return c.json({ ok: false, error: (err as Error).message }, 500);
     }
   });

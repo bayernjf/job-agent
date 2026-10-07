@@ -22,11 +22,7 @@
     "@jobagent/gitee-source": "workspace:*",
     "@jobagent/github-source": "workspace:*",
     "@jobagent/shared": "workspace:*",
-    "@jobagent/storage": "workspace:*",
-    "better-sqlite3": "^12.0.0",
-    "drizzle-orm": "^0.45.2"
+    "@jobagent/storage": "workspace:*"
   },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.0"
-  }
+  "devDependencies": {}
 }

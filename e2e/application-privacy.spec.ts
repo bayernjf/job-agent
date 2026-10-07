@@ -37,7 +37,7 @@ test.describe('claimed profile hides the application pipeline from strangers', (
 
   test('the owner sees their own tracker', async ({ context, page }) => {
     await context.addCookies([
-      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
     ]);
     await page.goto(`/en/report/${FIXTURE_CLAIMED_PROFILE_ID}`);
 

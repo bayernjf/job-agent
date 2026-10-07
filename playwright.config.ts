@@ -32,7 +32,10 @@ export default defineConfig({
   expect: { timeout: 7000 },
   globalSetup: './e2e/global-setup.ts',
   use: {
-    baseURL: 'http://localhost:4321',
+    // Must be an IPv4 literal: `localhost` resolves to ::1 first on macOS, and the
+    // webServer binds --host 127.0.0.1 only. Any other project's `astro dev` listening
+    // on [::1]:4321 then answers the suite with its own 404 page for /en/.
+    baseURL: 'http://127.0.0.1:4321',
     trace: 'on-first-retry',
     locale: 'en-US',
   },

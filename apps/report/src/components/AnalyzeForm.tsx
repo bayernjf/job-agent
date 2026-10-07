@@ -11,6 +11,8 @@ interface AnalyzeFormProps {
   apiBase: string;
   placeholder: string;
   analyzeLabel: string;
+  /** 提交**之前**就说清等待形态：排队由定时器消费，人可以离开这一页 */
+  waitHint: string;
   analyzingLabel: string;
   invalidLabel: string;
   queuedLabel: string;
@@ -60,6 +62,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     apiBase,
     placeholder,
     analyzeLabel,
+    waitHint,
     analyzingLabel,
     invalidLabel,
     queuedLabel,
@@ -313,6 +316,12 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
           {isBusy ? analyzingLabel : analyzeLabel}
         </button>
       </div>
+
+      {!isBusy && waitHint && (
+        <p className="home-wait-hint ja-muted" data-testid="home-wait-hint">
+          {waitHint}
+        </p>
+      )}
 
       {isBusy && statusText && (
         <p className="status" role="status" aria-live="polite">

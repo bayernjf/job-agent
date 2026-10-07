@@ -10,6 +10,7 @@ function makeProps() {
     apiBase: 'https://api.example',
     placeholder: 'GitHub username',
     analyzeLabel: 'Analyze',
+    waitHint: 'A scheduled task picks up your request within about 5 minutes.',
     analyzingLabel: 'Analyzing…',
     invalidLabel: 'Invalid username',
     queuedLabel: 'Queued',
@@ -49,6 +50,11 @@ describe('AnalyzeForm', () => {
   it('keeps the submit button disabled while the input is empty', () => {
     render(<AnalyzeForm {...makeProps()} />);
     expect(screen.getByRole('button', { name: 'Analyze' })).toBeDisabled();
+  });
+
+  it('states the wait expectation before the user submits', () => {
+    render(<AnalyzeForm {...makeProps()} />);
+    expect(screen.getByTestId('home-wait-hint')).toHaveTextContent('within about 5 minutes');
   });
 
   it('reports an invalid username without calling the API', async () => {
