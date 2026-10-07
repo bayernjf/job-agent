@@ -19,8 +19,18 @@ import type {
   IWaitlistRepository,
   IExtensionAuthCodesRepository,
   IApiTokensRepository,
+  ICronHeartbeatRepository,
 } from './repositories/index.js';
 import type { RunMigrationsResult } from './migrations-fs.js';
+
+/**
+ * 迁移漂移守卫的列要求：代码实际引用的关键列（表 + 列名）。
+ * 完整清单以 apps/api/src/routes/system.ts 的 REQUIRED_COLUMNS 为权威。
+ */
+export interface ColumnRequirement {
+  table: string;
+  column: string;
+}
 
 export type StorageDriver = 'sqlite' | 'postgres';
 
@@ -74,6 +84,8 @@ export interface StorageContext {
   extensionAuthCodes: IExtensionAuthCodesRepository;
   /** 扩展长期 Bearer 凭证（扩展登录态，迁移 027；只存 SHA-256 哈希） */
   apiTokens: IApiTokensRepository;
+  /** cron 消费通道存活信号（迁移 031；API cron 端点写、/health?deep=1 读） */
+  cronHeartbeat: ICronHeartbeatRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /**
@@ -82,6 +94,14 @@ export interface StorageContext {
    * 方言差异只允许出现在持久化层内部，业务模块只调用本方法、不写裸 SQL。
    */
   ping(): Promise<void>;
+  /**
+   * 迁移漂移守卫（deferred「迁移漂移守卫」，2026-10-07 实施）：
+   * 直接查实际 schema（SQLite PRAGMA table_info / Postgres information_schema.columns）
+   * 核对代码所需的关键列是否存在，返回缺失的 "table.column" 列表（空数组 = 全齐）。
+   * 刻意**不**读 schema_migrations 账本：手工重放的迁移没有账本记录，读账本会误报；
+   * 且 023 的 ADD COLUMN 无 IF NOT EXISTS，不能按账本重放判断。
+   */
+  verifyRequiredColumns(requirements: ColumnRequirement[]): Promise<string[]>;
   /** 关闭底层连接/连接池 */
   close(): Promise<void>;
 }

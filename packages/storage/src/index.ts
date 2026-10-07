@@ -11,7 +11,12 @@
 
 // 装配工厂与配置类型
 export { createStorage } from './storage.js';
-export type { StorageConfig, StorageContext, StorageDriver } from './types.js';
+export type {
+  StorageConfig,
+  StorageContext,
+  StorageDriver,
+  ColumnRequirement,
+} from './types.js';
 
 // 仓储接口（业务侧依赖类型，不依赖具体实现）
 export type { IProfilesRepository } from './repositories/profiles.js';
@@ -38,6 +43,7 @@ export type { ILlmCatalogRepository } from './repositories/llm-catalog.js';
 export type { IUserLlmConfigsRepository } from './repositories/user-llm-configs.js';
 export type { IExtensionAuthCodesRepository } from './repositories/extension-auth-codes.js';
 export type { IApiTokensRepository } from './repositories/api-tokens.js';
+export type { ICronHeartbeatRepository } from './repositories/cron-heartbeat.js';
 
 // 实体领域类型
 export type {
