@@ -91,3 +91,58 @@ it('treats an unparseable 200 body as a processed answer, not a crash', async ()
   expect(log.processJob.processed).toBe(1);
   expect(log.processJob.idle).toBe(true);
 });
+
+it('does not call cleanup by default (runCleanup=false)', async () => {
+  const { get, calls } = makeGetter([{ body: idle }, { body: idle }]);
+  await runCronTick(env, get, sleep);
+
+  expect(calls.map((c) => c.path)).toEqual([
+    '/api/internal/cron/process-job',
+    '/api/internal/cron/agent-tick',
+  ]);
+});
+
+it('runs cleanup after agent-tick on an idle queue when runCleanup=true', async () => {
+  const { get, calls } = makeGetter([
+    { body: idle },
+    { body: idle },
+    { body: JSON.stringify({ ok: true, result: { task: 'all' } }) },
+  ]);
+  const log = await runCronTick(env, get, sleep, true);
+
+  expect(log.cleanup).toEqual({ ok: true, status: 200 });
+  expect(calls.map((c) => c.path)).toEqual([
+    '/api/internal/cron/process-job',
+    '/api/internal/cron/agent-tick',
+    '/api/internal/cron/cleanup?task=all',
+  ]);
+});
+
+it('runs cleanup after the drain cap when runCleanup=true', async () => {
+  const { get, calls } = makeGetter([
+    { body: processed },
+    { body: '{"ok":true}' },
+    { body: JSON.stringify({ ok: true, result: { task: 'all' } }) },
+  ]);
+  const log = await runCronTick(env, get, sleep, true);
+
+  expect(log.processJob.processed).toBe(3);
+  expect(log.cleanup).toEqual({ ok: true, status: 200 });
+  expect(calls.at(-1)!.path).toBe('/api/internal/cron/cleanup?task=all');
+});
+
+it('records a non-2xx cleanup as a failure without throwing', async () => {
+  const { get } = makeGetter([{ body: idle }, { body: idle }, { status: 500, body: 'boom' }]);
+  const log = await runCronTick(env, get, sleep, true);
+
+  expect(log.cleanup).toEqual({ ok: false, status: 500 });
+});
+
+it('skips cleanup entirely when process-job fails (fatal, same as before)', async () => {
+  const { get, calls } = makeGetter([{ status: 401, body: 'unauthorized' }]);
+  const log = await runCronTick(env, get, sleep, true);
+
+  expect(log.cleanup).toBeUndefined();
+  expect(log.agentTick).toEqual({ ok: false });
+  expect(calls).toHaveLength(1);
+});
