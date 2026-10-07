@@ -21,6 +21,8 @@ import type {
   IClaimVerificationsRepository,
   IUserLlmConfigsRepository,
   IExtensionAuthCodesRepository,
+  ICronHeartbeatRepository,
+  ColumnRequirement,
   IApiTokensRepository,
 } from '@jobagent/storage';
 import type { Principal } from '@jobagent/shared';
@@ -63,8 +65,12 @@ export interface ApiRepos {
   apiTokens: IApiTokensRepository;
   /** 逐条声明核验结论（决策 #23，迁移 029） */
   claimVerifications: IClaimVerificationsRepository;
+  /** cron 消费通道存活信号（迁移 031；API cron 端点写、/health?deep=1 读） */
+  cronHeartbeat: ICronHeartbeatRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
+  /** 迁移漂移守卫（deferred「迁移漂移守卫」）：核对实际 schema 关键列，返回缺失列表 */
+  verifyRequiredColumns: (requirements: ColumnRequirement[]) => Promise<string[]>;
 }
 
 export interface ApiDeps {
