@@ -106,9 +106,9 @@ Worker 不碰数据库、不复制任何业务逻辑，只做"叫醒 + 看门"�
 
 ### 4.6 可观测性
 
-- 实时：`wrangler tail <worker-name>`；
-- 历史：Cloudflare 面板 → Workers → 该 Worker → Cron Events / Logs；
-- 失败信号：Worker 把非 2xx 记成 `console.error`，日志出现即说明端点或凭证出问题（与今天"GitHub run 变红"等价）。
+- 实时：`wrangler tail <worker-name>`；⚠️ **本机实测不成立**（2026-10-07）：`watch.cloudflare.com` 直接 ENOTFOUND，不走代理时撞被污染的 DNS（ETIMEDOUT 到 `199.96.63.75`），必须带 `HTTPS_PROXY` 才连得上——"随时能 tail"是有前提的。
+- 历史：Cloudflare 面板 → Workers → 该 Worker → Cron Events / Logs（**只有浏览器里看得见**，没有 API/进程在读）。
+- ~~失败信号与"GitHub run 变红"等价~~ **这句已被 2026-10-07 复核作废**：`console.error` 只是躺在日志里，`apps/cron-worker/src/index.ts` 除两行 `console.error` 外没有任何状态回写、指标或告警接线，**没有任何人或程序会读到它**；GH run 变红至少是可枚举的（`gh run list`）。等价不成立 ⇒ 已登记为缓做项（[deferred-items.md](deferred-items.md)「Cron Worker 的失败信号没有任何读者」），**在删掉 `cron-poll.yml` 的 `schedule` 段之前先补上站内可读**，否则"没人消费队列"这件事在系统内不可观测。
 
 ### 4.7 回滚
 
