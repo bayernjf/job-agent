@@ -1,48 +1,34 @@
 name: Cron poll
 
-# Analysis-job consumption for form C while the deployment stays on the
-# Vercel Hobby plan. Vercel Hobby allows only one cron invocation per day, so
-# the per-minute `process-job` cron cannot be deployed (it fails at deploy
-# time). This workflow polls the same internal endpoint every 15 minutes.
+# Manual liveness probe for the production analysis consumer (form C).
 #
-# Trade-off (recorded in docs/deployment-runbook-20260920.md §4-C-5 and
-# docs/部署执行单-形态C-20260921.md E1): queued analyses are consumed within
-# ≤15 min instead of ≤1 min. GitHub drops scheduled runs under load — at the
-# earlier hourly cadence the measured gap was 4–7.5 h (3–4 runs/day), which
-# made a queued analysis wait for hours. Raising the cadence to every 15
-# minutes (2026-10-06) is free on a public repo and shrinks that worst case;
-# it does not make GitHub's scheduler reliable. Upgrading to Vercel Pro and
-# restoring the per-minute cron in apps/report/vercel.json remains the real
-# fix, after which this poller can be removed or kept as a fallback.
+# Actual consumption runs on Cloudflare Worker Cron (apps/cron-worker, */5,
+# decision #24, deployed 2026-10-06); its success/failure is readable in-app
+# through cron_heartbeat + /health?deep=1 (migration 031, 2026-10-07), so a
+# scheduled poller here no longer adds observability — GitHub's scheduler is
+# best-effort (measured delivery ≈4.5% at */15, see handoff 2026-10-07) and
+# the schedule was removed (2026-10-07) once the readable signal existed.
+#
+# This workflow is kept as a manual run: Actions → Cron poll → Run workflow.
+# The endpoints are idempotent — an empty queue returns HTTP 200 with body
+# "idle", so a manual run is a safe liveness probe. The same pass advances
+# queued job-hunt agent runs (agent-tick) and drains a small backlog.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   CRON_SECRET     The production CRON_SECRET (same value as the Vercel env).
 #   VERCEL_PROD_URL Production origin, e.g. https://app.job-agent.bayjf.com
 #                   (no trailing slash).
 #
-# Manual runs: Actions → Cron poll → Run workflow. The endpoint is idempotent:
-# an empty queue returns HTTP 200 with body "idle", so a manual run is a safe
-# liveness probe. The same pass also advances queued job-hunt agent runs
-# (agent-tick, 求职工作台阶段 1).
-#
-# While CRON_SECRET/VERCEL_PROD_URL are absent (form C not yet deployed),
-# scheduled runs finish with a visible warning; a manual dispatch fails fast to
-# surface the misconfiguration.
+# A manual dispatch fails fast to surface misconfiguration.
 
 on:
-  schedule:
-    # Every 15 minutes, UTC. GitHub's scheduler is best-effort: runs can be
-    # delayed or dropped under load, but more chances per day keep the
-    # worst-case wait for a queued analysis far below the 4–7.5 h measured
-    # at the earlier hourly cadence.
-    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  # Never overlap two polls; a manual run during a scheduled one is a no-op.
+  # Never overlap two polls; the drain loop is not concurrency-safe by design.
   group: cron-poll
   cancel-in-progress: false
 
@@ -64,7 +50,7 @@ jobs:
             echo '::error::repository secrets CRON_SECRET and VERCEL_PROD_URL are not both set. Add them at Settings -> Secrets and variables -> Actions (see workflow header and the deployment checklist stage E).'
             exit 1
           else
-            echo '::warning::CRON_SECRET/VERCEL_PROD_URL not configured yet (form C not deployed). Skipping this scheduled poll — add the secrets to activate it.'
+            echo '::warning::CRON_SECRET/VERCEL_PROD_URL not configured. Skipping this poll — add the secrets to activate it.'
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
 
