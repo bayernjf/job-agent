@@ -136,7 +136,7 @@ test.describe('next steps suggestions', () => {
 
   test('unlocks the evidence link once signed in', async ({ page, context }) => {
     await context.addCookies([
-      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
     ]);
     await page.goto(nextStepsPath);
     const link = page.locator('.next-step-evidence a');

@@ -40,7 +40,7 @@ test.describe('recruiter verification view', () => {
   // 授权分级闸后，招聘方证据 banner 与面试包下载仅登录 user 可见：本 describe 统一登录态。
   test.beforeEach(async ({ context }) => {
     await context.addCookies([
-      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
     ]);
   });
 
@@ -165,7 +165,7 @@ test.describe('candidate search page', () => {
     context,
   }) => {
     await context.addCookies([
-      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
     ]);
     await page.goto('/en/recruit');
 
@@ -182,7 +182,7 @@ test.describe('candidate search page', () => {
     context,
   }) => {
     await context.addCookies([
-      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
     ]);
     await page.goto('/en/recruit');
 
@@ -212,7 +212,7 @@ test.describe('candidate search page', () => {
   }) => {
     // F10：人才库仅已声明招聘方可见，本用例使用已声明账号会话
     await context.addCookies([
-      { name: 'jobagent_session', value: FIXTURE_RECRUITER_SESSION_TOKEN, domain: 'localhost', path: '/' },
+      { name: 'jobagent_session', value: FIXTURE_RECRUITER_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
     ]);
     await page.goto('/en/recruit');
     const cards = page.locator('.recruit-grid .recruit-card');

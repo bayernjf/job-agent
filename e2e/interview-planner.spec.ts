@@ -145,7 +145,7 @@ test.describe('my interviews — signed in', () => {
       {
         name: 'jobagent_session',
         value: FIXTURE_SESSION_TOKEN,
-        domain: 'localhost',
+        domain: '127.0.0.1',
         path: '/',
       },
     ]);

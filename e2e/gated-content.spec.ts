@@ -77,7 +77,7 @@ test.describe('sign-in gate follows the profile subject platform', () => {
 test.describe('gated content unlocked for signed-in users', () => {
   test.beforeEach(async ({ context }) => {
     await context.addCookies([
-      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: 'localhost', path: '/' },
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
     ]);
   });
 
