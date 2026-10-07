@@ -11,8 +11,13 @@ import type { ColumnRequirement } from '@jobagent/storage';
 
 /**
  * 迁移漂移守卫的关键列清单（deferred「迁移漂移守卫」）：
- * 只放"代码实际引用、缺失即功能损坏"的列；改动 schema 时同步更新。
+ * 只放"已上线生产、代码实际引用、缺失即功能损坏"的列；改动 schema 时同步更新。
  * 刻意**不**读 schema_migrations 账本（手工重放的迁移无账本记录，会误报）。
+ *
+ * 2026-10-08 收敛：023/024/025/027/029 对应 P2 表/列（accounts.is_admin、
+ * llm_catalog_models、user_llm_configs、api_tokens、claim_verifications），
+ * 生产尚未执行对应迁移，且缺失时功能走降级路径（LLM catalog 回退代码默认等），
+ * 放入守卫会让部署后深探活误报 503；P2 上线时再逐项加回。
  */
 const REQUIRED_COLUMNS: ColumnRequirement[] = [
   { table: 'accounts', column: 'recruiter_declared_at' }, // 015 招聘方声明
@@ -20,11 +25,6 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   { table: 'job_runs', column: 'last_scan_at' }, // 019 求职任务扫描
   { table: 'job_runs', column: 'last_viewed_at' }, // 030 工作台已读回执
   { table: 'submit_intents', column: 'application_id' }, // 021 投递关联
-  { table: 'accounts', column: 'is_admin' }, // 023 管理端标记
-  { table: 'llm_catalog_models', column: 'id' }, // 024 内置模型目录
-  { table: 'user_llm_configs', column: 'account_id' }, // 025 BYOK 配置
-  { table: 'api_tokens', column: 'id' }, // 027 扩展长期凭证
-  { table: 'claim_verifications', column: 'id' }, // 029 声明核验
   { table: 'cron_heartbeat', column: 'consumer' }, // 031 心跳（本批）
 ];
 
