@@ -3,10 +3,13 @@
   "name": "jobagent-cron-worker",
   "main": "dist/index.js",
   "compatibility_date": "2025-10-06",
-  // Five minutes, UTC. The handler drains serially inside one invocation, so a
-  // single analysis is never processed by two overlapping ticks.
+  // Five minutes for consumption, hourly for maintenance cleanup (UTC). The
+  // handler drains serially inside one invocation, so a single analysis is
+  // never processed by two overlapping ticks. The hourly slot also runs
+  // /internal/cron/cleanup?task=all (expired sessions/accounts, aligned with
+  // the CLI cleanup defaults), guarded by controller.cron in index.ts.
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *", "0 * * * *"]
   },
   "vars": {
     "PROD_ORIGIN": "https://app.job-agent.bayjf.com"

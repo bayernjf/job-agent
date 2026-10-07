@@ -18,6 +18,8 @@ export interface CronEnv {
 export interface CronTickLog {
   processJob: { processed: number; idle: boolean; status?: number };
   agentTick: { ok: boolean; status?: number };
+  /** Present only when this tick ran the hourly maintenance cleanup. */
+  cleanup?: { ok: boolean; status?: number };
 }
 
 export const DEFAULT_DRAIN_LIMIT = 10;
@@ -37,14 +39,17 @@ function readKind(body: string): string | null {
 }
 
 /**
- * Drain the analysis queue, then advance agent runs. Mirrors the two semantics
- * the GitHub workflow enforced: non-2xx is fatal (no retry, no swallowing),
- * and an empty queue (200 idle) is a safe no-op.
+ * Drain the analysis queue, then advance agent runs, then optionally run the
+ * hourly maintenance cleanup. Mirrors the two semantics the GitHub workflow
+ * enforced: non-2xx is fatal (no retry, no swallowing), and an empty queue
+ * (200 idle) is a safe no-op. Cleanup only runs on a healthy path — a failed
+ * process-job aborts the whole tick, same as before.
  */
 export async function runCronTick(
   env: CronEnv,
   get: Getter,
   sleep: Sleeper,
+  runCleanup = false,
 ): Promise<CronTickLog> {
   const limit = env.DRAIN_LIMIT ?? DEFAULT_DRAIN_LIMIT;
   let processed = 0;
@@ -59,10 +64,11 @@ export async function runCronTick(
       };
     }
     if (readKind(res.body) === 'idle') {
-      return {
-        processJob: { processed, idle: true },
-        agentTick: { ok: true, status: (await get('/api/internal/cron/agent-tick')).status },
-      };
+      const agent = await get('/api/internal/cron/agent-tick');
+      const cleanup = runCleanup
+        ? await get('/api/internal/cron/cleanup?task=all')
+        : undefined;
+      return finishTick(processed, true, agent, cleanup);
     }
     processed++;
     if (attempt < limit) await sleep(SUBCALL_DELAY_MS);
@@ -71,8 +77,24 @@ export async function runCronTick(
   // Reached the drain cap without an idle answer: the agent-tick still runs so
   // job-hunt tasks are not starved by a large analysis backlog.
   const agent = await get('/api/internal/cron/agent-tick');
-  return {
-    processJob: { processed, idle: false },
+  const cleanup = runCleanup
+    ? await get('/api/internal/cron/cleanup?task=all')
+    : undefined;
+  return finishTick(processed, false, agent, cleanup);
+}
+
+function finishTick(
+  processed: number,
+  idle: boolean,
+  agent: { status: number },
+  cleanup: { status: number } | undefined,
+): CronTickLog {
+  const log: CronTickLog = {
+    processJob: { processed, idle },
     agentTick: { ok: agent.status === 200, status: agent.status },
   };
+  if (cleanup) {
+    log.cleanup = { ok: cleanup.status === 200, status: cleanup.status };
+  }
+  return log;
 }
