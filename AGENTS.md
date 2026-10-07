@@ -14,7 +14,7 @@
 
 ## 项目概览
 
-JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`；J1–J5 人工 smoke 与生产 cron/轮询已于 2026-10-02 实测通过，剩 J6 异议邮箱、J7 生产 `LLM_*`、B4 Supabase 备份、CWS 上架——均卡用户/外部条件；阶段与待办以 handoff.md 为准）；**求职 Agent 阶段 1「求职工作台」与阶段 2「半自动投递」均已落地（2026-10-03/04，见运行架构第 10 条）**——扩展在 ATS 页一键填充简历/求职信（**填完停手，绝不自动点提交**）、结果回写已通，硬边界由决策 #20 拍板；**决策 #22「扩展登录态」（2026-10-04）与 #23「简历声明逐条核验」（2026-10-05）已拍板并全链落地**（后者＝`packages/claim-core` 反向核验通路）；**LLM 供给双轨 P0 已落地（决策 #21），生产非密钥 env（`LLM_ENC_KEY`/`ADMIN_ACCOUNT_LOGINS`）已于 2026-10-06 配置，`LLM_*` 是否进生产待用户拍板**；**决策 #24「分析消费定时器」（2026-10-06）已拍板并上线：GitHub Actions `schedule` 实测连续数小时丢触发，故改由已在用的 Cloudflare 账号跑 Worker Cron（`apps/cron-worker`，`*/5` 档），排队最坏等待从数小时降到 ≤5 分钟；GitHub 轮询仅留 2–3 天交叉验证后移除 schedule**。
+JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项目演进）分析为**可信、可解释、可复核**的能力画像，服务于技术招聘与应聘。当前 **M1 完成、P1 扩展稳定、P2 职位聚合+画像↔岗位匹配完成、GitHub/Gitee 双源、演示模式 Demo Mode 已落地**；**P3（C 端优先批次）与 MCP 接入面已落地，生产形态 C 已于 2026-09-30 上线**（`https://app.job-agent.bayjf.com`；J1–J5 人工 smoke 与生产 cron/轮询已于 2026-10-02 实测通过，剩 J6 异议邮箱、J7 生产 `LLM_*`、B4 Supabase 备份、CWS 上架——均卡用户/外部条件；阶段与待办以 handoff.md 为准）；**求职 Agent 阶段 1「求职工作台」与阶段 2「半自动投递」均已落地（2026-10-03/04，见运行架构第 10 条）**——扩展在 ATS 页一键填充简历/求职信（**填完停手，绝不自动点提交**）、结果回写已通，硬边界由决策 #20 拍板；**决策 #22「扩展登录态」（2026-10-04）与 #23「简历声明逐条核验」（2026-10-05）已拍板并全链落地**（后者＝`packages/claim-core` 反向核验通路）；**LLM 供给双轨 P0 已落地（决策 #21），生产非密钥 env（`LLM_ENC_KEY`/`ADMIN_ACCOUNT_LOGINS`）已于 2026-10-06 配置，`LLM_*` 是否进生产待用户拍板**；**决策 #24「分析消费定时器」（2026-10-06）已拍板并上线：GitHub Actions `schedule` 实测连续数小时丢触发，故改由已在用的 Cloudflare 账号跑 Worker Cron（`apps/cron-worker`，`*/5` 档），排队最坏等待从数小时降到 ≤5 分钟；GH 轮询的 `schedule` 已于 2026-10-07 删除（`d0fbd8c`，工作流只留手动派发）——删除前实测 `*/15` 在 39h11m 内只交付 **7/156 次（≈4.5%）**，而 Worker Cron 两次 `*/5` 触发均 `Ok`，因此 Worker 是**唯一的自动消费者**（观测面见运行架构第 11 条）**。
 
 - 包管理器：**pnpm workspaces**（`pnpm-workspace.yaml`，不使用 npm/yarn，避免多套 lockfile）
 - Node 版本以 **[.nvmrc](.nvmrc)** 为准（`nvm use`）；语言 TypeScript（**strict**、ESM）
@@ -107,6 +107,9 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 
 10. **求职 Agent 工作台（阶段 1 + 阶段 2 均已落地，2026-10-03/04，设计见 [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md) §10）**：`packages/agent-core`（纯函数：任务状态机、偏好→匹配条件与硬过滤、质量闸与候选选择、可解释匹配报告、票据计划）＋ `apps/api/src/agent-runner.ts`（编排壳：读库/写票据/装配闸）＋ `apps/report` 的 `/[locale]/workbench` 页面与 `AgentWorkbench` island。四条硬约束：① **扩展只填充、绝不点提交**——`POST /agent/runs/:id/approve` 把 `submit_intents` 置 `approved`，扩展凭扩展登录态（决策 #22：一次性授权码换长期 Bearer token）拉 `pending-fills` 在 ATS 页一键填充简历/求职信后**停手等用户本人提交**，全程不存在自动点提交的外部写动作；② 状态迁移一律经仓储的 `compareAndSetStatus` **原子条件更新**并落一条 `job_run_events`（可回放），**禁止绕过状态机直接写 `status`**；③ 匹配报告**只出 code + 事实**（`title_match`/`tag_match`/`description_match` + 缺口标签），句子由渲染侧按 locale 现拼，内核不写自然语言；④ 投递限频按**岗位来源**统计 24h 内「已确认 + 已投递」，额度不足**整批 429、绝不部分确认**。另有两条产品级不变量：**结果回写闭环**（`PATCH /applications/:id` 与票据端点共用同一 `OutcomeFeedbackSchema`，AI 辅助披露固定追加在每封求职信末尾、模型无法省略）；**决策 #20-2 快照暂不落库**（简历/求职信按需重装配）。业务代码只依赖 `@jobagent/agent-core` 纯函数与 storage 仓储，不得把 I/O 塞进内核。
 
+11. **消费观测面与迁移漂移守卫（2026-10-07 起，决策 #24 的收口）**：分析队列与求职任务只由 `apps/cron-worker` 的 `*/5` 档驱动（GH `schedule` 已删），而"消费者是否活着"**必须在应用内可读**，不允许只存在于 serverless 日志——`cron_heartbeat`（迁移 031，双方言，一消费者一行：`last_success_at`/`last_result`/`last_error`）由 `process-job` 与 `agent-tick` **在每次尝试后回写**（成功清 `last_error`，失败连错误一起记），`GET /health?deep=1` 同时返回 `cronHeartbeat` 与 `schemaDrift`。两条硬约束：① **`/health?deep=1` 会在检测到缺列时返回 503**，因为 `DB_AUTO_MIGRATE=false` 是刻意的（冷启动绝不碰 DDL），漂移必须显式暴露而不是伪装成 ok；② 代码新读一张表/一列时，**同步把它加进 `apps/api/src/routes/system.ts` 的 `REQUIRED_COLUMNS`**（该清单是漂移守卫的覆盖面本身，漏加＝那道保护对那笔迁移无效）。**合并顺序**：新迁移先在 Production 执行、再让 `dev → main` 合并（判定命令与完整步骤见 [部署执行单](docs/部署执行单-形态C-20260921.md) 顶部硬勾选与 **B5**）——2026-10-02 缺 002/008–017、10-07 缺 030（`agent-tick` 每 5 分钟 500）、10-08 差点缺 031（那批同时删了 GH schedule，缺表会把**分析消费与求职 Agent 一起**打断，已本机复现）。**仍缺的一环**：没有任何进程按节奏读 `/health?deep=1`，所以"信号站内可读"成立、"自动告警"仍不存在（触发条件见 [deferred-items](docs/deferred-items.md)「Cron Worker 的失败信号没有任何读者」）；`wrangler tail` 在本机需带 `HTTPS_PROXY`（`watch.cloudflare.com` 被污染 DNS）。设计见 [docs/design-cron-scheduler-20261006.md](docs/design-cron-scheduler-20261006.md) §4.6（该节旧版"与 GitHub run 变红等价"已作废），明细见 handoff item132–140。
+
+
 ### 内核与 I/O 分离（硬约束）
 
 - `analyzer-core` 不发请求、不读数据库、不读文件系统；输入是采集后的结构化数据，输出是画像，便于对固定夹具做单测。
@@ -149,6 +152,13 @@ docker compose up -d             # Docker 运行时 smoke（SQLite；--profile w
 ## 测试与验证
 
 - 测试**就近放置**：`*.test.ts` / `*.test.tsx`，Vitest；E2E 用 Playwright。
+- **E2E 里的地址一律写 IPv4 字面量（`http://127.0.0.1:<port>`），不要写 `localhost`**：webServer 绑的是
+  `--host 127.0.0.1`，而 macOS 上 `localhost` 优先解析 `::1`——本机若同时开着**别的 Astro 项目**的 dev
+  server，它会接住 Playwright 的每一次导航并返回它自己的 404 页，症状是整批用例死在 `waitForHydrated`
+  上、看起来像「岛全不水合」。会话 Cookie 只有同域才发，所以 `baseURL` 与 `addCookies({ domain })`
+  **必须一起改**，只改一边会把登录类用例换成另一种失败（2026-10-08 实修，见 handoff item140）。
+  **大规模 E2E 变红时，先读 `test-results/<失败用例>/error-context.md` 的页面快照**——一条快照就能
+  分清「访问错了东西」与「代码坏了」，省掉一整轮误诊。
 - **`analyzer-core` 测试优先级最高**：基于 `tests/fixtures` 脱敏夹具覆盖每条真实性信号，以及"证据不足→`insufficient_data`"分支。
 - **默认确定性**：测试不打真实 GitHub、不调真实 LLM，外部响应一律用录制夹具/fake；API/Worker 对夹具做集成测试；Playwright 覆盖"输入用户名→生成→报告→分享"主链路。**求职工作台另有「真全栈」E2E**（`pnpm e2e:agent`，配置 `playwright.agent.config.ts`、用例与夹具在 `e2e/agent/`）：真 Chromium → 真 `apps/api`（真 Hono + 真 SQLite + 真迁移）→ 真报告页 SSR，**不 mock 任何 API**，因此能抓到只在真链路暴露的字段/契约错配（2026-10-03 的「工作台下载简历 404」就靠它抓出并钉成回归；夹具刻意让来源原生 `jobId` ≠ 岗位池主键）。夹具岗位由 `e2e/agent/global-setup.ts` 直接写库，零网络、档位与条数可预期；CI 独立一步跑并上传 artifacts。扩展另有独立 E2E（`pnpm e2e:extension`，配置 `playwright.extension.config.ts`、用例在 `e2e/extension/`）：`launchPersistentContext` + `--headless=new` 加载 unpacked MV3，route 拦截 ATS 页与全部 API，覆盖 content script 注入/Shadow DOM 面板/岗位匹配区块，不连真实 ATS、不打网络。
 - **storage 的 15 例真实 Postgres 行为测试**（`packages/storage/src/postgres-behavior.test.ts`）：CI 与有 Docker 的机器用 `DATABASE_TEST_URL` 指向真实 PG 实跑（CI 已配 `postgres:16-alpine` service）；无该变量时自动起 embedded-postgres，起不来则整文件 skip（不是失败）。**已知 macOS 兼容问题**：embedded-postgres 18.1.0-beta.15 内置 PG 二进制在部分 macOS（2026-09 在 macOS 26 实测）启动即 FATAL `postmaster became multithreaded during startup`，与 LC_ALL/Node 无关，属系统级问题；本机要让 15 例转绿，用 Docker PG 并设 `DATABASE_TEST_URL=postgres://...`（`docker compose --profile with-pg up -d`，或一次性临时容器）。⚠️ **套件内部分用例用固定主键、依赖库内干净状态**（如 `prof-pg-owner`）——对同一库连跑两遍会假红，复跑前先换干净库（2026-10-06 实测踩过）。测试已对该失败路径做健壮性处理（非 Error reject 防御、teardown 限时不挂 hook），排查时看 `[postgres-behavior] ... tests skip:` 警告里的真实原因。
