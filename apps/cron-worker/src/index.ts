@@ -11,6 +11,8 @@ import {
   type CronEnv,
 } from './tick.js';
 
+/** Five-minute consumption cron; also runs the heartbeat watchdog. */
+const FIVE_MIN_CRON = '*/5 * * * *';
 /** Hourly maintenance cron (physical cleanup of expired sessions/accounts). */
 const HOURLY_CRON = '0 * * * *';
 
@@ -23,6 +25,11 @@ export default {
     const origin = env.PROD_ORIGIN.replace(/\/+$/, '');
     const timeoutMs = env.CALL_TIMEOUT_MS ?? DEFAULT_CALL_TIMEOUT_MS;
     const runCleanup = controller.cron === HOURLY_CRON;
+    // Watchdog lives on the five-minute slot (same cadence as agent-tick,
+    // whose 15-min stale threshold tolerates 3 missed ticks). It is NOT a
+    // Vercel Cron: Hobby accounts are limited to one cron invocation per day,
+    // so the watch-heartbeat schedule had to move here (2026-10-08).
+    const runWatchHeartbeat = controller.cron === FIVE_MIN_CRON;
 
     ctx.waitUntil(
       (async () => {
@@ -44,6 +51,7 @@ export default {
           },
           (ms) => new Promise((r) => setTimeout(r, ms)),
           runCleanup,
+          runWatchHeartbeat,
         );
 
         if (log.processJob.status && log.processJob.status !== 200) {
@@ -61,8 +69,15 @@ export default {
             `[cron-worker] cleanup failed status=${log.cleanup.status ?? 'n/a'}`,
           );
         }
+        // 503 here is the watchdog ALARMING (a consumer is stale), not a bug:
+        // deep health flips red and self-heals on the next healthy tick.
+        if (log.watchHeartbeat && (!log.watchHeartbeat.ok || (log.watchHeartbeat.status && log.watchHeartbeat.status !== 200))) {
+          console.warn(
+            `[cron-worker] watch-heartbeat status=${log.watchHeartbeat.status ?? 'n/a'} (503 = watchdog alarming on stale consumer)`,
+          );
+        }
         console.log(
-          `[cron-worker] tick processed=${log.processJob.processed} idle=${log.processJob.idle} agentTick=${log.agentTick.status ?? 'skipped'} cleanup=${log.cleanup?.status ?? 'skipped'}`,
+          `[cron-worker] tick processed=${log.processJob.processed} idle=${log.processJob.idle} agentTick=${log.agentTick.status ?? 'skipped'} cleanup=${log.cleanup?.status ?? 'skipped'} watch=${log.watchHeartbeat?.status ?? 'skipped'}`,
         );
       })(),
     );

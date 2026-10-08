@@ -20,6 +20,8 @@ export interface CronTickLog {
   agentTick: { ok: boolean; status?: number };
   /** Present only when this tick ran the hourly maintenance cleanup. */
   cleanup?: { ok: boolean; status?: number };
+  /** Present when the tick also ran the heartbeat watchdog check. */
+  watchHeartbeat?: { ok: boolean; status?: number };
 }
 
 export const DEFAULT_DRAIN_LIMIT = 10;
@@ -43,13 +45,20 @@ function readKind(body: string): string | null {
  * hourly maintenance cleanup. Mirrors the two semantics the GitHub workflow
  * enforced: non-2xx is fatal (no retry, no swallowing), and an empty queue
  * (200 idle) is a safe no-op. Cleanup only runs on a healthy path — a failed
- * process-job aborts the whole tick, same as before.
+ * process-job aborts the rest of the tick, same as before.
+ *
+ * `runWatchHeartbeat` runs the heartbeat watchdog (`watch-heartbeat`) on every
+ * path — including a failed process-job — because the watchdog's job is to
+ * observe exactly that failure: it checks each consumer's last-success
+ * heartbeat and surfaces staleness in deep health. It must therefore never be
+ * skipped just because a consumer answered non-2xx.
  */
 export async function runCronTick(
   env: CronEnv,
   get: Getter,
   sleep: Sleeper,
   runCleanup = false,
+  runWatchHeartbeat = false,
 ): Promise<CronTickLog> {
   const limit = env.DRAIN_LIMIT ?? DEFAULT_DRAIN_LIMIT;
   let processed = 0;
@@ -61,6 +70,7 @@ export async function runCronTick(
       return {
         processJob: { processed, idle: false, status: res.status },
         agentTick: { ok: false },
+        watchHeartbeat: await runWatchIfRequested(runWatchHeartbeat, get),
       };
     }
     if (readKind(res.body) === 'idle') {
@@ -68,7 +78,8 @@ export async function runCronTick(
       const cleanup = runCleanup
         ? await get('/api/internal/cron/cleanup?task=all')
         : undefined;
-      return finishTick(processed, true, agent, cleanup);
+      const watch = await runWatchIfRequested(runWatchHeartbeat, get);
+      return finishTick(processed, true, agent, cleanup, watch);
     }
     processed++;
     if (attempt < limit) await sleep(SUBCALL_DELAY_MS);
@@ -80,7 +91,17 @@ export async function runCronTick(
   const cleanup = runCleanup
     ? await get('/api/internal/cron/cleanup?task=all')
     : undefined;
-  return finishTick(processed, false, agent, cleanup);
+  const watch = await runWatchIfRequested(runWatchHeartbeat, get);
+  return finishTick(processed, false, agent, cleanup, watch);
+}
+
+async function runWatchIfRequested(
+  runWatchHeartbeat: boolean,
+  get: Getter,
+): Promise<{ ok: boolean; status: number } | undefined> {
+  if (!runWatchHeartbeat) return undefined;
+  const res = await get('/api/internal/cron/watch-heartbeat');
+  return { ok: res.status === 200, status: res.status };
 }
 
 function finishTick(
@@ -88,6 +109,7 @@ function finishTick(
   idle: boolean,
   agent: { status: number },
   cleanup: { status: number } | undefined,
+  watch: { ok: boolean; status: number } | undefined,
 ): CronTickLog {
   const log: CronTickLog = {
     processJob: { processed, idle },
@@ -95,6 +117,9 @@ function finishTick(
   };
   if (cleanup) {
     log.cleanup = { ok: cleanup.status === 200, status: cleanup.status };
+  }
+  if (watch) {
+    log.watchHeartbeat = watch;
   }
   return log;
 }

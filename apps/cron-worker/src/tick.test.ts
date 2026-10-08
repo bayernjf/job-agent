@@ -146,3 +146,53 @@ it('skips cleanup entirely when process-job fails (fatal, same as before)', asyn
   expect(log.agentTick).toEqual({ ok: false });
   expect(calls).toHaveLength(1);
 });
+
+it('does not run the heartbeat watchdog by default', async () => {
+  const { get, calls } = makeGetter([{ body: idle }, { body: idle }]);
+  const log = await runCronTick(env, get, sleep);
+
+  expect(log.watchHeartbeat).toBeUndefined();
+  expect(calls.map((c) => c.path)).not.toContain('/api/internal/cron/watch-heartbeat');
+});
+
+it('runs the heartbeat watchdog after a healthy idle tick when requested', async () => {
+  const { get, calls } = makeGetter([
+    { body: idle },
+    { body: idle },
+    { status: 200, body: JSON.stringify({ status: 'ok', heartbeats: [] }) },
+  ]);
+  const log = await runCronTick(env, get, sleep, false, true);
+
+  expect(log.watchHeartbeat).toEqual({ ok: true, status: 200 });
+  expect(calls.at(-1)!.path).toBe('/api/internal/cron/watch-heartbeat');
+});
+
+it('runs the heartbeat watchdog even when process-job fails', async () => {
+  // The watchdog must observe consumer failure — it checks last-success
+  // heartbeats, so a failed process-job must NOT skip the watch call.
+  const { get, calls } = makeGetter([
+    { status: 401, body: 'unauthorized' },
+    { status: 503, body: JSON.stringify({ status: 'error', stale: ['process-job'] }) },
+  ]);
+  const log = await runCronTick(env, get, sleep, false, true);
+
+  expect(log.processJob.status).toBe(401);
+  expect(log.watchHeartbeat).toEqual({ ok: false, status: 503 });
+  expect(calls.map((c) => c.path)).toEqual([
+    '/api/internal/cron/process-job',
+    '/api/internal/cron/watch-heartbeat',
+  ]);
+});
+
+it('runs the heartbeat watchdog after the drain cap is reached', async () => {
+  const { get, calls } = makeGetter([
+    { body: processed },
+    { body: '{"ok":true}' },
+    { status: 200, body: JSON.stringify({ status: 'ok', heartbeats: [] }) },
+  ]);
+  const log = await runCronTick(env, get, sleep, false, true);
+
+  expect(log.processJob.processed).toBe(3);
+  expect(log.watchHeartbeat).toEqual({ ok: true, status: 200 });
+  expect(calls.at(-1)!.path).toBe('/api/internal/cron/watch-heartbeat');
+});

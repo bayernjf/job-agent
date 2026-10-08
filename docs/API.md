@@ -1548,7 +1548,7 @@ token 90 天滑动续期、可撤销。
 
 ### `GET /internal/cron/watch-heartbeat`
 
-消费心跳守望（2026-10-08 起，Vercel Cron `*/5` 调度）：按节奏检查各 cron 消费方（`agent-tick` / `process-job`）最近一次**成功**心跳（`cron_heartbeat.last_success_at`），任一超过 stale 阈值（agent-tick 15 分钟 = 连续 3 轮、process-job 30 分钟）即返回 503 并回写 `watchdog` 心跳失败记录（`last_error` 含明细）；全部新鲜则回写 watchdog 成功心跳（`last_error` 清空）。
+消费心跳守望（2026-10-08 起调度在 **Cloudflare Cron Worker** `*/5` 槽位，与 agent-tick 同节奏；原 Vercel Cron 方案因 Hobby 账户单日单次 cron 限制撤回，见 design-cron-worker）：按节奏检查各 cron 消费方（`agent-tick` / `process-job`）最近一次**成功**心跳（`cron_heartbeat.last_success_at`），任一超过 stale 阈值（agent-tick 15 分钟 = 连续 3 轮、process-job 30 分钟）即返回 503 并回写 `watchdog` 心跳失败记录（`last_error` 含明细）；全部新鲜则回写 watchdog 成功心跳（`last_error` 清空）。
 
 `200`：`{ "status": "ok", "heartbeats": [...] }`
 
