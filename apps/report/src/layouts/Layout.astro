@@ -65,7 +65,6 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
           <a href={`/${locale}/`}>{t('nav.home')}</a>
           <a href={`/${locale}/my`}>{t('nav.my')}</a>
           <a href={`/${locale}/workbench`}>{t('nav.workbench')}</a>
-          <a href={`/${locale}/recruit`}>{t('nav.recruit')}</a>
           <AccountMenu
             client:load
             apiBase={apiBase}
@@ -97,6 +96,7 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
       <div class="ja-container">
         <p class="ja-muted">{t('app.name')} · {t('app.tagline')}</p>
         <p class="footer-links">
+          <a href={`/${locale}/recruit`}>{t('nav.recruit')}</a>
           <a href={`/${locale}/privacy`}>{t('nav.privacy')}</a>
         </p>
       </div>
