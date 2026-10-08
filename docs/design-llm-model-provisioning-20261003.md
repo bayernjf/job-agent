@@ -78,7 +78,7 @@ CREATE TABLE llm_catalog_models (
   - `GET /admin/llm-catalog`：当前目录（模型清单 + 启用/默认态）
   - `PUT /admin/llm-catalog`：整体替换目录（白名单字段合并，结构上不可覆盖 baseUrl/apiKey）
   - `POST /admin/llm-catalog/refresh`：显式刷新运行时缓存（或写入即刷新）
-- **UI**：`apps/report` 的 `/[locale]/admin` 面板（仅 `is_admin` 可见）：模型列表（启用开关 / 设默认 / 排序 / 新增 / 删除）、变更即写即生效提示；i18n 双语 key。样式沿用 design token。**入口形态（2026-10-08 起）＝隐藏入口，只通过地址栏访问 `/[locale]/admin`**：已移除 AccountMenu 里的「模型管理」链接与 `account.admin` i18n key，产品 UI 不显示任何 admin 入口；页面 `robots=noindex,nofollow`，非 admin 到地址栏直接访问也只见登录闸/403。
+- **UI**：`apps/report` 的 `/[locale]/admin` 面板（仅 `is_admin` 可见）：模型列表（启用开关 / 设默认 / 排序 / 新增 / 删除）、变更即写即生效提示；i18n 双语 key。样式沿用 design token。**入口（2026-10-08 最终态，对齐 agent-world）＝账号菜单「模型管理」链接，仅 `canManageLlmCatalog` 能力位为真时显示**（agent-world 同款：UserMenu 按 role 显示 Admin 项）；地址栏直达 `/[locale]/admin` 同样可用；页面 `robots=noindex,nofollow`，非 admin 无论从菜单还是地址栏都只见登录闸/403。
 - **审计（简化版，完整 audit 缓做）**：目录每次写入记结构化 server 日志（`[admin-catalog] action=upsert/delete actor=<login> models=<ids>`，**不记凭证、不记价格**）；完整审计表机制（对齐 agent-world design-audit-log）列为 deferred。
 
 ### 4.3 BYOK：用户自由设置（工作台 Settings）
@@ -131,7 +131,7 @@ CREATE TABLE user_llm_configs (
 
 ## 6. 里程碑拆分
 
-- **P0 内置层基建（✅ 已落地 2026-10-03，handoff item105）**：迁移 023–025（`llm_catalog_models` + `accounts.is_admin` + `user_llm_configs`）+ `packages/llm` 目录合并纯函数（白名单 pick）+ 启动加载/显式刷新缓存 + admin 端点（GET/PUT/refresh）+ admin 面板 UI（report `/admin`；**2026-10-08 入口改为隐藏——移除 AccountMenu 链接，仅地址栏直达**）+ BYOK 4 端点（AES-256-GCM 加密列）+ 工作台模型设置面板 + 请求路由（BYOK 优先 → 内置回落）+ i18n 48 key + 测试（含凭证不入表、越权 403、白名单不可覆盖 baseUrl/apiKey、validate、回落链、停用即报错；storage 205 / llm 46 / api 249 / report 155 全绿）。
+- **P0 内置层基建（✅ 已落地 2026-10-03，handoff item105）**：迁移 023–025（`llm_catalog_models` + `accounts.is_admin` + `user_llm_configs`）+ `packages/llm` 目录合并纯函数（白名单 pick）+ 启动加载/显式刷新缓存 + admin 端点（GET/PUT/refresh）+ admin 面板 UI（report `/admin` + AccountMenu「模型管理」入口，能力位控制显示，对齐 agent-world）+ BYOK 4 端点（AES-256-GCM 加密列）+ 工作台模型设置面板 + 请求路由（BYOK 优先 → 内置回落）+ i18n 48 key + 测试（含凭证不入表、越权 403、白名单不可覆盖 baseUrl/apiKey、validate、回落链、停用即报错；storage 205 / llm 46 / api 249 / report 155 全绿）。
 - **P1 生产激活（J7 变体）**：生产 Vercel 配 `LLM_*`（`LLM_BASE_URL` / `LLM_API_KEY` = Agnes）+ `LLM_ENC_KEY` + `ADMIN_ACCOUNT_LOGINS`；首个 admin 登录后在 Admin UI 录入 `agnes-2.5-flash` 目录行。**注意**：P1 仍要配 env——按 agent-world 不变量，**凭证永远在 env**，admin UI 管理的是目录不是凭证。
 - **P2 体验增强（缓做）**：`GET /models` 探测、用量展示、完整审计表、内置/BYOK 混用策略。
 
@@ -152,4 +152,4 @@ CREATE TABLE user_llm_configs (
 - 2026-10-03（v1）：用户提出「内置模型（Agnes）+ BYOK」双轨；设计文档立项，决策 #21 待拍板（handoff item102）。
 - 2026-10-03（v2）：**用户拍板子问 0/0'**——内置模型＝**Admin UI 管理**（参考 agent-world [design-model-catalog](https://github.com/bayernjf/agent-world/blob/main/docs/design-model-catalog.md)，管理目录而非凭证）；BYOK＝**用户自由设置**。设计按 agent-world 方案重构：字段归属按「改一次动什么」切、凭证 env only 不变量、下架即报错、启动加载+写后显式刷新、admin 权限与简化审计；并登记 JobAgent 三项差异适配（无 role/无 settings 表/无 audit）。handoff item103。
 - 2026-10-03（v3）：**决策 #21 子问 1–6 全部拍板（全采纳助手建议）**——BYOK 密钥＝服务端 AES-256-GCM 加密列（`LLM_ENC_KEY`）；内置凭证＝env only；内置免费平台承担；BYOK 不计平台配额（账号级限流）；首个 admin＝`ADMIN_ACCOUNT_LOGINS` env 白名单自动置位；BYOK＝一账号一条。**设计定稿，P0 待开工**。handoff item104。
-- 2026-10-08（v4）：**用户追加要求＝admin 入口隐藏**——内置模型仍由 Admin UI 维护、仍走地址栏 `/[locale]/admin` 访问，但**不在产品 UI 里显示任何入口**（移除 AccountMenu「模型管理」链接与 `account.admin` i18n key；页面本就 `robots=noindex,nofollow` + 登录闸 + is_admin 403）。已落地，原子提交（未 push）。
+- 2026-10-08（v4）：**用户先要求入口隐藏、随后同日改回（最终态＝保留入口）**——上午要求「不在产品 UI 显示、仅地址栏 `/admin` 访问」，已临时移除 AccountMenu 链接与 `account.admin` key；用户随后改主意：「改回来，如果 agent-world 有的话那你也加一下」。核实 agent-world 的 model-catalog 入口＝**UserMenu 按 role（owner/admin）显示 Admin 项**，job-agent 原实现（`canManageLlmCatalog` 能力位 + AccountMenu 链接）与之同构 → **恢复入口，最终态＝能力位控制显示 + 地址栏直达并存**；`robots=noindex` 与 is_admin 403 不变。已落地，原子提交（未 push）。

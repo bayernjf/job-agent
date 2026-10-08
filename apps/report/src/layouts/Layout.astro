@@ -81,6 +81,7 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
             revokeLabel={t('account.revokeRecruiter')}
             revokeConfirm={t('account.revokeConfirm', { email: disputeEmail })}
             actionFailedLabel={t('account.recruiterActionFailed')}
+            adminLabel={t('account.admin')}
           />
           <a href={langSwitchPath} class="lang-switch">{t('nav.language')}</a>
         </nav>

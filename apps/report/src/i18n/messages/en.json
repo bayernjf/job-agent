@@ -613,6 +613,7 @@
   "modelSettings.noKey": "Not signed in or session expired",
   "modelSettings.encryptionMissing": "LLM_ENC_KEY is not configured on the server; the key cannot be stored securely (contact the admin)",
   "modelSettings.byokHint": "Your API key is encrypted at rest on the server and never logged in plaintext",
+  "account.admin": "Model management",
   "extensionAuth.title": "Browser extension access",
   "extensionAuth.subtitle": "Let the browser extension act as your signed-in identity (analyze, workbench, application tracking).",
   "extensionAuth.hint": "A code is valid for 5 minutes and can be consumed once; tokens can be revoked anytime and take effect immediately.",
