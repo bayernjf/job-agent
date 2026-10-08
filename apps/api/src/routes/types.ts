@@ -24,6 +24,8 @@ import type {
   ICronHeartbeatRepository,
   ColumnRequirement,
   IApiTokensRepository,
+  ISearchPresetsRepository,
+  ISearchRunsRepository,
 } from '@jobagent/storage';
 import type { Principal } from '@jobagent/shared';
 import type { DemoConfig } from '../demo-config.js';
@@ -67,6 +69,10 @@ export interface ApiRepos {
   claimVerifications: IClaimVerificationsRepository;
   /** cron 消费通道存活信号（迁移 031；API cron 端点写、/health?deep=1 读） */
   cronHeartbeat: ICronHeartbeatRepository;
+  /** 筛选条件预设（指令式搜岗，迁移 032） */
+  searchPresets: ISearchPresetsRepository;
+  /** 指令式全网搜岗任务（指令式搜岗，迁移 032） */
+  searchRuns: ISearchRunsRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
   /** 迁移漂移守卫（deferred「迁移漂移守卫」）：核对实际 schema 关键列，返回缺失列表 */
