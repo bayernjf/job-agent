@@ -86,7 +86,12 @@ test.describe('recruiter verification view', () => {
 });
 
 test.describe('application tracker', () => {
-  test('renders empty state and adds an application through the form', async ({ page }) => {
+  // 决策变更（2026-10-08 走查 #5）：投递写入/追踪仅主体本人可见。
+  // 空态 + 表单新增的正向流程改在已认领画像主体视角下验证（owner cookie）。
+  test('renders empty state and adds an application through the form', async ({ context, page }) => {
+    await context.addCookies([
+      { name: 'jobagent_session', value: FIXTURE_SESSION_TOKEN, domain: '127.0.0.1', path: '/' },
+    ]);
     const store: MockApplication[] = [];
     await page.route(APPLICATIONS_COLLECTION_URL, async (route) => {
       const request = route.request();
@@ -95,7 +100,7 @@ test.describe('application tracker', () => {
         const now = '2026-09-16T00:00:00.000Z';
         const record: MockApplication = {
           id: 'app-e2e-1',
-          profileId: FIXTURE_PROFILE_ID,
+          profileId: FIXTURE_CLAIMED_PROFILE_ID,
           targetTitle: body.targetTitle ?? '',
           targetCompany: body.targetCompany ?? '',
           targetUrl: body.targetUrl ?? null,
@@ -114,7 +119,7 @@ test.describe('application tracker', () => {
       return route.fulfill({ status: 200, json: { items: store } });
     });
 
-    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+    await page.goto(`/en/report/${FIXTURE_CLAIMED_PROFILE_ID}`);
 
     const tracker = page.locator('.apptrk');
     await expect(tracker).toContainText('Application tracker');
