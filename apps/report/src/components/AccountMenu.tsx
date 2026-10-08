@@ -30,7 +30,6 @@ interface ProvidersResponse {
 interface AccountMenuProps {
   apiBase: string;
   locale: 'zh-CN' | 'en';
-  adminLabel: string;
   signInLabel: string;
   signInGiteeLabel: string;
   signOutLabel: string;
@@ -66,7 +65,6 @@ export default function AccountMenu({
   revokeLabel,
   revokeConfirm,
   actionFailedLabel,
-  adminLabel,
 }: AccountMenuProps) {
   const [me, setMe] = useState<AuthMe | null>(null);
   const [providers, setProviders] = useState<ProvidersResponse | null>(null);
@@ -201,11 +199,6 @@ export default function AccountMenu({
           data-testid="my-claimed-profile"
         >
           {claimedLabel}
-        </a>
-      ) : null}
-      {me.kind === 'user' && me.canManageLlmCatalog ? (
-        <a className="account-menu__admin" href={`/${locale}/admin`} data-testid="admin-link">
-          {adminLabel}
         </a>
       ) : null}
       {isRecruiter ? (

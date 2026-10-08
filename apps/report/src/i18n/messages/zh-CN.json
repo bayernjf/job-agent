@@ -613,7 +613,6 @@
   "modelSettings.noKey": "未登录或会话已过期",
   "modelSettings.encryptionMissing": "服务器未配置 LLM_ENC_KEY，无法安全保存密钥（请通知管理员）",
   "modelSettings.byokHint": "你的 API Key 只在服务端加密存储，绝不进入浏览器以外的明文日志",
-  "account.admin": "模型管理",
   "extensionAuth.title": "浏览器扩展授权",
   "extensionAuth.subtitle": "让浏览器扩展以你的登录身份访问 API（分析、工作台、投递跟踪）。",
   "extensionAuth.hint": "授权码 5 分钟内有效、一次消费；兑换后的令牌可随时撤销，撤销立即生效。",
