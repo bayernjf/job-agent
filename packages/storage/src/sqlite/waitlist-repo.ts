@@ -44,7 +44,7 @@ export class SqliteWaitlistRepository implements IWaitlistRepository {
       .select()
       .from(waitlistTable)
       .where(eq(waitlistTable.status, status))
-      .orderBy(desc(waitlistTable.createdAt))
+      .orderBy(desc(waitlistTable.createdAt), desc(waitlistTable.id))
       .limit(limit)
       .all();
     return rows.map(toStoredWaitlist);
@@ -54,7 +54,7 @@ export class SqliteWaitlistRepository implements IWaitlistRepository {
     const rows = this.db
       .select()
       .from(waitlistTable)
-      .orderBy(desc(waitlistTable.createdAt))
+      .orderBy(desc(waitlistTable.createdAt), desc(waitlistTable.id))
       .limit(limit)
       .all();
     return rows.map(toStoredWaitlist);

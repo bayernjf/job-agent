@@ -105,6 +105,7 @@
   "report.authenticity.suspicious": "存在异常",
   "report.authenticity.insufficient_data": "证据不足",
   "report.authenticity.signals": "评估信号",
+  "report.authenticity.signalCodeTitle": "内部信号码（用于可审计溯源）",
   "report.skills.title": "能力标签",
   "report.skills.depth.used": "使用过",
   "report.skills.depth.proficient": "有深度",

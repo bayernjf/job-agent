@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { openSqlite } from './sqlite/connection.js';
 import { runMigrations } from './sqlite/migrator.js';
@@ -55,6 +56,47 @@ const SQLITE_MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations/sq
 const POSTGRES_MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations/postgres');
 
 /**
+ * 解析一个真实存在且含 .sql 的迁移目录。
+ *
+ * 默认路径按 monorepo 编译产物布局（packages/storage/dist → 仓库根/db/migrations）
+ * 推算；但 standalone 单文件打包（形态 A/B，bundle 位置变化、db/ 不在相对路径上）
+ * 会让该相对路径失效并在 readdir 时抛晦涩的 ENOENT。这里在首选路径未命中时，
+ * 依次探测常见的打包深度、进程工作目录与 bundle 旁目录；显式 config.migrationsDir
+ * 始终第一优先。全部未命中才抛出带尝试清单的明确错误。
+ *
+ * 仅在真正执行 migrate 时调用（延迟），因此只读 / DB_AUTO_MIGRATE=false 的场景
+ * 即使缺少迁移目录也不会失败。
+ */
+export function resolveExistingMigrationsDir(preferredDir: string, dialect: 'sqlite' | 'postgres'): string {
+  const rel = path.join('db', 'migrations', dialect);
+  const candidates = [
+    preferredDir,
+    path.resolve(__dirname, '../../../', rel),
+    path.resolve(__dirname, '../../', rel),
+    path.resolve(__dirname, '../', rel),
+    path.resolve(process.cwd(), rel),
+    path.resolve(__dirname, rel),
+  ];
+  const seen = new Set<string>();
+  for (const dir of candidates) {
+    const normalized = path.normalize(dir);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    try {
+      if (fs.existsSync(normalized) && fs.readdirSync(normalized).some((f) => f.endsWith('.sql'))) {
+        return normalized;
+      }
+    } catch {
+      // 无权限/非目录等：继续尝试下一个候选。
+    }
+  }
+  throw new Error(
+    `[storage] migrations directory not found for ${dialect}. Tried:\n  - ${[...seen].join('\n  - ')}\n` +
+      'Pass config.migrationsDir explicitly, run from the repository root, or place db/migrations next to the bundled output.',
+  );
+}
+
+/**
  * 持久化层唯一装配入口：按 driver 返回同一组仓储接口，业务代码不感知方言。
  * - sqlite（默认）：本地文件/内存库，零外部依赖。
  * - postgres：生产；必须提供 DATABASE_URL（或 config.databaseUrl）。
@@ -109,7 +151,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       extensionAuthCodes: new PgExtensionAuthCodesRepository(db),
       apiTokens: new PgApiTokensRepository(db),
       cronHeartbeat: new PgCronHeartbeatRepository(db),
-      migrate: async () => runPgMigrations(client, migrationsDir),
+      migrate: async () => runPgMigrations(client, resolveExistingMigrationsDir(migrationsDir, 'postgres')),
       ping: async () => {
         await client.unsafe('SELECT 1');
       },
@@ -151,7 +193,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     extensionAuthCodes: new SqliteExtensionAuthCodesRepository(db),
     apiTokens: new SqliteApiTokensRepository(db),
     cronHeartbeat: new SqliteCronHeartbeatRepository(db),
-    migrate: async () => runMigrations(client, migrationsDir),
+    migrate: async () => runMigrations(client, resolveExistingMigrationsDir(migrationsDir, 'sqlite')),
     ping: async () => {
       client.prepare('SELECT 1 AS ok').get();
     },

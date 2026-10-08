@@ -349,7 +349,7 @@ const {
                   <strong>{composeSignalLabel(signal.code, locale, signal.label)}</strong>
                   {/* 内部码降噪（走查 #9）：保留可审计性，但不再是与结论等权重的可见文本——
                       次级字号 + 悬浮提示；招聘方需要时可从 evidenceRefs 溯源 */}
-                  <code class="signal-code" title="内部信号码（用于可审计溯源）">{signal.code}</code>
+                  <code class="signal-code" title={t('report.authenticity.signalCodeTitle')}>{signal.code}</code>
                 </div>
                 <p>{composeSignalDetail(signal.code, locale, signal.detail, signal.facts)}</p>
                 {

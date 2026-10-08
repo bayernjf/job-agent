@@ -233,9 +233,15 @@ services:
 
 | 任务 | 形态 C 调度方式 | 端点 / 命令 |
 | --- | --- | --- |
-| 分析任务消费 | **Cloudflare Worker Cron 每 5 分钟（决策 #24，2026-10-06，`apps/cron-worker`）** | Worker 内循环 `GET /api/internal/cron/process-job`（`Authorization: Bearer $CRON_SECRET`）直到 idle，再调 `agent-tick`；每次认领并处理**一个** job；内置 5min 僵尸回收、demo 并发闸。升 Pro 时也可改回 Vercel 每分钟 cron |
-| demo + auth 清理 | **Vercel Cron** 每天 03:17 | `GET /api/internal/cron/cleanup?task=all`（凭证由平台注入 `Authorization: Bearer $CRON_SECRET`，path 内不内联 token；task=demo/auth/all，默认 all；保留窗口 24h / 30d） |
+| 分析任务消费 | **Cloudflare Worker Cron 每 5 分钟（决策 #24，2026-10-06，`apps/cron-worker`）** | Worker 内循环 `GET /api/internal/cron/process-job`（`Authorization: Bearer $CRON_SECRET`）直到 idle，再调 `agent-tick` 与 `watch-heartbeat`（2026-10-08 起 watchdog 同在 `*/5` 槽位，含 process-job 失败路径，任一消费方 stale 则 deep 健康检查 503）；每次认领并处理**一个** job；内置 5min 僵尸回收、demo 并发闸。升 Pro 时也可改回 Vercel 每分钟 cron |
+| demo + auth 清理 | **Vercel Cron** 每天 03:17（CF Worker `0 * * * *` 另跑一次冗余） | `GET /api/internal/cron/cleanup?task=all`（凭证由平台注入 `Authorization: Bearer $CRON_SECRET`，path 内不内联 token；task=demo/auth/all，默认 all；保留窗口 24h / 30d） |
 | 岗位日更 / HN 月更 | **GitHub Actions 定时 workflow 跑 CLI**（已落地 `.github/workflows/jobs-sync.yml`，每日 18:17 UTC / 每月 1 日 18:42 UTC，可手动触发） | 同左表 CLI 命令；需配 Actions secret `DATABASE_URL`（5432 串）；不塞进 serverless（时长/预算不可控） |
+
+> **⚠️ 部署踩坑（2026-10-08 实战，改 cron/Worker 前必读）**
+> 1. **Vercel Hobby：任何高于「每天 1 次」的 cron 表达式都会让整个部署失败**，而不是仅该 cron 不跑。曾给 `apps/report/vercel.json` 加 `*/5 * * * *` 的 watch-heartbeat，结果 `vercel --prod` 直接报错 *"Hobby accounts are limited to daily cron jobs"*，GitHub 集成也因此不创建 Production deployment，**生产静默停在旧版本**（面板只显示一个 Vercel check fail，易误判为 stale check）。结论：**高频调度一律放 Cloudflare Worker，`vercel.json` 只保留日频 cleanup**；合并 main 后若发现生产没更新，先查 Vercel 部署日志里有没有 cron 报错。
+> 2. **`wrangler deploy` 不会自动重新构建**：它上传当前 `apps/cron-worker/dist/`。改了 `src/` 必须先在 `apps/cron-worker` 跑 `pnpm build`（`tsc -p tsconfig.build.json`）再 `pnpm exec wrangler deploy`，否则上线的是旧 bundle（曾表现为新 watchdog 逻辑部署后心跳行始终不出现）。部署后用 `wrangler deployments list` 核对新版本 ID 与时间。
+> 3. **本地手动 `vercel --prod` 必须在仓库根目录跑**（CLI 会按 Root Directory=`apps/report` 自行定位）；在 `apps/report` 内跑会拼成 `apps/report/apps/report` 的错误路径。
+> 4. **standalone 单文件打包（形态 A/B）的迁移目录解析**：`createStorage()` 默认按编译产物相对路径找 `db/migrations/<dialect>`（`packages/storage/dist` 上溯三级到仓库根）；bundle 位置变化会让该路径失效。`resolveExistingMigrationsDir()` 会在首选路径未命中时依次探测各打包深度、`process.cwd()/db/migrations`、bundle 旁目录；全缺失则抛带尝试清单的明确错误（不再是晦涩 `ENOENT`）。自托管打包时**把 `db/migrations` 放进 WORKDIR，或显式传 `config.migrationsDir`**；只读 / `DB_AUTO_MIGRATE=false` 不受影响（解析延迟到真正 migrate 时）。
 
 鉴权：配了 `CRON_SECRET` 则**必须带 `Authorization: Bearer <secret>`**（常量时间比较；`?token=` 已于 2026-10-05 停用，用旧写法是 401 而不是故障）；未配时仅信任 Vercel 边缘下发的 `x-vercel-cron: 1` 头（外部无法伪造该头），仅适合临时调试。端点在配置缺失（如无 token）时返回 500，不伪装成功。
 

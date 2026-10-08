@@ -10,7 +10,7 @@
  */
 
 // 装配工厂与配置类型
-export { createStorage } from './storage.js';
+export { createStorage, resolveExistingMigrationsDir } from './storage.js';
 export type {
   StorageConfig,
   StorageContext,
