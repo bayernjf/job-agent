@@ -308,6 +308,8 @@ describe('applications endpoints', () => {
   it('creates, lists and patches an application, with defaults and validation', async () => {
     const { app, repos } = await harness();
     await insertProfile(repos, makeProfile('p1', 'alice'));
+    // 2026-10-08 收紧后写入需画像主体（匿名 401，见 application privacy 用例）；登录 alice 跑主链
+    const alice = await loginUser(repos, ALICE);
 
     // profile 不存在 → 404
     const missingProfile = await app.request('/profiles/nope/applications', {
@@ -317,7 +319,7 @@ describe('applications endpoints', () => {
     });
     expect(missingProfile.status).toBe(404);
 
-    // 缺 targetCompany → 400
+    // 缺 targetCompany → 400（body 校验先于鉴权，匿名也拿到字段级错误）
     const invalid = await app.request('/profiles/p1/applications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -328,7 +330,7 @@ describe('applications endpoints', () => {
     // 合法创建 → 201，默认 status=applied / origin=manual
     const created = await app.request('/profiles/p1/applications', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({
         targetTitle: 'Senior Engineer',
         targetCompany: 'Acme',
@@ -347,7 +349,7 @@ describe('applications endpoints', () => {
     // 再插一条更早的，验证列表按 applied_at 倒序
     await app.request('/profiles/p1/applications', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({
         targetTitle: 'Older Role',
         targetCompany: 'Oldco',
@@ -362,7 +364,7 @@ describe('applications endpoints', () => {
     // 非法状态 PATCH → 400
     const badPatch = await app.request(`/applications/${appId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({ status: 'hired' }),
     });
     expect(badPatch.status).toBe(400);
@@ -370,7 +372,7 @@ describe('applications endpoints', () => {
     // 空 PATCH → 400
     const emptyPatch = await app.request(`/applications/${appId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({}),
     });
     expect(emptyPatch.status).toBe(400);
@@ -378,7 +380,7 @@ describe('applications endpoints', () => {
     // 合法 PATCH → interview
     const patched = await app.request(`/applications/${appId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({ status: 'interview', note: '约了一面' }),
     });
     expect(patched.status).toBe(200);
@@ -386,7 +388,7 @@ describe('applications endpoints', () => {
     expect(patchedBody.status).toBe('interview');
     expect(patchedBody.note).toBe('约了一面');
 
-    // 不存在 → 404
+    // 不存在 → 404（行不存在先于鉴权判定）
     const notFound = await app.request('/applications/app-missing', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -398,9 +400,11 @@ describe('applications endpoints', () => {
   it('lets any origin record an outcome via PATCH with a server-stamped timestamp (item126)', async () => {
     const { app, repos } = await harness();
     await insertProfile(repos, makeProfile('p1', 'alice'));
+    // 2026-10-08 收紧后写入需画像主体：以 alice 登录身份跑 origin 全链路（匿名已被 401 挡住）
+    const alice = await loginUser(repos, ALICE);
     const created = await app.request('/profiles/p1/applications', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({
         targetTitle: 'Engineer',
         targetCompany: 'Acme',
@@ -413,7 +417,7 @@ describe('applications endpoints', () => {
     // 值域外的结果 → 400（与票据端点同一套枚举，两条写口不许漂移）
     const bad = await app.request(`/applications/${appId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({ outcomeFeedback: 'ghosted' }),
     });
     expect(bad.status).toBe(400);
@@ -421,7 +425,7 @@ describe('applications endpoints', () => {
     // 合法回标 → 服务端盖时间戳；再覆盖成另一个值也允许（错标的修正路径）
     const patched = await app.request(`/applications/${appId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({ outcomeFeedback: 'interview' }),
     });
     expect(patched.status).toBe(200);
@@ -431,16 +435,16 @@ describe('applications endpoints', () => {
 
     const fixed = await app.request(`/applications/${appId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...alice },
       body: JSON.stringify({ outcomeFeedback: 'offer' }),
     });
     const fixedRow = (await fixed.json()) as ApplicationResponse;
     expect(fixedRow.outcomeFeedback).toBe('offer');
     expect(fixedRow.outcomeFeedbackAt).toBeTruthy();
 
-    // 归属闸不因新字段而变：别人的行依旧与"不存在"同形
+    // 归属闸不因新字段而变：alice 写入的行归属 alice 本人
     const taken = await repos.applications.getById(appId);
-    expect(taken?.createdByAccountId).toBeNull(); // 匿名写入无主，PATCH 语义保持既有口径
+    expect(taken?.createdByAccountId).toMatch(/^acc-/); // 登录主体写入有主；PATCH 语义保持既有口径
   });
 
   it('lists applications scoped to the profile and 404s on unknown profile', async () => {
@@ -455,10 +459,11 @@ describe('applications endpoints', () => {
   });
 });
 
-// ── 投递数据隐私（决策 #17-F11，handoff item60 T01–T03）───────────────────────
-// 认领即隐私开关：未认领画像没有可授权的主体、报告本身按 #1-A 就是公开的，因此
-// 匿名读写链路保持原样；一旦本人认领，读与写都收归该账号。有主行只有主能改，
-// 非主一律 404（不泄露存在），无主历史行沿用现状。
+// ── 投递数据隐私（决策 #17-F11 + 2026-10-08 收紧，handoff item60 T01–T03）───────────────────
+// 读侧（GET 列表）：认领即隐私开关——未认领画像没有可授权主体、报告按 #1-A 公开，
+// 列表沿用公开可读；已认领收归本人。写侧（2026-10-08 决策变更，走查 #8）：收紧为
+// 主体本人可写——匿名 401；登录非主体 403（创建）或 404（行级更新，不泄露存在）；
+// 未认领画像也只有本人（platform+login 匹配，login 全局唯一）可写。有主行只有主能改。
 
 const ALICE: OAuthProfile = {
   platform: 'github',
@@ -512,35 +517,58 @@ async function createAppWith(repos: StorageContext) {
 }
 
 describe('application privacy (#17-F11)', () => {
-  it('leaves the anonymous journey on an unclaimed profile intact and hides ownership in lists', async () => {
+  it('rejects anonymous and third-party writes on an unclaimed profile but keeps the list readable', async () => {
     const repos = await createStorage({ sqlitePath: ':memory:' });
     await insertProfile(repos, makeProfile('p1', 'alice'));
     const app = await createAppWith(repos);
 
-    const created = await app.request('/profiles/p1/applications', {
+    // 匿名写：401（2026-10-08 收紧，走查 #8；此前匿名可写）
+    const anonPost = await app.request('/profiles/p1/applications', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ targetTitle: 'Engineer', targetCompany: 'Acme' }),
     });
-    expect(created.status).toBe(201);
-    const row = (await created.json()) as ApplicationResponse;
-    // 匿名写入不回改归属，历史语义不变
-    expect(row.createdByAccountId).toBeNull();
+    expect(anonPost.status).toBe(401);
 
+    // 读侧未收紧：公开列表仍可读
     const list = await app.request('/profiles/p1/applications');
     expect(list.status).toBe(200);
     const body = (await list.json()) as ApplicationListResponse;
-    expect(body.items).toHaveLength(1);
-    // 列表不外发账号 id（可与他人身份关联的标识）
-    expect(body.items[0]).not.toHaveProperty('createdByAccountId');
+    expect(body.items).toEqual([]);
+  });
 
-    // 无主行仍可被改（存量兼容，PRD F11 验收 1/4）
-    const patched = await app.request(`/applications/${row.id}`, {
+  it('lets the profile subject write an unclaimed profile; others get 403 on create', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const alice = await loginUser(repos, ALICE);
+    const app = await createAppWith(repos);
+
+    // 他人登录创建：403（不是 alice 的主体画像，明确身份）
+    const bob = await loginUser(repos, BOB);
+    const foreign = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...bob },
+      body: JSON.stringify({ targetTitle: 'Engineer', targetCompany: 'Acme' }),
+    });
+    expect(foreign.status).toBe(403);
+
+    // 主体本人（未认领也允许：login 全局唯一）：201，归属盖主
+    const created = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...alice },
+      body: JSON.stringify({ targetTitle: 'Engineer', targetCompany: 'Acme' }),
+    });
+    expect(created.status).toBe(201);
+    const row = (await created.json()) as ApplicationResponse & { createdByAccountId?: string | null };
+    expect(row.createdByAccountId).toMatch(/^acc-/);
+
+    // 匿名行级更新：401（2026-10-08 收紧；无主/有主历史行都不再对匿名开放）
+    const patchedAnon = await app.request(`/applications/${row.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ status: 'viewed' }),
     });
-    expect(patched.status).toBe(200);
+    expect(patchedAnon.status).toBe(401);
   });
 
   it('stamps the creator on a logged-in write and lets only that creator patch it', async () => {

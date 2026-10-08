@@ -29,6 +29,14 @@ const BOB: OAuthProfile = {
   email: 'bob@example.com',
   avatarUrl: null,
 };
+const CAROL: OAuthProfile = {
+  platform: 'github',
+  providerAccountId: '303',
+  login: 'carol',
+  name: 'Carol',
+  email: 'carol@example.com',
+  avatarUrl: null,
+};
 
 function extractCookies(res: Response): Record<string, string> {
   const out: Record<string, string> = {};
@@ -221,11 +229,13 @@ describe('POST /interviews', () => {
     await insertProfile(repos, 'p1', 'alice');
     await insertProfile(repos, 'p2', 'carol');
     const auth = await loginUser(repos, ALICE, { declareRecruiter: true });
+    // 2026-10-08 收紧后写入需画像主体（走查 #8）：p1 由 alice 登录创建，p2 需 carol 登录
+    const carolAuth = await loginUser(repos, CAROL);
 
-    // 求职者侧公开创建一条投递（默认 applied）
+    // 主体本人创建一条投递（默认 applied）
     const appRes = await app.request('/profiles/p1/applications', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth },
       body: JSON.stringify({ targetTitle: 'Backend Engineer', targetCompany: 'Acme' }),
     });
     const application = (await appRes.json()) as { id: string; status: string };
@@ -234,7 +244,7 @@ describe('POST /interviews', () => {
     // 另一个画像的投递拿来关联 → 400
     const otherAppRes = await app.request('/profiles/p2/applications', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...carolAuth },
       body: JSON.stringify({ targetTitle: 'Other', targetCompany: 'OtherCo' }),
     });
     const otherApplication = (await otherAppRes.json()) as { id: string };
@@ -270,9 +280,10 @@ describe('POST /interviews', () => {
   it('does not advance an application owned by the candidate when a recruiter links it', async () => {
     const { repos, app } = await harness();
     await insertProfile(repos, 'p1', 'alice');
-    const recruiterAuth = await loginUser(repos, ALICE, { declareRecruiter: true });
-    // 候选人本人登录后在未认领画像上记一条投递 → created_by_account_id = 候选人
-    const candidateAuth = await loginUser(repos, BOB);
+    // 2026-10-08 收紧后写入需画像主体（走查 #8）：候选人本人 = p1 主体 alice 登录创建；
+    // 招聘方换 BOB（另一账号声明招聘方），关联时不被跨主体改写（audit S2）
+    const candidateAuth = await loginUser(repos, ALICE);
+    const recruiterAuth = await loginUser(repos, BOB, { declareRecruiter: true });
 
     const appRes = await app.request('/profiles/p1/applications', {
       method: 'POST',

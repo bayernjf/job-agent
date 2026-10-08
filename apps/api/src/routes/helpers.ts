@@ -128,6 +128,29 @@ export function requireProfileOwner(c: Context, profile: StoredProfile): Respons
 }
 
 /**
+ * 投递**创建**的主体闸（2026-10-08 决策变更，走查 #8）：此前「认领即隐私开关」口径下
+ * 未认领画像放行任何匿名/登录写入，等于任何人都能向他人画像注入投递记录
+ * （design-demo-mode §1.2 早已列为可打穿的故障面）。现收紧为**写者必须为画像主体本人**
+ * （platform+login 匹配）：login 全局唯一，匹配者恒为画像主体，未认领也不放行他人。
+ * 匿名 401，登录非本人 403（创建场景明确身份）。与 requireProfileOwner 的差异只在
+ * 未认领分支——读侧（GET 列表）沿用公开口径不收紧；行级更新（PATCH）另有 404 不泄露
+ * 口径，见 recruiting.ts。
+ */
+export function requireProfileOwnerForWrite(
+  c: Context,
+  profile: StoredProfile,
+): Response | undefined {
+  const principal = c.get('principal');
+  if (principal.kind !== 'user') {
+    return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
+  }
+  if (principal.platform !== profile.subjectPlatform || principal.login !== profile.subjectLogin) {
+    return c.json({ error: 'not the profile owner', code: AUTH_ERROR_CODES.notProfileOwner }, 403);
+  }
+  return undefined;
+}
+
+/**
  * F10 招聘方面访问闸（决策 #17 第一期，design-recruiter-roles §4/§5）。
  * 两态分流（不静默降级）：
  *   - anonymous / demo → 401 AUTH_REQUIRED（先登录）

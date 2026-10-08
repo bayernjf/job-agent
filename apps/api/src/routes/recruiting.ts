@@ -5,6 +5,7 @@
 import type { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
 import {
+  AUTH_ERROR_CODES,
   AUTHENTICITY_STATUSES,
   InterviewCreateSchema,
   InterviewListQuerySchema,
@@ -15,6 +16,7 @@ import type { ApplicationStatus } from '@jobagent/storage';
 import {
   publicApplication,
   requireProfileOwner,
+  requireProfileOwnerForWrite,
   requireRecruiter,
 } from './helpers.js';
 import {
@@ -101,18 +103,20 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
   });
 
   // ── 投递记录：新增（求职者在报告页/扩展记录投递动作）──
+  // 2026-10-08 决策变更（走查 #8）：写入收紧为仅认领本人。未认领画像没有可授权主体，
+  // 任何人（匿名或登录）都不再能向他人画像注入投递记录；已认领画像保持「仅本人」。
   app.post('/profiles/:id/applications', async (c) => {
     const param = ProfileIdParamSchema.safeParse(c.req.param());
     if (!param.success) return c.json({ error: 'invalid profile id' }, 400);
     const profile = await repos.profiles.getById(param.data.id);
     if (!profile) return c.json({ error: 'profile not found' }, 404);
-    const gate = requireProfileOwner(c, profile);
-    if (gate) return gate;
-
+    // 先做 body 校验再鉴权：非法请求回 400（带具体字段信息），合法但无权限才 401/403。
     const parsed = ApplicationCreateSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) {
       return c.json({ error: 'invalid application', details: parsed.error.flatten() }, 400);
     }
+    const gate = requireProfileOwnerForWrite(c, profile);
+    if (gate) return gate;
     const data = parsed.data;
     const id = `app-${randomUUID()}`;
     const principal = c.get('principal');
@@ -137,7 +141,10 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
 
   // ── 投递记录：局部更新状态/备注/投递时间/链接（撤回用 status=withdrawn，不物理删除）──
   // 行级归属在仓储层校验：有主行只有主能改，非主返回 undefined，这里与"不存在"
-  // 同形回 404（对齐 PATCH /interviews/:id 的"不泄露存在"约定）。无主行沿用现状。
+  // 同形回 404（对齐 PATCH /interviews/:id 的"不泄露存在"约定）。
+  // 2026-10-08 决策变更（走查 #8）：写入统一收紧——匿名一律 401；登录但非画像主体
+  // （platform+login 不匹配，含未认领画像的他人）回 404 不泄露存在；只有主体本人
+  // （未认领也允许：login 全局唯一，写者恒为画像主体）能管理该画像上的记录。
   app.patch('/applications/:id', async (c) => {
     const id = c.req.param('id');
     if (!id) return c.json({ error: 'invalid application id' }, 400);
@@ -145,7 +152,21 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (!parsed.success) {
       return c.json({ error: 'invalid patch', details: parsed.error.flatten() }, 400);
     }
+    // 前置画像级主体闸：查行 → 查画像 → 匿名 401、非主体 404（不泄露）、主体放行。
+    const existing = await repos.applications.getById(id);
+    if (!existing) return c.json({ error: 'application not found' }, 404);
+    const owningProfile = await repos.profiles.getById(existing.profileId);
+    if (!owningProfile) return c.json({ error: 'application not found' }, 404);
     const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
+    }
+    if (
+      principal.platform !== owningProfile.subjectPlatform ||
+      principal.login !== owningProfile.subjectLogin
+    ) {
+      return c.json({ error: 'application not found' }, 404);
+    }
     // 回标时间戳由服务端盖（不接受调用者自填）；null 不在契约里，见 ApplicationPatchSchema
     const patch =
       parsed.data.outcomeFeedback === undefined
