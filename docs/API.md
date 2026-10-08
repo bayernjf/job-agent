@@ -948,6 +948,16 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | --- | --- |
 | 400 | 非法枚举（`skillMatch`/`platform`/`sortBy`/`authenticity` 含未知值）、`minConfidence` 越界、`limit`/`offset` 非整数或越界 |
 
+### `GET /candidates/export`
+
+候选人清单导出（B1-c，2026-10-08）：同一过滤条件（Query 参数与 `GET /candidates` 完全同口径）应用到**全量匹配**，忽略分页（内部 `limit=1000`，与检索的精筛窗上界一致），返回 RFC 4180 CSV（CRLF、含逗号/引号/换行字段加引号转义）。**访问前提同 `/candidates`**（F10：已声明招聘方，匿名 401 / 未声明 403）。
+
+`200` 响应头：`Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="candidates.csv"`。
+
+列（10 列）：`platform, login, displayName, headline, authenticity, confidence, skillCount, skills, updatedAt, profileUrl`（`skills` 合并为逗号分隔文本）。
+
+`400`：与 `/candidates` 相同的非法参数校验（未知枚举 / 越界值）。
+
 ## 3.6 投递记录追踪（求职者侧）
 
 以画像为归属记录求职者的投递动作与进展，供报告页「投递追踪」island 与（后续）浏览器扩展回写。**只做新增与状态流转，不物理删除**；撤回用 `status=withdrawn` 表达。

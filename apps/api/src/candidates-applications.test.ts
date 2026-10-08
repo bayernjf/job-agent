@@ -304,6 +304,53 @@ describe('GET /candidates', () => {
   });
 });
 
+describe('GET /candidates/export (B1-c CSV export)', () => {
+  it('rejects anonymous access with 401', async () => {
+    const { repos } = await harness();
+    const app = await createApp({ repos });
+    const res = await app.request('/candidates/export');
+    expect(res.status).toBe(401);
+  });
+
+  it('exports all matches as CSV honoring the same filters', async () => {
+    const { repos } = await harness();
+    await insertProfile(
+      repos,
+      makeProfile('p1', 'alice', { status: 'likely_authentic', skills: [skill('Rust')], headline: 'systems, kernel' }),
+    );
+    await insertProfile(
+      repos,
+      makeProfile('p2', 'bob', { status: 'suspicious', confidence: 0.2, skills: [skill('Python')] }),
+    );
+    const app = await createApp({ repos });
+    const headers = await recruiterHeaders(repos);
+
+    const res = await app.request('/candidates/export?keyword=systems', { headers });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/csv');
+    expect(res.headers.get('content-disposition')).toContain('attachment');
+
+    const csv = await res.text();
+    const lines = csv.split('\r\n');
+    expect(lines[0]).toBe(
+      'platform,login,displayName,headline,authenticity,confidence,skillCount,skills,updatedAt,profileUrl',
+    );
+    expect(lines[1]).toContain('alice');
+    // 逗号字段被引号包裹（RFC 4180）
+    expect(lines[1]).toContain('"systems, kernel"');
+    // bob 不匹配 keyword，不出现
+    expect(lines.join('\n')).not.toContain('bob');
+    expect(lines[lines.length - 1]).toBe('');
+  });
+
+  it('rejects invalid authenticity values with 400', async () => {
+    const { app, repos } = await harness();
+    const headers = await recruiterHeaders(repos);
+    const bad = await app.request('/candidates/export?authenticity=likely_authentic,bogus', { headers });
+    expect(bad.status).toBe(400);
+  });
+});
+
 describe('applications endpoints', () => {
   it('creates, lists and patches an application, with defaults and validation', async () => {
     const { app, repos } = await harness();

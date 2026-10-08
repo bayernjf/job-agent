@@ -12,13 +12,15 @@ import {
   InterviewPatchSchema,
   type AuthenticityStatus,
 } from '@jobagent/shared';
-import type { ApplicationStatus } from '@jobagent/storage';
+import type { ApplicationStatus, CandidateSearchQuery, CandidateSummary } from '@jobagent/storage';
+import { z } from 'zod';
 import {
   publicApplication,
   requireProfileOwner,
   requireProfileOwnerForWrite,
   requireRecruiter,
 } from './helpers.js';
+import { toCsv } from '../csv.js';
 import {
   ApplicationCreateSchema,
   ApplicationPatchSchema,
@@ -28,8 +30,76 @@ import {
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
+/** 候选人摘要 → CSV 行（B1-c 导出；skills 合并为逗号分隔文本，字段经 RFC 4180 转义） */
+export function toCandidateCsv(items: CandidateSummary[]): string {
+  const headers = [
+    'platform',
+    'login',
+    'displayName',
+    'headline',
+    'authenticity',
+    'confidence',
+    'skillCount',
+    'skills',
+    'updatedAt',
+    'profileUrl',
+  ];
+  const rows = items.map((candidate) => [
+    candidate.platform,
+    candidate.login,
+    candidate.displayName ?? '',
+    candidate.headline,
+    candidate.authenticity.status,
+    candidate.authenticity.confidence,
+    candidate.skillCount,
+    candidate.skills.map((skill) => skill.name).join(', '),
+    candidate.updatedAt,
+    candidate.profileUrl,
+  ]);
+  return toCsv(headers, rows);
+}
+
 export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
   const { repos, now } = d;
+
+  // 企业侧人才检索查询的共享解析（/candidates 与 /candidates/export 同口径）：
+  // authenticity/skills 为逗号分隔集合，逐个校验；非法值返回明确 400，不静默忽略。
+  function buildCandidateSearch(q: z.infer<typeof CandidateSearchQuerySchema>):
+    | { ok: true; search: CandidateSearchQuery }
+    | { ok: false; error: string; values?: string[] } {
+    let authenticity: AuthenticityStatus[] | undefined;
+    if (q.authenticity) {
+      const picked = q.authenticity
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const invalid = picked.filter((s) => !AUTHENTICITY_STATUSES.includes(s as AuthenticityStatus));
+      if (invalid.length > 0) {
+        return { ok: false, error: 'invalid authenticity value', values: invalid };
+      }
+      authenticity = picked as AuthenticityStatus[];
+    }
+
+    const skills = q.skills
+      ? q.skills
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
+
+    const search: CandidateSearchQuery = {
+      ...(q.keyword ? { keyword: q.keyword } : {}),
+      ...(skills && skills.length > 0 ? { skills } : {}),
+      ...(q.skillMatch ? { skillMatch: q.skillMatch } : {}),
+      ...(authenticity ? { authenticity } : {}),
+      ...(q.minConfidence !== undefined ? { minConfidence: q.minConfidence } : {}),
+      ...(q.platform ? { platform: q.platform } : {}),
+      ...(q.sortBy ? { sortBy: q.sortBy } : {}),
+      limit: q.limit ?? 20,
+      offset: q.offset ?? 0,
+    };
+    return { ok: true, search };
+  }
 
   // ── 企业侧人才检索（筛选工作台 P-A/P-B）：只读已生成画像，不触发新采集 ──
   app.get('/candidates', async (c) => {
@@ -42,41 +112,14 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'invalid query', details: parsed.error.flatten() }, 400);
     }
     const q = parsed.data;
-
-    // 真实性状态是逗号分隔的枚举集合，逐个校验，拒绝未知值
-    let authenticity: AuthenticityStatus[] | undefined;
-    if (q.authenticity) {
-      const picked = q.authenticity
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const invalid = picked.filter((s) => !AUTHENTICITY_STATUSES.includes(s as AuthenticityStatus));
-      if (invalid.length > 0) {
-        return c.json({ error: 'invalid authenticity value', values: invalid }, 400);
-      }
-      authenticity = picked as AuthenticityStatus[];
+    const built = buildCandidateSearch(q);
+    if (!built.ok) {
+      return c.json({ error: built.error, values: built.values }, 400);
     }
-
-    const skills = q.skills
-      ? q.skills
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : undefined;
 
     const limit = q.limit ?? 20;
     const offset = q.offset ?? 0;
-    const result = await repos.profiles.searchCandidates({
-      ...(q.keyword ? { keyword: q.keyword } : {}),
-      ...(skills && skills.length > 0 ? { skills } : {}),
-      ...(q.skillMatch ? { skillMatch: q.skillMatch } : {}),
-      ...(authenticity ? { authenticity } : {}),
-      ...(q.minConfidence !== undefined ? { minConfidence: q.minConfidence } : {}),
-      ...(q.platform ? { platform: q.platform } : {}),
-      ...(q.sortBy ? { sortBy: q.sortBy } : {}),
-      limit,
-      offset,
-    });
+    const result = await repos.profiles.searchCandidates({ ...built.search, limit, offset });
     const claimCounts = await repos.claimVerifications.countByProfiles(
       result.items.map((candidate) => candidate.profileId),
     );
@@ -85,6 +128,34 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
       verifiedClaimCount: claimCounts.get(candidate.profileId) ?? 0,
     }));
     return c.json({ items, total: result.total, limit, offset });
+  });
+
+  // ── 候选人清单导出（B1-c）：同一过滤条件应用到全量匹配，忽略分页 ──
+  // 只读面：与 /candidates 同鉴权（F10）、同过滤解析；行数受存储层精筛窗
+  // CANDIDATE_SCAN_CAP=1000 上界约束（与检索结果同口径，不额外放开）。
+  app.get('/candidates/export', async (c) => {
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const parsed = CandidateSearchQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+      return c.json({ error: 'invalid query', details: parsed.error.flatten() }, 400);
+    }
+    const built = buildCandidateSearch(parsed.data);
+    if (!built.ok) {
+      return c.json({ error: built.error, values: built.values }, 400);
+    }
+    const result = await repos.profiles.searchCandidates({
+      ...built.search,
+      limit: 1000,
+      offset: 0,
+    });
+    const csv = toCandidateCsv(result.items);
+    return new Response(csv, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="candidates.csv"',
+      },
+    });
   });
 
   // ── 投递记录：列出某画像的投递（按 applied_at 倒序）──
