@@ -105,6 +105,7 @@
   "report.authenticity.suspicious": "Suspicious",
   "report.authenticity.insufficient_data": "Insufficient data",
   "report.authenticity.signals": "Signals",
+  "report.authenticity.signalCodeTitle": "Internal signal code (for audit traceability)",
   "report.skills.title": "Skill Tags",
   "report.skills.depth.used": "Used",
   "report.skills.depth.proficient": "Proficient",
