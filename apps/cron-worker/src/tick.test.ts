@@ -41,6 +41,7 @@ it('drains until idle and then advances agent-tick', async () => {
     { body: processed },
     { body: idle },
     { body: idle },
+    { body: idle },
   ]);
 
   const log = await runCronTick(env, get, sleep);
@@ -48,20 +49,23 @@ it('drains until idle and then advances agent-tick', async () => {
   expect(log.processJob.processed).toBe(2);
   expect(log.processJob.idle).toBe(true);
   expect(log.agentTick.status).toBe(200);
+  expect(log.searchTick).toEqual({ ok: true, status: 200 });
   expect(calls.map((c) => c.path)).toEqual([
     '/api/internal/cron/process-job',
     '/api/internal/cron/process-job',
     '/api/internal/cron/process-job',
     '/api/internal/cron/agent-tick',
+    '/api/internal/cron/search-tick',
   ]);
 });
 
-it('returns idle immediately on an empty queue (one process-job + agent-tick)', async () => {
-  const { get, calls } = makeGetter([{ body: idle }, { body: idle }]);
+it('returns idle immediately on an empty queue (process-job + agent-tick + search-tick)', async () => {
+  const { get, calls } = makeGetter([{ body: idle }, { body: idle }, { body: idle }]);
   const log = await runCronTick(env, get, sleep);
 
   expect(log.processJob).toEqual({ processed: 0, idle: true });
-  expect(calls).toHaveLength(2);
+  expect(log.searchTick).toEqual({ ok: true, status: 200 });
+  expect(calls).toHaveLength(3);
 });
 
 it('stops without swallowing a non-2xx from process-job', async () => {
@@ -74,14 +78,19 @@ it('stops without swallowing a non-2xx from process-job', async () => {
   expect(calls).toHaveLength(1);
 });
 
-it('still runs agent-tick when the drain cap is reached', async () => {
-  const { get, calls } = makeGetter([{ body: processed }, { body: '{"ok":true}' }]);
+it('still runs agent-tick then search-tick when the drain cap is reached', async () => {
+  const { get, calls } = makeGetter([
+    { body: processed },
+    { body: '{"ok":true}' },
+    { body: '{"ok":true}' },
+  ]);
   const log = await runCronTick(env, get, sleep);
 
   expect(log.processJob.processed).toBe(3);
   expect(log.processJob.idle).toBe(false);
   expect(log.agentTick.status).toBe(200);
-  expect(calls.at(-1)!.path).toBe('/api/internal/cron/agent-tick');
+  expect(calls.at(-2)!.path).toBe('/api/internal/cron/agent-tick');
+  expect(calls.at(-1)!.path).toBe('/api/internal/cron/search-tick');
 });
 
 it('treats an unparseable 200 body as a processed answer, not a crash', async () => {
@@ -93,17 +102,19 @@ it('treats an unparseable 200 body as a processed answer, not a crash', async ()
 });
 
 it('does not call cleanup by default (runCleanup=false)', async () => {
-  const { get, calls } = makeGetter([{ body: idle }, { body: idle }]);
+  const { get, calls } = makeGetter([{ body: idle }, { body: idle }, { body: idle }]);
   await runCronTick(env, get, sleep);
 
   expect(calls.map((c) => c.path)).toEqual([
     '/api/internal/cron/process-job',
     '/api/internal/cron/agent-tick',
+    '/api/internal/cron/search-tick',
   ]);
 });
 
 it('runs cleanup after agent-tick on an idle queue when runCleanup=true', async () => {
   const { get, calls } = makeGetter([
+    { body: idle },
     { body: idle },
     { body: idle },
     { body: JSON.stringify({ ok: true, result: { task: 'all' } }) },
@@ -114,6 +125,7 @@ it('runs cleanup after agent-tick on an idle queue when runCleanup=true', async 
   expect(calls.map((c) => c.path)).toEqual([
     '/api/internal/cron/process-job',
     '/api/internal/cron/agent-tick',
+    '/api/internal/cron/search-tick',
     '/api/internal/cron/cleanup?task=all',
   ]);
 });
@@ -121,6 +133,7 @@ it('runs cleanup after agent-tick on an idle queue when runCleanup=true', async 
 it('runs cleanup after the drain cap when runCleanup=true', async () => {
   const { get, calls } = makeGetter([
     { body: processed },
+    { body: '{"ok":true}' },
     { body: '{"ok":true}' },
     { body: JSON.stringify({ ok: true, result: { task: 'all' } }) },
   ]);
@@ -132,7 +145,12 @@ it('runs cleanup after the drain cap when runCleanup=true', async () => {
 });
 
 it('records a non-2xx cleanup as a failure without throwing', async () => {
-  const { get } = makeGetter([{ body: idle }, { body: idle }, { status: 500, body: 'boom' }]);
+  const { get } = makeGetter([
+    { body: idle },
+    { body: idle },
+    { body: idle },
+    { status: 500, body: 'boom' },
+  ]);
   const log = await runCronTick(env, get, sleep, true);
 
   expect(log.cleanup).toEqual({ ok: false, status: 500 });
@@ -148,7 +166,7 @@ it('skips cleanup entirely when process-job fails (fatal, same as before)', asyn
 });
 
 it('does not run the heartbeat watchdog by default', async () => {
-  const { get, calls } = makeGetter([{ body: idle }, { body: idle }]);
+  const { get, calls } = makeGetter([{ body: idle }, { body: idle }, { body: idle }]);
   const log = await runCronTick(env, get, sleep);
 
   expect(log.watchHeartbeat).toBeUndefined();
@@ -157,6 +175,7 @@ it('does not run the heartbeat watchdog by default', async () => {
 
 it('runs the heartbeat watchdog after a healthy idle tick when requested', async () => {
   const { get, calls } = makeGetter([
+    { body: idle },
     { body: idle },
     { body: idle },
     { status: 200, body: JSON.stringify({ status: 'ok', heartbeats: [] }) },
@@ -187,6 +206,7 @@ it('runs the heartbeat watchdog even when process-job fails', async () => {
 it('runs the heartbeat watchdog after the drain cap is reached', async () => {
   const { get, calls } = makeGetter([
     { body: processed },
+    { body: '{"ok":true}' },
     { body: '{"ok":true}' },
     { status: 200, body: JSON.stringify({ status: 'ok', heartbeats: [] }) },
   ]);
