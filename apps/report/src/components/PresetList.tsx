@@ -21,6 +21,8 @@ interface PresetListProps {
   viewLabel: string;
   /** authenticity 状态码 → 本地化文案（来自 report.authenticity.* ） */
   authLabels: Record<string, string>;
+  /** 列表下方说明：示例账号是公开分析、"信号混合/证据不足"是正常分级 */
+  hintLabel: string;
 }
 
 const wrapStyle: CSSProperties = {
@@ -62,7 +64,7 @@ const linkStyle: CSSProperties = {
   color: 'var(--ja-color-accent)',
 };
 
-export default function PresetList({ locale, apiBase, title, viewLabel, authLabels }: PresetListProps) {
+export default function PresetList({ locale, apiBase, title, viewLabel, authLabels, hintLabel }: PresetListProps) {
   const [presets, setPresets] = useState<DemoPreset[]>([]);
 
   useEffect(() => {
@@ -85,6 +87,7 @@ export default function PresetList({ locale, apiBase, title, viewLabel, authLabe
   return (
     <div className="demo-presets" style={wrapStyle}>
       <h2 style={{ fontSize: 'var(--ja-text-base)', textAlign: 'center' }}>{title}</h2>
+      <p className="demo-presets-hint" style={mutedStyle}>{hintLabel}</p>
       <div style={listStyle}>
         {presets.map((preset) => (
           <div className="demo-preset-item" key={`${preset.platform}:${preset.login}`} style={itemStyle}>

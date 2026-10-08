@@ -483,6 +483,11 @@ const {
     {
       !isRecruiter && (
         <div id="resume-section" class="resume-anchor">
+          <p class="resume-extension-hint" data-testid="resume-extension-hint">
+            <a class="ja-link" href="https://github.com/bayernjf/job-agent/tree/main/apps/extension" target="_blank" rel="noopener noreferrer">
+              {t('report.resume.extensionHint')}
+            </a>
+          </p>
           <ResumeBuilder
           client:load
           profileId={profileId!}
@@ -890,6 +895,11 @@ const {
   .applications-locked .ja-link {
     display: inline-block;
     margin-top: var(--ja-space-3);
+    font-size: var(--ja-text-sm);
+  }
+
+  .resume-extension-hint {
+    margin-bottom: var(--ja-space-2);
     font-size: var(--ja-text-sm);
   }
 
