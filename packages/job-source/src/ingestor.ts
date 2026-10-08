@@ -17,6 +17,7 @@ const DEFAULT_SOURCE_BUDGETS_MS: Record<JobSource, number> = {
   lever: 3 * 60_000,
   hn_whoishiring: 5 * 60_000,
   weworkremotely: 3 * 60_000,
+  websearch: 3 * 60_000, // 指令式搜岗（search-source 执行，不经过 job-source 采集）
   manual: 60_000,
 };
 

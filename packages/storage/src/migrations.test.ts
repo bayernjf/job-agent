@@ -453,6 +453,32 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 033（job_postings 去掉 search_run_id 列，表本身仍在；搜岗结果关联）
+    const jpColsBefore33 = db
+      .prepare('PRAGMA table_info(job_postings)')
+      .all() as Array<{ name: string }>;
+    expect(jpColsBefore33.map((c) => c.name)).toContain('search_run_id');
+    const result33 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result33.version).toBe('033');
+    const jpColsAfter33 = db
+      .prepare('PRAGMA table_info(job_postings)')
+      .all() as Array<{ name: string }>;
+    expect(jpColsAfter33.map((c) => c.name)).not.toContain('search_run_id');
+
+    // 回滚 032（search_presets/search_runs 整表，指令式全网搜岗）
+    const srTablesBefore32 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(srTablesBefore32.map((t) => t.name)).toContain('search_presets');
+    expect(srTablesBefore32.map((t) => t.name)).toContain('search_runs');
+    const result32 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result32.version).toBe('032');
+    const srTablesAfter32 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(srTablesAfter32.map((t) => t.name)).not.toContain('search_presets');
+    expect(srTablesAfter32.map((t) => t.name)).not.toContain('search_runs');
+
     // 回滚 031（cron_heartbeat 整表，cron 消费存活信号）
     const hbTablesBefore31 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")

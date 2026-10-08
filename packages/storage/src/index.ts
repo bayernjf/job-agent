@@ -126,6 +126,17 @@ export type {
   NewJobPreference,
 } from './entities/job-preference.js';
 export type {
+  StoredSearchPreset,
+  NewSearchPreset,
+} from './entities/search-preset.js';
+export type {
+  StoredSearchRun,
+  NewSearchRun,
+  SearchRunFinishPatch,
+  SEARCH_RUN_STATUSES_LIST,
+  toStoredSearchRun,
+} from './entities/search-run.js';
+export type {
   JobRunStatus,
   StoredJobRun,
   NewJobRun,
@@ -197,3 +208,5 @@ export type {
   RunMigrationsResult,
   RollbackResult,
 } from './sqlite/migrator.js';
+export type { ISearchPresetsRepository } from './repositories/search-presets.js';
+export type { ISearchRunsRepository } from './repositories/search-runs.js';

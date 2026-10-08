@@ -14,7 +14,11 @@ export type JobPostingStatus = 'active' | 'inactive';
 export const JOB_POSTING_STATUSES: readonly JobPostingStatus[] = ['active', 'inactive'];
 
 /** 入库输入：shared 契约 + 跨源归一化碰撞键。 */
-export type NewJobPosting = JobPosting & { normalizedKey: string };
+export type NewJobPosting = JobPosting & {
+  normalizedKey: string;
+  /** 指令式搜岗来源 run（search_runs.run_id）；定时采集行为 null */
+  searchRunId?: string | null;
+};
 
 /** 存储行（camelCase，tags 已解析为数组）。 */
 export interface StoredJobPosting extends NewJobPosting {

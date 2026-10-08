@@ -194,3 +194,18 @@ export {
 
 export type { StoredCronHeartbeat, RawCronHeartbeatRow } from './cron-heartbeat.js';
 export { toStoredCronHeartbeat } from './cron-heartbeat.js';
+
+export type {
+  StoredSearchPreset,
+  NewSearchPreset,
+  RawSearchPresetRow,
+} from './search-preset.js';
+export { toStoredSearchPreset } from './search-preset.js';
+
+export type {
+  StoredSearchRun,
+  NewSearchRun,
+  SearchRunFinishPatch,
+  RawSearchRunRow,
+} from './search-run.js';
+export { toStoredSearchRun, SEARCH_RUN_STATUSES_LIST } from './search-run.js';

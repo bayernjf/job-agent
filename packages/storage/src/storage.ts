@@ -16,6 +16,8 @@ import { SqliteAccountsRepository } from './sqlite/accounts-repo.js';
 import { SqliteAuthSessionsRepository } from './sqlite/auth-sessions-repo.js';
 import { SqliteProfileRemovalRequestsRepository } from './sqlite/profile-removal-requests-repo.js';
 import { SqliteJobPreferencesRepository } from './sqlite/job-preferences-repo.js';
+import { SqliteSearchPresetsRepository } from './sqlite/search-presets-repo.js';
+import { SqliteSearchRunsRepository } from './sqlite/search-runs-repo.js';
 import { SqliteJobRunsRepository } from './sqlite/job-runs-repo.js';
 import { SqliteJobRunEventsRepository } from './sqlite/job-run-events-repo.js';
 import { SqliteSubmitIntentsRepository } from './sqlite/submit-intents-repo.js';
@@ -40,6 +42,8 @@ import { PgAccountsRepository } from './postgres/accounts-repo.js';
 import { PgAuthSessionsRepository } from './postgres/auth-sessions-repo.js';
 import { PgProfileRemovalRequestsRepository } from './postgres/profile-removal-requests-repo.js';
 import { PgJobPreferencesRepository } from './postgres/job-preferences-repo.js';
+import { PgSearchPresetsRepository } from './postgres/search-presets-repo.js';
+import { PgSearchRunsRepository } from './postgres/search-runs-repo.js';
 import { PgJobRunsRepository } from './postgres/job-runs-repo.js';
 import { PgJobRunEventsRepository } from './postgres/job-run-events-repo.js';
 import { PgSubmitIntentsRepository } from './postgres/submit-intents-repo.js';
@@ -151,6 +155,8 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       extensionAuthCodes: new PgExtensionAuthCodesRepository(db),
       apiTokens: new PgApiTokensRepository(db),
       cronHeartbeat: new PgCronHeartbeatRepository(db),
+      searchPresets: new PgSearchPresetsRepository(db),
+      searchRuns: new PgSearchRunsRepository(db),
       migrate: async () => runPgMigrations(client, resolveExistingMigrationsDir(migrationsDir, 'postgres')),
       ping: async () => {
         await client.unsafe('SELECT 1');
@@ -193,6 +199,8 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     extensionAuthCodes: new SqliteExtensionAuthCodesRepository(db),
     apiTokens: new SqliteApiTokensRepository(db),
     cronHeartbeat: new SqliteCronHeartbeatRepository(db),
+    searchPresets: new SqliteSearchPresetsRepository(db),
+    searchRuns: new SqliteSearchRunsRepository(db),
     migrate: async () => runMigrations(client, resolveExistingMigrationsDir(migrationsDir, 'sqlite')),
     ping: async () => {
       client.prepare('SELECT 1 AS ok').get();

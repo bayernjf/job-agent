@@ -48,4 +48,6 @@ export interface IJobPostingsRepository {
   /** last_seen_at < cutoffIso 的 active 岗位置 inactive，返回受影响行数 */
   markStale(cutoffIso: string): Promise<number>;
   getById(id: string): Promise<StoredJobPosting | undefined>;
+  /** 按搜岗 run 列出本次入库的岗位（source=websearch，run 关联列） */
+  listBySearchRun(runId: string, limit?: number): Promise<StoredJobPosting[]>;
 }

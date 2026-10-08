@@ -66,6 +66,7 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
           companyLogoUrl: p.companyLogoUrl ?? null,
           companyUrl: p.companyUrl ?? null,
           normalizedKey: p.normalizedKey ?? null,
+          searchRunId: p.searchRunId ?? null,
         };
 
         if (!existing) {
@@ -183,6 +184,17 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
       .where(and(eq(t.status, 'active'), sql`${t.lastSeenAt} < ${cutoffIso}`))
       .run();
     return Number(info.changes ?? 0);
+  }
+
+  async listBySearchRun(runId: string, limit = 200): Promise<StoredJobPosting[]> {
+    const rows = this.db
+      .select()
+      .from(t)
+      .where(eq(t.searchRunId, runId))
+      .orderBy(desc(t.firstSeenAt))
+      .limit(limit)
+      .all();
+    return rows.map(toStoredJobPosting);
   }
 
   async getById(id: string): Promise<StoredJobPosting | undefined> {

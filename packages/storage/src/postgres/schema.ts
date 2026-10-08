@@ -169,6 +169,7 @@ export const jobPostings = pgTable(
     postedAt: text('posted_at').notNull(),
     fetchedAt: text('fetched_at').notNull(),
     applyUrl: text('apply_url'),
+    searchRunId: text('search_run_id'),
     companyLogoUrl: text('company_logo_url'),
     companyUrl: text('company_url'),
     normalizedKey: text('normalized_key'),
@@ -679,3 +680,62 @@ export const cronHeartbeat = pgTable('cron_heartbeat', {
 
 export type CronHeartbeatInsert = typeof cronHeartbeat.$inferInsert;
 export type CronHeartbeatSelect = typeof cronHeartbeat.$inferSelect;
+
+/**
+ * search_presets 表——用户保存的筛选条件预设（迁移 032，设计 §3）。
+ * 列集合与 sqlite 对齐；conditions 存 JSON 文本；(account_id, query) 唯一。
+ */
+export const searchPresets = pgTable(
+  'search_presets',
+  {
+    presetId: text('preset_id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    title: text('title'),
+    query: text('query').notNull(),
+    conditions: text('conditions').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex('idx_search_presets_account_query').on(table.accountId, table.query),
+    index('idx_search_presets_account').on(table.accountId),
+  ],
+);
+
+export type SearchPresetInsert = typeof searchPresets.$inferInsert;
+export type SearchPresetSelect = typeof searchPresets.$inferSelect;
+
+/** search_runs 表——一次指令式全网搜岗任务（迁移 032，设计 §3）。 */
+export const searchRuns = pgTable(
+  'search_runs',
+  {
+    runId: text('run_id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    presetId: text('preset_id'),
+    query: text('query').notNull(),
+    conditions: text('conditions').notNull(),
+    status: text('status').notNull().default('queued'),
+    queries: text('queries').notNull().default('[]'),
+    resultsCount: integer('results_count').notNull().default(0),
+    newCount: integer('new_count').notNull().default(0),
+    matchedCount: integer('matched_count').notNull().default(0),
+    error: text('error'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_search_runs_account').on(table.accountId),
+    index('idx_search_runs_status').on(table.status, table.createdAt),
+  ],
+);
+
+export type SearchRunInsert = typeof searchRuns.$inferInsert;
+export type SearchRunSelect = typeof searchRuns.$inferSelect;
