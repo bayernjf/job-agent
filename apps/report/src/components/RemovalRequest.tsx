@@ -3,9 +3,11 @@ import { useState } from 'react';
 /**
  * RemovalRequest：未认领画像的「按主体撤回」公开申请入口（审计 S3，2026-10-01）。
  * 仅在 SSR 画像 claimed=false 且尚未软挂起（removal_requested_at 为空）时挂载；
- * 挂载后向 POST /profiles/:id/removal-request 提交申请（匿名即可，服务端按 IP 滑窗防刷）。
- * 提交成功（202）或命中幂等（200 idempotent）后刷新页面，由 SSR 顶部「已收到移除申请」
- * 标注条接管显示；失败显示错误文案。所有用户可见文案由 Astro 经 t() 传入，组件不硬编码。
+ * 2026-10-08 走查 #5 起从报告页 header 主操作位降级到页脚「数据主体权益」区，
+ * 触发器样式为次级文字链（ja-link）而非主按钮。挂载后向 POST /profiles/:id/removal-request
+ * 提交申请（匿名即可，服务端按 IP 滑窗防刷）。提交成功（202）或命中幂等（200 idempotent）
+ * 后刷新页面，由 SSR 顶部「已收到移除申请」标注条接管显示；失败显示错误文案。
+ * 所有用户可见文案由 Astro 经 t() 传入，组件不硬编码。
  */
 
 type UiStatus = 'idle' | 'submitting' | 'done' | 'error';
@@ -73,8 +75,8 @@ export default function RemovalRequest({
 
   return (
     <details className="removal-request" data-testid="removal-request">
-      <summary className="ja-btn ja-btn--ghost" role="button" aria-expanded="false">
-        {ctaLabel}
+      <summary className="removal-request__trigger" role="button" aria-expanded="false">
+        {ctaLabel} ↗
       </summary>
       <p className="ja-muted removal-request__hint">{hintLabel}</p>
       <textarea

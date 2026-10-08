@@ -46,6 +46,8 @@ const notice = Astro.url.searchParams.get('notfound')
       <h1>{t('home.title')}</h1>
       <p class="ja-muted subtitle">{t('home.subtitle')}</p>
 
+      <p class="ja-muted visitor-hint" data-testid="visitor-hint">{t('home.visitorHint')}</p>
+
       <div class="ja-card form-card">
         <AnalyzeForm
           client:load
@@ -83,6 +85,7 @@ const notice = Astro.url.searchParams.get('notfound')
         apiBase={apiBase}
         title={t('demo.presets.title')}
         viewLabel={t('demo.presets.view')}
+        hintLabel={t('demo.presets.hint')}
         authLabels={{
           likely_authentic: t('report.authenticity.likely_authentic'),
           mixed_signals: t('report.authenticity.mixed_signals'),
@@ -110,6 +113,18 @@ const notice = Astro.url.searchParams.get('notfound')
         </div>
       </div>
     </section>
+
+    <section class="extension-cta" data-testid="extension-cta">
+      <div class="ja-card">
+        <h2>{t('home.extension.title')}</h2>
+        <p class="ja-muted">{t('home.extension.desc')}</p>
+        <p>
+          <a class="ja-link" href="https://github.com/bayernjf/job-agent/tree/main/apps/extension" target="_blank" rel="noopener noreferrer">
+            {t('home.extension.install')}
+          </a>
+        </p>
+      </div>
+    </section>
   </div>
 </Layout>
 
@@ -128,6 +143,12 @@ const notice = Astro.url.searchParams.get('notfound')
     max-width: 520px;
     margin: 0 auto var(--ja-space-6);
     font-size: var(--ja-text-lg);
+  }
+
+  .visitor-hint {
+    max-width: 520px;
+    margin: 0 auto var(--ja-space-6);
+    font-size: var(--ja-text-sm);
   }
 
   .form-card {
@@ -149,6 +170,16 @@ const notice = Astro.url.searchParams.get('notfound')
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: var(--ja-space-4);
+  }
+
+  .extension-cta {
+    max-width: 480px;
+    margin: var(--ja-space-8) auto 0;
+    text-align: center;
+  }
+
+  .extension-cta h2 {
+    font-size: var(--ja-text-base);
   }
 
   .step h3 {

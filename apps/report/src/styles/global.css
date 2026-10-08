@@ -1393,8 +1393,31 @@ h4 { font-size: var(--ja-text-lg); }
 }
 
 .recruit-results-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-3);
   margin-bottom: var(--ja-space-3);
   font-size: var(--ja-text-sm);
+}
+
+.recruit-export {
+  margin-left: auto;
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-accent);
+  background: none;
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  padding: var(--ja-space-1) var(--ja-space-3);
+  cursor: pointer;
+}
+
+.recruit-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.recruit-export-error {
+  color: var(--ja-color-danger);
 }
 
 .recruit-error {

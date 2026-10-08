@@ -8,7 +8,7 @@
  *   4. notFound / onError 兜底，以及 Node 进程入口 main()。
  *
  * 各业务端点的实现按域拆分到：
- *   routes/system.ts       — /health、/internal/cron/process-job、/internal/cron/cleanup
+ *   routes/system.ts       — /health、/internal/cron/process-job、/internal/cron/watch-heartbeat、/internal/cron/cleanup
  *   routes/demo.ts         — /demo/*
  *   routes/auth.ts         — /auth/*（GitHub/Gitee OAuth、会话、招聘方声明）
  *   routes/analyze.ts      — POST /analyze、GET /jobs/:id

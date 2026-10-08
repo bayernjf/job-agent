@@ -48,9 +48,14 @@ test.describe('claimed profile hides the application pipeline from strangers', (
 });
 
 test.describe('unclaimed profile keeps the anonymous journey working', () => {
-  test('anonymous visitor still gets the tracker', async ({ page }) => {
+  // 决策变更（2026-10-08 走查 #5）：投递写入/追踪仅主体本人可见。
+  // 未认领画像对匿名访客不再渲染 tracker，改为锁定提示（含认领引导）。
+  test('anonymous visitor sees the locked notice instead of the tracker', async ({ page }) => {
     await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
 
-    await expect(page.locator('.apptrk')).toContainText('Application tracker');
+    expect(await page.locator('.apptrk').count()).toBe(0);
+    await expect(page.locator('[data-testid="applications-locked"]')).toBeVisible();
+    // 报告本身仍然可见（收紧的是投递数据，不是画像结论）
+    await expect(page.locator('h1, .report-header, main').first()).toBeVisible();
   });
 });

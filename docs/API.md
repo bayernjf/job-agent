@@ -948,6 +948,16 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | --- | --- |
 | 400 | 非法枚举（`skillMatch`/`platform`/`sortBy`/`authenticity` 含未知值）、`minConfidence` 越界、`limit`/`offset` 非整数或越界 |
 
+### `GET /candidates/export`
+
+候选人清单导出（B1-c，2026-10-08）：同一过滤条件（Query 参数与 `GET /candidates` 完全同口径）应用到**全量匹配**，忽略分页（内部 `limit=1000`，与检索的精筛窗上界一致），返回 RFC 4180 CSV（CRLF、含逗号/引号/换行字段加引号转义）。**访问前提同 `/candidates`**（F10：已声明招聘方，匿名 401 / 未声明 403）。
+
+`200` 响应头：`Content-Type: text/csv; charset=utf-8`、`Content-Disposition: attachment; filename="candidates.csv"`。
+
+列（10 列）：`platform, login, displayName, headline, authenticity, confidence, skillCount, skills, updatedAt, profileUrl`（`skills` 合并为逗号分隔文本）。
+
+`400`：与 `/candidates` 相同的非法参数校验（未知枚举 / 越界值）。
+
 ## 3.6 投递记录追踪（求职者侧）
 
 以画像为归属记录求职者的投递动作与进展，供报告页「投递追踪」island 与（后续）浏览器扩展回写。**只做新增与状态流转，不物理删除**；撤回用 `status=withdrawn` 表达。
@@ -1535,6 +1545,16 @@ token 90 天滑动续期、可撤销。
 | `failed` | 本次处理失败（带 `jobId`、`permanent`、`message`；永久失败置终态，可重试错误退避） |
 
 `500`：配置错误（如 `GITHUB_TOKEN` 缺失）等异常返回 `{ "ok": false, "error": "..." }`，不伪装成功。
+
+### `GET /internal/cron/watch-heartbeat`
+
+消费心跳守望（2026-10-08 起，Vercel Cron `*/5` 调度）：按节奏检查各 cron 消费方（`agent-tick` / `process-job`）最近一次**成功**心跳（`cron_heartbeat.last_success_at`），任一超过 stale 阈值（agent-tick 15 分钟 = 连续 3 轮、process-job 30 分钟）即返回 503 并回写 `watchdog` 心跳失败记录（`last_error` 含明细）；全部新鲜则回写 watchdog 成功心跳（`last_error` 清空）。
+
+`200`：`{ "status": "ok", "heartbeats": [...] }`
+
+`503`：`{ "status": "error", "stale": ["agent-tick lastOk=2026-10-08T03:00:00.000Z lastError=none"] }`
+
+`/health?deep=1` 联动：watchdog 最近一次失败（`last_error` 非空、30 分钟内）时 deep 探活 503 并返回 `watchdog: { status: "error", message }`——让"消费通道断了"成为可探知失败；watchdog 下一轮成功后恢复 200。未知 consumer 一律忽略，不误报；空表（尚无任何心跳）不算 stale。
 
 ### `GET /internal/cron/cleanup?task=demo|auth|all`
 

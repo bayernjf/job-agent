@@ -28,6 +28,21 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   { table: 'cron_heartbeat', column: 'consumer' }, // 031 心跳（本批）
 ];
 
+/**
+ * 心跳守望（watchdog）参数：watch-heartbeat cron 按 *\/5 调度（与最慢消费方
+ * agent-tick 对齐），stale 判定只看"最近一次成功心跳"（last_success_at；失败
+ * 记录不覆盖它，见 storage 的 recordFailure 语义）。阈值给连续 N 轮无心跳的
+ * 冗余：agent-tick *\/5 → 15 分钟（连续 3 轮）、process-job 30 分钟（容忍
+ * 更低频调度/更长任务）。未知 consumer 一律忽略，不误报。
+ */
+const WATCHDOG_CONSUMER = 'watchdog';
+const WATCHDOG_STALE_THRESHOLDS: Record<string, number> = {
+  'agent-tick': 15 * 60_000,
+  'process-job': 30 * 60_000,
+};
+/** deep 探活中，watchdog 最近一次失败记录（last_error 非空）视为不健康的时间窗 */
+const WATCHDOG_UNHEALTHY_WINDOW_MS = 30 * 60_000;
+
 export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
   const { repos, now, deps, cronAuthorized } = d;
 
@@ -64,6 +79,21 @@ export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
             db: 'ok',
             dbLatencyMs: Date.now() - started,
             schemaDrift: missing,
+          },
+          503,
+        );
+      }
+      // 心跳守望：watch-heartbeat cron 最近一次发现消费方 stale 时（watchdog 行
+      // last_error 非空且在窗口内），deep 探活 503 显式暴露——让"分析/代理消费
+      // 通道断了"成为可探知的失败，而不是只在 cron 日志里躺一条。
+      const watchdog = heartbeats.find((hb) => hb.consumer === WATCHDOG_CONSUMER);
+      if (watchdog?.lastError && Date.now() - new Date(watchdog.updatedAt).getTime() < WATCHDOG_UNHEALTHY_WINDOW_MS) {
+        return c.json(
+          {
+            ...base,
+            db: 'ok',
+            dbLatencyMs: Date.now() - started,
+            watchdog: { status: 'error', message: watchdog.lastError, checkedAt: watchdog.updatedAt },
           },
           503,
         );
@@ -127,6 +157,39 @@ export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
       console.error('[cron] process-job failed:', JSON.stringify(describeError(err)));
       await repos.cronHeartbeat.recordFailure('process-job', started, (err as Error).message);
       return c.json({ ok: false, error: (err as Error).message }, 500);
+    }
+  });
+
+  // GET /internal/cron/watch-heartbeat：消费心跳守望——按节奏（Vercel Cron *\/5）
+  // 检查各 cron 消费方最近一次成功心跳，任一 stale 即回写 watchdog 失败心跳并返回
+  // 503（Vercel 面板/日志可见失败），deep 探活同步暴露为不健康；全部新鲜则回写
+  // watchdog 成功心跳（last_error 清空 → deep 探活恢复 200）。
+  app.get('/internal/cron/watch-heartbeat', async (c) => {
+    if (!cronAuthorized(c)) return c.json({ error: 'unauthorized' }, 401);
+    const started = now();
+    try {
+      const heartbeats = await repos.cronHeartbeat.listAll();
+      const stale: string[] = [];
+      for (const hb of heartbeats) {
+        const threshold = WATCHDOG_STALE_THRESHOLDS[hb.consumer];
+        if (threshold === undefined) continue;
+        const lastOk = hb.lastSuccessAt ? new Date(hb.lastSuccessAt).getTime() : 0;
+        if (Date.now() - lastOk > threshold) {
+          stale.push(`${hb.consumer} lastOk=${hb.lastSuccessAt ?? 'never'} lastError=${hb.lastError ?? 'none'}`);
+        }
+      }
+      if (stale.length > 0) {
+        const message = `stale: ${stale.join('; ')}`;
+        await repos.cronHeartbeat.recordFailure(WATCHDOG_CONSUMER, started, message);
+        return c.json({ status: 'error', stale }, 503);
+      }
+      const summary = heartbeats.length > 0 ? heartbeats.map((hb) => `${hb.consumer}:ok`).join(', ') : 'no-consumers-yet';
+      await repos.cronHeartbeat.recordSuccess(WATCHDOG_CONSUMER, started, summary);
+      return c.json({ status: 'ok', heartbeats });
+    } catch (err) {
+      console.error('[cron] watch-heartbeat failed:', JSON.stringify(describeError(err)));
+      await repos.cronHeartbeat.recordFailure(WATCHDOG_CONSUMER, started, (err as Error).message);
+      return c.json({ status: 'error', error: (err as Error).message }, 500);
     }
   });
 

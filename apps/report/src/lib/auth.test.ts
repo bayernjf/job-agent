@@ -83,20 +83,23 @@ describe('resolveViewer', () => {
   });
 });
 
-/** 投递管道可见性（决策 #17-F11）：认领即收归本人，未认领画像沿用公开口径。 */
+/** 投递管道可见性（决策 #17-F11 + 2026-10-08 收紧）：仅主体本人可见，未认领不再公开。 */
 describe('canViewApplications', () => {
   const user = { kind: 'user', platform: 'github', login: 'alice', claimedProfileId: null, recruiter: false } as const;
   const otherUser = { kind: 'user', platform: 'github', login: 'mallory', claimedProfileId: null, recruiter: false } as const;
   const giteeUser = { kind: 'user', platform: 'gitee', login: 'alice', claimedProfileId: null, recruiter: false } as const;
   const anon = { kind: 'anonymous' } as const;
   const unclaimed = { subjectClaimed: false, subjectPlatform: 'github', subjectLogin: 'bob' };
+  const unclaimedAsAlice = { subjectClaimed: false, subjectPlatform: 'github', subjectLogin: 'alice' };
   const claimedByAlice = { subjectClaimed: true, subjectPlatform: 'github', subjectLogin: 'alice' };
   const claimedByOther = { subjectClaimed: true, subjectPlatform: 'github', subjectLogin: 'bob' };
   const fusedClaimed = { subjectClaimed: true, subjectPlatform: 'all', subjectLogin: 'alice' };
 
-  it('leaves an unclaimed profile readable by anyone, matching the API', () => {
-    expect(canViewApplications(anon, unclaimed)).toBe(true);
-    expect(canViewApplications(user, unclaimed)).toBe(true);
+  it('hides an unclaimed profile from everyone except the matching subject, matching the API write gate', () => {
+    expect(canViewApplications(anon, unclaimed)).toBe(false);
+    expect(canViewApplications(user, unclaimed)).toBe(false);
+    // 未认领画像的主体本人（login 全局唯一）登录匹配后可见
+    expect(canViewApplications(user, unclaimedAsAlice)).toBe(true);
   });
 
   it('locks a claimed profile to exactly its owner', () => {

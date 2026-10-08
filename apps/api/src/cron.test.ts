@@ -321,3 +321,101 @@ describe('GET /health?deep=1 (migration drift guard)', () => {
     expect(verifyRequiredColumns).not.toHaveBeenCalled();
   });
 });
+
+describe('GET /internal/cron/watch-heartbeat (liveness watchdog)', () => {
+  const auth = { headers: { authorization: 'Bearer watch-secret' } };
+
+  it('rejects requests without any cron credential', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const app = await createApp({ repos: await freshRepos() });
+    const res = await app.request('/internal/cron/watch-heartbeat');
+    expect(res.status).toBe(401);
+  });
+
+  it('passes on an empty heartbeat table (no consumers yet, nothing to flag)', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; heartbeats: unknown[] };
+    expect(body.status).toBe('ok');
+    expect(body.heartbeats).toEqual([]);
+    const watchdog = (await repos.cronHeartbeat.listAll()).find((hb) => hb.consumer === 'watchdog');
+    expect(watchdog?.lastError).toBeNull();
+    expect(watchdog?.lastResult).toBe('no-consumers-yet');
+  });
+
+  it('flags a stale consumer (last success older than threshold) with 503 and writes a watchdog failure', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    const staleAt = new Date(Date.now() - 16 * 60_000).toISOString();
+    await repos.cronHeartbeat.recordSuccess('agent-tick', staleAt, 'advanced=1,recycled=0');
+    const app = await createApp({ repos });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { status: string; stale: string[] };
+    expect(body.status).toBe('error');
+    expect(body.stale[0]).toContain('agent-tick');
+    const watchdog = (await repos.cronHeartbeat.listAll()).find((hb) => hb.consumer === 'watchdog');
+    expect(watchdog?.lastError).toContain('agent-tick');
+  });
+
+  it('passes when every known consumer is fresh and clears the watchdog failure', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    const freshAt = new Date().toISOString();
+    await repos.cronHeartbeat.recordSuccess('agent-tick', freshAt, 'advanced=0,recycled=0');
+    await repos.cronHeartbeat.recordSuccess('process-job', freshAt, 'idle');
+    const app = await createApp({ repos });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(200);
+    const watchdog = (await repos.cronHeartbeat.listAll()).find((hb) => hb.consumer === 'watchdog');
+    expect(watchdog?.lastError).toBeNull();
+    expect(watchdog?.lastResult).toContain('agent-tick:ok');
+  });
+
+  it('ignores unknown consumers instead of flagging them', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess('some-future-consumer', new Date(0).toISOString(), 'old');
+    const app = await createApp({ repos });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(200);
+  });
+
+  it('deep health returns 503 while the watchdog reports a recent stale', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess('agent-tick', new Date(Date.now() - 16 * 60_000).toISOString(), 'old');
+    const app = await createApp({ repos });
+
+    const watchRes = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(watchRes.status).toBe(503);
+
+    const deepRes = await app.request('/health?deep=1');
+    expect(deepRes.status).toBe(503);
+    const body = (await deepRes.json()) as { watchdog: { status: string; message: string } };
+    expect(body.watchdog.status).toBe('error');
+    expect(body.watchdog.message).toContain('agent-tick');
+  });
+
+  it('deep health recovers to 200 once the watchdog succeeds again', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess('agent-tick', new Date(Date.now() - 16 * 60_000).toISOString(), 'old');
+    const app = await createApp({ repos });
+
+    await app.request('/internal/cron/watch-heartbeat', auth);
+    const freshAt = new Date().toISOString();
+    await repos.cronHeartbeat.recordSuccess('agent-tick', freshAt, 'ok');
+    await app.request('/internal/cron/watch-heartbeat', auth);
+
+    const deepRes = await app.request('/health?deep=1');
+    expect(deepRes.status).toBe(200);
+  });
+});

@@ -71,6 +71,9 @@ interface WorkspaceLabels {
   error: string;
   empty: string;
   resultsCount: string;
+  exportLabel: string;
+  exporting: string;
+  exportFailed: string;
   viewReport: string;
   skillCount: string;
   verifiedClaims: string;
@@ -146,6 +149,8 @@ export default function CandidateWorkspace({
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [shortlist, setShortlist] = useState<string[]>([]);
   const isFirstRun = useRef(true);
 
@@ -231,6 +236,35 @@ export default function CandidateWorkspace({
     setShortlist((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+  }
+
+  // B1-c 导出：以当前已提交的过滤条件请求全量 CSV（不带分页），浏览器下载。
+  async function exportCsv() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(committed)) {
+        if (value) params.set(key, value);
+      }
+      const res = await fetch(`${apiBase}/candidates/export?${params.toString()}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'candidates.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
   }
 
   const shortlistedCandidates = useMemo(
@@ -370,6 +404,15 @@ export default function CandidateWorkspace({
 
       <div className="recruit-results-meta">
         {!loading && !error && <span>{fill(labels.resultsCount, total)}</span>}
+        <button
+          type="button"
+          className="recruit-export"
+          onClick={exportCsv}
+          disabled={exporting || total === 0}
+        >
+          {exporting ? labels.exporting : labels.exportLabel}
+        </button>
+        {exportError && <span className="recruit-export-error">{labels.exportFailed}: {exportError}</span>}
       </div>
 
       {loading && (
