@@ -45,7 +45,7 @@ export class PgWaitlistRepository implements IWaitlistRepository {
       .select()
       .from(waitlistTable)
       .where(eq(waitlistTable.status, status))
-      .orderBy(desc(waitlistTable.createdAt))
+      .orderBy(desc(waitlistTable.createdAt), desc(waitlistTable.id))
       .limit(limit);
     return rows.map(toStoredWaitlist);
   }
@@ -54,7 +54,7 @@ export class PgWaitlistRepository implements IWaitlistRepository {
     const rows = await this.db
       .select()
       .from(waitlistTable)
-      .orderBy(desc(waitlistTable.createdAt))
+      .orderBy(desc(waitlistTable.createdAt), desc(waitlistTable.id))
       .limit(limit);
     return rows.map(toStoredWaitlist);
   }

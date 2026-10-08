@@ -456,9 +456,15 @@ describe('cli waitlist', () => {
     expect(code).toBe(0);
     const lines = s.out.trim().split('\n');
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toContain('alice@example.com');
-    expect(lines[0]).toContain('alice-dev');
-    expect(lines[1]).toContain('bob@example.com');
+    // Rows are ordered newest-first (createdAt desc, id desc); assert content
+    // without depending on insertion order so equal-timestamp seeds stay stable.
+    const table = lines.join('\n');
+    expect(table).toContain('alice@example.com');
+    expect(table).toContain('alice-dev');
+    expect(table).toContain('bob@example.com');
+    expect(table).toContain('pending');
+    // carol is contacted, so it must not be listed under pending.
+    expect(table).not.toContain('carol@example.com');
   });
 
   it('--limit caps the number of rows', async () => {
