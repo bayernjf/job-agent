@@ -8,6 +8,10 @@
     {
       "path": "/api/internal/cron/cleanup?task=all",
       "schedule": "17 3 * * *"
+    },
+    {
+      "path": "/api/internal/cron/watch-heartbeat",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -1536,6 +1536,16 @@ token 90 天滑动续期、可撤销。
 
 `500`：配置错误（如 `GITHUB_TOKEN` 缺失）等异常返回 `{ "ok": false, "error": "..." }`，不伪装成功。
 
+### `GET /internal/cron/watch-heartbeat`
+
+消费心跳守望（2026-10-08 起，Vercel Cron `*/5` 调度）：按节奏检查各 cron 消费方（`agent-tick` / `process-job`）最近一次**成功**心跳（`cron_heartbeat.last_success_at`），任一超过 stale 阈值（agent-tick 15 分钟 = 连续 3 轮、process-job 30 分钟）即返回 503 并回写 `watchdog` 心跳失败记录（`last_error` 含明细）；全部新鲜则回写 watchdog 成功心跳（`last_error` 清空）。
+
+`200`：`{ "status": "ok", "heartbeats": [...] }`
+
+`503`：`{ "status": "error", "stale": ["agent-tick lastOk=2026-10-08T03:00:00.000Z lastError=none"] }`
+
+`/health?deep=1` 联动：watchdog 最近一次失败（`last_error` 非空、30 分钟内）时 deep 探活 503 并返回 `watchdog: { status: "error", message }`——让"消费通道断了"成为可探知失败；watchdog 下一轮成功后恢复 200。未知 consumer 一律忽略，不误报；空表（尚无任何心跳）不算 stale。
+
 ### `GET /internal/cron/cleanup?task=demo|auth|all`
 
 物理清理过期数据，语义与 CLI `jobagent demo cleanup` / `jobagent auth cleanup` 一致；只删会话/限流事件/未认领账号，绝不触碰 `profiles`/`evidence`。`task` 默认 `all`，非法值返回 400。保留窗口：demo/auth 会话与限流事件过期后再留 24h；未认领且无有效会话的账号留 30 天。
