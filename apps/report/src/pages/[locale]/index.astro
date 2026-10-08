@@ -46,6 +46,8 @@ const notice = Astro.url.searchParams.get('notfound')
       <h1>{t('home.title')}</h1>
       <p class="ja-muted subtitle">{t('home.subtitle')}</p>
 
+      <p class="ja-muted visitor-hint" data-testid="visitor-hint">{t('home.visitorHint')}</p>
+
       <div class="ja-card form-card">
         <AnalyzeForm
           client:load
@@ -128,6 +130,12 @@ const notice = Astro.url.searchParams.get('notfound')
     max-width: 520px;
     margin: 0 auto var(--ja-space-6);
     font-size: var(--ja-text-lg);
+  }
+
+  .visitor-hint {
+    max-width: 520px;
+    margin: 0 auto var(--ja-space-6);
+    font-size: var(--ja-text-sm);
   }
 
   .form-card {

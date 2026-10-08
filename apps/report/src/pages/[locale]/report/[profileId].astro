@@ -137,37 +137,26 @@ const {
           /* 未认领：挂载认领 island；单源画像要求平台+登录名一致，融合画像（subjectPlatform='all'）
              任一源（GitHub/Gitee 同 login）命中即可看到 CTA（T19） */
           !profile.subject.claimed && (
-            <ClaimProfile
-              client:load
-              apiBase={apiBase}
-              profileId={profileId!}
-              subjectPlatform={isFusedProfile ? 'all' : profile.subject.platform}
-              subjectLogin={profile.subject.login}
-              ctaLabel={t('report.claim.cta')}
-              claimingLabel={t('report.claim.claiming')}
-              claimedBadge={t('report.claimedBadge')}
-              errorLabel={t('report.claim.error')}
-              hintLabel={t('report.claim.hint')}
-              unclaimedNoticeTestId="unclaimed-notice"
-            />
-          )}
-          {
-            /* S3 按主体撤回：未认领且尚未软挂起的画像，挂载公开申请入口；
-               已挂起（isHeldForRemoval）由顶部标注条接管，不再重复展示表单。 */
-            !profile.subject.claimed && !isHeldForRemoval && (
-              <RemovalRequest
+            <div id="claim-section" class="claim-anchor">
+              <ClaimProfile
                 client:load
                 apiBase={apiBase}
                 profileId={profileId!}
-                ctaLabel={t('report.removal.cta')}
-                submittingLabel={t('report.removal.submitting')}
-                submittedLabel={t('report.removal.submitted')}
-                errorLabel={t('report.removal.error')}
-                reasonPlaceholder={t('report.removal.reasonPlaceholder')}
-                contactPlaceholder={t('report.removal.contactPlaceholder')}
-                hintLabel={t('report.removal.hint')}
+                subjectPlatform={isFusedProfile ? 'all' : profile.subject.platform}
+                subjectLogin={profile.subject.login}
+                ctaLabel={t('report.claim.cta')}
+                claimingLabel={t('report.claim.claiming')}
+                claimedBadge={t('report.claimedBadge')}
+                errorLabel={t('report.claim.error')}
+                hintLabel={t('report.claim.hint')}
+                unclaimedNoticeTestId="unclaimed-notice"
               />
-            )
+            </div>
+          )}
+          {
+            /* 2026-10-08 走查 #5：移除申请不再占主操作位（合规入口曾排 header 第一个按钮）。
+               S3 按主体撤回的入口降级到页面底部「数据主体权益」区（data-rights），本人/访客
+               都可从页脚找到；已软挂起（isHeldForRemoval）由顶部标注条接管，底部不再重复。 */
           }
         <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
         <a
@@ -204,6 +193,65 @@ const {
         )
       }
     </section>
+
+    <!-- 行动出口（2026-10-08 走查 #6）：报告页此前 10 区块并列、看完没有"下一步"。
+         这里按身份态给求职者一条主路径：认领 → 定向简历 → 记录投递。显示条件：
+         未认领画像对任何人显示（引导主体本人认领）；已认领画像只对本人显示
+         （别人的画像不暴露"认领/简历"路径）。招聘方视图一律不显示。 -->
+    {
+      !isRecruiter && (profile.subject.claimed ? isProfileOwner : true) && (
+        <section class="ja-card journey" data-testid="journey">
+          <h2>{t('report.journey.title')}</h2>
+          <p class="ja-muted journey-lead">{t('report.journey.lead')}</p>
+          <ol class="journey-steps">
+            <li class={profile.subject.claimed ? 'journey-step journey-step--done' : 'journey-step'}>
+              <span class="journey-step__label">
+                <strong>1. {t('report.journey.step1')}</strong>
+                {
+                  profile.subject.claimed ? (
+                    <span class="ja-badge ja-badge--owner journey-step__status">
+                      {t('report.journey.step1Done')}
+                    </span>
+                  ) : (
+                    <a class="ja-link journey-step__cta" href="#claim-section">
+                      {t('report.journey.go')} →
+                    </a>
+                  )
+                }
+              </span>
+            </li>
+            <li class="journey-step">
+              <span class="journey-step__label">
+                <strong>2. {t('report.journey.step2')}</strong>
+                {
+                  profile.subject.claimed ? (
+                    <a class="ja-link journey-step__cta" href="#resume-section">
+                      {t('report.journey.go')} →
+                    </a>
+                  ) : (
+                    <span class="ja-muted journey-step__locked">{t('report.journey.locked')}</span>
+                  )
+                }
+              </span>
+            </li>
+            <li class="journey-step">
+              <span class="journey-step__label">
+                <strong>3. {t('report.journey.step3')}</strong>
+                {
+                  isProfileOwner ? (
+                    <a class="ja-link journey-step__cta" href="#applications-section">
+                      {t('report.journey.go')} →
+                    </a>
+                  ) : (
+                    <span class="ja-muted journey-step__locked">{t('report.journey.locked')}</span>
+                  )
+                }
+              </span>
+            </li>
+          </ol>
+        </section>
+      )
+    }
 
     <!-- 下一步动作（T10）：只渲染 improvementSuggestions 里带证据的条目，
          文案按读者语言由 shared 的模板现拼；招聘方视图不需要这栏（那是给本人的建议）。 -->
@@ -434,7 +482,8 @@ const {
          画像不完整不等于没有出路），简历内核自有 insufficient_data 显式标注。 -->
     {
       !isRecruiter && (
-        <ResumeBuilder
+        <div id="resume-section" class="resume-anchor">
+          <ResumeBuilder
           client:load
           profileId={profileId!}
           apiBase={apiBase}
@@ -508,7 +557,8 @@ const {
             manualGenerate: t('report.resume.manualGenerate'),
             manualMissing: t('report.resume.manualMissing'),
           }}
-        />
+          />
+        </div>
       )
     }
 
@@ -637,10 +687,12 @@ const {
         ))
     }
 
-    <!-- 投递追踪（仅求职者视角；已认领画像的管道只对本人出现，#17-F11） -->
+    <!-- 投递追踪（仅求职者视角；2026-10-08 收紧后仅主体本人可用：已认领画像只对本人出现，
+         未认领画像对他人不再展示可写入口，见走查 #8 与 auth.canViewApplications） -->
     {
       !isRecruiter && canUseApplications && (
-        <ApplicationTracker
+        <div id="applications-section" class="applications-anchor">
+          <ApplicationTracker
           client:load
           profileId={profileId!}
           apiBase={apiBase}
@@ -671,7 +723,22 @@ const {
             outcomeUnset: t('applications.outcome.unset'),
             outcomeLabels: applicationOutcomeLabels,
           }}
-        />
+          />
+        </div>
+      )
+    }
+
+    <!-- 未认领画像的投递锁定提示（走查 #8 前端侧）：本人之外不展示可写入口，
+         给主体本人一条"认领后解锁"的引导（非主体不泄露存在，什么都不显示）。 -->
+    {
+      !isRecruiter && !profile.subject.claimed && (
+        <section class="ja-card applications-locked" data-testid="applications-locked">
+          <h2>{t('applications.title')}</h2>
+          <p class="ja-muted">{t('applications.locked')}</p>
+          <a class="ja-link" href="#claim-section">
+            {t('report.journey.step1')} →
+          </a>
+        </section>
       )
     }
 
@@ -707,6 +774,28 @@ const {
       )
     }
 
+    <!-- 数据主体权益（2026-10-08 走查 #5 降级）：未认领画像的「按主体撤回」申请入口
+         从 header 主操作位移到这里；合规通道保留、不占主位。已软挂起由顶部标注条接管。 -->
+    {
+      !profile.subject.claimed && !isHeldForRemoval && (
+        <section class="ja-card data-rights" data-testid="data-rights">
+          <h2>{t('report.dataRights.title')}</h2>
+          <RemovalRequest
+            client:load
+            apiBase={apiBase}
+            profileId={profileId!}
+            ctaLabel={t('report.removal.cta')}
+            submittingLabel={t('report.removal.submitting')}
+            submittedLabel={t('report.removal.submitted')}
+            errorLabel={t('report.removal.error')}
+            reasonPlaceholder={t('report.removal.reasonPlaceholder')}
+            contactPlaceholder={t('report.removal.contactPlaceholder')}
+            hintLabel={t('report.removal.hint')}
+          />
+        </section>
+      )
+    }
+
     <!-- 局限与说明 -->
     <section class="ja-card caveats">
       <h2>{t('report.caveats.title')}</h2>
@@ -733,3 +822,81 @@ const {
     </section>
   </div>
 </Layout>
+
+<style>
+  /* 2026-10-08 走查 #5/#6/#8：行动出口、数据主体权益、投递锁定提示与锚点滚动留白 */
+  .journey {
+    margin-top: var(--ja-space-5);
+  }
+
+  .journey-lead {
+    margin-bottom: var(--ja-space-4);
+  }
+
+  .journey-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-3);
+  }
+
+  .journey-step__label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ja-space-3);
+    flex-wrap: wrap;
+  }
+
+  .journey-step__status {
+    font-size: var(--ja-text-sm);
+  }
+
+  .journey-step__locked {
+    font-size: var(--ja-text-sm);
+  }
+
+  .journey-step__cta {
+    font-size: var(--ja-text-sm);
+    white-space: nowrap;
+  }
+
+  .data-rights {
+    margin-top: var(--ja-space-4);
+  }
+
+  .data-rights h2 {
+    margin-bottom: var(--ja-space-3);
+  }
+
+  /* 移除申请触发器：页脚次级文字链（不再是 header 主按钮） */
+  .removal-request__trigger {
+    cursor: pointer;
+    color: var(--ja-color-accent);
+    text-decoration: underline;
+    font-size: var(--ja-text-sm);
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  .applications-locked {
+    margin-top: var(--ja-space-4);
+  }
+
+  .applications-locked h2 {
+    margin-bottom: var(--ja-space-2);
+  }
+
+  .applications-locked .ja-link {
+    display: inline-block;
+    margin-top: var(--ja-space-3);
+    font-size: var(--ja-text-sm);
+  }
+
+  /* 锚点跳转时给 sticky header 留白 */
+  .claim-anchor,
+  .resume-anchor,
+  .applications-anchor {
+    scroll-margin-top: var(--ja-space-8);
+  }
+</style>

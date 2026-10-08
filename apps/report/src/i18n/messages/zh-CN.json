@@ -9,6 +9,7 @@
   "home.placeholder": "用户名，如 torvalds",
   "home.analyze": "生成画像",
   "home.waitHint": "提交后由每 5 分钟一次的定时任务开始分析，采集与计算还需数分钟；你可以先离开本页，稍后到「我的」查看进度与报告链接。",
+  "home.visitorHint": "无需注册即可查看公开画像；登录并认领后，可管理自己的画像、生成定向简历并记录投递。",
   "home.analyzing": "分析中…",
   "home.invalidUsername": "请输入有效的用户名",
   "home.platform.github": "GitHub",
@@ -89,6 +90,7 @@
   "report.summary.headline": "摘要",
   "report.verifiability.banner": "每条结论均挂可复核的公开行为证据，而非自述宣称。",
   "report.nextSteps.title": "下一步动作",
+  "report.journey.title": "接下来做什么",
   "report.nextSteps.lead": "以下建议只基于这份画像里已有的证据，每条都可点开核对。",
   "report.nextSteps.why": "依据",
   "report.nextSteps.evidence": "相关证据",
@@ -245,6 +247,7 @@
   "report.gate.loginButton": "用 GitHub 登录查看",
   "report.gate.evidenceBodyGitee": "真实性信号、技能标签与面试题依据对应的原始行为链接，登录 Gitee 后即可逐条打开核验。",
   "report.gate.interviewBodyGitee": "共 {count} 道由真实项目证据生成的面试题与考察意图；登录 Gitee 后可见，并可下载完整面试准备包。",
+  "applications.locked": "登录并认领/匹配本画像主体后，才能在此记录与跟进投递。",
   "report.gate.loginButtonGitee": "用 Gitee 登录查看",
   "applications.title": "投递追踪",
   "applications.hint": "记录你针对每个岗位的投递与进展，数据与这份画像绑定、保存在你的账号库中。",
@@ -621,5 +624,13 @@
   "extensionAuth.loadFailed": "加载扩展授权列表失败",
   "extensionAuth.issueFailed": "签发失败，请稍后重试",
   "extensionAuth.revokeFailed": "撤销失败，请稍后重试",
-  "extensionAuth.notLoggedIn": "未登录或会话已过期"
+  "extensionAuth.notLoggedIn": "未登录或会话已过期",
+  "report.journey.lead": "按你的身份状态，走下一步：",
+  "report.journey.step1": "认领这份画像",
+  "report.journey.step1Done": "已完成：本人已验证",
+  "report.journey.step2": "生成定向简历",
+  "report.journey.step3": "记录投递并跟进",
+  "report.journey.locked": "认领后解锁",
+  "report.journey.go": "去完成",
+  "report.dataRights.title": "数据主体权益"
 }
