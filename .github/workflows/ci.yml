@@ -4,6 +4,14 @@ on:
   push:
   pull_request:
 
+# Cancel superseded runs when new commits land: for a PR key by PR number,
+# otherwise by ref. The push run and pull_request run of the same head are kept
+# distinct (they guard the branch and the PR merge gate separately); this only
+# cancels stale runs from earlier commits so CI minutes are not wasted.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   actionlint:
     runs-on: ubuntu-latest
