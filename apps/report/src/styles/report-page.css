@@ -31,7 +31,14 @@
 .header-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--ja-space-3);
+}
+
+/* 窄屏：徽章/按钮保持自然宽度换行排列，不被压成逐字竖排（移动端走查 2026-10-08） */
+.header-meta .ja-badge,
+.header-meta .ja-btn {
+  white-space: nowrap;
 }
 
 .meta-bar {
@@ -110,6 +117,20 @@
   color: var(--ja-color-fg-muted);
   opacity: 0.75;
   user-select: all;
+}
+
+/* 窄屏：信号标签与内部码允许换行，长码断行而不是把标签压成竖排（移动端走查 2026-10-08） */
+.signal .ja-flex-between {
+  flex-wrap: wrap;
+  gap: var(--ja-space-1) var(--ja-space-3);
+}
+
+.signal .ja-flex-between strong {
+  min-width: 0;
+}
+
+.signal-code {
+  word-break: break-all;
 }
 
 .kind-label {

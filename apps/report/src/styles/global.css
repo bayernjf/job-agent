@@ -1874,4 +1874,14 @@ h4 { font-size: var(--ja-text-lg); }
   .agent-run-form {
     grid-template-columns: 1fr;
   }
+
+  /* 首页分析表单：输入框与按钮纵向堆叠，避免窄屏输入框被压窄、placeholder 截断
+     （移动端走查 2026-10-08） */
+  .analyze-form .input-row {
+    flex-direction: column;
+  }
+
+  .analyze-form .input-row .ja-btn {
+    width: 100%;
+  }
 }
