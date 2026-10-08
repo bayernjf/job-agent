@@ -106,6 +106,10 @@
 .signal-code {
   font-family: var(--ja-font-mono);
   font-size: var(--ja-text-xs);
+  /* 走查 #9 降噪：内部码退居次级视觉权重（不影响可审计性，title 悬浮提示溯源） */
+  color: var(--ja-color-fg-muted);
+  opacity: 0.75;
+  user-select: all;
 }
 
 .kind-label {

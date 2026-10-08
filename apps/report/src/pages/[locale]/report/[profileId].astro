@@ -46,6 +46,7 @@ const {
   apiBase,
   profile,
   isPartialProfile,
+  subjectClaimed,
   isFusedProfile,
   isHeldForRemoval,
   headline,
@@ -113,7 +114,7 @@ const {
         )}
         {
           /* 已认领：SSR 直接渲染本人已验证徽章，无需 JS */
-          profile.subject.claimed && (
+          subjectClaimed && (
             <>
               <span class="ja-badge ja-badge--owner" data-testid="claimed-badge">
                 {t('report.claimedBadge')}
@@ -136,7 +137,7 @@ const {
         {
           /* 未认领：挂载认领 island；单源画像要求平台+登录名一致，融合画像（subjectPlatform='all'）
              任一源（GitHub/Gitee 同 login）命中即可看到 CTA（T19） */
-          !profile.subject.claimed && (
+          !subjectClaimed && (
             <div id="claim-section" class="claim-anchor">
               <ClaimProfile
                 client:load
@@ -186,7 +187,7 @@ const {
       }
       {
         /* 决策 #1-A：未授权画像必须显著标注来源与效力边界 */
-        !profile.subject.claimed && (
+        !subjectClaimed && (
           <p class="unclaimed-notice" data-testid="unclaimed-notice" role="note">
             {t('report.unclaimedNotice')}
           </p>
@@ -199,16 +200,16 @@ const {
          未认领画像对任何人显示（引导主体本人认领）；已认领画像只对本人显示
          （别人的画像不暴露"认领/简历"路径）。招聘方视图一律不显示。 -->
     {
-      !isRecruiter && (profile.subject.claimed ? isProfileOwner : true) && (
+      !isRecruiter && (subjectClaimed ? isProfileOwner : true) && (
         <section class="ja-card journey" data-testid="journey">
           <h2>{t('report.journey.title')}</h2>
           <p class="ja-muted journey-lead">{t('report.journey.lead')}</p>
           <ol class="journey-steps">
-            <li class={profile.subject.claimed ? 'journey-step journey-step--done' : 'journey-step'}>
+            <li class={subjectClaimed ? 'journey-step journey-step--done' : 'journey-step'}>
               <span class="journey-step__label">
                 <strong>1. {t('report.journey.step1')}</strong>
                 {
-                  profile.subject.claimed ? (
+                  subjectClaimed ? (
                     <span class="ja-badge ja-badge--owner journey-step__status">
                       {t('report.journey.step1Done')}
                     </span>
@@ -224,7 +225,7 @@ const {
               <span class="journey-step__label">
                 <strong>2. {t('report.journey.step2')}</strong>
                 {
-                  profile.subject.claimed ? (
+                  subjectClaimed ? (
                     <a class="ja-link journey-step__cta" href="#resume-section">
                       {t('report.journey.go')} →
                     </a>
@@ -346,7 +347,9 @@ const {
               <div class={`signal signal--${signal.severity}`}>
                 <div class="ja-flex-between">
                   <strong>{composeSignalLabel(signal.code, locale, signal.label)}</strong>
-                  <span class="ja-muted signal-code">{signal.code}</span>
+                  {/* 内部码降噪（走查 #9）：保留可审计性，但不再是与结论等权重的可见文本——
+                      次级字号 + 悬浮提示；招聘方需要时可从 evidenceRefs 溯源 */}
+                  <code class="signal-code" title="内部信号码（用于可审计溯源）">{signal.code}</code>
                 </div>
                 <p>{composeSignalDetail(signal.code, locale, signal.detail, signal.facts)}</p>
                 {
@@ -736,7 +739,7 @@ const {
     <!-- 未认领画像的投递锁定提示（走查 #8 前端侧）：本人之外不展示可写入口，
          给主体本人一条"认领后解锁"的引导（非主体不泄露存在，什么都不显示）。 -->
     {
-      !isRecruiter && !profile.subject.claimed && (
+      !isRecruiter && !subjectClaimed && (
         <section class="ja-card applications-locked" data-testid="applications-locked">
           <h2>{t('applications.title')}</h2>
           <p class="ja-muted">{t('applications.locked')}</p>
@@ -782,7 +785,7 @@ const {
     <!-- 数据主体权益（2026-10-08 走查 #5 降级）：未认领画像的「按主体撤回」申请入口
          从 header 主操作位移到这里；合规通道保留、不占主位。已软挂起由顶部标注条接管。 -->
     {
-      !profile.subject.claimed && !isHeldForRemoval && (
+      !subjectClaimed && !isHeldForRemoval && (
         <section class="ja-card data-rights" data-testid="data-rights">
           <h2>{t('report.dataRights.title')}</h2>
           <RemovalRequest

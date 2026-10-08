@@ -44,6 +44,8 @@ export type ReportPageData =
       profileRecord: StoredProfile;
       profile: NonNullable<StoredProfile['snapshot']>;
       isPartialProfile: boolean;
+      /** 认领状态唯一事实源（存储行 subject_claimed，2026-10-08 分裂修复后页面一律用它） */
+      subjectClaimed: boolean;
       isFusedProfile: boolean;
       isHeldForRemoval: boolean;
       headline: string;
@@ -114,6 +116,12 @@ export async function loadReportPageData(input: ReportPageInput): Promise<Report
 
   // 采集/分析有缺失时画像落库为 partial（T25）：页面顶部显示"部分数据"标注条
   const isPartialProfile = profileRecord.status === 'partial';
+
+  // 认领状态唯一事实源 = 存储行 subject_claimed（2026-10-08 数据源分裂修复）：
+  // 认领 API 只改行、不刷新快照 snapshot.subject.claimed，页面徽章/journey/投递
+  // 锁定提示若读快照会在认领后短暂显示"未认领"。此处统一以行状态为准，
+  // 快照 subject.claimed 不再被页面消费（T28 快照不可变约束保持，不写回）。
+  const subjectClaimed = profileRecord.subjectClaimed;
 
   // 融合画像标识只存在于存储行 subjectPlatform 列（snapshot.subject.platform 恒为主源 github）
   const isFusedProfile = profileRecord?.subjectPlatform === 'all';
@@ -226,6 +234,7 @@ export async function loadReportPageData(input: ReportPageInput): Promise<Report
     profileRecord,
     profile,
     isPartialProfile,
+    subjectClaimed,
     isFusedProfile,
     isHeldForRemoval,
     headline,
