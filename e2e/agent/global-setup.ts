@@ -180,6 +180,8 @@ export default async function globalSetup(): Promise<void> {
       DELETE FROM waitlist;
       DELETE FROM analysis_jobs;
       DELETE FROM job_postings;
+      DELETE FROM search_runs;
+      DELETE FROM search_presets;
       DELETE FROM auth_sessions;
       DELETE FROM accounts;
       DELETE FROM evidence;
