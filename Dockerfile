@@ -21,6 +21,7 @@ COPY packages/resume-core/package.json packages/resume-core/
 COPY packages/agent-core/package.json packages/agent-core/
 COPY packages/llm/package.json packages/llm/
 COPY packages/job-source/package.json packages/job-source/
+COPY packages/search-source/package.json packages/search-source/
 COPY packages/ui-tokens/package.json packages/ui-tokens/
 COPY packages/gitee-source/package.json packages/gitee-source/
 COPY packages/claim-core/package.json packages/claim-core/
