@@ -29,8 +29,9 @@
     "@jobagent/storage": "workspace:*",
     "@jobagent/worker": "workspace:*",
     "hono": "^4.6.0",
-    "undici": "^8.10.2",
-    "zod": "^3.23.0"
+    "undici": "^7.30.0",
+    "zod": "^3.23.0",
+    "@jobagent/search-source": "workspace:*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0"
