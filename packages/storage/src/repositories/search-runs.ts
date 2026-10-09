@@ -10,6 +10,11 @@ import type {
  * 业务模块只依赖此异步接口，不感知 SQLite/Postgres 方言。run 是登录用户的私有
  * 数据（accountId 作用域）；search-tick 通过 `claimNextQueued` 原子认领最老的
  * queued 行（防止两个 tick 同时处理同一 run），完成后用 `finish` 回写状态。
+ *
+ * ⚠️ 成本硬约束（2026-10-09 决策）：搜岗是付费搜索（Tavily credits）。
+ * **唯一创建 run 的入口 = 登录态 POST /api/agent/search（用户主动）**；
+ * 定时调度只允许消费（claimNextQueued）既存任务，**禁止任何自动/定时创建路径**，
+ * 否则账单会失控。新增创建入口前必须过设计评审。
  */
 export interface ISearchRunsRepository {
   insert(run: NewSearchRun): Promise<void>;
