@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gte } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredSearchRun,
@@ -37,10 +37,19 @@ export class SqliteSearchRunsRepository implements ISearchRunsRepository {
       .select()
       .from(t)
       .where(eq(t.accountId, accountId))
-      .orderBy(desc(t.createdAt))
+      .orderBy(desc(t.createdAt), desc(t.runId))
       .limit(limit)
       .all();
     return rows.map(toStoredSearchRun);
+  }
+
+  async countByAccountSince(accountId: string, sinceIso: string): Promise<number> {
+    const rows = this.db
+      .select({ runId: t.runId })
+      .from(t)
+      .where(and(eq(t.accountId, accountId), gte(t.createdAt, sinceIso)))
+      .all();
+    return rows.length;
   }
 
   async claimNextQueued(now: string): Promise<StoredSearchRun | undefined> {
