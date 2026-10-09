@@ -34,6 +34,13 @@
   },
   "pnpm": {
     "overrides": {
+      "devalue": ">=5.9.3",
+      "fast-uri": ">=3.1.8",
+      "http-cache-semantics": ">=4.3.0",
+      "@vercel/routing-utils>path-to-regexp": "^6.3.0",
+      "sharp": ">=0.35.5",
+      "source-map-js": "^1.2.2",
+      "smol-toml": "^1.9.0",
       "undici": "7.30.0"
     }
   }
