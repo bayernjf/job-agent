@@ -677,5 +677,12 @@
   "workbench.search.locationUnknown": "Location unknown",
   "workbench.search.salaryFormat": "${min}–{max}",
   "workbench.search.noSearchYet": "Start a search to see results here.",
+  "workbench.search.presetsClearAll": "Clear all",
+  "workbench.search.presetsClearAllConfirm": "Clear all search presets? This cannot be undone.",
+  "workbench.search.historyTitle": "Search history",
+  "workbench.search.historyEmpty": "No search history yet",
+  "workbench.search.historyDelete": "Delete",
+  "workbench.search.historyClearAll": "Clear all",
+  "workbench.search.historyClearAllConfirm": "Clear all search history? This cannot be undone.",
   "workbench.search.siteLabel": "Source"
 }

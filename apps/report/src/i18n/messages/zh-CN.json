@@ -677,5 +677,12 @@
   "workbench.search.locationUnknown": "地点未知",
   "workbench.search.salaryFormat": "${min}–{max}",
   "workbench.search.noSearchYet": "输入指令后开始搜岗，结果会显示在这里。",
+  "workbench.search.presetsClearAll": "清空全部",
+  "workbench.search.presetsClearAllConfirm": "确定清空全部筛选条件预设？此操作不可撤销。",
+  "workbench.search.historyTitle": "搜岗历史",
+  "workbench.search.historyEmpty": "暂无搜岗历史",
+  "workbench.search.historyDelete": "删除",
+  "workbench.search.historyClearAll": "清空全部",
+  "workbench.search.historyClearAllConfirm": "确定清空全部搜岗历史？此操作不可撤销。",
   "workbench.search.siteLabel": "来源"
 }

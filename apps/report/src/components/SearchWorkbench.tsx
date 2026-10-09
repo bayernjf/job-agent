@@ -72,12 +72,19 @@ export interface SearchWorkbenchLabels {
   resultsCount: string;
   presetsTitle: string;
   presetsEmpty: string;
+  presetsClearAll: string;
+  presetsClearAllConfirm: string;
   presetSave: string;
   presetSaved: string;
   presetDelete: string;
   presetTitleLabel: string;
   presetTitlePlaceholder: string;
   presetUse: string;
+  historyTitle: string;
+  historyEmpty: string;
+  historyDelete: string;
+  historyClearAll: string;
+  historyClearAllConfirm: string;
   remote: string;
   apply: string;
   error: string;
@@ -109,6 +116,8 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
 
   const [presets, setPresets] = useState<SearchPresetView[]>([]);
   const [presetsLoading, setPresetsLoading] = useState(true);
+  const [runs, setRuns] = useState<SearchRunStatusView[]>([]);
+  const [runsLoading, setRunsLoading] = useState(true);
 
   const [run, setRun] = useState<SearchRunStatusView | null>(null);
   const [results, setResults] = useState<SearchResultPosting[] | null>(null);
@@ -268,6 +277,67 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
     },
     [apiBase],
   );
+
+  const clearPresets = useCallback(async () => {
+    if (!window.confirm(labels.presetsClearAllConfirm)) return;
+    try {
+      const res = await fetch(`${apiBase}/agent/search-presets`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      setPresets([]);
+    } catch {
+      // 清空失败静默：下次加载会纠正列表
+    }
+  }, [apiBase, labels.presetsClearAllConfirm]);
+
+  const loadRuns = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBase}/agent/search`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { runs: SearchRunStatusView[] };
+      setRuns(data.runs);
+    } catch {
+      // 历史加载失败不阻塞搜岗主流程
+    } finally {
+      setRunsLoading(false);
+    }
+  }, [apiBase]);
+
+  useEffect(() => {
+    void loadRuns();
+  }, [loadRuns]);
+
+  const deleteRun = useCallback(
+    async (runId: string) => {
+      try {
+        const res = await fetch(
+          `${apiBase}/agent/search-runs/${encodeURIComponent(runId)}`,
+          { method: 'DELETE', credentials: 'include' },
+        );
+        if (!res.ok) return;
+        setRuns((prev) => prev.filter((r) => r.runId !== runId));
+      } catch {
+        // 删除失败静默：下次加载会纠正列表
+      }
+    },
+    [apiBase],
+  );
+
+  const clearRuns = useCallback(async () => {
+    if (!window.confirm(labels.historyClearAllConfirm)) return;
+    try {
+      const res = await fetch(`${apiBase}/agent/search-runs`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      setRuns([]);
+    } catch {
+      // 清空失败静默：下次加载会纠正列表
+    }
+  }, [apiBase, labels.historyClearAllConfirm]);
 
   const statusText = (status: RunStatus): string =>
     labels.status[status] ?? status;
@@ -429,7 +499,19 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
         </div>
 
         <aside className="search-workbench__presets">
-          <h3>{labels.presetsTitle}</h3>
+          <div className="search-workbench__presets-head">
+            <h3>{labels.presetsTitle}</h3>
+            {presets.length > 0 && (
+              <button
+                type="button"
+                className="ja-btn ja-btn--ghost"
+                onClick={() => void clearPresets()}
+                data-testid="search-presets-clear"
+              >
+                {labels.presetsClearAll}
+              </button>
+            )}
+          </div>
           {presetsLoading ? (
             <p className="ja-muted">{labels.searching}</p>
           ) : presets.length === 0 ? (
@@ -462,6 +544,54 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
               ))}
             </ul>
           )}
+
+          <div className="search-workbench__history">
+            <div className="search-workbench__presets-head">
+              <h3>{labels.historyTitle}</h3>
+              {runs.length > 0 && (
+                <button
+                  type="button"
+                  className="ja-btn ja-btn--ghost"
+                  onClick={() => void clearRuns()}
+                  data-testid="search-history-clear"
+                >
+                  {labels.historyClearAll}
+                </button>
+              )}
+            </div>
+            {runsLoading ? (
+              <p className="ja-muted">{labels.searching}</p>
+            ) : runs.length === 0 ? (
+              <p className="ja-muted">{labels.historyEmpty}</p>
+            ) : (
+              <ul className="search-workbench__history-list" data-testid="search-history">
+                {runs.map((r) => (
+                  <li key={r.runId} className="search-workbench__history-item">
+                    <button
+                      type="button"
+                      className="search-workbench__history-main"
+                      onClick={() => setQuery(r.query)}
+                      title={r.query}
+                    >
+                      <span className="ja-chip">{statusText(r.status)}</span>{' '}
+                      <span className="search-workbench__history-query">{r.query}</span>
+                      <span className="ja-muted">
+                        {labels.resultsCount}: {r.resultsCount} · {labels.newCount}: {r.newCount}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="ja-btn ja-btn--ghost"
+                      onClick={() => void deleteRun(r.runId)}
+                      aria-label={labels.historyDelete}
+                    >
+                      {labels.historyDelete}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </aside>
       </div>
     </section>

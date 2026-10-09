@@ -193,6 +193,51 @@ export function registerSearch(app: Hono<HonoEnv>, d: RouteDeps): void {
     return c.json({ ok: true });
   });
 
+  // GET /agent/search：我的搜岗历史列表（发起记录，倒序）
+  app.get('/agent/search', async (c) => {
+    const user = requireUser(c);
+    if (user instanceof Response) return user;
+    const runs = await repos.searchRuns.listByAccount(user.accountId);
+    return c.json({
+      runs: runs.map((r) => ({
+        runId: r.runId,
+        presetId: r.presetId,
+        query: r.query,
+        status: r.status,
+        resultsCount: r.resultsCount,
+        newCount: r.newCount,
+        matchedCount: r.matchedCount,
+        error: r.error,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      })),
+    });
+  });
+
+  // DELETE /agent/search-presets：清空我的全部预设（不带 id；带 id 走单删）
+  app.delete('/agent/search-presets', async (c) => {
+    const user = requireUser(c);
+    if (user instanceof Response) return user;
+    const deleted = await repos.searchPresets.deleteAllByAccount(user.accountId);
+    return c.json({ ok: true, deleted });
+  });
+
+  // DELETE /agent/search-runs/:id：删除单条搜岗历史（本人；不删共享岗位池）
+  app.delete('/agent/search-runs/:id', async (c) => {
+    const run = await requireOwnedRun(c, c.req.param('id'));
+    if (run instanceof Response) return run;
+    await repos.searchRuns.delete(run.runId);
+    return c.json({ ok: true });
+  });
+
+  // DELETE /agent/search-runs：清空我的全部搜岗历史（不删共享岗位池）
+  app.delete('/agent/search-runs', async (c) => {
+    const user = requireUser(c);
+    if (user instanceof Response) return user;
+    const deleted = await repos.searchRuns.deleteAllByAccount(user.accountId);
+    return c.json({ ok: true, deleted });
+  });
+
   // GET /internal/cron/search-tick：cron 认领并执行 queued 搜岗任务（serverless）
   app.get('/internal/cron/search-tick', async (c) => {
     if (!cronAuthorized(c)) return c.json({ error: 'unauthorized' }, 401);

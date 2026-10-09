@@ -210,3 +210,141 @@ describe('GET /internal/cron/search-tick', () => {
     expect(body.error).toContain('TAVILY_API_KEY');
   });
 });
+
+describe('GET /agent/search (history list)', () => {
+  it('requires login', async () => {
+    const { app } = await harness();
+    const res = await app.request('/agent/search');
+    expect(res.status).toBe(401);
+  });
+
+  it('lists owned runs newest-first and never another account', async () => {
+    const { app, Cookie } = await harness();
+    await app.request('/agent/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ query: 'Rust engineer' }),
+    });
+    await app.request('/agent/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ query: 'Go remote' }),
+    });
+    const list = await app.request('/agent/search', { headers: { Cookie } });
+    expect(list.status).toBe(200);
+    const { runs } = (await list.json()) as {
+      runs: { runId: string; query: string; status: string }[];
+    };
+    expect(runs).toHaveLength(2);
+    expect(runs[0]!.query).toBe('Go remote');
+    expect(runs[1]!.query).toBe('Rust engineer');
+
+    const bob = await loginUser(await createStorage({ sqlitePath: ':memory:' }), BOB);
+    const bobList = await bob.app.request('/agent/search', {
+      headers: { Cookie: bob.Cookie },
+    });
+    expect(((await bobList.json()) as { runs: unknown[] }).runs).toHaveLength(0);
+  });
+});
+
+describe('DELETE /agent/search-presets (clear all)', () => {
+  it('clears only the caller account and reports the deleted count', async () => {
+    const { app, Cookie } = await harness();
+    for (const q of ['深圳 Java', '上海 Go']) {
+      await app.request('/agent/search-presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie },
+        body: JSON.stringify({ query: q }),
+      });
+    }
+    const bob = await loginUser(await createStorage({ sqlitePath: ':memory:' }), BOB);
+    await bob.app.request('/agent/search-presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: bob.Cookie },
+      body: JSON.stringify({ query: 'Bob preset' }),
+    });
+
+    const cleared = await app.request('/agent/search-presets', {
+      method: 'DELETE',
+      headers: { Cookie },
+    });
+    expect(cleared.status).toBe(200);
+    const { deleted } = (await cleared.json()) as { deleted: number };
+    expect(deleted).toBe(2);
+
+    const after = await app.request('/agent/search-presets', { headers: { Cookie } });
+    expect(((await after.json()) as { presets: unknown[] }).presets).toHaveLength(0);
+    const bobAfter = await bob.app.request('/agent/search-presets', {
+      headers: { Cookie: bob.Cookie },
+    });
+    expect(((await bobAfter.json()) as { presets: unknown[] }).presets).toHaveLength(1);
+  });
+});
+
+describe('DELETE /agent/search-runs (history delete)', () => {
+  it('requires login for single and bulk delete', async () => {
+    const { app } = await harness();
+    expect((await app.request('/agent/search-runs/run-1', { method: 'DELETE' })).status).toBe(401);
+    expect((await app.request('/agent/search-runs', { method: 'DELETE' })).status).toBe(401);
+  });
+
+  it('single delete: removes an owned run, 404 for another account, keeps the pool intact', async () => {
+    const { app, Cookie } = await harness();
+    const created = await app.request('/agent/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ query: 'Python data' }),
+    });
+    const { runId } = (await created.json()) as { runId: string };
+
+    const bob = await loginUser(await createStorage({ sqlitePath: ':memory:' }), BOB);
+    const forbidden = await bob.app.request(`/agent/search-runs/${runId}`, {
+      method: 'DELETE',
+      headers: { Cookie: bob.Cookie },
+    });
+    expect(forbidden.status).toBe(404);
+
+    const deleted = await app.request(`/agent/search-runs/${runId}`, {
+      method: 'DELETE',
+      headers: { Cookie },
+    });
+    expect(deleted.status).toBe(200);
+    const after = await app.request(`/agent/search/${runId}`, { headers: { Cookie } });
+    expect(after.status).toBe(404);
+  });
+
+  it('bulk delete: clears only the caller account history', async () => {
+    const { app, Cookie } = await harness();
+    await app.request('/agent/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ query: 'A' }),
+    });
+    await app.request('/agent/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ query: 'B' }),
+    });
+    const bob = await loginUser(await createStorage({ sqlitePath: ':memory:' }), BOB);
+    await bob.app.request('/agent/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: bob.Cookie },
+      body: JSON.stringify({ query: 'Bob run' }),
+    });
+
+    const cleared = await app.request('/agent/search-runs', {
+      method: 'DELETE',
+      headers: { Cookie },
+    });
+    expect(cleared.status).toBe(200);
+    const { deleted } = (await cleared.json()) as { deleted: number };
+    expect(deleted).toBe(2);
+
+    const after = await app.request('/agent/search', { headers: { Cookie } });
+    expect(((await after.json()) as { runs: unknown[] }).runs).toHaveLength(0);
+    const bobAfter = await bob.app.request('/agent/search', {
+      headers: { Cookie: bob.Cookie },
+    });
+    expect(((await bobAfter.json()) as { runs: unknown[] }).runs).toHaveLength(1);
+  });
+});
