@@ -15,4 +15,6 @@ export interface ISearchPresetsRepository {
   listByAccount(accountId: string, limit?: number): Promise<StoredSearchPreset[]>;
   /** 物理删除；返回是否真的删掉了一行 */
   delete(id: string): Promise<boolean>;
+  /** 清空某账号全部预设（仅本人作用域）。返回删除条数。 */
+  deleteAllByAccount(accountId: string): Promise<number>;
 }

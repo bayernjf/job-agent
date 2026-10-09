@@ -87,4 +87,14 @@ export class SqliteSearchRunsRepository implements ISearchRunsRepository {
       .get();
     return row ? toStoredSearchRun(row) : undefined;
   }
+
+  async delete(id: string): Promise<boolean> {
+    const res = this.db.delete(t).where(eq(t.runId, id)).run();
+    return res.changes > 0;
+  }
+
+  async deleteAllByAccount(accountId: string): Promise<number> {
+    const res = this.db.delete(t).where(eq(t.accountId, accountId)).run();
+    return res.changes;
+  }
 }

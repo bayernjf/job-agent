@@ -31,4 +31,11 @@ export interface ISearchRunsRepository {
    * undefined（调用方按幂等处理，不报错）。
    */
   finish(id: string, patch: SearchRunFinishPatch, updatedAt: string): Promise<StoredSearchRun | undefined>;
+  /**
+   * 删除单条搜岗历史（仅删个人视角的发起记录，不级联删共享岗位池）。
+   * 归属校验由调用方用 getById 完成。
+   */
+  delete(id: string): Promise<boolean>;
+  /** 清空某账号全部搜岗历史（同上，不删岗位池）。返回删除条数。 */
+  deleteAllByAccount(accountId: string): Promise<number>;
 }

@@ -56,4 +56,9 @@ export class SqliteSearchPresetsRepository implements ISearchPresetsRepository {
     const res = this.db.delete(t).where(eq(t.presetId, id)).run();
     return res.changes > 0;
   }
+
+  async deleteAllByAccount(accountId: string): Promise<number> {
+    const res = this.db.delete(t).where(eq(t.accountId, accountId)).run();
+    return res.changes;
+  }
 }

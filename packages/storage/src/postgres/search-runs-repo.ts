@@ -82,4 +82,14 @@ export class PgSearchRunsRepository implements ISearchRunsRepository {
       .returning();
     return rows[0] ? toStoredSearchRun(rows[0]) : undefined;
   }
+
+  async delete(id: string): Promise<boolean> {
+    const res = await this.db.delete(t).where(eq(t.runId, id));
+    return res.rowCount > 0;
+  }
+
+  async deleteAllByAccount(accountId: string): Promise<number> {
+    const res = await this.db.delete(t).where(eq(t.accountId, accountId));
+    return res.rowCount;
+  }
 }

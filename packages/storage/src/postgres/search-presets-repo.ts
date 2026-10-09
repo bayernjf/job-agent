@@ -54,4 +54,9 @@ export class PgSearchPresetsRepository implements ISearchPresetsRepository {
     const res = await this.db.delete(t).where(eq(t.presetId, id));
     return res.rowCount > 0;
   }
+
+  async deleteAllByAccount(accountId: string): Promise<number> {
+    const res = await this.db.delete(t).where(eq(t.accountId, accountId));
+    return res.rowCount;
+  }
 }
