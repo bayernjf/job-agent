@@ -57,7 +57,7 @@ job-agent/
 │  └─ cron-worker/    # Cloudflare Worker：`*/5` 档叫醒 `process-job` + `agent-tick` + `search-tick`（决策 #24，纯决策核+薄壳，凭证走 wrangler secret；GitHub 轮询仅临时交叉验证）
 ├─ db/migrations/sqlite/   # SQLite 编号迁移（NNN_verb_snake_case.sql）
 ├─ db/migrations/postgres/ # Postgres 编号迁移（与 sqlite 编号/文件名一一对应），规范见 MIGRATION_CONVENTION.md
-├─ tools/             # check-migrations.sh / preflight.sh / backup-db.sh / smoke-deploy.sh / check-doc-anchors.mjs 等工程脚本
+├─ tools/             # check-migrations.sh / preflight.sh / backup-db.sh / verify-cron-consumers.sh / smoke-deploy.sh / check-doc-anchors.mjs 等工程脚本
 ├─ tests/fixtures/    # 录制并脱敏的 GitHub 响应夹具
 └─ docs/              # 产品/技术全文（PRD、技术选型、决策清单、讨论、deferred）
 ```
@@ -77,6 +77,7 @@ pnpm migrate:up / migrate:down / migrate:status          # SQLite 应用/回滚�
 bash tools/check-migrations.sh   # 校验 sqlite/postgres 两目录命名/编号/文件头 + 文件名集合对齐（可传单目录参数）
 bash tools/preflight.sh          # 上线前一键本地预检（typecheck/迁移/单测/build/audit，首败即停；--e2e 追加三套 Playwright：report / agent 真全栈 / extension；--deploy 追加形态 C 产物闸：ASTRO_ADAPTER=vercel 构建 + 一次性 Docker PG 迁移幂等与 storage 实跑〔无 docker 则 SKIP〕+ 扩展 CWS release 打包）
 bash tools/backup-db.sh          # 数据库备份（B4）：pg_dump → backups/ 带时间戳、保留最新 N 份；--dry-run 只打印计划；DATABASE_URL 须 5432 session 串（6543 事务池化串会被警告）
+bash tools/verify-cron-consumers.sh --since <ISO>  # 核对四个 cron 消费者（process-job/agent-tick/search-tick/watchdog）心跳都晚于给定时刻；缺行＝该消费者从未被调用（部署 cron-worker 后收口用；--since 接受带偏移的 ISO，退出码 0/1/2＝正常/用法错/超时）
 pnpm e2e                         # report 页 Playwright E2E（拉起 Astro，mock API）
 pnpm e2e:agent                   # 求职工作台「真全栈」E2E：真 API + 真 SQLite + 真报告页（不 mock），夹具零网络（改 /agent/*、工作台或票据契约时必跑）
 pnpm e2e:extension               # 扩展 E2E：--headless=new 加载 unpacked MV3、零网络（先 build dist；设计见 docs/design-extension-e2e-20260914.md）
