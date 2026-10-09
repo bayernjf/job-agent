@@ -6,7 +6,7 @@
  * 列表（保存/删除/一键再搜）。i18n 在服务端完成——所有用户可见文案经 labels
  * 传入，岛内零硬编码（对齐 workbench.astro 既有约定）。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export interface SearchPresetView {
   presetId: string;
@@ -68,6 +68,9 @@ export interface SearchWorkbenchLabels {
   };
   resultsTitle: string;
   resultsEmpty: string;
+  filterCompany: string;
+  filterRemoteOnly: string;
+  exportCsv: string;
   newCount: string;
   resultsCount: string;
   presetsTitle: string;
@@ -121,6 +124,8 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
 
   const [run, setRun] = useState<SearchRunStatusView | null>(null);
   const [results, setResults] = useState<SearchResultPosting[] | null>(null);
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [remoteOnly, setRemoteOnly] = useState(false);
   const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingPreset, setSavingPreset] = useState(false);
@@ -133,6 +138,17 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
       pollRef.current = null;
     }
   }, []);
+
+  /** 结果即时筛选（公司名包含 + 仅远程），纯前端不动请求。 */
+  const visibleResults = useMemo(() => {
+    if (!results) return results;
+    const q = companyFilter.trim().toLowerCase();
+    return results.filter((p) => {
+      if (q && !p.company.toLowerCase().includes(q)) return false;
+      if (remoteOnly && !p.remote) return false;
+      return true;
+    });
+  }, [results, companyFilter, remoteOnly]);
 
   const loadPresets = useCallback(async () => {
     try {
@@ -162,6 +178,8 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
       setError(null);
       setResults(null);
       setRun(null);
+      setCompanyFilter('');
+      setRemoteOnly(false);
       const body = presetId
         ? { presetId }
         : {
@@ -446,8 +464,35 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
               )}
 
               {results && results.length > 0 && (
-                <ul className="search-workbench__results" data-testid="search-results">
-                  {results.map((p) => (
+                <>
+                  <div className="search-workbench__result-tools" data-testid="search-result-tools">
+                    <input
+                      type="text"
+                      value={companyFilter}
+                      onChange={(e) => setCompanyFilter(e.target.value)}
+                      placeholder={labels.filterCompany}
+                      data-testid="search-filter-company"
+                    />
+                    <label className="ja-field">
+                      <input
+                        type="checkbox"
+                        checked={remoteOnly}
+                        onChange={(e) => setRemoteOnly(e.target.checked)}
+                      />
+                      <span>{labels.filterRemoteOnly}</span>
+                    </label>
+                    {run && (
+                      <a
+                        className="ja-btn ja-btn--ghost"
+                        href={`${apiBase}/agent/search/${encodeURIComponent(run.runId)}/results?format=csv`}
+                        data-testid="search-export-csv"
+                      >
+                        {labels.exportCsv}
+                      </a>
+                    )}
+                  </div>
+                  <ul className="search-workbench__results" data-testid="search-results">
+                    {visibleResults?.map((p) => (
                     <li key={p.id} className="search-workbench__result">
                       <div className="search-workbench__result-main">
                         <a
@@ -486,7 +531,11 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
                       </div>
                     </li>
                   ))}
-                </ul>
+                  </ul>
+                  {visibleResults && visibleResults.length === 0 && (
+                    <p className="ja-muted" data-testid="search-results-filtered-empty">{labels.resultsEmpty}</p>
+                  )}
+                </>
               )}
               {results && results.length === 0 && (
                 <p className="ja-muted" data-testid="search-results-empty">{labels.resultsEmpty}</p>
