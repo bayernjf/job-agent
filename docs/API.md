@@ -1361,6 +1361,37 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 删除本人预设；非本人 404。
 
+### `GET /agent/search`
+
+搜岗历史列表（本人私有，`search_runs` 按 created_at 倒序，最多 20 条）。返回：
+
+```json
+{ "runs": [{ "runId": "...", "presetId": null, "query": "...", "status": "done",
+  "resultsCount": 12, "newCount": 5, "matchedCount": 3, "error": null,
+  "createdAt": "...", "updatedAt": "..." }] }
+```
+
+- 200：列表（空数组表示无历史）；401：`AUTH_REQUIRED`。
+
+### `DELETE /agent/search-presets`
+
+清空本人**全部**筛选条件预设（不级联删除任何搜岗历史/岗位）。
+
+- 200：`{ ok: true, deleted: N }`（N 为删除条数）；401：`AUTH_REQUIRED`。
+
+### `DELETE /agent/search-runs/:id`
+
+删除单条搜岗历史。**语义：只删个人视角的发起记录，绝不级联删除共享岗位池**
+（`job_postings` 保留，其他用户/其他入口仍可见）。
+
+- 200：`{ ok: true }`；404：非本人或不存在；401：`AUTH_REQUIRED`。
+
+### `DELETE /agent/search-runs`
+
+清空本人**全部**搜岗历史（同上，不删岗位池）。
+
+- 200：`{ ok: true, deleted: N }`；401：`AUTH_REQUIRED`。
+
 ### `GET /internal/cron/search-tick`
 
 内部 cron 端点（Bearer `CRON_SECRET`）：认领 queued 搜岗任务，逐条执行搜索 →

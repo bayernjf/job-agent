@@ -71,13 +71,21 @@
 - `GET /agent/search-presets`：我的预设列表
 - `POST /agent/search-presets`：保存预设（`{ title?, query, conditions }`；同一 `query` 幂等 upsert）
 - `DELETE /agent/search-presets/:id`：删除（本人；已有 search_runs 引用时软删/保留历史）
+- `DELETE /agent/search-presets`：**清空本人全部预设**（hard delete；`search_runs` 存 query+conditions 快照，不依赖 preset，安全）
+
+**搜岗历史（每次发起自动记录，本人）**
+- `GET /agent/search`：我的搜岗历史列表（`search_runs` 倒序，最多 20 条）
+- `DELETE /agent/search-runs/:id`：单删一条历史
+- `DELETE /agent/search-runs`：清空本人全部历史
+- **语义硬约束：删历史 ≠ 删岗位**——`job_postings` 是共享池，其他用户/其他入口仍可见，绝不级联删除
 
 > 全部端点要求 `kind='user'`（401）；demo 模式只读体验或按配额放行（沿现有 demo 闸模式，细节见 §7 决策点 4）。
 
 ## 5. UI 草案（apps/report 工作台）
 
 - 工作台新增「**全网搜岗**」卡片：指令输入框 + 「搜」按钮 + 「保存此条件」按钮；输入即提示可保存为预设。
-- 「**我的筛选条件**」列表（预设 CRUD）：每条显示 title/query/条件摘要，操作＝「再搜一次」/「删除」；空态引导。
+- 「**我的筛选条件**」列表（预设 CRUD）：每条显示 title/query/条件摘要，操作＝「再搜一次」/「删除」；头部「清空全部」（`window.confirm` 二次确认，不可逆）；空态引导。
+- 「**搜岗历史**」区块（同栏预设下方）：每次搜岗自动记录；每条显示状态 chip + query + 结果/新增计数，操作＝「删除」（单删）；头部「清空全部」（二次确认，不可逆）；点击历史条目标题可把该 query 回填指令框。
 - 搜索结果区：任务进行中（spinner + 已抓取 N 条）、完成后岗位卡片列表（来源站徽标、匹配理由、加入待投清单按钮）。
 - i18n 中英双语 key；样式沿用 design token；组件级单测 + 工作台全栈 E2E（沿用 `e2e/agent/workbench-fullstack.spec.ts` 模式）。
 
