@@ -5,6 +5,9 @@
 # B4: Supabase Free tier has no platform-managed backups, so keep timestamped
 # local dumps as the manual safety net. Dumps land in ./backups/ (gitignored)
 # and old ones are pruned beyond BACKUP_KEEP (default 7).
+# ROUTINE: run this every week (e.g. Sunday) — Free tier has no automatic
+# backups. DATABASE_URL can live in the local .env (gitignored); see handoff
+# "当前状态" for the reminder.
 #
 # Usage:
 #   ./tools/backup-db.sh                 # dump using DATABASE_URL from .env
