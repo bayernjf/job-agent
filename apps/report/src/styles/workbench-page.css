@@ -1,0 +1,226 @@
+/**
+ * 求职工作台 /[locale]/workbench 页面专属样式（搜岗 + 模型设置面板）。
+ * 表单/状态基元在 global.css；本文件只放 workbench 页组件级布局。
+ * 只引用 token（--ja-*），不写硬编码颜色/尺寸。
+ */
+
+/* ===== 搜岗工作台（design-websearch-job-discovery-20261008 §5） ===== */
+.ja-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+  line-height: var(--ja-leading-normal);
+  white-space: nowrap;
+}
+.ja-chip--small {
+  font-size: var(--ja-text-xs);
+}
+
+.search-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-4);
+}
+.search-workbench__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+}
+.search-workbench__desc,
+.search-workbench__note {
+  margin: 0;
+}
+.search-workbench__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: var(--ja-space-4);
+  align-items: start;
+}
+.search-workbench__main,
+.search-workbench__presets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+  min-width: 0;
+}
+.search-workbench__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-3);
+  align-items: flex-end;
+}
+.search-workbench__filters .ja-field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.search-workbench__remote {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--ja-space-2);
+  padding-bottom: var(--ja-space-2);
+}
+.search-workbench__remote > span {
+  color: var(--ja-color-fg);
+}
+.search-workbench__actions {
+  display: flex;
+  gap: var(--ja-space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.search-workbench__actions .search-workbench__preset-title {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.search-workbench__result-tools {
+  display: flex;
+  gap: var(--ja-space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  padding: var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+}
+.search-workbench__result-tools input[type='text'] {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+}
+.search-workbench__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+.search-workbench__result {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ja-space-3);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+}
+.search-workbench__result-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  min-width: 0;
+}
+.search-workbench__result-title {
+  font-size: var(--ja-text-base);
+  font-weight: 600;
+  margin: 0;
+}
+.search-workbench__result-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+  align-items: flex-end;
+}
+.search-workbench__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-1);
+}
+.search-workbench__presets-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-2);
+}
+.search-workbench__presets-head h3 {
+  margin: 0;
+  font-size: var(--ja-text-base);
+}
+.search-workbench__preset-list,
+.search-workbench__history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+.search-workbench__preset,
+.search-workbench__history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ja-space-2);
+  padding: var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface);
+}
+.search-workbench__preset-use,
+.search-workbench__history-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ja-space-1);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.search-workbench__history-query {
+  overflow-wrap: anywhere;
+}
+.search-workbench__history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+  border-top: 1px solid var(--ja-color-border);
+  padding-top: var(--ja-space-3);
+  margin-top: var(--ja-space-2);
+}
+
+.search-workbench__run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface-muted);
+}
+
+/* ===== 模型设置面板（BYOK，design-llm-model-provisioning-20261003） ===== */
+.model-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+}
+.model-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+}
+
+@media (max-width: 720px) {
+  .search-workbench__grid {
+    grid-template-columns: 1fr;
+  }
+  .search-workbench__result {
+    flex-direction: column;
+  }
+  .search-workbench__result-side {
+    align-items: flex-start;
+  }
+}
