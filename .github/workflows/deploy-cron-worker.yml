@@ -1,0 +1,103 @@
+name: Deploy cron worker
+
+# The Cloudflare cron Worker is NOT part of the Vercel deployment: merging to
+# main only ships apps/report. That gap broke production on 2026-10-10 — the
+# websearch `search-tick` consumer (4c22fa9, committed 10-09) never reached
+# Cloudflare, so every search run sat in `queued` while process-job/agent-tick/
+# watchdog kept reporting healthy and nothing anywhere looked wrong. This
+# workflow makes "merged to main" mean "deployed" for the Worker, and fails
+# loudly when it cannot.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   Scoped token with Account → Workers Scripts → Edit
+#                          (Account Settings → Read is needed for account lookup)
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare account id (dashboard sidebar)
+# The Worker's own secret (CRON_SECRET) lives in Cloudflare and survives
+# deploys; this workflow never reads or writes it.
+#
+# Post-deploy gate: tools/verify-cron-consumers.sh polls /api/health?deep=1
+# until every consumer heartbeat is newer than the deploy, so a stale bundle,
+# a rotated secret or a cron that stopped firing fails this job instead of
+# hiding behind a 200 on /api/health. Needs the VERCEL_PROD_URL secret.
+#
+# Manual runs: Actions → Deploy cron worker → Run workflow (use this when the
+# token is unavailable; then run the verify script by hand with --since).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/cron-worker/**'
+      - 'tools/verify-cron-consumers.sh'
+      - '.github/workflows/deploy-cron-worker.yml'
+  workflow_dispatch:
+
+concurrency:
+  # Queue deploys instead of cancelling them: a half-applied deploy is worse
+  # than a slightly later one.
+  group: deploy-cron-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # The verify gate waits for up to two 5-minute cron ticks.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Guard Cloudflare credentials
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then
+            echo "Cloudflare credentials present; deploying."
+          else
+            echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not both set, so the cron Worker cannot be deployed from CI. Until they are, the Worker only ships when someone runs wrangler deploy by hand, and a forgotten one breaks it silently (2026-10-10: search-tick never ran, every search run stayed queued while health looked green). Create a scoped token (Account -> Workers Scripts -> Edit) and add both secrets under Settings -> Secrets and variables -> Actions. See docs/deployment-runbook-20260920.md section 7 pitfall 5."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test the worker
+        run: pnpm --filter @jobagent/cron-worker test
+
+      - name: Build the worker
+        # wrangler deploy uploads dist/ as-is and does not rebuild; skipping
+        # this ships the previous bundle (the 2026-10-08 watchdog trap).
+        run: pnpm --filter @jobagent/cron-worker build
+
+      - name: Deploy
+        id: deploy
+        working-directory: apps/cron-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          pnpm exec wrangler deploy
+
+      - name: Verify every consumer heartbeats after the deploy
+        env:
+          VERCEL_PROD_URL: ${{ secrets.VERCEL_PROD_URL }}
+        run: |
+          if [ -z "$VERCEL_PROD_URL" ]; then
+            echo '::error::VERCEL_PROD_URL is not set, so the deployed Worker cannot be verified. Add it under Settings → Secrets and variables → Actions.'
+            exit 1
+          fi
+          ORIGIN="$VERCEL_PROD_URL" bash tools/verify-cron-consumers.sh \
+            --since "${{ steps.deploy.outputs.started_at }}"
