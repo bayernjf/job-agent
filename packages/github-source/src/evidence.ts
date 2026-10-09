@@ -3,7 +3,7 @@
  * evidenceId 即 evidenceRefs 的索引键，analyzer-core 的每条结论必须指向这里。
  */
 
-import type { AnalyzerInput } from '@jobagent/analyzer-core';
+import type { AnalyzerInput } from '@jobagent/shared';
 import type { EvidenceItem } from '@jobagent/shared';
 
 export function buildSubjectEvidence(

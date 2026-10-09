@@ -5,7 +5,7 @@
  * - 极简 ETag 条件请求缓存（GraphQL 官方不支持 ETag，REST 层做）。
  */
 
-import type { AnalyzerCommit, BehaviorEventSummary } from '@jobagent/analyzer-core';
+import type { AnalyzerCommit, BehaviorEventSummary } from '@jobagent/shared';
 import type { Octokit } from 'octokit';
 
 export interface RestCommitRow {

@@ -10,7 +10,7 @@
  * - 任一层失败显式标注缺失，禁止输出"看似完整"的数据。
  */
 
-import type { AnalyzerInput } from '@jobagent/analyzer-core';
+import type { AnalyzerInput } from '@jobagent/shared';
 import type { EvidenceItem } from '@jobagent/shared';
 
 /** 一次采集的全部产出：分析输入 + 证据 + 元信息 */

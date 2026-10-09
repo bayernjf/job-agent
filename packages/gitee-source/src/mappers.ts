@@ -14,7 +14,7 @@ import type {
   AnalyzerSubject,
   BehaviorEventSummary,
   ContributionMonth,
-} from '@jobagent/analyzer-core';
+} from '@jobagent/shared';
 import type {
   GiteeCommitRaw,
   GiteeEventRaw,

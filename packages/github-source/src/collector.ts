@@ -1,4 +1,4 @@
-import type { AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest, BehaviorEventSummary } from '@jobagent/analyzer-core';
+import type { AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest, BehaviorEventSummary } from '@jobagent/shared';
 import type { EvidenceItem } from '@jobagent/shared';
 import type { Octokit } from 'octokit';
 import { BudgetTracker } from './budget.js';

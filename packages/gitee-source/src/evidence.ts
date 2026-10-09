@@ -4,7 +4,7 @@
  * id 内已含 owner/name；单次 AnalyzerInput 只来自单一源，因此跨源不碰撞。
  */
 
-import type { AnalyzerInput } from '@jobagent/analyzer-core';
+import type { AnalyzerInput } from '@jobagent/shared';
 import type { EvidenceItem } from '@jobagent/shared';
 
 const PLATFORM = 'gitee';

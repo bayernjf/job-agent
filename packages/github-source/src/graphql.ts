@@ -4,7 +4,7 @@
  * 账号发起的 PR/Issue 时序。
  */
 
-import type { AnalyzerCommit, AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest } from '@jobagent/analyzer-core';
+import type { AnalyzerCommit, AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest } from '@jobagent/shared';
 import type { L0Data } from './types.js';
 
 // ---------- L0 ----------

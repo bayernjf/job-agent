@@ -4,7 +4,7 @@
  * 任一层失败只记 missing 并继续，账号不存在直接抛 not_found。
  */
 
-import type { AnalyzerCommit, AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest, BehaviorEventSummary } from '@jobagent/analyzer-core';
+import type { AnalyzerCommit, AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest, BehaviorEventSummary } from '@jobagent/shared';
 import type { EvidenceItem } from '@jobagent/shared';
 import { GiteeClient, GiteeSourceError } from './client.js';
 import {
