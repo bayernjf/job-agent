@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildPullRequestEvidence } from './evidence.js';
-import type { AnalyzerInput } from '@jobagent/analyzer-core';
+import type { AnalyzerInput } from '@jobagent/shared';
 
 /**
  * PR 证据文案（T06）。改动规模是招聘方真正会看的一行，但它只在证据源

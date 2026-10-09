@@ -93,6 +93,40 @@ describe('executeSearchRun', () => {
     expect((repos.jobPostings._rows[0] as { searchRunId?: string | null }).searchRunId).toBe('r1');
   });
 
+  it('runs an extra ATS-domain recall with include_domains on the first query', async () => {
+    const repos = makeRepos([
+      { runId: 'r3', accountId: 'a1', query: 'Berlin backend engineer', conditions: COND, status: 'queued', executedQueries: [], resultsCount: 0, newCount: 0, error: null },
+    ]);
+    const calls: Array<{ query: string; includeDomains?: string[] }> = [];
+    const deps: RunSearchDeps = {
+      searchRuns: repos.searchRuns,
+      jobPostings: repos.jobPostings,
+      searchClient: {
+        provider: 'tavily',
+        search: async (q, opts) => {
+          calls.push({ query: q, includeDomains: opts?.includeDomains });
+          return [
+            {
+              title: 'Backend Engineer at Acme',
+              url: 'https://jobs.lever.co/acme/abc-guid',
+              content: 'Responsibilities: build APIs. Requirements: experience with Go and PostgreSQL.',
+              score: 0.9,
+            },
+          ];
+        },
+      },
+    };
+    const run = (await repos.searchRuns.claimNextQueued()) as RunRow;
+    await executeSearchRun(deps, run as unknown as Parameters<typeof executeSearchRun>[1]);
+
+    expect(calls).toHaveLength(2); // 通用 + ATS
+    expect(calls[0]!.includeDomains).toBeUndefined();
+    expect(calls[1]!.query).toBe('Berlin backend engineer');
+    expect(calls[1]!.includeDomains).toBeDefined();
+    expect(calls[1]!.includeDomains).toContain('jobs.lever.co');
+    expect(calls[1]!.includeDomains).toContain('boards.greenhouse.io');
+  });
+
   it('marks failed when every query errors and nothing was ingested', async () => {
     const repos = makeRepos([
       { runId: 'r2', accountId: 'a1', query: 'x', conditions: COND, status: 'queued', executedQueries: [], resultsCount: 0, newCount: 0, error: null },

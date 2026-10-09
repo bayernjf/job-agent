@@ -22,6 +22,11 @@ export interface ISearchRunsRepository {
   /** 列出某账号的搜岗任务，按 created_at 倒序，默认最多 20 条 */
   listByAccount(accountId: string, limit?: number): Promise<StoredSearchRun[]>;
   /**
+   * 统计某账号自 sinceIso 起创建的搜岗任务数（T2-9 每日配额护栏）。
+   * 按创建计数（含失败 run），防刷目的优先；窗口由调用方按 UTC 日界计算。
+   */
+  countByAccountSince(accountId: string, sinceIso: string): Promise<number>;
+  /**
    * 认领最老的 queued 行并置 running（单事务：先 UPDATE 匹配 WHERE status='queued'
    * 再 SELECT，天然互斥；无可用行返回 undefined）。返回的是已认领的行。
    */

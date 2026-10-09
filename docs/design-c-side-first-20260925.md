@@ -41,7 +41,7 @@
 | 内部批注印进交付物 | `render/markdown.ts:91-95`、`html.ts:159-165`：`draft.suggestions` 被渲染成交付简历里的一节 notes（每条 `- [missing_skill] …`、"缺少联系方式（邮箱）"） | 招聘方看到的是"这人简历里带自我诊断" |
 | ~~中文简历混英文、且主体口径写死~~ ✅ T07 已修 | headline 原在 `packages/analyzer-core/src/summary.ts` 硬编码英文，**无 platform 分支**（Gitee 画像也写 "GitHub developer"），`tailor.ts:85` 原样贴入 | 双语产品口径破口 + 事实性错误 |
 | 没有"项目"概念 | 一条经历 = `EvidenceItem.claim` 原文（如 `Repository o/n (TypeScript): 3 stars / 1 forks, last pushed …`，`packages/github-source/src/evidence.ts:33,46`） | 简历是关键词 + 仓库元数据，没有所有权/规模/结果 |
-| 数字全被丢掉 | `activity.metrics`/`cadenceSummary` 在报告页渲染（`report/[profileId].astro:412-441`）却**不进任何简历或面试包**；`PR.additions/deletions/changedFiles`（`analyzer-core/src/input.ts:66-68`）采集后从不使用 | 招聘方 30 秒扫描看的就是量化行，我们一个字都不给 |
+| 数字全被丢掉 | `activity.metrics`/`cadenceSummary` 在报告页渲染（`report/[profileId].astro:412-441`）却**不进任何简历或面试包**；`PR.additions/deletions/changedFiles`（`packages/shared/src/index.ts:2326-2344`）采集后从不使用 | 招聘方 30 秒扫描看的就是量化行，我们一个字都不给 |
 | 薄画像也出"完整"简历 | `buildResume`/`/resumes/build` 从不读 `authenticity.status`，`insufficient_data` 不拦 | 违反 AGENTS 与 PRD NFR-6"禁止输出看似完整的报告" |
 
 诚实层是真的强（`ResumeEntrySchema.superRefine` 拒空 `evidenceRefs` + 每次 build 末尾 `ResumeDraftSchema.parse` 抛错，`packages/shared/src/index.ts:806-815`、`tailor.ts:241`；LLM 润色有数字子集闸与整体回滚，`resume-core/src/polish.ts:51-58,101-156`）。**问题不在造假风险，在表达力与卫生。**
@@ -77,7 +77,7 @@
 
 1. **技能目录补 AI/Agent 层**：新增 framework 级条目（agent / llm-agent / rag / prompt-engineering / eval-harness / vector-db / model-serving / mcp / langchain / llamaindex / instructor 等），沿用既有词边界与别名归一机制（`skills-catalog.ts` 结构 + `skills.ts` 编译正则），并**为每个新条目定义可核验证据来源**（repo topics 优先，仓名/描述次之，commit/PR 标题再次），避免把口号当技能。
 2. **给目录加"语言无关"的兜底生产者**（讨论项 §7-Q1）：仅靠目录 = 一个词没收录就永远表达不出；候选方案是"topics 直取 + 归一化"，但必须保留可核验性。
-3. **PR diff 规模进证据**：`additions/deletions/changedFiles` 已在 `AnalyzerInput`（`input.ts:66-68`）却从不使用 → 产出"我在 X 仓库合了 N 行、跨 M 个文件的 PR"这类可复核量化行。
+3. **PR diff 规模进证据**：`additions/deletions/changedFiles` 已在 `AnalyzerInput`（`packages/shared/src/index.ts:2326-2344`）却从不使用 → 产出"我在 X 仓库合了 N 行、跨 M 个文件的 PR"这类可复核量化行。
 4. **修双语 headline** ✅ 已落地（T07）：模板移到 `packages/shared` 的 `composeHeadline`，平台名按画像主体取，读者语言现拼；不改分析口径、只改文案生成。
 
 **完成定义**：用户本人账号跑一次分析，`skillTags` 里出现与其真实仓库/PR 对得上的 Agent/RAG/eval 类标签且每条挂可点开的证据；26 个标注账号双向回归零误伤（既有校准惯例，`likely_authentic` 不被降级）。

@@ -45,6 +45,7 @@ import { loadAuthConfig } from './auth-config.js';
 import { GithubAuthProvider } from './github-auth.js';
 import { GiteeAuthProvider } from './gitee-auth.js';
 import { configureOutboundProxy } from './proxy-bootstrap.js';
+import { runStartupSchemaCheck, formatSchemaWarning } from './startup-check.js';
 import { loadAgentConfig } from './agent-config.js';
 import {
   clientIp,
@@ -54,7 +55,7 @@ import {
   resolvePrincipal,
 } from './principal.js';
 import { API_TOKEN_TTL_MS } from '@jobagent/shared';
-import { registerSystem } from './routes/system.js';
+import { registerSystem, REQUIRED_COLUMNS } from './routes/system.js';
 import { registerDemo } from './routes/demo.js';
 import { registerAuth } from './routes/auth.js';
 import { registerAnalyze } from './routes/analyze.js';
@@ -271,6 +272,20 @@ async function main(): Promise<void> {
   // 丢弃了 close()，独立部署的 api 进程退出时连接从不优雅释放）。
   const storage = await createStorage();
   const app = await createApp({ repos: storage });
+
+  // T1-4 启动时 schema 自检（仅常驻进程；serverless 走 /health?deep=1）。
+  // 默认只告警；SCHEMA_CHECK_STRICT=1 时缺失关键列阻断启动。
+  const schemaCheck = await runStartupSchemaCheck(storage, REQUIRED_COLUMNS);
+  if (!schemaCheck.ok) {
+    console.error(formatSchemaWarning(schemaCheck.missing));
+    if (process.env.SCHEMA_CHECK_STRICT === '1') {
+      console.error('[api] SCHEMA_CHECK_STRICT=1: aborting startup; apply pending migrations first');
+      await storage.close().catch(() => undefined);
+      process.exit(1);
+    }
+  } else {
+    console.log('[api] schema check: all required columns present');
+  }
 
   // Hono 自带 serve（Node.js）
   const { serve } = await import('@hono/node-server');

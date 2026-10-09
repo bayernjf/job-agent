@@ -78,6 +78,9 @@
 | `AGENT_CANDIDATE_LIMIT` | `10` | 求职任务一轮扫描最多产出多少条待投票据（≥1 且 ≤50，非法值启动即报错） |
 | `AGENT_SCAN_POOL_LIMIT` | `2000` | 单轮扫描从岗位池取多少条候选（按发布时间倒序，≥1 且 ≤5000；默认 2000 约覆盖生产池最近 20%） |
 | `AGENT_TICK_MAX_RUNS` | `10` | 一次 `/internal/cron/agent-tick` 最多推进多少个求职任务（≥1 且 ≤100） |
+| `TAVILY_API_KEY` | 空 | 指令式搜岗搜索通道 key（主通道 Tavily）；未配时 `/internal/cron/search-tick` 503 并记失败心跳。免费层 1000 credits/月 |
+| `SEARCH_DAILY_LIMIT` | `10` | 搜岗每日次数上限（UTC 日界、按账号、含失败 run）；`0`＝关闭；超限 429 `search_daily_limit`。搜岗 run 仅用户主动发起 |
+| `SCHEMA_CHECK_STRICT` | `0` | 常驻进程启动 schema 自检缺列时是否退出（`1`＝fail fast）；默认仅告警。serverless 不经此路径 |
 
 > MCP 接入面（独立 stdio 进程 `apps/mcp`，决策 #19，2026-10-01）另读：`MCP_API_KEY`（默认空＝fail-closed，画像类工具返回 MCP_KEY_REQUIRED 错误码、仅 `search_jobs` 可用；生产缺 key 启动即失败）、`MCP_RATE_WINDOW_MS`（默认 `60000`）、`MCP_RATE_LIMIT_PER_WINDOW`（默认 `60`），IP 哈希复用 `DEMO_IP_SALT`。
 
@@ -1342,7 +1345,10 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 - 201：创建 `search_runs` 任务（status=`queued`），等待 `search-tick` 认领执行；
 - 400：body 为空 / `query` 与 `presetId` 均缺；
-- 401：`AUTH_REQUIRED`。
+- 401：`AUTH_REQUIRED`；
+- 429：超过当日次数上限，`{ error, code: "search_daily_limit", limit }`。
+  上限由 `SEARCH_DAILY_LIMIT` 控制（UTC 日界、按账号计数、含失败 run；默认 10，`0`＝关闭）。
+  **搜岗 run 只能由用户主动发起，系统不做任何自动/定时创建。**
 
 ### `GET /agent/search/:id`
 
@@ -1351,6 +1357,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 ### `GET /agent/search/:id/results`
 
 返回本次搜岗入池的岗位列表（`job_postings.search_run_id` 关联，最多 200 条）；非本人 404。
+加 `?format=csv` 返回 CSV 下载（`text/csv` + `Content-Disposition: attachment`，RFC4180，
+9 列：title/company/location/remote/salaryMin/salaryMax/tags/sourceUrl/applyUrl）；默认 JSON。
 
 ### `GET /agent/search-presets` / `POST /agent/search-presets`
 
@@ -1363,7 +1371,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 ### `GET /agent/search`
 
-搜岗历史列表（本人私有，`search_runs` 按 created_at 倒序，最多 20 条）。返回：
+搜岗历史列表（本人私有，`search_runs` 按 created_at 倒序、同刻按 run_id 倒序，最多 20 条；
+run_id 为时间有序 ID，见 `apps/api/src/ids.ts`）。返回：
 
 ```json
 { "runs": [{ "runId": "...", "presetId": null, "query": "...", "status": "done",
@@ -1396,6 +1405,15 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 内部 cron 端点（Bearer `CRON_SECRET`）：认领 queued 搜岗任务，逐条执行搜索 →
 JD 抽取 → 去重入库 → 回写终态。未配 `TAVILY_API_KEY` 时 503 并记录失败心跳。
+
+**召回质量（2026-10-09 真实端到端回归后固化）**：
+
+- 通用搜索结果被 Indeed/LinkedIn 等 SEO 聚合页主导，故每条 query 在通用搜索后
+  额外用 Tavily `include_domains` 对 ATS 域（Lever/Greenhouse/Wellfound/Ashby/
+  Workable/Workday）补搜一次（+1 次调用，失败不致命）再混合入库；
+- JD 抽取前置 `looksLikeJobPosting` 过滤：host 黑名单（社媒/企业信息站/课程平台）、
+  列表页 URL、SEO 聚合与教程类标题、正文硬技术命中门槛，挡掉聚合页/博客/频道误报；
+- 搜岗结果不产生画像证据，不影响可信证据链。
 
 ## 3.9 LLM 模型供给（决策 #21，需登录）
 

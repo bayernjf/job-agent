@@ -2,6 +2,7 @@ import type { JobSource } from '@jobagent/shared';
 import type { JobSourceAdapter } from './types.js';
 import { RemoteOkAdapter } from './remoteok.js';
 import { RemotiveAdapter } from './remotive.js';
+import { JobicyAdapter } from './jobicy.js';
 import { WeworkRemotelyAdapter } from './weworkremotely.js';
 import { GreenhouseAdapter, type GreenhouseBoard } from './greenhouse.js';
 import { LeverAdapter, type LeverBoard } from './lever.js';
@@ -98,6 +99,7 @@ export const SEED_LEVER_BOARDS: LeverBoard[] = [
 export const DEFAULT_SOURCES: JobSource[] = [
   'remoteok',
   'remotive',
+  'jobicy',
   'weworkremotely',
   'greenhouse',
   'lever',
@@ -122,6 +124,7 @@ export function createDefaultAdapters(options: DefaultAdapterOptions = {}): JobS
 
   if (enabled.has('remoteok')) adapters.push(new RemoteOkAdapter());
   if (enabled.has('remotive')) adapters.push(new RemotiveAdapter());
+  if (enabled.has('jobicy')) adapters.push(new JobicyAdapter());
   if (enabled.has('weworkremotely')) adapters.push(new WeworkRemotelyAdapter());
   if (enabled.has('greenhouse')) {
     adapters.push(

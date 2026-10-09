@@ -22,7 +22,21 @@ import type {
   StoredSearchRun,
 } from '@jobagent/storage';
 import { extractJobFromSearchResult } from './jd-extract.js';
-import type { SearchClient } from './types.js';
+import type { SearchClient, SearchResultItem } from './types.js';
+
+/**
+ * ATS 详情页域名（混合召回，T1-1）：通用搜索的结果常被 Indeed/LinkedIn 等
+ * SEO 聚合页占据；额外用 Tavily include_domains 限定这些域名搜一次，保证
+ * 真实岗位详情页召回。只用第一条 query 追加一次，成本仅 +1 次调用。
+ */
+const ATS_INCLUDE_DOMAINS = [
+  'jobs.lever.co',
+  'boards.greenhouse.io',
+  'wellfound.com',
+  'jobs.ashbyhq.com',
+  'apply.workable.com',
+  'myworkdayjobs.com',
+];
 
 export interface RunSearchDeps {
   searchRuns: ISearchRunsRepository;
@@ -70,37 +84,57 @@ export async function executeSearchRun(
   const seenUrls = new Set<string>();
   const searchErrors: string[] = [];
 
+  /** 把一批搜索结果去重、抽取后并入候选（通用搜索与 ATS 召回共用）。 */
+  const ingestItems = (items: SearchResultItem[]): void => {
+    for (const item of items) {
+      const canon = canonicalizeUrl(item.url);
+      if (!canon || seenUrls.has(canon)) continue;
+      seenUrls.add(canon);
+      const ext = extractJobFromSearchResult(item, run.conditions);
+      if (!ext) continue;
+      candidates.push({
+        jobId: createHash('sha1').update(`websearch\0${canon}`).digest('hex').slice(0, 16),
+        source: 'websearch',
+        sourceUrl: canon,
+        title: ext.title,
+        company: ext.company,
+        location: ext.location,
+        remote: ext.remote,
+        salaryMin: ext.salaryMin,
+        salaryMax: ext.salaryMax,
+        salaryCurrency: ext.salaryCurrency,
+        tags: ext.tags,
+        description: ext.description,
+        fetchedAt: now,
+        applyUrl: canon,
+      });
+    }
+  };
+
   for (const q of queries) {
     try {
       const items = await deps.searchClient.search(q, {
         maxResults: deps.maxResultsPerQuery ?? 5,
       });
       executed.push(q);
-      for (const item of items) {
-        const canon = canonicalizeUrl(item.url);
-        if (!canon || seenUrls.has(canon)) continue;
-        seenUrls.add(canon);
-        const ext = extractJobFromSearchResult(item, run.conditions);
-        if (!ext) continue;
-        candidates.push({
-          jobId: createHash('sha1').update(`websearch\0${canon}`).digest('hex').slice(0, 16),
-          source: 'websearch',
-          sourceUrl: canon,
-          title: ext.title,
-          company: ext.company,
-          location: ext.location,
-          remote: ext.remote,
-          salaryMin: ext.salaryMin,
-          salaryMax: ext.salaryMax,
-          salaryCurrency: ext.salaryCurrency,
-          tags: ext.tags,
-          description: ext.description,
-          fetchedAt: now,
-          applyUrl: canon,
-        });
-      }
+      ingestItems(items);
     } catch (err) {
       searchErrors.push(`${q}: ${(err as Error).message}`);
+    }
+  }
+
+  // ATS 域混合召回：第一条 query 额外限定 ATS 域名搜一次（+1 调用，失败不致命）
+  const firstQuery = queries[0];
+  if (firstQuery) {
+    try {
+      const atsItems = await deps.searchClient.search(firstQuery, {
+        maxResults: deps.maxResultsPerQuery ?? 5,
+        includeDomains: ATS_INCLUDE_DOMAINS,
+      });
+      executed.push(`${firstQuery} [ats]`);
+      ingestItems(atsItems);
+    } catch (err) {
+      searchErrors.push(`ats: ${(err as Error).message}`);
     }
   }
 

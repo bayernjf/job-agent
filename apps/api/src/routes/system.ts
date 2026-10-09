@@ -28,6 +28,8 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   { table: 'cron_heartbeat', column: 'consumer' }, // 031 心跳（本批）
 ];
 
+export { REQUIRED_COLUMNS };
+
 /**
  * 心跳守望（watchdog）参数：watch-heartbeat cron 按 *\/5 调度（与最慢消费方
  * agent-tick 对齐），stale 判定只看"最近一次成功心跳"（last_success_at；失败

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gte } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
   toStoredSearchRun,
@@ -37,9 +37,17 @@ export class PgSearchRunsRepository implements ISearchRunsRepository {
       .select()
       .from(t)
       .where(eq(t.accountId, accountId))
-      .orderBy(desc(t.createdAt))
+      .orderBy(desc(t.createdAt), desc(t.runId))
       .limit(limit);
     return rows.map(toStoredSearchRun);
+  }
+
+  async countByAccountSince(accountId: string, sinceIso: string): Promise<number> {
+    const rows = await this.db
+      .select({ runId: t.runId })
+      .from(t)
+      .where(and(eq(t.accountId, accountId), gte(t.createdAt, sinceIso)));
+    return rows.length;
   }
 
   async claimNextQueued(now: string): Promise<StoredSearchRun | undefined> {

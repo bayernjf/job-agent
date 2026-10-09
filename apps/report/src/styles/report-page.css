@@ -409,6 +409,20 @@
   align-items: center;
   flex-wrap: wrap;
 }
+.search-workbench__result-tools {
+  display: flex;
+  gap: var(--ja-space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  padding: var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+}
+.search-workbench__result-tools input[type='text'] {
+  flex: 1 1 160px;
+  min-width: 0;
+}
 .search-workbench__results {
   display: flex;
   flex-direction: column;

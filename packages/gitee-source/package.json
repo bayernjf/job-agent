@@ -17,7 +17,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@jobagent/analyzer-core": "workspace:*",
     "@jobagent/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@jobagent/analyzer-core": "workspace:*"
   }
 }
