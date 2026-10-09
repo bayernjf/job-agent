@@ -742,6 +742,8 @@ export const JobSourceSchema = z.enum([
   'lever',
   'hn_whoishiring',
   'weworkremotely',
+  // T1-3（2026-10-09）：Jobicy 公开 JSON API（整站远程，无需 key）
+  'jobicy',
   // 指令式全网搜岗（design-websearch-job-discovery）：Tavily 搜索抓取的岗位，入同一岗位池
   'websearch',
   // T24②：用户粘贴 JD 直传的临时来源（不入岗位库，仅本次简历渲染使用）

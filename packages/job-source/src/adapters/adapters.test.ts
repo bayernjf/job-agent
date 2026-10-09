@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseRemoteOkPosts } from './remoteok.js';
 import { parseRemotiveJobs } from './remotive.js';
+import { parseJobicyJobs } from './jobicy.js';
 import { parseGreenhouseJobs } from './greenhouse.js';
 import { parseLeverPostings } from './lever.js';
 import { parseWwrRss } from './weworkremotely.js';
@@ -80,6 +81,51 @@ describe('Remotive adapter parse (real fixture)', () => {
     expect(c.salaryMin).toBeNull();
     expect(c.salaryMax).toBeNull();
     expect(c.salaryCurrency).toBeNull();
+  });
+});
+
+describe('Jobicy adapter parse (real fixture)', () => {
+  const result = parseJobicyJobs(load('jobicy.sample.json'), FETCHED);
+
+  it('maps 3 jobs with zero invalid', () => {
+    expect(result.postings).toHaveLength(3);
+    expect(result.invalid).toBe(0);
+  });
+
+  it('maps geo restrictions as location and marks all remote', () => {
+    const a = result.postings[0]!;
+    expect(a.source).toBe('jobicy');
+    expect(a.remote).toBe(true);
+    expect(a.location).toContain('North America');
+    expect(a.location).toContain('South America');
+    expect(result.postings.every((p) => p.remote)).toBe(true);
+  });
+
+  it('parses annual salary range with currency and space-separated UTC dates', () => {
+    const a = result.postings[0]!;
+    expect(a.salaryMin).toBe(90_000);
+    expect(a.salaryMax).toBe(140_000);
+    expect(a.salaryCurrency).toBe('USD');
+    expect(a.postedAt).toBe('2026-10-01T09:30:00.000Z');
+  });
+
+  it('merges tags/industry/type/level and falls back salary to null', () => {
+    const a = result.postings[0]!;
+    expect(a.tags).toContain('go');
+    expect(a.tags).toContain('Software Development');
+    expect(a.tags).toContain('full-time');
+    expect(a.tags).toContain('senior');
+    const b = result.postings[1]!;
+    expect(b.salaryMin).toBeNull();
+    expect(b.salaryMax).toBeNull();
+    expect(b.companyLogoUrl).toBe('https://img.example.com/design.png');
+  });
+
+  it('strips HTML from description and keeps the logo url', () => {
+    const a = result.postings[0]!;
+    expect(a.description).not.toMatch(/<|>/);
+    expect(a.description).toContain('distributed systems');
+    expect(a.companyLogoUrl).toBe('https://img.example.com/acme.png');
   });
 });
 

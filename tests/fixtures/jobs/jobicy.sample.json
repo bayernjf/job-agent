@@ -1,0 +1,51 @@
+{
+  "jobCount": 3,
+  "jobs": [
+    {
+      "id": 1001,
+      "url": "https://jobicy.com/jobs/1001-senior-backend-engineer",
+      "jobTitle": "Senior Backend Engineer",
+      "companyName": "Acme Remote",
+      "companyLogo": "https://img.example.com/acme.png",
+      "jobType": "full-time",
+      "jobExcerpt": "Build distributed systems.",
+      "jobDescription": "<p>Build <strong>distributed systems</strong> with Go and PostgreSQL.</p>",
+      "jobGeo": ["North America", "South America"],
+      "jobLevel": "senior",
+      "jobIndustry": ["Software Development"],
+      "pubDate": "2026-10-01 09:30:00",
+      "annualSalaryMin": 90000,
+      "annualSalaryMax": 140000,
+      "salaryCurrency": "USD",
+      "tags": ["go", "postgresql", "kubernetes"]
+    },
+    {
+      "id": 1002,
+      "url": "https://jobicy.com/jobs/1002-frontend-developer",
+      "jobTitle": "Frontend Developer",
+      "companyName": "Design Co",
+      "companyLogoRec": "https://img.example.com/design.png",
+      "jobType": "contract",
+      "jobExcerpt": "Craft UIs.",
+      "jobDescription": "<p>React and TypeScript.</p>",
+      "jobGeo": ["Europe"],
+      "jobLevel": "mid-level",
+      "jobIndustry": ["Design"],
+      "pubDate": "2026-09-28 14:00:00",
+      "tags": ["react", "typescript"]
+    },
+    {
+      "id": 1003,
+      "url": "https://jobicy.com/jobs/1003-devops-engineer",
+      "jobTitle": "DevOps Engineer",
+      "companyName": "Infra Ltd",
+      "jobType": "full-time",
+      "jobDescription": "<p>CI/CD pipelines.</p>",
+      "jobGeo": ["Worldwide"],
+      "jobLevel": "senior",
+      "jobIndustry": ["IT"],
+      "pubDate": "2026-09-20 00:05:00",
+      "tags": ["terraform", "aws"]
+    }
+  ]
+}
