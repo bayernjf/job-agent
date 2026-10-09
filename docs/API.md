@@ -1325,6 +1325,47 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 ---
 
+## 3.8.1 指令式全网搜岗（websearch，决策 #16 扩展；需登录）
+
+用户在「搜岗工作台」输入自然语言指令（或引用已保存的筛选条件预设），由 Agent 在
+全网搜索目标岗位并入库；定时采集管道（§3.3）保持不变。全量设计见
+`docs/design-websearch-job-discovery-20261008.md`。
+
+### `POST /agent/search`
+
+发起一次指令式搜岗（直接输入或引用预设，二选一）。请求体：
+
+```json
+{ "query": "深圳的 Java 开发，坐班，可远程" }
+// 或引用预设：{ "presetId": "sp_..." }
+```
+
+- 201：创建 `search_runs` 任务（status=`queued`），等待 `search-tick` 认领执行；
+- 400：body 为空 / `query` 与 `presetId` 均缺；
+- 401：`AUTH_REQUIRED`。
+
+### `GET /agent/search/:id`
+
+查询搜岗任务状态（queued/running/done/partial/failed）与计数；非本人任务 404。
+
+### `GET /agent/search/:id/results`
+
+返回本次搜岗入池的岗位列表（`job_postings.search_run_id` 关联，最多 200 条）；非本人 404。
+
+### `GET /agent/search-presets` / `POST /agent/search-presets`
+
+筛选条件预设列表维护（本人私有）：GET 返回全部预设；POST 保存一条
+（`{ title?, query, conditions? }`，未传 conditions 时服务端意图解析生成），201 返回 `preset`。
+
+### `DELETE /agent/search-presets/:id`
+
+删除本人预设；非本人 404。
+
+### `GET /internal/cron/search-tick`
+
+内部 cron 端点（Bearer `CRON_SECRET`）：认领 queued 搜岗任务，逐条执行搜索 →
+JD 抽取 → 去重入库 → 回写终态。未配 `TAVILY_API_KEY` 时 503 并记录失败心跳。
+
 ## 3.9 LLM 模型供给（决策 #21，需登录）
 
 内置目录与 BYOK 双轨，全量设计见 `docs/design-llm-model-provisioning-20261003.md`。

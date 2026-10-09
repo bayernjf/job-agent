@@ -742,6 +742,8 @@ export const JobSourceSchema = z.enum([
   'lever',
   'hn_whoishiring',
   'weworkremotely',
+  // 指令式全网搜岗（design-websearch-job-discovery）：Tavily 搜索抓取的岗位，入同一岗位池
+  'websearch',
   // T24②：用户粘贴 JD 直传的临时来源（不入岗位库，仅本次简历渲染使用）
   'manual',
 ]);
@@ -2180,3 +2182,87 @@ export function extractSkillTokens(text: string): MatchedSkillToken[] {
   }
   return [...found.values()];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 指令式全网搜岗（design-websearch-job-discovery-20261008，决策已拍板 2026-10-08）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 全网搜岗的结构化搜索条件（LLM 从自然语言解析，或预设原样保存；规则解析为回落）。
+ *
+ * `queries` 是实际发往搜索 API 的 query 列表；`location`/`remote`/`salaryMinUsd`/
+ * `keywords` 是对抓取到的 JD 做二次过滤的条件（解析不出的部分留空即可）。
+ */
+export const SearchConditionsSchema = z.object({
+  queries: z.array(z.string().min(1).max(200)).min(1).max(5), // 搜索 query（1–5 条）
+  location: z.string().max(120).nullish(), // 地区关键词（如 "深圳" / "Remote"）；空 = 不限
+  remote: z.boolean().default(false), // 是否要求远程
+  salaryMinUsd: z.number().int().nonnegative().max(10_000_000).nullish(),
+  keywords: z.array(z.string().min(1).max(80)).max(20).default([]), // JD 二次过滤关键词
+});
+export type SearchConditions = z.infer<typeof SearchConditionsSchema>;
+
+/** 筛选条件预设：用户保存的搜索配方（列表维护：保存/删除，本人私有）。 */
+export const SearchPresetSchema = z.object({
+  presetId: z.string().min(1),
+  accountId: z.string().min(1), // 归属账号（本人）
+  title: z.string().max(80).nullish(), // 用户命名（可选；空则用 query 截断展示）
+  query: z.string().min(1).max(500), // 原始指令文本（自然语言，可追溯）
+  conditions: SearchConditionsSchema, // 解析后的结构化条件
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type SearchPreset = z.infer<typeof SearchPresetSchema>;
+
+/** POST /agent/search-presets 请求体：不含 id/归属/时间戳（服务端生成）。 */
+export const SearchPresetCreateSchema = z
+  .object({
+    title: z.string().min(1).max(80).optional(),
+    query: z.string().min(1).max(500),
+    // 未传 conditions 时由服务端意图解析生成（LLM fail-closed 回落规则解析）
+    conditions: SearchConditionsSchema.optional(),
+  })
+  .strict();
+export type SearchPresetCreateInput = z.infer<typeof SearchPresetCreateSchema>;
+
+/** 搜岗任务状态：queued（等待 cron 认领）→ running → done / partial / failed。 */
+export const SEARCH_RUN_STATUSES = [
+  'queued', // 已创建，等待 search-tick 认领
+  'running', // 执行中（意图解析/搜索/抓取/入库）
+  'done', // 完成（至少部分入池）
+  'partial', // 部分完成（有源失败/部分 query 失败，error 给原因）
+  'failed', // 不可恢复失败（必须带显式原因）
+] as const;
+export const SearchRunStatusSchema = z.enum(SEARCH_RUN_STATUSES);
+export type SearchRunStatus = z.infer<typeof SearchRunStatusSchema>;
+
+/** 一次指令式全网搜岗任务。 */
+export const SearchRunSchema = z.object({
+  runId: z.string().min(1),
+  accountId: z.string().min(1),
+  presetId: z.string().min(1).nullish(), // 关联预设（直接输入发起时为 null）
+  query: z.string().min(1).max(500), // 本次执行的原始指令（来自输入或预设）
+  conditions: SearchConditionsSchema, // 本次执行用的结构化条件
+  status: SearchRunStatusSchema,
+  queries: z.array(z.string().min(1)).default([]), // 实际执行的 query 列表
+  resultsCount: z.number().int().nonnegative().default(0), // 搜索到的候选数
+  newCount: z.number().int().nonnegative().default(0), // 去重后入池新增数
+  matchedCount: z.number().int().nonnegative().default(0), // 过质量闸并入待投清单数
+  error: z.string().max(500).nullish(), // partial/failed 的显式原因
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type SearchRun = z.infer<typeof SearchRunSchema>;
+
+/** POST /agent/search 请求体：直接输入 或 引用预设（二选一）。 */
+export const SearchRunCreateSchema = z
+  .object({
+    query: z.string().min(1).max(500).optional(), // 直接输入的自然语言指令
+    conditions: SearchConditionsSchema.optional(), // 可选：直接给结构化条件（跳过解析）
+    presetId: z.string().min(1).optional(), // 用预设发起（取其 query + conditions）
+  })
+  .strict()
+  .refine((d) => Boolean(d.presetId) || Boolean(d.query), {
+    message: 'query or presetId is required',
+  });
+export type SearchRunCreateInput = z.infer<typeof SearchRunCreateSchema>;

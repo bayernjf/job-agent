@@ -1,5 +1,5 @@
 {
-  "name": "@jobagent/job-source",
+  "name": "@jobagent/search-source",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,8 +17,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jobagent/job-source": "workspace:*",
+    "@jobagent/llm": "workspace:*",
     "@jobagent/shared": "workspace:*",
-    "@jobagent/storage": "workspace:*",
-    "undici": "^7.30.0"
+    "@jobagent/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.11"
   }
 }

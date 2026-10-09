@@ -18,6 +18,8 @@ export interface CronEnv {
 export interface CronTickLog {
   processJob: { processed: number; idle: boolean; status?: number };
   agentTick: { ok: boolean; status?: number };
+  /** Present when the tick also ran the websearch consumer (same 5-min slot). */
+  searchTick?: { ok: boolean; status?: number };
   /** Present only when this tick ran the hourly maintenance cleanup. */
   cleanup?: { ok: boolean; status?: number };
   /** Present when the tick also ran the heartbeat watchdog check. */
@@ -75,11 +77,12 @@ export async function runCronTick(
     }
     if (readKind(res.body) === 'idle') {
       const agent = await get('/api/internal/cron/agent-tick');
+      const search = await get('/api/internal/cron/search-tick');
       const cleanup = runCleanup
         ? await get('/api/internal/cron/cleanup?task=all')
         : undefined;
       const watch = await runWatchIfRequested(runWatchHeartbeat, get);
-      return finishTick(processed, true, agent, cleanup, watch);
+      return finishTick(processed, true, agent, search, cleanup, watch);
     }
     processed++;
     if (attempt < limit) await sleep(SUBCALL_DELAY_MS);
@@ -88,11 +91,12 @@ export async function runCronTick(
   // Reached the drain cap without an idle answer: the agent-tick still runs so
   // job-hunt tasks are not starved by a large analysis backlog.
   const agent = await get('/api/internal/cron/agent-tick');
+  const search = await get('/api/internal/cron/search-tick');
   const cleanup = runCleanup
     ? await get('/api/internal/cron/cleanup?task=all')
     : undefined;
   const watch = await runWatchIfRequested(runWatchHeartbeat, get);
-  return finishTick(processed, false, agent, cleanup, watch);
+  return finishTick(processed, false, agent, search, cleanup, watch);
 }
 
 async function runWatchIfRequested(
@@ -108,12 +112,14 @@ function finishTick(
   processed: number,
   idle: boolean,
   agent: { status: number },
+  search: { status: number },
   cleanup: { status: number } | undefined,
   watch: { ok: boolean; status: number } | undefined,
 ): CronTickLog {
   const log: CronTickLog = {
     processJob: { processed, idle },
     agentTick: { ok: agent.status === 200, status: agent.status },
+    searchTick: { ok: search.status === 200, status: search.status },
   };
   if (cleanup) {
     log.cleanup = { ok: cleanup.status === 200, status: cleanup.status };

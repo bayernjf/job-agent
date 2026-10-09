@@ -247,6 +247,16 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     return changed.length;
   }
 
+  async listBySearchRun(runId: string, limit = 200): Promise<StoredJobPosting[]> {
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(eq(t.searchRunId, runId))
+      .orderBy(desc(t.firstSeenAt))
+      .limit(limit);
+    return rows.map(toStoredJobPosting);
+  }
+
   async getById(id: string): Promise<StoredJobPosting | undefined> {
     const rows = await this.db.select().from(t).where(eq(t.id, id)).limit(1);
     return rows[0] ? toStoredJobPosting(rows[0]!) : undefined;

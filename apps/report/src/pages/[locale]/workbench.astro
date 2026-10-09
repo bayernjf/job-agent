@@ -13,6 +13,7 @@
 import Layout from '../../layouts/Layout.astro';
 import GateCard from '../../components/GateCard.astro';
 import AgentWorkbench from '../../components/AgentWorkbench.tsx';
+import SearchWorkbench from '../../components/SearchWorkbench.tsx';
 import ModelSettings from '../../components/ModelSettings.tsx';
 import ExtensionAuthManager from '../../components/ExtensionAuthManager.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
@@ -245,6 +246,51 @@ const claimedProfileId = viewer.kind === 'user' ? viewer.claimedProfileId : null
             postedAt: t('workbench.fields.postedAt'),
             run: t('workbench.fields.run'),
           },
+        }}
+      />
+      <SearchWorkbench
+        client:load
+        apiBase={apiBase}
+        locale={locale}
+        labels={{
+          title: t('workbench.search.title'),
+          hint: t('workbench.search.hint'),
+          queryLabel: t('workbench.search.queryLabel'),
+          queryPlaceholder: t('workbench.search.queryPlaceholder'),
+          locationLabel: t('workbench.search.locationLabel'),
+          locationPlaceholder: t('workbench.search.locationPlaceholder'),
+          remoteLabel: t('workbench.search.remoteLabel'),
+          salaryLabel: t('workbench.search.salaryLabel'),
+          salaryPlaceholder: t('workbench.search.salaryPlaceholder'),
+          start: t('workbench.search.start'),
+          searching: t('workbench.search.searching'),
+          status: {
+            queued: t('workbench.search.status.queued'),
+            running: t('workbench.search.status.running'),
+            done: t('workbench.search.status.done'),
+            partial: t('workbench.search.status.partial'),
+            failed: t('workbench.search.status.failed'),
+          },
+          resultsTitle: t('workbench.search.resultsTitle'),
+          resultsEmpty: t('workbench.search.resultsEmpty'),
+          newCount: t('workbench.search.newCount'),
+          resultsCount: t('workbench.search.resultsCount'),
+          presetsTitle: t('workbench.search.presetsTitle'),
+          presetsEmpty: t('workbench.search.presetsEmpty'),
+          presetSave: t('workbench.search.presetSave'),
+          presetSaved: t('workbench.search.presetSaved'),
+          presetDelete: t('workbench.search.presetDelete'),
+          presetTitleLabel: t('workbench.search.presetTitleLabel'),
+          presetTitlePlaceholder: t('workbench.search.presetTitlePlaceholder'),
+          presetUse: t('workbench.search.presetUse'),
+          remote: t('workbench.search.remote'),
+          apply: t('workbench.search.apply'),
+          error: t('workbench.search.error'),
+          companyLabel: t('workbench.search.companyLabel'),
+          locationUnknown: t('workbench.search.locationUnknown'),
+          salaryFormat: t('workbench.search.salaryFormat'),
+          noSearchYet: t('workbench.search.noSearchYet'),
+          siteLabel: t('workbench.search.siteLabel'),
         }}
       />
       <ModelSettings
