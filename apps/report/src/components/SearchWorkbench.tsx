@@ -579,7 +579,9 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
                     title={labels.presetUse}
                   >
                     <strong>{p.title ?? p.query}</strong>
-                    <span className="ja-muted">{p.query}</span>
+                    {p.title && p.title !== p.query ? (
+                      <span className="ja-muted">{p.query}</span>
+                    ) : null}
                   </button>
                   <button
                     type="button"
