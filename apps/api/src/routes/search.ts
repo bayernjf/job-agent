@@ -15,7 +15,6 @@
  * P0 执行路径为确定性规则解析（LLM 增强留给 P1，注入点已预留）。
  */
 import type { Context, Hono } from 'hono';
-import { randomUUID } from 'node:crypto';
 import {
   SearchPresetCreateSchema,
   SearchRunCreateSchema,
@@ -27,6 +26,8 @@ import {
   runSearchTick,
 } from '@jobagent/search-source';
 import { describeError } from './helpers.js';
+import { timeOrderedId } from '../ids.js';
+import { toCsv } from '../csv.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
@@ -61,6 +62,13 @@ export function registerSearch(app: Hono<HonoEnv>, d: RouteDeps): void {
     return run;
   };
 
+  /** 当日 UTC 0 点（每日配额窗口固定按 UTC，避免时区漂移）。 */
+  const startOfTodayUtc = (): string => {
+    const d = new Date();
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
+  };
+  const dailyLimit = Number(process.env.SEARCH_DAILY_LIMIT ?? 10);
+
   // POST /agent/search：发起一次指令式全网搜岗（直接输入 或 引用预设）
   app.post('/agent/search', async (c) => {
     const user = requireUser(c);
@@ -70,6 +78,25 @@ export function registerSearch(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'invalid search request', details: parsed.error.flatten() }, 400);
     }
     const body = parsed.data;
+
+    // T2-9 每日配额护栏：按账号统计 UTC 当日已创建的 run（含失败，防刷优先），
+    // 超限 429；SEARCH_DAILY_LIMIT=0 显式关闭护栏（默认 10）。
+    if (dailyLimit > 0) {
+      const usedToday = await repos.searchRuns.countByAccountSince(
+        user.accountId,
+        startOfTodayUtc(),
+      );
+      if (usedToday >= dailyLimit) {
+        return c.json(
+          {
+            error: 'daily search limit reached',
+            code: 'search_daily_limit',
+            limit: dailyLimit,
+          },
+          429,
+        );
+      }
+    }
 
     let query: string;
     let conditions;
@@ -86,7 +113,7 @@ export function registerSearch(app: Hono<HonoEnv>, d: RouteDeps): void {
       conditions = body.conditions ?? (await parseSearchIntent(query));
     }
 
-    const runId = `srun-${randomUUID()}`;
+    const runId = timeOrderedId('srun');
     const nowIso = now();
     await repos.searchRuns.insert({
       runId,
@@ -120,11 +147,32 @@ export function registerSearch(app: Hono<HonoEnv>, d: RouteDeps): void {
     });
   });
 
-  // GET /agent/search/:id/results：本次入库的岗位列表（run 关联列精确查询）
+  // GET /agent/search/:id/results：本次入库的岗位列表（run 关联列精确查询）。
+  // ?format=csv 返回 CSV 下载（T1-2 导出），默认 JSON。
   app.get('/agent/search/:id/results', async (c) => {
     const run = await requireOwnedRun(c, c.req.param('id'));
     if (run instanceof Response) return run;
     const postings = await repos.jobPostings.listBySearchRun(run.runId);
+    if (c.req.query('format') === 'csv') {
+      const csv = toCsv(
+        ['title', 'company', 'location', 'remote', 'salaryMin', 'salaryMax', 'tags', 'sourceUrl', 'applyUrl'],
+        postings.map((p) => [
+          p.title,
+          p.company,
+          p.location,
+          p.remote ? 'true' : 'false',
+          p.salaryMin,
+          p.salaryMax,
+          p.tags.join('; '),
+          p.sourceUrl,
+          p.applyUrl ?? p.sourceUrl,
+        ]),
+      );
+      return c.body(csv, 200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="search-${run.runId}.csv"`,
+      });
+    }
     return c.json({
       postings: postings.map((p) => ({
         id: p.id,
@@ -170,7 +218,7 @@ export function registerSearch(app: Hono<HonoEnv>, d: RouteDeps): void {
     }
     const body = parsed.data;
     const conditions = body.conditions ?? (await parseSearchIntent(body.query));
-    const presetId = `spre-${randomUUID()}`;
+    const presetId = timeOrderedId('spre');
     const nowIso = now();
     await repos.searchPresets.upsert({
       presetId,

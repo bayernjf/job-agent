@@ -7,6 +7,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createStorage, type StorageContext } from '@jobagent/storage';
+import { buildPosting, makeNormalizedKey } from '@jobagent/job-source';
 import { createApp, type ApiDeps } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';
@@ -131,6 +132,53 @@ describe('POST /agent/search', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('returns 429 after the daily limit and exposes the code', async () => {
+    const prev = process.env.SEARCH_DAILY_LIMIT;
+    process.env.SEARCH_DAILY_LIMIT = '2';
+    try {
+      const { app, Cookie } = await harness();
+      for (const q of ['one', 'two']) {
+        const r = await app.request('/agent/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie },
+          body: JSON.stringify({ query: q }),
+        });
+        expect(r.status).toBe(201);
+      }
+      const blocked = await app.request('/agent/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie },
+        body: JSON.stringify({ query: 'three' }),
+      });
+      expect(blocked.status).toBe(429);
+      const data = (await blocked.json()) as { code: string; limit: number };
+      expect(data.code).toBe('search_daily_limit');
+      expect(data.limit).toBe(2);
+    } finally {
+      if (prev === undefined) delete process.env.SEARCH_DAILY_LIMIT;
+      else process.env.SEARCH_DAILY_LIMIT = prev;
+    }
+  });
+
+  it('allows unlimited searches when SEARCH_DAILY_LIMIT is 0', async () => {
+    const prev = process.env.SEARCH_DAILY_LIMIT;
+    process.env.SEARCH_DAILY_LIMIT = '0';
+    try {
+      const { app, Cookie } = await harness();
+      for (const q of ['a', 'b', 'c']) {
+        const r = await app.request('/agent/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie },
+          body: JSON.stringify({ query: q }),
+        });
+        expect(r.status).toBe(201);
+      }
+    } finally {
+      if (prev === undefined) delete process.env.SEARCH_DAILY_LIMIT;
+      else process.env.SEARCH_DAILY_LIMIT = prev;
+    }
+  });
 });
 
 describe('GET /agent/search/:id', () => {
@@ -153,6 +201,47 @@ describe('GET /agent/search/:id', () => {
       headers: { Cookie: bob.Cookie },
     });
     expect(forbidden.status).toBe(404);
+  });
+});
+
+describe('GET /agent/search/:id/results', () => {
+  it('returns CSV download when format=csv and JSON by default', async () => {
+    const { repos, app, Cookie } = await harness();
+    const created = await app.request('/agent/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ query: 'Java remote' }),
+    });
+    const { runId } = (await created.json()) as { runId: string };
+
+    // 直接往岗位仓储插一条关联本 run 的岗位（不走真实搜索）
+    const raw = {
+      jobId: 'job-csv-1', source: 'websearch' as const, sourceUrl: 'https://example.com/jobs/1',
+      title: 'Senior Java Engineer', company: 'Acme Ltd', location: 'Shenzhen', remote: true,
+      salaryMin: 200000, salaryMax: 300000, salaryCurrency: 'USD', tags: ['java', 'spring'],
+      description: 'Build services', fetchedAt: new Date().toISOString(),
+      applyUrl: 'https://example.com/jobs/1',
+    };
+    const built = buildPosting(raw);
+    expect(built.ok).toBe(true);
+    if (built.ok) {
+      await repos.jobPostings.upsertBatch([{
+        ...built.posting,
+        normalizedKey: makeNormalizedKey(built.posting.title, built.posting.company, 'Shenzhen'),
+        searchRunId: runId,
+      }], new Date().toISOString());
+    }
+
+    const csv = await app.request(`/agent/search/${runId}/results?format=csv`, { headers: { Cookie } });
+    expect(csv.status).toBe(200);
+    expect(csv.headers.get('content-type')).toContain('text/csv');
+    expect(csv.headers.get('content-disposition')).toContain('attachment');
+    const text = await csv.text();
+    expect(text).toContain('Senior Java Engineer');
+    expect(text).toContain('Acme Ltd');
+
+    const json = await app.request(`/agent/search/${runId}/results`, { headers: { Cookie } });
+    expect(json.headers.get('content-type')).toContain('application/json');
   });
 });
 
