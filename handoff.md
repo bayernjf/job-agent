@@ -21,6 +21,7 @@ JobAgent 当前状态，截至 2026-10-10。
 - [docs/讨论记录-02-投递功能与竞品分析-20260911.md](docs/讨论记录-02-投递功能与竞品分析-20260911.md) — 投递功能方向、Jobright 深度竞品分析、四种技术路径对比、职位聚合/Chrome 扩展可行性、3 项待决策（历史）
 - [docs/design-competitive-positioning-20261008.md](docs/design-competitive-positioning-20261008.md) — 竞争定位（现行）：差异化＝可核验行为证据画像 vs 通用生成；三杠杆＝"能力证明层"叙事/数据飞轮/B 端变现；含定位图与对外一话版本
 - [docs/design-websearch-job-discovery-20261008.md](docs/design-websearch-job-discovery-20261008.md) — 指令式全网搜岗（websearch）设计：双模式（定时采集保留 + 用户指令主动全网搜岗）、SearchPreset/SearchRun 数据模型、API 草案、LLM 角色表（意图解析/JD 抽取 LLM fail-closed；匹配/去重/状态机永远规则引擎）、搜索通道对比（Tavily 主 / SerpAPI/Brave 备）、风险对策、P0/P1/P2 分期（现行，**P0 已落地 2026-10-08**）
+- [docs/design-ui-polish-20261010.md](docs/design-ui-polish-20261010.md) — **UI 定向升级方案（2026-10-10，方案待拍板批次）**：生产三页面实测（首页/报告页/工作台）——信息架构/证据链/合规文案为强项，视觉层定向升级而非重做；V1 宽屏栅格（1280 内容列 ~43%→72%）+ V3 报告页章节锚点导航＝P0 一个批次；V2 品牌主色/真实性分级三通道（颜色+图标+文字）P1；V4 工作台空态引导 P2；V5 响应式随 P0 抽样；硬约束＝不换体系、不改文案口径、不碰接口契约；主色基调（沿用绿-teal / 换蓝系）待拍板
 - [docs/PRD.md](docs/PRD.md) — 产品范围、F1–F9、AbilityProfile/EvidenceItem 契约、指标、风险 ★
 - [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) — 技术栈选型、运行架构、目录规划、M1 排期与 Spike ★
 - [docs/技术栈总览-分层架构-20260916.md](docs/技术栈总览-分层架构-20260916.md) — 当前技术栈分层架构一页总览：客户端/服务/内核/采集/持久化五层、各包职责、横切事实与数据流（现行，与 AGENTS/README 同步）
