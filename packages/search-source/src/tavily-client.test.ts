@@ -43,6 +43,19 @@ describe('TavilySearchClient', () => {
     expect(body.search_depth).toBe('basic');
   });
 
+  it('passes include_domains only when provided (ATS hybrid recall)', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ results: [] }));
+    const client = new TavilySearchClient({ apiKey: 'tvly-test', fetchImpl });
+
+    await client.search('q', { includeDomains: ['jobs.lever.co'] });
+    let body = JSON.parse(String((fetchImpl.mock.calls[0]! as unknown as [string, RequestInit])[1].body));
+    expect(body.include_domains).toEqual(['jobs.lever.co']);
+
+    await client.search('q', {});
+    body = JSON.parse(String((fetchImpl.mock.calls[1]! as unknown as [string, RequestInit])[1].body));
+    expect(body.include_domains).toBeUndefined();
+  });
+
   it('throws on non-2xx responses', async () => {
     const client = new TavilySearchClient({
       apiKey: 'tvly-test',

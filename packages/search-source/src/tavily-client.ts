@@ -46,7 +46,10 @@ export class TavilySearchClient implements SearchClient {
     this.searchDepth = opts.searchDepth ?? 'basic';
   }
 
-  async search(query: string, opts?: { maxResults?: number }): Promise<SearchResultItem[]> {
+  async search(
+    query: string,
+    opts?: { maxResults?: number; includeDomains?: string[] },
+  ): Promise<SearchResultItem[]> {
     const maxResults = Math.min(Math.max(opts?.maxResults ?? 5, 1), 10);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -64,6 +67,9 @@ export class TavilySearchClient implements SearchClient {
           max_results: maxResults,
           include_answer: false,
           include_raw_content: false,
+          ...(opts?.includeDomains && opts.includeDomains.length > 0
+            ? { include_domains: opts.includeDomains }
+            : {}),
         }),
         signal: controller.signal,
       });

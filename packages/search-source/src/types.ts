@@ -22,7 +22,14 @@ export interface SearchResultItem {
 /** 搜索通道最小抽象（Tavily 为主实现；SerpAPI Google Jobs 为 P1 备选实现）。 */
 export interface SearchClient {
   readonly provider: string;
-  search(query: string, opts?: { maxResults?: number }): Promise<SearchResultItem[]>;
+  search(
+    query: string,
+    opts?: {
+      maxResults?: number;
+      /** 限定结果域名（Tavily include_domains）；用于 ATS 域混合召回 */
+      includeDomains?: string[];
+    },
+  ): Promise<SearchResultItem[]>;
 }
 
 /** 意图解析结果：LLM 成功产出或规则回落，都必须满足 shared 的 SearchConditionsSchema。 */
