@@ -265,10 +265,14 @@ async function runStats(_rest: string[], deps: CliDeps): Promise<number> {
     return 0;
   }
   const freshKey = `freshWithin${staleDays}d`;
-  const lines = sources.map(
-    (s) => `${s}\tactive=${active[s] ?? 0}\tinactive=${inactive[s] ?? 0}\t${freshKey}=${fresh[s] ?? 0}`,
-  );
   const totalActive = Object.values(active).reduce((a, b) => a + b, 0);
+  // ATS 适配器触发哨兵（docs/design-ats-support-20261010.md §3.4 条件②）：active 占比
+  // 列让"某采集源在岗位池占大头/显著上升"一眼可读（ashby/workday 是扩展填充 ATS、
+  // 非采集源，不在此统计维度）。保留字母序，仅增列，不影响既有解析。
+  const lines = sources.map(
+    (s) =>
+      `${s}\tactive=${active[s] ?? 0}\tinactive=${inactive[s] ?? 0}\t${freshKey}=${fresh[s] ?? 0}\tpct=${totalActive > 0 ? (((active[s] ?? 0) / totalActive) * 100).toFixed(1) : '0.0'}%`,
+  );
   const totalInactive = Object.values(inactive).reduce((a, b) => a + b, 0);
   const totalFresh = Object.values(fresh).reduce((a, b) => a + b, 0);
   stdout.write(
