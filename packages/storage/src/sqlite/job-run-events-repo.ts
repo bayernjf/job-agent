@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredJobRunEvent,
@@ -29,14 +29,19 @@ export class SqliteJobRunEventsRepository implements IJobRunEventsRepository {
   }
 
   async listByRun(runId: string, limit = 200): Promise<StoredJobRunEvent[]> {
+    // 取**最新** limit 条，再反转成时间正序返回（回放顺序不变）。
+    // 原先是 asc + limit，等于永远只给最旧的一批：一个每 5 分钟落一条自迁移事件的
+    // run，在 ~16.7 小时后界面就再也看不到新事件——系统在跑，审计流却冻住。
+    // 次级排序键是 rowid（本表主键是 evt-<uuid>，字典序与时间无关；同一次 tick 的多条
+    // 迁移共用同一个 createdAt ISO，缺了这个键回放顺序就是乱的）。表是 append-only、
+    // 只追加不回改，所以 rowid 单调递增就等于写入顺序。
     const rows = this.db
       .select()
       .from(t)
       .where(eq(t.runId, runId))
-      // 事件流按时间正序（回放顺序），与 submit_intents 的"最新在前"相反
-      .orderBy(asc(t.createdAt))
+      .orderBy(desc(t.createdAt), desc(sql`rowid`))
       .limit(limit)
       .all();
-    return rows.map(toStoredJobRunEvent);
+    return rows.reverse().map(toStoredJobRunEvent);
   }
 }

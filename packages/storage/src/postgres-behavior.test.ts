@@ -222,6 +222,53 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     );
   });
 
+  // 事件流的窗口语义在**真实 PG** 上钉一次：两方言各有一份 repo 代码，
+  // "跑满上限后界面冻住"是取回侧（asc + limit 给最旧 N 条）的错，sqlite 用例不能替 Postgres 背书。
+  pgIt('returns the newest events in replay order when the stream exceeds the limit', async (s) => {
+    const runId = `run-${randomUUID()}`;
+    const base = Date.parse('2026-10-10T00:00:00.000Z');
+    for (let i = 0; i < 12; i += 1) {
+      await s.jobRunEvents.insert({
+        id: `evt-${randomUUID()}`,
+        runId,
+        event: 'rescan',
+        fromStatus: 'watching',
+        toStatus: 'watching',
+        actor: 'agent',
+        createdAt: new Date(base + i * 60_000).toISOString(),
+      });
+    }
+
+    const page = await s.jobRunEvents.listByRun(runId, 5);
+    expect(page).toHaveLength(5);
+    // 截掉的是最旧 7 条，最新 5 条必须都在，且返回顺序仍是正序（回放顺序）
+    expect(page.map((e) => e.createdAt)).toEqual(
+      [7, 8, 9, 10, 11].map((i) => new Date(base + i * 60_000).toISOString()),
+    );
+
+    // 同一时刻多条迁移（一次 tick 推进一步以上）靠 ctid 保回放顺序：主键是 evt-<uuid>，
+    // 拿它当次级排序键会把 validate/start/candidates_ready/generated 排成乱序。
+    const tiedRunId = `run-${randomUUID()}`;
+    const tiedAt = '2026-10-10T06:00:00.000Z';
+    const tiedIds = ['evt-zzz', 'evt-mmm', 'evt-aaa'];
+    for (const id of tiedIds) {
+      await s.jobRunEvents.insert({
+        id,
+        runId: tiedRunId,
+        event: 'rescan',
+        fromStatus: 'watching',
+        toStatus: 'watching',
+        actor: 'agent',
+        createdAt: tiedAt,
+      });
+    }
+    expect((await s.jobRunEvents.listByRun(tiedRunId)).map((e) => e.id)).toEqual(tiedIds);
+    expect((await s.jobRunEvents.listByRun(tiedRunId, 2)).map((e) => e.id)).toEqual([
+      'evt-mmm',
+      'evt-aaa',
+    ]);
+  });
+
   // 真实竞态：多个并发请求同时走条件 UPDATE ... RETURNING 扣减配额，
   // 行锁必须串行化更新——放行数恰好等于配额，绝不超发。
   pgIt('never over-issues analyze slots under concurrent requests', async (s) => {

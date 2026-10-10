@@ -81,7 +81,63 @@ describe('SqliteJobRunEventsRepository', () => {
     expect(stream[1]!.fromStatus).toBe('configured');
     expect(stream[1]!.payload).toEqual({ candidates: 12, dryRun: false, note: null });
 
-    expect((await repo.listByRun('run-1', 1)).map((e) => e.id)).toEqual(['evt-1']);
+    // 契约（2026-10-10 改）：limit 取的是**最新** N 条，返回顺序仍是时间正序。
+    // 旧语义（asc + limit）取的是最旧 N 条，会让事件流在跑满上限后冻住。
+    expect((await repo.listByRun('run-1', 1)).map((e) => e.id)).toEqual(['evt-2']);
+    close();
+  });
+
+  it('keeps the newest events when the stream exceeds the limit', async () => {
+    const { repo, close } = freshRepo();
+    const base = Date.parse('2026-10-10T00:00:00.000Z');
+    for (let i = 0; i < 250; i += 1) {
+      await repo.insert(
+        evt({
+          id: `evt-${String(i).padStart(3, '0')}`,
+          runId: 'run-big',
+          event: 'rescan',
+          fromStatus: 'watching',
+          toStatus: 'watching',
+          actor: 'agent',
+          createdAt: new Date(base + i * 60_000).toISOString(),
+        }),
+      );
+    }
+
+    const page = await repo.listByRun('run-big', 200);
+    expect(page).toHaveLength(200);
+    // 最旧 50 条被截断，最新一条必须在；顺序仍是正序（回放顺序）
+    expect(page[0]!.id).toBe('evt-050');
+    expect(page[page.length - 1]!.id).toBe('evt-249');
+    const times = page.map((e) => Date.parse(e.createdAt));
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    close();
+  });
+
+  // 同一次 tick 会落多条迁移，它们的 created_at 逐字节相同；主键是 evt-<uuid>，
+  // 字典序与时间无关，所以回放顺序必须由写入顺序（rowid / ctid）兜住。
+  it('keeps write order for events sharing a timestamp, at the window edge too', async () => {
+    const { repo, close } = freshRepo();
+    const same = '2026-10-10T06:00:00.000Z';
+    // 刻意让 id 的字典序与写入顺序相反，这样"按 id 排"必定红
+    const order = ['evt-zzz', 'evt-mmm', 'evt-aaa'];
+    for (const [i, id] of order.entries()) {
+      await repo.insert(
+        evt({
+          id,
+          runId: 'run-tie',
+          event: i === 0 ? 'start' : i === 1 ? 'candidates_ready' : 'generated',
+          fromStatus: i === 0 ? 'created' : 'watching',
+          toStatus: i === 2 ? 'awaiting_approval' : 'watching',
+          createdAt: same,
+        }),
+      );
+    }
+
+    expect((await repo.listByRun('run-tie')).map((e) => e.id)).toEqual(order);
+    // 窗口正好截在同一时刻中间时，留下的是该时刻**后写入**的那两条（取最新），
+    // 但它们的相对顺序仍按写入顺序返回，不会倒过来
+    expect((await repo.listByRun('run-tie', 2)).map((e) => e.id)).toEqual(['evt-mmm', 'evt-aaa']);
     close();
   });
 
