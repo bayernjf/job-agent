@@ -22,6 +22,7 @@ import type {
   ICronHeartbeatRepository,
   ISearchPresetsRepository,
   ISearchRunsRepository,
+  INotificationSubscriptionsRepository,
 } from './repositories/index.js';
 import type { RunMigrationsResult } from './migrations-fs.js';
 
@@ -92,6 +93,8 @@ export interface StorageContext {
   searchPresets: ISearchPresetsRepository;
   /** 指令式全网搜岗任务（指令式搜岗，迁移 032） */
   searchRuns: ISearchRunsRepository;
+  /** 触达通道订阅（决策 #25，迁移 034；行的存在性即 opt-in） */
+  notificationSubscriptions: INotificationSubscriptionsRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /**

@@ -25,3 +25,7 @@ export type { IUserLlmConfigsRepository } from './user-llm-configs.js';
 export type { ICronHeartbeatRepository } from './cron-heartbeat.js';
 export type { ISearchPresetsRepository } from './search-presets.js';
 export type { ISearchRunsRepository } from './search-runs.js';
+export type {
+  INotificationSubscriptionsRepository,
+  NewNotificationSubscription,
+} from './notification-subscriptions.js';

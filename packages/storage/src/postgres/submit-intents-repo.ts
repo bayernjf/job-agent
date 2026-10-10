@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { tsGte } from './time-text.js';
 import {
@@ -62,6 +62,20 @@ export class PgSubmitIntentsRepository implements ISubmitIntentsRepository {
       .from(t)
       .where(eq(t.runId, runId))
       .orderBy(desc(t.createdAt))
+      .limit(limit);
+    return rows.map(toStoredSubmitIntent);
+  }
+
+  async listByAccountSince(
+    accountId: string,
+    since: string,
+    limit = 200,
+  ): Promise<StoredSubmitIntent[]> {
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.accountId, accountId), gte(t.createdAt, since)))
+      .orderBy(asc(t.createdAt))
       .limit(limit);
     return rows.map(toStoredSubmitIntent);
   }

@@ -796,3 +796,36 @@ export const searchRuns = sqliteTable(
 
 export type SearchRunInsert = typeof searchRuns.$inferInsert;
 export type SearchRunSelect = typeof searchRuns.$inferSelect;
+
+/**
+ * notification_subscriptions（迁移 034，决策 #25）：触达通道订阅。
+ * 一行 = 一个账户在一个通道上的一个订阅端点；行的存在性即 opt-in。
+ */
+export const notificationSubscriptions = sqliteTable(
+  'notification_subscriptions',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    channel: text('channel').notNull(),
+    endpoint: text('endpoint').notNull(),
+    keysJson: text('keys_json'),
+    enabled: integer('enabled').notNull().default(1),
+    lastSentAt: text('last_sent_at'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => ({
+    accountChannelEndpoint: uniqueIndex('notification_subscriptions_account_channel_endpoint').on(
+      table.accountId,
+      table.channel,
+      table.endpoint,
+    ),
+  }),
+);
+
+export type NotificationSubscriptionInsert = typeof notificationSubscriptions.$inferInsert;
+export type NotificationSubscriptionSelect = typeof notificationSubscriptions.$inferSelect;
