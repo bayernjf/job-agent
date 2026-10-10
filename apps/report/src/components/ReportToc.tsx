@@ -60,6 +60,7 @@ export default function ReportToc({ items, ariaLabel }: Props) {
               href={`#${item.id}`}
               className={activeId === item.id ? 'is-active' : undefined}
               aria-current={activeId === item.id ? 'true' : undefined}
+              onClick={() => setActiveId(item.id)}
             >
               {item.label}
             </a>
