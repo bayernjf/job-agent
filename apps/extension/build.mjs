@@ -62,6 +62,9 @@ const define = {
   // SW 侧外部消息/relay 白名单（external-origins.ts）使用；release 时与
   // manifest externally_connectable / host_permissions 替换为同一 origin。
   EXTENSION_SITE_ORIGIN: JSON.stringify(siteOrigin),
+  // release 时 esbuild 将其折叠为 true，external-origins.ts / api.ts 中的
+  // localhost 分支随之成为死代码被 minify 移除（与 manifest 剥离同口径）。
+  EXTENSION_RELEASE: release ? 'true' : 'false',
 };
 
 // Content script: injected into ATS pages, renders the floating button + fill panel.

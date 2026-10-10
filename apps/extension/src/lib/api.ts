@@ -24,7 +24,14 @@ export interface ApiClientOptions {
   tokenProvider?: () => Promise<string | null>;
 }
 
-const DEFAULT_BASE = typeof EXTENSION_API_BASE === 'string' ? EXTENSION_API_BASE : 'http://localhost:3000';
+// release 构建 EXTENSION_API_BASE 必为生产 https（build.mjs 强制）；dev 未注入时回落本地。
+// EXTENSION_RELEASE 经 define 折叠后，localhost 回落分支在 release bundle 中是死代码。
+const DEFAULT_BASE =
+  typeof EXTENSION_API_BASE === 'string'
+    ? EXTENSION_API_BASE
+    : typeof EXTENSION_RELEASE === 'boolean' && EXTENSION_RELEASE
+      ? 'https://app.job-agent.bayjf.com/api'
+      : 'http://localhost:3000';
 
 /**
  * 扩展可选的分析平台（与在线 API POST /analyze 的 platform 枚举对齐）：
