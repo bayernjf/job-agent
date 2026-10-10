@@ -82,6 +82,10 @@
   --ja-text-3xl: 1.875rem;
   --ja-leading-normal: 1.6;
   --ja-leading-tight: 1.25;
+
+  /* container & breakpoints（design-ui-polish-20261010.md V1/V3） */
+  --ja-container-max: 72rem; /* 1152px：宽屏内容列，替代旧的 800px 硬编码 */
+  --ja-breakpoint-lg: 960px; /* 锚点导航隐藏阈值以下；media query 无法用 var，CSS 侧须写死并注释对齐 */
 }
 
 /* ─── Semantic 层（组件唯一允许使用的层） ──────────────────────────────── */

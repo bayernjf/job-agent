@@ -151,6 +151,7 @@
   "report.recommendations.fieldDescription": "岗位描述",
   "report.resume.generateButton": "针对此岗生成简历",
   "report.resume.sectionTitle": "岗位定向简历",
+  "report.toc.label": "本页目录",
   "report.resume.sectionHint": "基于证据生成针对单个岗位的简历，只收录 GitHub 证据可支撑的技能与成果，不臆造任何经历。",
   "report.resume.extensionHint": "装好 Chrome 扩展后，可在 ATS 页面一键填入这份画像 → 安装说明",
   "report.resume.idle": "从上方推荐岗位中选择一个，点击「针对此岗生成简历」；岗位库暂无数据时，可直接在下方粘贴 JD 生成。",

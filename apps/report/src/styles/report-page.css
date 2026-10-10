@@ -346,3 +346,80 @@
 
 /* 搜岗工作台样式已迁至 workbench-page.css（2026-10-10 修复：该样式此前只在报告页加载，
    工作台页从未引入，导致搜岗 UI 无样式渲染）。 */
+
+/* ─── UI 定向升级 P0（design-ui-polish-20261010.md V1/V3）：宽屏栅格 + 章节锚点导航 ─── */
+/* 断点写死并注释对齐 --ja-breakpoint-lg（media query 不支持 var()）；--ja-container-max 见 ui-tokens */
+
+.report-layout {
+  display: grid;
+  grid-template-areas: 'main toc';
+  grid-template-columns: minmax(0, 1fr) 232px;
+  gap: var(--ja-space-8);
+  align-items: start;
+}
+
+.report-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.report-toc {
+  grid-area: toc;
+  position: sticky;
+  top: calc(var(--ja-space-8) + 40px);
+  max-height: calc(100vh - var(--ja-space-8) - 64px);
+  overflow-y: auto;
+}
+
+.report-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--ja-space-2);
+  border-left: 1px solid var(--ja-color-border);
+}
+
+.report-toc a {
+  display: block;
+  padding: var(--ja-space-1) var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+  line-height: var(--ja-leading-normal);
+  color: var(--ja-color-fg-muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  margin-left: -1px;
+}
+
+.report-toc a:hover {
+  color: var(--ja-color-fg);
+}
+
+.report-toc a.is-active {
+  color: var(--ja-color-accent);
+  border-left-color: var(--ja-color-accent);
+  font-weight: 500;
+}
+
+@media (max-width: 960px) {
+  /* 对齐 --ja-breakpoint-lg：窄屏隐藏锚点导航，回到单列 */
+  .report-layout {
+    grid-template-areas: 'main';
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .report-toc {
+    display: none;
+  }
+}
+
+/* 锚点跳转给 sticky header 留白（对齐现有 .claim-anchor 等 scroll-margin-top） */
+/* 88px 与 ReportToc 的 IO rootMargin 顶部 -72px 错开 16px：锚点直达后 section 停在判定带起点之下，
+   交集 >0 保证当前章节必高亮（若与判定带起点完全重合则交集为零宽不触发） */
+#section-summary,
+#section-authenticity,
+#section-skills,
+#section-activity,
+#section-collaboration,
+#section-interview,
+#applications-section,
+#resume-section {
+  scroll-margin-top: 88px;
+}

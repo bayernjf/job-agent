@@ -66,7 +66,7 @@ h4 { font-size: var(--ja-text-lg); }
 /* ─── 通用工具类（基于 token） ──────────────────────────────────────── */
 
 .ja-container {
-  max-width: 800px;
+  max-width: var(--ja-container-max);
   margin: 0 auto;
   padding: var(--ja-space-6) var(--ja-space-5);
 }

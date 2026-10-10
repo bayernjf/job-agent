@@ -16,6 +16,7 @@ import JobRecommendations from '../../../components/JobRecommendations.tsx';
 import ResumeBuilder from '../../../components/ResumeBuilder.tsx';
 import ApplicationTracker from '../../../components/ApplicationTracker.tsx';
 import ClaimVerifier from '../../../components/ClaimVerifier.tsx';
+import ReportToc from '../../../components/ReportToc.tsx';
 import '../../../styles/report-page.css';
 import { formatNumber, formatPercent } from '../../../lib/format';
 import {
@@ -75,10 +76,32 @@ const {
   applicationOutcomeLabels,
   disputeEmail,
 } = pageData;
+
+// 右侧章节锚点导航（design-ui-polish V3）：只列服务端确认真实渲染的章节
+const tocItems: { id: string; label: string }[] = [
+  { id: 'section-summary', label: t('report.summary.title') },
+  { id: 'section-authenticity', label: t('report.authenticity.title') },
+  ...(profile.skillTags.length > 0 ? [{ id: 'section-skills', label: t('report.skills.title') }] : []),
+  ...(!isRecruiter
+    ? [
+        { id: 'section-activity', label: t('report.activity.title') },
+        { id: 'resume-section', label: t('report.resume.sectionTitle') },
+      ]
+    : []),
+  ...(!isRecruiter &&
+  (profile.collaboration.prSummary ||
+    (profile.collaboration.externalMergedContributions &&
+      profile.collaboration.externalMergedContributions.length > 0))
+    ? [{ id: 'section-collaboration', label: t('report.collaboration.title') }]
+    : []),
+  ...(profile.interviewQuestions.length > 0 ? [{ id: 'section-interview', label: t('report.interview.title') }] : []),
+  ...(!isRecruiter && canUseApplications ? [{ id: 'applications-section', label: t('applications.title') }] : []),
+];
 ---
 
 <Layout locale={locale} title={profile.subject.login}>
-  <div class="ja-container">
+  <div class="ja-container report-layout">
+    <div class="report-main">
     <!-- T25：采集/分析有缺失（partial）时顶部显式标注，不冒充完整画像（NFR-6） -->
     {isPartialProfile && (
       <div class="ja-alert ja-alert--partial" data-testid="partial-notice" role="status">
@@ -325,14 +348,14 @@ const {
     </section>
 
     <!-- 概述 -->
-    <section class="ja-card">
+    <section class="ja-card" id="section-summary">
       <h2>{t('report.summary.title')}</h2>
       <p class="headline">{headline}</p>
       <p class="ja-alert ja-alert--verifiable">{t('report.verifiability.banner')}</p>
     </section>
 
     <!-- 真实性评估 -->
-    <section class="ja-card">
+    <section class="ja-card" id="section-authenticity">
       <div class="ja-flex-between">
         <h2>{t('report.authenticity.title')}</h2>
         <span class="ja-muted">
@@ -375,7 +398,7 @@ const {
     <!-- 能力标签 -->
     {
       profile.skillTags.length > 0 && (
-        <section class="ja-card">
+        <section class="ja-card" id="section-skills">
           <h2>{t('report.skills.title')}</h2>
           <div class="ja-stack-3">
             {(Object.keys(skillGroups) as SkillTagKind[]).map((kind) =>
@@ -573,7 +596,7 @@ const {
     <!-- 活跃度——仅求职者视角 -->
     {
       !isRecruiter && (
-        <section class="ja-card">
+        <section class="ja-card" id="section-activity">
           <h2>{t('report.activity.title')}</h2>
           <div class="ja-stack-2">
             {profile.activity.longevityMonths !== undefined && (
@@ -617,7 +640,7 @@ const {
         (profile.collaboration.prSummary ||
           (profile.collaboration.externalMergedContributions &&
             profile.collaboration.externalMergedContributions.length > 0)) && (
-        <section class="ja-card">
+        <section class="ja-card" id="section-collaboration">
           <h2>{t('report.collaboration.title')}</h2>
           <div class="ja-stack-2">
             {profile.collaboration.prSummary && (() => {
@@ -644,7 +667,7 @@ const {
     {
       profile.interviewQuestions.length > 0 &&
         (canViewGated ? (
-        <section class="ja-card">
+        <section class="ja-card" id="section-interview">
           <div class="ja-flex-between">
             <h2>{t('report.interview.title')}</h2>
             {
@@ -828,6 +851,8 @@ const {
         {t('report.dispute.body')}
       </p>
     </section>
+    </div>
+    <ReportToc client:load items={tocItems} ariaLabel={t('report.toc.label')} />
   </div>
 </Layout>
 
