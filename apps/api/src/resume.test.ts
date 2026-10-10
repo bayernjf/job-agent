@@ -6,7 +6,7 @@
  * - 404（画像/岗位）、400（请求体校验）、零命中 low_match 降级
  * 全部用内存 SQLite + 仓储注入，不启动服务器、不打网络、不调 LLM。
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AbilityProfile, JobPosting, ResumeDraft, SkillTag } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
@@ -262,6 +262,16 @@ describe('POST /resumes/build', () => {
 });
 
 describe('POST /resumes/build optional LLM polish', () => {
+  /** 内置 LLM 仅 ADMIN_ACCOUNT_LOGINS 白名单账号可用（决策 #21-4）；此处给 alice 放行。 */
+  const prevAdminLogins = process.env.ADMIN_ACCOUNT_LOGINS;
+  beforeEach(() => {
+    process.env.ADMIN_ACCOUNT_LOGINS = 'alice';
+  });
+  afterEach(() => {
+    if (prevAdminLogins === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
+    else process.env.ADMIN_ACCOUNT_LOGINS = prevAdminLogins;
+  });
+
   /** 用 FakeLlmClient 包装的润色 provider（确定性、零网络）；responder 决定模型输出。 */
   function providerWith(output: unknown): ResumePolishProvider {
     return new LlmResumePolishProvider(new FakeLlmClient(() => output));
@@ -342,6 +352,20 @@ describe('POST /resumes/build optional LLM polish', () => {
     expect(body.draft.provenance.polish).toBeUndefined();
   });
 
+  it('keeps the rule draft when provider is wired but the login is not on the builtin allowlist', async () => {
+    // 决策 #21-4：内置 LLM 仅 ADMIN_ACCOUNT_LOGINS 白名单账号可用；非白名单用户回落规则版。
+    process.env.ADMIN_ACCOUNT_LOGINS = 'someone-else';
+    const { app, repos, jobId } = await harness({
+      resumePolish: providerWith({ summary: 'A concise, evidence-backed professional profile.' }),
+    });
+    const cookie = await loginCookie(repos);
+    const rule = await build(app, jobId);
+    const body = await build(app, jobId, { polish: true }, cookie);
+    expect(body.polish).toEqual({ requested: true, applied: false, reason: 'not_configured' });
+    expect(body.draft.summary).toBe(rule.draft.summary);
+    expect(body.draft.provenance.polish).toBeUndefined();
+  });
+
   it('rejects polish that invents a new number and rolls back to the rule draft', async () => {
     const { app, repos, jobId } = await harness({
       resumePolish: providerWith({ summary: 'Improved outcomes by 977 percent across teams' }),
@@ -372,6 +396,16 @@ describe('POST /resumes/build optional LLM polish', () => {
 });
 
 describe('POST /resumes/cover-letter (A)', () => {
+  /** 内置 LLM 仅 ADMIN_ACCOUNT_LOGINS 白名单账号可用（决策 #21-4）；此处给 alice 放行。 */
+  const prevCoverAdmin = process.env.ADMIN_ACCOUNT_LOGINS;
+  beforeEach(() => {
+    process.env.ADMIN_ACCOUNT_LOGINS = 'alice';
+  });
+  afterEach(() => {
+    if (prevCoverAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
+    else process.env.ADMIN_ACCOUNT_LOGINS = prevCoverAdmin;
+  });
+
   /** 用 FakeLlmClient 包装的求职信 provider（确定性、零网络）；responder 决定模型输出。 */
   function coverProviderWith(output: unknown): CoverLetterProvider {
     return new LlmCoverLetterProvider(new FakeLlmClient(() => output));
