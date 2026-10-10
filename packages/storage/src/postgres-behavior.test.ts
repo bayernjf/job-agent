@@ -610,6 +610,54 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(mine[0]!.firstSeenAt).toBe('2026-09-10T00:00:00.000Z');
   });
 
+  // 回归（生产 2026-10-10 实锤）：PG upsertBatch 的行映射漏了 searchRunId
+  // （SQLite 实现有），指令式搜岗新入库岗位的 search_run_id 恒为 NULL，
+  // GET /agent/search/:id/results 在生产（PG）永远返回空。
+  pgIt('persists searchRunId on insert and refreshes it on content update', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const base = {
+      jobId: `sr_${suffix}`,
+      source: 'websearch' as const,
+      sourceUrl: `https://example.com/${suffix}/job`,
+      title: 'Java Backend Engineer',
+      company: `SR Co ${suffix}`,
+      location: 'Shenzhen',
+      remote: true,
+      salaryMin: null,
+      salaryMax: null,
+      salaryCurrency: null,
+      tags: ['java', 'backend'],
+      description: 'd',
+      postedAt: '2026-10-01T00:00:00.000Z',
+      fetchedAt: '2026-10-10T00:00:00.000Z',
+      normalizedKey: `nk_sr_${suffix}`,
+      searchRunId: 'srun-first',
+    };
+
+    const first = await s.jobPostings.upsertBatch([base], '2026-10-10T00:00:00.000Z');
+    expect(first.inserted).toBe(1);
+    const byRun = await s.jobPostings.listBySearchRun('srun-first');
+    expect(byRun.some((p) => p.sourceUrl === base.sourceUrl)).toBe(true);
+
+    // 内容无变化：只刷 last_seen，保留原 run 关联（即便本批带了新 run id）
+    const unchanged = await s.jobPostings.upsertBatch(
+      [{ ...base, searchRunId: 'srun-second' }],
+      '2026-10-11T00:00:00.000Z',
+    );
+    expect(unchanged.unchanged).toBe(1);
+    const stillFirst = await s.jobPostings.listBySearchRun('srun-first');
+    expect(stillFirst.some((p) => p.sourceUrl === base.sourceUrl)).toBe(true);
+
+    // 内容变化：updated 分支刷新为新 run
+    const updated = await s.jobPostings.upsertBatch(
+      [{ ...base, title: 'Senior Java Backend Engineer', searchRunId: 'srun-third' }],
+      '2026-10-12T00:00:00.000Z',
+    );
+    expect(updated.updated).toBe(1);
+    const byThird = await s.jobPostings.listBySearchRun('srun-third');
+    expect(byThird.some((p) => p.sourceUrl === base.sourceUrl)).toBe(true);
+  });
+
   // 回归：api + worker（或水平扩容的多个副本）同时冷启动、对同一空库并发首迁移时，
   // 不得因 schema_migrations 主键冲突而崩溃；迁移应恰好应用一次。
   pgIt('runs concurrent first-time migrations safely across instances', async () => {

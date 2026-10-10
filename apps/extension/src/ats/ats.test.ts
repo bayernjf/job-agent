@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ExportableProfile } from '@jobagent/shared';
-import { detectAts, findFields, listAdapters, toFillValues, valueFor } from './index.js';
+import { detectAts, findFields, findFieldsByLabel, listAdapters, toFillValues, valueFor } from './index.js';
 
 function profile(overrides: Partial<ExportableProfile> = {}): ExportableProfile {
   return {
@@ -561,5 +561,208 @@ describe('lever summary → questions[*] mapping', () => {
     expect(written).toBe(1);
     expect((why as unknown as { value: string }).value).toBe('Summary body.');
     expect((salary as unknown as { value: string }).value).toBe('');
+  });
+});
+
+describe('findFieldsByLabel', () => {
+  const mk = (id: string, labelText: string) => {
+    const el = {
+      id,
+      name: '',
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? id : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    };
+    return { el: el as unknown as HTMLTextAreaElement, label: { textContent: labelText } };
+  };
+
+  it('matches fields by associated label text', () => {
+    const github = mk('a1b2c3d4-0000-4000-8000-000000000001', 'Github Profile *');
+    const salary = mk('a1b2c3d4-0000-4000-8000-000000000002', 'What is your salary expectation? *');
+    const doc = {
+      querySelectorAll: (sel: string) => (sel.includes('textarea') ? [github.el, salary.el] : []),
+      querySelector: (sel: string) => {
+        const m = sel.match(/^label\[for="([^"]+)"\]$/);
+        return m && m[1] === 'a1b2c3d4-0000-4000-8000-000000000001' ? github.label : null;
+      },
+    } as unknown as Document;
+    expect(findFieldsByLabel(doc, ['github'])).toHaveLength(1);
+    expect(findFieldsByLabel(doc, ['salary'])).toHaveLength(0);
+    expect(findFieldsByLabel(doc, ['github'], ['profile'])).toHaveLength(0);
+  });
+});
+
+describe('detectAts ashby', () => {
+  it('detects Ashby by page markers (no browser location in tests)', () => {
+    const doc = {
+      documentElement: { outerHTML: '<html><body>_systemfield_name … powered by Ashby</body></html>' },
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    } as unknown as Document;
+    expect(detectAts(doc)?.id).toBe('ashby');
+  });
+});
+
+describe('ashby adapter (2026-10-10)', () => {
+  const ashbyAdapter = listAdapters().find((a) => a.id === 'ashby')!;
+
+  function fakeAshbyDoc(): {
+    doc: Document;
+    name: HTMLInputElement;
+    email: HTMLInputElement;
+    why: HTMLTextAreaElement;
+    github: HTMLTextAreaElement;
+    hear: HTMLInputElement;
+  } {
+    const mk = (id: string, tag: 'input' | 'textarea') => ({
+      id,
+      name: '',
+      tagName: tag.toUpperCase(),
+      value: '',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'id' ? id : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    });
+    const name = mk('_systemfield_name', 'input') as unknown as HTMLInputElement;
+    const email = mk('_systemfield_email', 'input') as unknown as HTMLInputElement;
+    const why = mk('4f3a3554-fe2a-4d8e-8cab-921c03bdb014', 'textarea') as unknown as HTMLTextAreaElement;
+    const github = mk('a1b2c3d4-0000-4000-8000-000000000001', 'textarea') as unknown as HTMLTextAreaElement;
+    const hear = mk('a1b2c3d4-0000-4000-8000-000000000002', 'input') as unknown as HTMLInputElement;
+    const labels: Record<string, { textContent: string }> = {
+      '4f3a3554-fe2a-4d8e-8cab-921c03bdb014': { textContent: 'Tell us why you want to join our team! *' },
+      'a1b2c3d4-0000-4000-8000-000000000001': { textContent: 'Github Profile' },
+      'a1b2c3d4-0000-4000-8000-000000000002': { textContent: 'Where did you hear about this vacancy? *' },
+    };
+    const doc = {
+      querySelectorAll: (sel: string) => {
+        const out: unknown[] = [];
+        if (sel.includes('textarea')) out.push(why, github);
+        if (sel.includes('input')) out.push(name, email, hear);
+        return out;
+      },
+      querySelector: (sel: string) => {
+        const m = sel.match(/^label\[for="([^"]+)"\]$/);
+        return m && m[1] ? (labels[m[1]] ?? null) : null;
+      },
+    } as unknown as Document;
+    return { doc, name, email, why, github, hear };
+  }
+
+  const fillValues = [
+    { key: 'full_name' as const, value: 'Demo Dev' },
+    { key: 'github_url' as const, value: 'https://github.com/demo-dev' },
+    { key: 'headline' as const, value: 'TypeScript 后端工程师' },
+    { key: 'summary' as const, value: 'TypeScript 后端工程师，开源维护者。' },
+    { key: 'skills' as const, value: 'TypeScript' },
+  ];
+
+  it('fills system fields and label-matched custom questions', () => {
+    const { doc, name, email, why, github, hear } = fakeAshbyDoc();
+    const written = ashbyAdapter.fill(doc, fillValues);
+    expect(name.value).toBe('Demo Dev');
+    expect(email.value).toBe('');
+    expect(why.value).toBe('TypeScript 后端工程师，开源维护者。');
+    expect(github.value).toBe('https://github.com/demo-dev');
+    expect(hear.value).toBe('');
+    expect(written).toBe(3);
+  });
+
+  it('prefers cover_letter over summary for motivation questions (A2)', () => {
+    const { doc, why } = fakeAshbyDoc();
+    const values = [
+      ...fillValues,
+      { key: 'cover_letter' as const, value: 'Dear hiring team, this is the tailored cover letter body.' },
+    ];
+    ashbyAdapter.fill(doc, values);
+    expect(why.value).toBe('Dear hiring team, this is the tailored cover letter body.');
+  });
+
+  it('never writes summary into referral / hearsay questions', () => {
+    const { doc, hear } = fakeAshbyDoc();
+    ashbyAdapter.fill(doc, fillValues);
+    expect(hear.value).toBe('');
+  });
+});
+
+describe('workday adapter (2026-10-10)', () => {
+  const workdayAdapter = listAdapters().find((a) => a.id === 'workday')!;
+
+  function fakeWorkdayDoc(): {
+    doc: Document;
+    given: HTMLInputElement;
+    family: HTMLInputElement;
+    givenLocal: HTMLInputElement;
+    familyLocal: HTMLInputElement;
+    email: HTMLInputElement;
+    phone: HTMLInputElement;
+    phoneCountry: HTMLInputElement;
+    consent: HTMLInputElement;
+  } {
+    // Workday 字段定位键 = data-automation-id（Intel/GDIT 真机探测）
+    const mk = (dai: string) => ({
+      name: '',
+      value: '',
+      type: 'text',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'data-automation-id' ? dai : attr === 'id' ? '' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    });
+    const given = mk('legal-name-section_firstName') as unknown as HTMLInputElement;
+    const family = mk('legal-name-section_lastName') as unknown as HTMLInputElement;
+    const givenLocal = mk('legal-name-section_firstNameLocal') as unknown as HTMLInputElement;
+    const familyLocal = mk('legal-name-section_lastNameLocal') as unknown as HTMLInputElement;
+    const email = mk('email') as unknown as HTMLInputElement;
+    const phone = mk('phoneNumber') as unknown as HTMLInputElement;
+    const phoneCountry = mk('phoneCountryCode') as unknown as HTMLInputElement;
+    const consent = mk('consentCheckbox') as unknown as HTMLInputElement;
+    const all = [given, family, givenLocal, familyLocal, email, phone, phoneCountry, consent];
+    const doc = {
+      querySelectorAll: (sel: string) => {
+        const out: unknown[] = [];
+        if (sel.includes('input')) out.push(...all);
+        if (sel.includes('textarea')) out.push();
+        return out;
+      },
+      querySelector: () => null,
+    } as unknown as Document;
+    return { doc, given, family, givenLocal, familyLocal, email, phone, phoneCountry, consent };
+  }
+
+  const fillValues = [
+    { key: 'full_name' as const, value: 'Demo Dev' },
+    { key: 'email' as const, value: 'demo@example.com' },
+    { key: 'phone' as const, value: '+1 555 0100' },
+    { key: 'summary' as const, value: 'TypeScript 后端工程师。' },
+    { key: 'github_url' as const, value: 'https://github.com/demo-dev' },
+  ];
+
+  it('fills Western first/last name, email and phone via data-automation-id', () => {
+    const { doc, given, family, email, phone } = fakeWorkdayDoc();
+    const written = workdayAdapter.fill(doc, fillValues);
+    expect(given.value).toBe('Demo');
+    expect(family.value).toBe('Dev');
+    expect(email.value).toBe('demo@example.com');
+    expect(phone.value).toBe('+1 555 0100');
+    expect(written).toBe(4);
+  });
+
+  it('never fills local-language name slots or phone country/type neighbors', () => {
+    const { doc, givenLocal, familyLocal, phoneCountry, consent } = fakeWorkdayDoc();
+    workdayAdapter.fill(doc, fillValues);
+    expect(givenLocal.value).toBe('');
+    expect(familyLocal.value).toBe('');
+    expect(phoneCountry.value).toBe('');
+    expect(consent.value).toBe('');
+  });
+
+  it('writes only given name when full name is single segment', () => {
+    const { doc, given, family } = fakeWorkdayDoc();
+    workdayAdapter.fill(doc, [{ key: 'full_name', value: 'Cher' }]);
+    expect(given.value).toBe('Cher');
+    expect(family.value).toBe('');
   });
 });

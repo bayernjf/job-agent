@@ -12,6 +12,7 @@ import type { ExportableProfile, LocalAtsFields } from '@jobagent/shared';
 import { greenhouseAdapter } from './greenhouse.js';
 import { leverAdapter } from './lever.js';
 import { workdayAdapter } from './workday.js';
+import { ashbyAdapter } from './ashby.js';
 
 /**
  * 用户在面板里本地补填的信息（画像没有的字段，仅存本机 localStorage）。
@@ -40,7 +41,7 @@ export interface FillValue {
 }
 
 export interface AtsAdapter {
-  id: 'greenhouse' | 'lever' | 'workday';
+  id: 'greenhouse' | 'lever' | 'workday' | 'ashby';
   name: string;
   /** 当前页面是否为该 ATS 的应用表单页 */
   detect(doc: Document): boolean;
@@ -104,7 +105,7 @@ export function toFillValues(
   return values;
 }
 
-const ADAPTERS: readonly AtsAdapter[] = [greenhouseAdapter, leverAdapter, workdayAdapter];
+const ADAPTERS: readonly AtsAdapter[] = [greenhouseAdapter, leverAdapter, workdayAdapter, ashbyAdapter];
 
 export function detectAts(doc: Document): AtsAdapter | null {
   return ADAPTERS.find((a) => a.detect(doc)) ?? null;
@@ -173,7 +174,9 @@ export const SUMMARY_HINTS = [
 ];
 
 /**
- * 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder 关键字匹配（含 iframe 与 shadow DOM）。
+ * 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder/data-automation-id
+ * 关键字匹配（含 iframe 与 shadow DOM）。data-automation-id 是 Workday 组件表单的字段定位键
+ * （真实探测：legal-name-section_firstName / email / phoneNumber，2026-10-10）。
  * exclude（可选）为排除关键字：归一化后命中任一排除词的字段直接跳过，用于区分同名近邻字段
  * （例如 Greenhouse 电话分组里的 Country/区号框 name 含 country，不能与 Location (City) 混淆）。
  */
@@ -188,6 +191,7 @@ export function findFields(
     for (const el of collectFields(d)) {
       const hay = [
         norm(el.name),
+        norm(el.getAttribute('data-automation-id') ?? ''),
         norm(el.getAttribute('id') ?? ''),
         norm(el.getAttribute('aria-label') ?? ''),
         norm(el.placeholder),
@@ -202,6 +206,27 @@ export function findFields(
   return [...hit] as HTMLInputElement[];
 }
 
+/** 取字段关联的问题/标签文本：label[for=id] > aria-label > 前驱 label > 容器内第一个 label。 */
+function fieldLabelText(doc: Document, el: HTMLInputElement | HTMLTextAreaElement): string {
+  let labelText = '';
+  if (el.id) {
+    labelText = doc.querySelector(`label[for="${el.id}"]`)?.textContent ?? '';
+  }
+  if (!labelText) labelText = el.getAttribute('aria-label') ?? '';
+  if (!labelText) {
+    // Flat forms (real Lever included) place the <label> as the immediate
+    // preceding sibling with no wrapper; that is more precise than the
+    // container's first label (which may be an unrelated field such as name).
+    const prev = el.previousElementSibling;
+    if (prev && prev.tagName === 'LABEL') labelText = prev.textContent ?? '';
+  }
+  if (!labelText) {
+    const host = el.closest?.('div, fieldset, section');
+    labelText = host?.querySelector('label')?.textContent ?? '';
+  }
+  return labelText ?? '';
+}
+
 /**
  * 定位 ATS 自定义问题中的自由文本字段（Greenhouse question_/answers[*]、Lever questions[...]），
  * 取关联问题文本（label[for=id] > aria-label > 就近 label），命中 summary 类关键词即返回。
@@ -214,28 +239,38 @@ export function findLabeledQuestion(
   for (const d of allDocuments(doc)) {
     for (const el of collectFields(d)) {
       if (!fieldPattern.test(el.name) && !fieldPattern.test(el.id)) continue;
-      let labelText = '';
-      if (el.id) {
-        labelText = d.querySelector(`label[for="${el.id}"]`)?.textContent ?? '';
-      }
-      if (!labelText) labelText = el.getAttribute('aria-label') ?? '';
-      if (!labelText) {
-        // Flat forms (real Lever included) place the <label> as the immediate
-        // preceding sibling with no wrapper; that is more precise than the
-        // container's first label (which may be an unrelated field such as name).
-        const prev = el.previousElementSibling;
-        if (prev && prev.tagName === 'LABEL') labelText = prev.textContent ?? '';
-      }
-      if (!labelText) {
-        const host = el.closest?.('div, fieldset, section');
-        labelText = host?.querySelector('label')?.textContent ?? '';
-      }
-      if (SUMMARY_HINTS.some((hint) => norm(labelText).includes(hint))) {
+      if (SUMMARY_HINTS.some((hint) => norm(fieldLabelText(d, el)).includes(hint))) {
         return el;
       }
     }
   }
   return null;
+}
+
+/**
+ * 按关联 label 文本关键字定位字段（含 iframe 与 shadow DOM）。
+ * 用于自定义问题 id 是裸 UUID、无法按 name/id 关键字匹配的 ATS（Ashby：
+ * GitHub/LinkedIn/Portfolio 等 URL 槽在不同公司被配置为自定义问题）。
+ * exclude 命中任一排除词的 label 直接跳过。
+ */
+export function findFieldsByLabel(
+  doc: Document,
+  keywords: string[],
+  exclude: string[] = [],
+): HTMLInputElement[] {
+  const hit = new Set<HTMLInputElement | HTMLTextAreaElement>();
+  const normExclude = exclude.map(norm);
+  for (const d of allDocuments(doc)) {
+    for (const el of collectFields(d)) {
+      const hay = norm(fieldLabelText(d, el));
+      const includesKeyword = keywords.some((k) => hay.includes(norm(k)));
+      const includesExcluded = normExclude.some((x) => hay.includes(x));
+      if (includesKeyword && !includesExcluded) {
+        hit.add(el);
+      }
+    }
+  }
+  return [...hit] as HTMLInputElement[];
 }
 
 /** 按语义键取单个值（fill 用） */

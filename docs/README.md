@@ -48,6 +48,8 @@
 | 看痛点对应解决方案、已覆盖/需新增对位与实施批次（批1 产品化 + 批2 新接口已落地见 handoff item21；批3 待外部条件） | [设计-痛点解决方案-20260916.md](设计-痛点解决方案-20260916.md) |
 | 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（**已落地 2026-09-24，PR #81，handoff item45**） |
 | 用招聘方核验视图 / 企业人才库 / 投递追踪 / 面试准备包（`?view=recruiter`、`/[locale]/recruit`、`interview-kit.md`、`/candidates` 与 `/applications` 端点） | [API.md](API.md) §3.5/§3.6 + [../handoff.md](../handoff.md) item21 |
+| 做**触达通知**（工作台候选邮件每日 digest / Web Push、通知设置、以及 cron 健康告警兜底） | [design-notification-channels-20261010.md](design-notification-channels-20261010.md) ★（决策 #25，迁移 034；§10 健康告警） |
+| 问 **`/candidates` 人才库什么时候要过滤下推 SQL**（当前内存精筛窗 `CANDIDATE_SCAN_CAP=1000`） | [design-candidate-filter-pushdown-20261010.md](design-candidate-filter-pushdown-20261010.md)（触发条件＝生产 complete 画像 >1000 才实施；SQLite JSON1 vs PG jsonb 方言分支只在 storage 内部） |
 | 写用户可见文案 / 加双语 / 处理语言与分享链接（含扩展面板、MV3 _locales） | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
 | 定颜色、间距、圆角、字号 / 改主题（共享 token 包、Shadow DOM 接入） | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
 | 让存储层同时支持 SQLite 与 Postgres / 新增数据库方言 | [design-storage-dual-dialect-20260911.md](design-storage-dual-dialect-20260911.md) ★ |
@@ -65,6 +67,7 @@
 | 配置 LLM 模型（内置模型＝**Admin UI 管理**（参考 agent-world model-catalog：admin 管目录、env 管凭证）/ BYOK＝用户自由设置 OpenAI 兼容 key；方向与细节已拍板 2026-10-03（决策 #21，P0 已落地：迁移 023–025 + admin/BYOK 端点 + report 面板 + 请求路由 BYOK 优先→内置回落）） | [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md) ★ |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
+| 看扩展一键填充覆盖哪些 ATS、为什么 Workday 是骨架、下一步扩哪个（Ashby 优先） | [design-ats-support-20261010.md](design-ats-support-20261010.md) ★ |
 | 装 / 试用浏览器扩展，一键填充 ATS 表单（含真机故障排查：SW 代发、host_permissions 重载、缓存画像 by-subject、跨端同步） | [../apps/extension/README.md](../apps/extension/README.md) + [../apps/extension/INSTALL.md](../apps/extension/INSTALL.md)（真机试用/跨端同步详细步骤，handoff item46） |
 | 快速了解项目门面与技术栈 | [../README.md](../README.md) |
 | **做一次项目级代码审计 / 想一次性看全所有产品功能点与健康度** | [代码审计与功能全景-20260930.md](代码审计与功能全景-20260930.md) ★（2026-09-30 只读审计：分层架构核查 + 8 条架构违规 + 安全与隐私 6 条已确认/5 条疑似 + 测试与工程化实测（991 单测 / 81 报告 E2E / 11 扩展 E2E / 17 对迁移）+ 产品功能全景 12 个能力域 + P0–P3 风险登记与建议；S2/A3/S3/S4 已修复见 §5） |

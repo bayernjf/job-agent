@@ -57,8 +57,16 @@ export async function resolveTextLlm(c: Context, d: RouteDeps): Promise<Resolved
   }
 
   // 2) 内置回落（cover / polish 各自独立：只配了 cover 时 cover 端点可用，反之亦然）
-  if (d.coverLetterProvider || d.polishProvider) {
-    return { source: 'builtin', cover: d.coverLetterProvider, polish: d.polishProvider };
+  //    决策 #21-4：内置 LLM 由产品方（owner）付费，仅 ADMIN_ACCOUNT_LOGINS 白名单账号可用；
+  //    普通用户未自配 BYOK 时回落 none（polish 规则版 / cover-letter LLM_NOT_CONFIGURED）。
+  const adminLogins = (process.env.ADMIN_ACCOUNT_LOGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (principal.kind === 'user' && adminLogins.includes(principal.login)) {
+    if (d.coverLetterProvider || d.polishProvider) {
+      return { source: 'builtin', cover: d.coverLetterProvider, polish: d.polishProvider };
+    }
   }
 
   // 3) none

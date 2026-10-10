@@ -112,3 +112,21 @@ Web Push 触发点：agent-tick 一轮内某 run 从非 awaiting 进入 `awaitin
 - 订阅是私有数据：全部端点本人归属闸，匿名 401、非本人 404。
 - VAPID 私钥、邮箱目的地址不出现在任何对外响应（邮箱仅本人 GET 可见）。
 - 文案 i18n 一致性测试同步加 key。
+
+## 10. 健康告警兜底（2026-10-10 增补，闭环 deferred「Cron Worker 失败信号无读者」）
+
+候选通知是"有新结果"通道，但 **cron 消费方死了**是另一类更需要人知道的事。两个通道补兜底：
+
+- **watch-heartbeat 边沿推送**：`GET /internal/cron/watch-heartbeat`（`apps/api/src/routes/system.ts`）判 stale
+  （`WATCHDOG_STALE_THRESHOLDS`：agent-tick 15min / process-job 30min / digest-tick 25h）时，在**翻转边沿**
+  （上轮健康→本轮 stale）向全部启用的 `web_push` 订阅推一条告警（复用 `web-push.ts` `sendWebPush`：
+  gone 删行、ok markSent、失败不抛不阻塞 tick）。**防抖**＝比较 watchdog 行自身 `lastError`：与本次 stale
+  消息相同 ⇒ 上轮已告警、跳过；为空（健康轮后）或不同 ⇒ 新事件、推。
+- **digest 每日兜底**：`GET /internal/cron/digest-tick`（`apps/api/src/routes/notifications.ts`）聚合时读
+  `cronHeartbeat.listAll()` + 同阈值判 stale——零候选时产一封**纯告警信**；有候选时正文顶部加告警段。
+  保证 Web Push 没开/没人看时，每日邮件仍能让人知道系统不健康。
+- **注入面**：`ApiDeps.sendWebPush?: typeof import('../web-push.js').sendWebPush`（不传默认用真实现；
+  VAPID 未配置返回 [] 天然降级）；`RouteDeps` 必填 `sendWebPush`；`index.ts` 装配。
+- **无新表、零迁移**（复用 `cron_heartbeat` 与 `notification_subscriptions`）。
+- **边界**：告警依赖真实订阅开启（当前唯一真实用户＝owner，已开 email_digest）；平台对接类自动告警
+  （企业微信/飞书机器人）不在本期，见 deferred 该条。

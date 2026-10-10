@@ -165,6 +165,8 @@ describe('cli jobs search / stats', () => {
     // T30：口径与 API /job-postings/stats 对齐——增列"新鲜窗口内"计数与 cutoff（sync 后 last_seen_at=now）
     expect(h.out()).toContain('freshWithin7d=1');
     expect(h.out()).toContain('cutoff=');
+    // ATS 占比哨兵（design-ats-support §3.4 条件②）：单源 active=1 → 占比 100%
+    expect(h.out()).toContain('pct=100.0%');
   });
 
   it('missing subcommand exits 2', async () => {

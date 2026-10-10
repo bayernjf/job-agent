@@ -101,7 +101,7 @@ CREATE TABLE user_llm_configs (
 
 - **密钥加密（决策 #21 子问 1，已倾向服务端加密列）**：AES-256-GCM，主密钥 `LLM_ENC_KEY`（env，与 `LLM_API_KEY` 同等保密）；解密仅在内存、调用后即弃；任何日志/错误体不回显 key（复用 S5 `apiKey → [REDACTED]`）；API 回显只给掩码 `sk-****<末4位>`。**否决仅浏览器本地**：LLM 调用发生在 api 服务端，本地 key 必须随请求上传＝明文过网络，且多端不一致。
 - **API（仅登录 user）**：`GET /account/llm-config`（含 keyMasked）/ `PUT /account/llm-config`（未传 key 不覆盖既有 key）/ `DELETE /account/llm-config` / `POST /account/llm-config/validate`（最小 `max_tokens=1` 验证）。
-- **请求路由（api 层）**：polish / cover-letter 每次调用前，取登录账号 llm-config → 有则 BYOK provider（`provider:'custom'`，provenance 标注用户自配）；无则回落内置目录；内置也未配 → 按功能既有策略（polish 规则版 / cover-letter 503）。
+- **请求路由（api 层）**：polish / cover-letter 每次调用前，取登录账号 llm-config → 有则 BYOK provider（`provider:'custom'`，provenance 标注用户自配）；无则回落内置目录；内置也未配 → 按功能既有策略（polish 规则版 / cover-letter 503）。**2026-10-10 修订（决策 #21-4）**：内置回落仅对 `ADMIN_ACCOUNT_LOGINS` 白名单账号开放（内置 LLM 由产品方/owner 付费）；非白名单登录用户、demo、匿名无 BYOK 时直接落 none（polish 规则版 / cover-letter LLM_NOT_CONFIGURED）。搜岗 worker 的 LLM 意图解析/JD 抽取不在本次限制内（搜岗有每日次数上限护栏，且 Tavily 同为全局 env，属搜岗功能成本）。
 - **安全**：配置按 `account_id` 隔离（他人 404/403）；`base_url` 必须 `https://`、字段长度上限；出站**超时 + 不跟随重定向 + 账号级限流**（BYOK 任意 base_url 是出站代理面，风险登记见 §7）。
 - **UI**：工作台「模型设置」面板：模式切换（内置 / 自带 Key）、BYOK 表单、保存即 validate、掩码展示、清除；调用入口（ResumeBuilder / 求职信区）在 BYOK 生效时显示「你的模型」徽标。
 
@@ -122,7 +122,7 @@ CREATE TABLE user_llm_configs (
 | 0'. BYOK 开放度 | 用户自由设置任意 OpenAI 兼容端点 / 限定白名单厂商 | **用户自由设置** | ✅ **已拍板 2026-10-03** |
 | 1. BYOK 密钥存储 | A 服务端加密列（`LLM_ENC_KEY`）/ B 仅浏览器本地 | **A**（LLM 调用在服务端，本地 key 明文过网络） | ✅ **已拍板 2026-10-03（A）** |
 | 2. 内置凭证形态 | A `apiKey`/`baseUrl` 仍 env only（agent-world 不变量）/ B 也进 admin 数据面 | **A**（凭证永不进数据不进界面） | ✅ **已拍板 2026-10-03（A）** |
-| 3. 内置成本与配额 | A 平台承担、内置免费（账号级限流兜底）/ B 内置仅 demo 预置 | **A** | ✅ **已拍板 2026-10-03（A）** |
+| 3. 内置成本与配额 | A 平台承担、内置免费（账号级限流兜底）/ B 内置仅 demo 预置 | **A** | ✅ **已拍板 2026-10-03（A）**；**2026-10-10 修订**：上线前内置 LLM 仅 `ADMIN_ACCOUNT_LOGINS` 白名单（owner）可用，普通用户须 BYOK；待商业化定价（决策 #9）落地后再开放（见 deferred「内置 LLM 开放」） |
 | 4. BYOK 与平台配额 | A BYOK 不计平台配额（仅账号级限流）/ B 同样计入 | **A** | ✅ **已拍板 2026-10-03（A）** |
 | 5. 首个 admin 授予 | A env 白名单自动置位（`ADMIN_ACCOUNT_LOGINS`）/ B 手动 SQL | **A**（零手工操作） | ✅ **已拍板 2026-10-03（A）** |
 | 6. 一账号一条 vs 按用途多条 | A 一条文本模型配置 / B polish 与 cover-letter 各一 | **A**（MVP 简化） | ✅ **已拍板 2026-10-03（A）** |
@@ -132,7 +132,7 @@ CREATE TABLE user_llm_configs (
 ## 6. 里程碑拆分
 
 - **P0 内置层基建（✅ 已落地 2026-10-03，handoff item105）**：迁移 023–025（`llm_catalog_models` + `accounts.is_admin` + `user_llm_configs`）+ `packages/llm` 目录合并纯函数（白名单 pick）+ 启动加载/显式刷新缓存 + admin 端点（GET/PUT/refresh）+ admin 面板 UI（report `/admin` + AccountMenu「模型管理」入口，能力位控制显示，对齐 agent-world）+ BYOK 4 端点（AES-256-GCM 加密列）+ 工作台模型设置面板 + 请求路由（BYOK 优先 → 内置回落）+ i18n 48 key + 测试（含凭证不入表、越权 403、白名单不可覆盖 baseUrl/apiKey、validate、回落链、停用即报错；storage 205 / llm 46 / api 249 / report 155 全绿）。
-- **P1 生产激活（J7 变体）**：生产 Vercel 配 `LLM_*`（`LLM_BASE_URL` / `LLM_API_KEY` = Agnes）+ `LLM_ENC_KEY` + `ADMIN_ACCOUNT_LOGINS`；首个 admin 登录后在 Admin UI 录入 `agnes-2.5-flash` 目录行。**注意**：P1 仍要配 env——按 agent-world 不变量，**凭证永远在 env**，admin UI 管理的是目录不是凭证。
+- **P1 生产激活（J7 变体）**：生产 Vercel 配 `LLM_*`（`LLM_BASE_URL` / `LLM_API_KEY`）+ `LLM_ENC_KEY` + `ADMIN_ACCOUNT_LOGINS`；首个 admin 登录后在 Admin UI 录入目录行。**注意**：P1 仍要配 env——按 agent-world 不变量，**凭证永远在 env**，admin UI 管理的是目录不是凭证。**2026-10-10 落地**：生产 `LLM_*` 已切火山引擎（`LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/plan/v3`、`LLM_MODEL=ark-code-latest`、`LLM_PROVIDER=volces`，凭证仅 Vercel env 不回显）+ 新增 `LLM_TIMEOUT_MS=60000`（客户端默认 30s 对推理模型不足，实测需 >30s；60s 平衡等待与挂起）+ **内置 LLM owner-only 限制已落地**（`llm-resolve.ts` + 测试）；本地产品链路（cover-letter provider → 火山）验证通过。
 - **P2 体验增强（缓做）**：`GET /models` 探测、用量展示、完整审计表、内置/BYOK 混用策略。
 
 ## 7. 风险与边界

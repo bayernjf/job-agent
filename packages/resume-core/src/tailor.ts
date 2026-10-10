@@ -182,17 +182,22 @@ export function buildResume(input: BuildResumeInput): ResumeDraft {
   // 4) 协作强信号（外部 merged / prSummary），refs 挂 collaboration.evidenceRefs
   const collaboration: ResumeEntry[] = [];
   const collabRefs = profile.collaboration.evidenceRefs;
-  for (const merged of profile.collaboration.externalMergedContributions ?? []) {
-    collaboration.push({ text: merged, evidenceRefs: [...collabRefs], source: 'profile', supportsSkills: [] });
-  }
-  const prLine = collaborationSentence(profile, locale);
-  if (prLine && collaboration.length === 0) {
-    collaboration.push({
-      text: prLine,
-      evidenceRefs: [...collabRefs],
-      source: 'profile',
-      supportsSkills: [],
-    });
+  // 与技能段同一纪律（契约：profile-sourced 条目 evidenceRefs 必须非空）：
+  // 老版本 analyzer 可能产出 externalMergedContributions 非空但 evidenceRefs 缺失的画像，
+  // 此时不把协作陈述臆造进简历（生产 2026-10-10 求职信 500 ZodError 回归）。
+  if (collabRefs.length > 0) {
+    for (const merged of profile.collaboration.externalMergedContributions ?? []) {
+      collaboration.push({ text: merged, evidenceRefs: [...collabRefs], source: 'profile', supportsSkills: [] });
+    }
+    const prLine = collaborationSentence(profile, locale);
+    if (prLine && collaboration.length === 0) {
+      collaboration.push({
+        text: prLine,
+        evidenceRefs: [...collabRefs],
+        source: 'profile',
+        supportsSkills: [],
+      });
+    }
   }
 
   // 5) 本地补填（source:'local'，允许 refs 为空）
