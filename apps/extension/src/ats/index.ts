@@ -174,7 +174,9 @@ export const SUMMARY_HINTS = [
 ];
 
 /**
- * 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder 关键字匹配（含 iframe 与 shadow DOM）。
+ * 通用 DOM 定位：按 input/textarea 的 name/id/aria-label/placeholder/data-automation-id
+ * 关键字匹配（含 iframe 与 shadow DOM）。data-automation-id 是 Workday 组件表单的字段定位键
+ * （真实探测：legal-name-section_firstName / email / phoneNumber，2026-10-10）。
  * exclude（可选）为排除关键字：归一化后命中任一排除词的字段直接跳过，用于区分同名近邻字段
  * （例如 Greenhouse 电话分组里的 Country/区号框 name 含 country，不能与 Location (City) 混淆）。
  */
@@ -189,6 +191,7 @@ export function findFields(
     for (const el of collectFields(d)) {
       const hay = [
         norm(el.name),
+        norm(el.getAttribute('data-automation-id') ?? ''),
         norm(el.getAttribute('id') ?? ''),
         norm(el.getAttribute('aria-label') ?? ''),
         norm(el.placeholder),

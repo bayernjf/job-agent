@@ -686,3 +686,83 @@ describe('ashby adapter (2026-10-10)', () => {
     expect(hear.value).toBe('');
   });
 });
+
+describe('workday adapter (2026-10-10)', () => {
+  const workdayAdapter = listAdapters().find((a) => a.id === 'workday')!;
+
+  function fakeWorkdayDoc(): {
+    doc: Document;
+    given: HTMLInputElement;
+    family: HTMLInputElement;
+    givenLocal: HTMLInputElement;
+    familyLocal: HTMLInputElement;
+    email: HTMLInputElement;
+    phone: HTMLInputElement;
+    phoneCountry: HTMLInputElement;
+    consent: HTMLInputElement;
+  } {
+    // Workday 字段定位键 = data-automation-id（Intel/GDIT 真机探测）
+    const mk = (dai: string) => ({
+      name: '',
+      value: '',
+      type: 'text',
+      placeholder: '',
+      getAttribute: (attr: string) => (attr === 'data-automation-id' ? dai : attr === 'id' ? '' : null),
+      closest: () => null,
+      dispatchEvent: () => true,
+    });
+    const given = mk('legal-name-section_firstName') as unknown as HTMLInputElement;
+    const family = mk('legal-name-section_lastName') as unknown as HTMLInputElement;
+    const givenLocal = mk('legal-name-section_firstNameLocal') as unknown as HTMLInputElement;
+    const familyLocal = mk('legal-name-section_lastNameLocal') as unknown as HTMLInputElement;
+    const email = mk('email') as unknown as HTMLInputElement;
+    const phone = mk('phoneNumber') as unknown as HTMLInputElement;
+    const phoneCountry = mk('phoneCountryCode') as unknown as HTMLInputElement;
+    const consent = mk('consentCheckbox') as unknown as HTMLInputElement;
+    const all = [given, family, givenLocal, familyLocal, email, phone, phoneCountry, consent];
+    const doc = {
+      querySelectorAll: (sel: string) => {
+        const out: unknown[] = [];
+        if (sel.includes('input')) out.push(...all);
+        if (sel.includes('textarea')) out.push();
+        return out;
+      },
+      querySelector: () => null,
+    } as unknown as Document;
+    return { doc, given, family, givenLocal, familyLocal, email, phone, phoneCountry, consent };
+  }
+
+  const fillValues = [
+    { key: 'full_name' as const, value: 'Demo Dev' },
+    { key: 'email' as const, value: 'demo@example.com' },
+    { key: 'phone' as const, value: '+1 555 0100' },
+    { key: 'summary' as const, value: 'TypeScript 后端工程师。' },
+    { key: 'github_url' as const, value: 'https://github.com/demo-dev' },
+  ];
+
+  it('fills Western first/last name, email and phone via data-automation-id', () => {
+    const { doc, given, family, email, phone } = fakeWorkdayDoc();
+    const written = workdayAdapter.fill(doc, fillValues);
+    expect(given.value).toBe('Demo');
+    expect(family.value).toBe('Dev');
+    expect(email.value).toBe('demo@example.com');
+    expect(phone.value).toBe('+1 555 0100');
+    expect(written).toBe(4);
+  });
+
+  it('never fills local-language name slots or phone country/type neighbors', () => {
+    const { doc, givenLocal, familyLocal, phoneCountry, consent } = fakeWorkdayDoc();
+    workdayAdapter.fill(doc, fillValues);
+    expect(givenLocal.value).toBe('');
+    expect(familyLocal.value).toBe('');
+    expect(phoneCountry.value).toBe('');
+    expect(consent.value).toBe('');
+  });
+
+  it('writes only given name when full name is single segment', () => {
+    const { doc, given, family } = fakeWorkdayDoc();
+    workdayAdapter.fill(doc, [{ key: 'full_name', value: 'Cher' }]);
+    expect(given.value).toBe('Cher');
+    expect(family.value).toBe('');
+  });
+});

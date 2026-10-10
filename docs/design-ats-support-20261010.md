@@ -21,7 +21,7 @@ ATS 是招聘方用来管理「岗位发布 → 申请收集 → 筛选 → 面�
 | **Greenhouse** | 现代 SaaS | ✅ 完整 + 真机验证 | 7 类标准字段 + 动机问题（why_company/why_role）识别；真实 Vercel Greenhouse 岗位页端到端实测通过（item114，2026-10-04） |
 | **Lever** | 现代 SaaS | ✅ 完整 + 真机验证 | name 直填 + `questions[]` 数组（含 how_did_you_hear 语义防误填，2026-10-04 修正） |
 | **Ashby** | 现代 SaaS | ✅ 完整 + 真机验证 | 2026-10-10 落地：系统字段 id 前缀 `_systemfield_`（name/email/resume 等）；GitHub/LinkedIn/Portfolio 等 URL 槽在不同公司被配置为**自定义问题**（Linear/Supabase 实测），按 label 文本定位（新增通用 `findFieldsByLabel`）；求职信只写动机/自我介绍类自定义问题（UUID id + label 命中 SUMMARY_HINTS），不写引流/国家/授权类；location 类字段暂不填（宁缺毋滥） |
-| **Workday** | 大企业套件（招聘模块） | ⚠️ 骨架 | `*.myworkdayjobs.com` 识别 + 填最外层可见标准字段（input[name] 匹配）；深 shadow DOM / aria 组件结构字段定位成本高，**显式跳过列 deferred**。真人验证法见 handoff「已知限制」P1 扩展段（探测脚本 `data/workday-probe.cjs`，gitignored） |
+| **Workday** | 大企业套件（招聘模块） | ✅ 完整 + 真机验证 | 2026-10-10 落地：字段定位键改用 **`data-automation-id`**（`legal-name-section_firstName`/`lastName`/`email`/`phoneNumber` 等；`index.ts findFields` 匹配源已加该属性）；Western 名/姓、邮箱、电话、地点、求职信按关键词匹配；**显式排除**中文名槽（`firstNameLocal`/`lastNameLocal`，EXCLUDE_LOCAL_NAME）与 country/type/extension 邻居，不自动上传简历、不勾 consent、不点提交（决策 #15/#20 硬边界）。真机验证：真实 GDIT guest 表单（`gdit.wd5.myworkdayjobs.com introduceYourself`）FAB 注入 + 加载画像 + 一键填充，`legal-name-section_firstName/lastName` 写入 "Demo"/"Dev"、中文名槽未误写。已知边界：Intel 等租户走账号制（Create Account，非 guest 可填表单）、NVIDIA/Tesla/Starbucks/Zoom/Adobe 跳 community.workday.com 死路——非本适配器缺陷，属租户配置差异 |
 
 manifest `host_permissions` 目前为六条精确项：三 ATS 域 + `localhost:3000` + `127.0.0.1:3000` + 生产报告域（S6 收窄后，2026-10-03 item108）。
 
