@@ -224,8 +224,8 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
               void handleSave();
             }}
           >
-            <label>
-              {labels.baseUrl}
+            <label className="ja-field">
+              <span>{labels.baseUrl}</span>
               <input
                 type="url"
                 required
@@ -235,8 +235,8 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
                 data-testid="model-settings-baseurl"
               />
             </label>
-            <label>
-              {labels.model}
+            <label className="ja-field">
+              <span>{labels.model}</span>
               <input
                 type="text"
                 required
@@ -246,8 +246,8 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
                 data-testid="model-settings-model"
               />
             </label>
-            <label>
-              {labels.apiKey}
+            <label className="ja-field">
+              <span>{labels.apiKey}</span>
               <input
                 type="password"
                 autoComplete="off"
@@ -271,6 +271,7 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
             <div className="ja-btn-row">
               <button
                 type="submit"
+                className="ja-btn ja-btn--primary"
                 disabled={status.kind === 'saving' || status.kind === 'testing'}
                 data-testid="model-settings-save"
               >
@@ -278,6 +279,7 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
               </button>
               <button
                 type="button"
+                className="ja-btn ja-btn--ghost"
                 disabled={!config || status.kind === 'saving' || status.kind === 'testing'}
                 onClick={() => void handleTest()}
                 data-testid="model-settings-test"
@@ -287,7 +289,7 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
               {config ? (
                 <button
                   type="button"
-                  className="ja-danger"
+                  className="ja-btn ja-btn--danger"
                   disabled={status.kind === 'removing'}
                   onClick={() => void handleRemove()}
                   data-testid="model-settings-remove"
