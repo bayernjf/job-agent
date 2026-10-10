@@ -21,9 +21,13 @@ interface Props {
 
 export default function ReportToc({ items, ariaLabel }: Props) {
   const [activeId, setActiveId] = useState<string>(items[0]?.id ?? '');
+  const [hydrated, setHydrated] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
+    // hydrate 完成信号（SSR 也会输出 <nav>，但事件监听此时才挂上；
+    // E2E 用 data-hydrated 等待 React 接管后再点击，避免 CI 慢速加载下点击丢失）
+    setHydrated(true);
     if (items.length === 0) return;
     const sections = items
       .map((item) => document.getElementById(item.id))
@@ -52,7 +56,7 @@ export default function ReportToc({ items, ariaLabel }: Props) {
   if (items.length === 0) return null;
 
   return (
-    <nav className="report-toc" aria-label={ariaLabel}>
+    <nav className="report-toc" aria-label={ariaLabel} data-hydrated={hydrated ? 'true' : undefined}>
       <ul>
         {items.map((item) => (
           <li key={item.id}>

@@ -167,6 +167,10 @@ test.describe('report TOC anchor navigation', () => {
     // 初始高亮第一个章节（概述）
     await expect(toc.locator('a.is-active').first()).toHaveAttribute('href', '#section-summary');
 
+    // 等待 React hydrate 完成（SSR 已输出 DOM，但 onClick 监听此时才挂上；
+    // CI 慢速加载下直接点击会丢失事件，导致高亮断言偶发红）
+    await expect(toc).toHaveAttribute('data-hydrated', 'true');
+
     // CI（Linux headless）下 CSS 平滑滚动时长与本地不一致，IO 高亮切换可能超出默认断言
     // 超时导致偶发红；测试只关心「锚点跳转后高亮切换」，关掉动画让跳转即时完成
     await page.addStyleTag({ content: 'html { scroll-behavior: auto !important; }' });
