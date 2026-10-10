@@ -121,12 +121,16 @@
   /* authenticity four states (maps 1:1 to analyzer-core enum) */
   --ja-color-auth-likely: var(--ja-color-green-600);
   --ja-color-auth-likely-bg: var(--ja-color-green-50);
+  --ja-color-auth-likely-border: var(--ja-color-green-500);
   --ja-color-auth-mixed: var(--ja-color-amber-500);
   --ja-color-auth-mixed-bg: var(--ja-color-amber-50);
+  --ja-color-auth-mixed-border: var(--ja-color-amber-500);
   --ja-color-auth-suspicious: var(--ja-color-red-500);
   --ja-color-auth-suspicious-bg: var(--ja-color-red-50);
+  --ja-color-auth-suspicious-border: var(--ja-color-red-500);
   --ja-color-auth-insufficient: var(--ja-color-slate-400);
   --ja-color-auth-insufficient-bg: var(--ja-color-neutral-100);
+  --ja-color-auth-insufficient-border: var(--ja-color-neutral-300);
 
   /* shadow */
   --ja-shadow-card: 0 1px 3px rgb(15 23 42 / 0.08), 0 1px 2px rgb(15 23 42 / 0.04);
@@ -159,6 +163,10 @@
   --ja-color-auth-mixed-bg: var(--ja-color-neutral-800);
   --ja-color-auth-suspicious-bg: var(--ja-color-neutral-800);
   --ja-color-auth-insufficient-bg: var(--ja-color-neutral-800);
+  --ja-color-auth-likely-border: var(--ja-color-green-600);
+  --ja-color-auth-mixed-border: var(--ja-color-amber-500);
+  --ja-color-auth-suspicious-border: var(--ja-color-red-500);
+  --ja-color-auth-insufficient-border: var(--ja-color-neutral-600);
 
   --ja-shadow-card: 0 1px 3px rgb(0 0 0 / 0.3), 0 1px 2px rgb(0 0 0 / 0.2);
   --ja-shadow-elevated: 0 4px 12px rgb(0 0 0 / 0.4), 0 2px 4px rgb(0 0 0 / 0.3);

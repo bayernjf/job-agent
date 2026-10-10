@@ -96,21 +96,25 @@ h4 { font-size: var(--ja-text-lg); }
 .ja-badge--likely {
   background: var(--ja-color-auth-likely-bg);
   color: var(--ja-color-auth-likely);
+  border: 1px solid var(--ja-color-auth-likely-border);
 }
 
 .ja-badge--mixed {
   background: var(--ja-color-auth-mixed-bg);
   color: var(--ja-color-auth-mixed);
+  border: 1px solid var(--ja-color-auth-mixed-border);
 }
 
 .ja-badge--suspicious {
   background: var(--ja-color-auth-suspicious-bg);
   color: var(--ja-color-auth-suspicious);
+  border: 1px solid var(--ja-color-auth-suspicious-border);
 }
 
 .ja-badge--insufficient {
   background: var(--ja-color-auth-insufficient-bg);
   color: var(--ja-color-auth-insufficient);
+  border: 1px solid var(--ja-color-auth-insufficient-border);
 }
 
 .ja-badge--fused {

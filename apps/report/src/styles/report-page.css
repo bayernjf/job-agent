@@ -93,16 +93,26 @@
   background: var(--ja-color-surface-muted);
 }
 
+/* P1 V2 三通道：信号分级加图标 + 背景色（颜色/图标/文字三通道，保留规则 ID 文本） */
+.signal .signal-icon {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: var(--ja-space-1);
+}
+
 .signal--info {
   border-left-color: var(--ja-color-info);
+  background: var(--ja-color-auth-likely-bg);
 }
 
 .signal--warn {
   border-left-color: var(--ja-color-warning);
+  background: var(--ja-color-auth-mixed-bg);
 }
 
 .signal--risk {
   border-left-color: var(--ja-color-danger);
+  background: var(--ja-color-auth-suspicious-bg);
 }
 
 .signal p {
@@ -203,8 +213,12 @@
   color: var(--ja-color-fg-muted);
 }
 
-/* 决策 #1-A 的"显著标注"：琥珀色左边框提示条，正文用前景色保证可读性 */
+/* 决策 #1-A 的"显著标注"：琥珀色左边框提示条，正文用前景色保证可读性；
+   P2 V4 强化：加警告图标（内联 SVG 由模板渲染），icon 与文本基线对齐 */
 .unclaimed-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ja-space-2);
   margin-top: var(--ja-space-3);
   padding: var(--ja-space-2) var(--ja-space-3);
   border: 1px solid var(--ja-color-border);
@@ -214,6 +228,12 @@
   color: var(--ja-color-fg);
   font-size: var(--ja-text-sm);
   line-height: var(--ja-leading-normal);
+}
+
+.unclaimed-notice__icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ja-color-warning);
 }
 
 .view-toggle {
@@ -422,4 +442,43 @@
 #applications-section,
 #resume-section {
   scroll-margin-top: 88px;
+}
+
+/* ─── P2 V4：空态卡（EmptyState 组件） ─────────────────────────────── */
+.ja-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ja-space-2);
+  padding: var(--ja-space-6) var(--ja-space-4);
+  border: 1px dashed var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  text-align: center;
+}
+
+.ja-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ja-radius-lg);
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+}
+
+.ja-empty__title {
+  font-size: var(--ja-text-base);
+  font-weight: 500;
+  color: var(--ja-color-fg);
+}
+
+.ja-empty__hint {
+  font-size: var(--ja-text-sm);
+  max-width: 34rem;
+}
+
+.ja-empty__cta {
+  margin-top: var(--ja-space-1);
 }
