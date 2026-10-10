@@ -79,6 +79,9 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
         companyLogoUrl: p.companyLogoUrl ?? null,
         companyUrl: p.companyUrl ?? null,
         normalizedKey: p.normalizedKey ?? null,
+        // 迁移 033：指令式搜岗首次发现该岗位的 run；SQLite 实现同字段，
+        // 漏映射会使 GET /agent/search/:id/results 在 PG（生产）永远返回空。
+        searchRunId: p.searchRunId ?? null,
         status: 'active' as const,
         firstSeenAt: now,
         lastSeenAt: now,
@@ -133,6 +136,9 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
             companyLogoUrl: sql`EXCLUDED.company_logo_url`,
             companyUrl: sql`EXCLUDED.company_url`,
             normalizedKey: sql`EXCLUDED.normalized_key`,
+            // 与 SQLite updated 分支对齐：内容变化时顺带刷新搜岗关联；
+            // 值未变化行（第 4 步）只刷 last_seen，保留原 run 关联。
+            searchRunId: sql`EXCLUDED.search_run_id`,
             lastSeenAt: now,
             updatedAt: now,
           },
