@@ -48,6 +48,8 @@
 | 看痛点对应解决方案、已覆盖/需新增对位与实施批次（批1 产品化 + 批2 新接口已落地见 handoff item21；批3 待外部条件） | [设计-痛点解决方案-20260916.md](设计-痛点解决方案-20260916.md) |
 | 安排面试、追踪面试结果（面试计划表范围/数据模型/角色前提） | [proposal-interview-planner-20260922.md](proposal-interview-planner-20260922.md)（**已落地 2026-09-24，PR #81，handoff item45**） |
 | 用招聘方核验视图 / 企业人才库 / 投递追踪 / 面试准备包（`?view=recruiter`、`/[locale]/recruit`、`interview-kit.md`、`/candidates` 与 `/applications` 端点） | [API.md](API.md) §3.5/§3.6 + [../handoff.md](../handoff.md) item21 |
+| 做**触达通知**（工作台候选邮件每日 digest / Web Push、通知设置、以及 cron 健康告警兜底） | [design-notification-channels-20261010.md](design-notification-channels-20261010.md) ★（决策 #25，迁移 034；§10 健康告警） |
+| 问 **`/candidates` 人才库什么时候要过滤下推 SQL**（当前内存精筛窗 `CANDIDATE_SCAN_CAP=1000`） | [design-candidate-filter-pushdown-20261010.md](design-candidate-filter-pushdown-20261010.md)（触发条件＝生产 complete 画像 >1000 才实施；SQLite JSON1 vs PG jsonb 方言分支只在 storage 内部） |
 | 写用户可见文案 / 加双语 / 处理语言与分享链接（含扩展面板、MV3 _locales） | [design-i18n-20260910.md](design-i18n-20260910.md) ★ |
 | 定颜色、间距、圆角、字号 / 改主题（共享 token 包、Shadow DOM 接入） | [design-tokens-20260910.md](design-tokens-20260910.md) ★ |
 | 让存储层同时支持 SQLite 与 Postgres / 新增数据库方言 | [design-storage-dual-dialect-20260911.md](design-storage-dual-dialect-20260911.md) ★ |
