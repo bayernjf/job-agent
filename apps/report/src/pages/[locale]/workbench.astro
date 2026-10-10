@@ -15,6 +15,7 @@ import GateCard from '../../components/GateCard.astro';
 import AgentWorkbench from '../../components/AgentWorkbench.tsx';
 import SearchWorkbench from '../../components/SearchWorkbench.tsx';
 import ModelSettings from '../../components/ModelSettings.tsx';
+import NotificationSettings from '../../components/NotificationSettings.tsx';
 import ExtensionAuthManager from '../../components/ExtensionAuthManager.tsx';
 import '../../styles/workbench-page.css';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
@@ -333,6 +334,34 @@ const claimedProfileId = viewer.kind === 'user' ? viewer.claimedProfileId : null
           noKey: t('modelSettings.noKey'),
           encryptionMissing: t('modelSettings.encryptionMissing'),
           byokHint: t('modelSettings.byokHint'),
+        }}
+      />
+      <NotificationSettings
+        client:load
+        apiBase={apiBase}
+        locale={locale}
+        labels={{
+          title: t('notifications.title'),
+          subtitle: t('notifications.subtitle'),
+          emailTitle: t('notifications.emailTitle'),
+          emailHint: t('notifications.emailHint'),
+          emailLabel: t('notifications.emailLabel'),
+          emailPlaceholder: t('notifications.emailPlaceholder'),
+          emailRequired: t('notifications.emailRequired'),
+          pushTitle: t('notifications.pushTitle'),
+          pushHint: t('notifications.pushHint'),
+          pushDenied: t('notifications.pushDenied'),
+          pushUnsupported: t('notifications.pushUnsupported'),
+          vapidMissing: t('notifications.vapidMissing'),
+          enable: t('notifications.enable'),
+          enabling: t('notifications.enabling'),
+          disable: t('notifications.disable'),
+          disabling: t('notifications.disabling'),
+          enabledSince: t('notifications.enabledSince'),
+          lastSent: t('notifications.lastSent'),
+          never: t('notifications.never'),
+          saveFailed: t('notifications.saveFailed'),
+          loadFailed: t('notifications.loadFailed'),
         }}
       />
       <ExtensionAuthManager

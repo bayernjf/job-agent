@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredSubmitIntent,
@@ -90,6 +90,21 @@ export class SqliteSubmitIntentsRepository implements ISubmitIntentsRepository {
       .from(t)
       .where(and(eq(t.accountId, accountId), eq(t.status, 'approved')))
       .orderBy(desc(t.approvedAt))
+      .limit(limit)
+      .all();
+    return rows.map(toStoredSubmitIntent);
+  }
+
+  async listByAccountSince(
+    accountId: string,
+    since: string,
+    limit = 200,
+  ): Promise<StoredSubmitIntent[]> {
+    const rows = this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.accountId, accountId), gte(t.createdAt, since)))
+      .orderBy(asc(t.createdAt))
       .limit(limit)
       .all();
     return rows.map(toStoredSubmitIntent);

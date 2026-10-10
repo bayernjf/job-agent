@@ -9,8 +9,13 @@
   // /internal/cron/cleanup?task=all (expired sessions/accounts, aligned with
   // the CLI cleanup defaults), guarded by controller.cron in index.ts.
   "triggers": {
-    "crons": ["*/5 * * * *", "0 * * * *"]
+    // Daily 01:00 UTC (09:00 CST) email digest (decision #25, 2026-10-10).
+    "crons": ["*/5 * * * *", "0 * * * *", "0 1 * * *"]
   },
+  // Email Service binding for the daily digest (decision #25-1: phase 1 sends
+  // only to the verified owner address). Requires the sending domain onboarded
+  // via `wrangler email sending enable job-agent.bayjf.com`.
+  "send_email": [{ "name": "EMAIL" }],
   "vars": {
     "PROD_ORIGIN": "https://app.job-agent.bayjf.com"
   }

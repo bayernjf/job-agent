@@ -26,6 +26,7 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   { table: 'job_runs', column: 'last_viewed_at' }, // 030 工作台已读回执
   { table: 'submit_intents', column: 'application_id' }, // 021 投递关联
   { table: 'cron_heartbeat', column: 'consumer' }, // 031 心跳（本批）
+  { table: 'notification_subscriptions', column: 'account_id' }, // 034 触达通道订阅（决策 #25）
 ];
 
 export { REQUIRED_COLUMNS };
@@ -41,6 +42,8 @@ const WATCHDOG_CONSUMER = 'watchdog';
 const WATCHDOG_STALE_THRESHOLDS: Record<string, number> = {
   'agent-tick': 15 * 60_000,
   'process-job': 30 * 60_000,
+  // 每日档（01:00 UTC）：给 25h，容忍一轮丢失
+  'digest-tick': 25 * 60 * 60_000,
 };
 /** deep 探活中，watchdog 最近一次失败记录（last_error 非空）视为不健康的时间窗 */
 const WATCHDOG_UNHEALTHY_WINDOW_MS = 30 * 60_000;

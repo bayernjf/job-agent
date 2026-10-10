@@ -453,6 +453,18 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 034（notification_subscriptions 整表，触达通道订阅，决策 #25）
+    const nsTablesBefore34 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(nsTablesBefore34.map((t) => t.name)).toContain('notification_subscriptions');
+    const result34 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result34.version).toBe('034');
+    const nsTablesAfter34 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(nsTablesAfter34.map((t) => t.name)).not.toContain('notification_subscriptions');
+
     // 回滚 033（job_postings 去掉 search_run_id 列，表本身仍在；搜岗结果关联）
     const jpColsBefore33 = db
       .prepare('PRAGMA table_info(job_postings)')

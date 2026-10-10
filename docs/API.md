@@ -1415,6 +1415,52 @@ JD 抽取 → 去重入库 → 回写终态。未配 `TAVILY_API_KEY` 时 503 �
   列表页 URL、SEO 聚合与教程类标题、正文硬技术命中门槛，挡掉聚合页/博客/频道误报；
 - 搜岗结果不产生画像证据，不影响可信证据链。
 
+## 3.8.1 触达通道（决策 #25，2026-10-10，需登录）
+
+邮件每日摘要与 Web Push 的通知订阅管理，设计见
+`docs/design-notification-channels-20261010.md`。全部端点要求登录
+（401 `AUTH_REQUIRED`）、本人归属闸；订阅行的存在性即 opt-in（关闭＝删行）。
+
+### `GET /agent/notifications`
+
+本人全部订阅的投影（`keys` 绝不回发）：
+
+```json
+{ "subscriptions": [ { "id": "nsub-…", "channel": "email_digest",
+  "endpoint": "me@example.com", "enabled": true,
+  "lastSentAt": null, "createdAt": "…" } ] }
+```
+
+### `PUT /agent/notifications/email-digest`
+
+开启/关闭邮件每日摘要。`{ enabled: true, email? }`：目的地址取入参
+`email` → 已有订阅地址 → `accounts.email`，三级都为空时 400
+`EMAIL_REQUIRED`；`{ enabled: false }` 删除订阅行。
+
+### `POST /agent/notifications/web-push`
+
+upsert 一条 Web Push 订阅：`{ endpoint, keys: { p256dh, auth } }`。
+
+### `DELETE /agent/notifications/web-push`
+
+按 `endpoint` 删除本人订阅（幂等，不存在同样 200）。
+
+### `GET /agent/notifications/vapid-key`
+
+Web Push 应用服务器公钥；未配 `VAPID_PUBLIC_KEY` 时 503 `VAPID_NOT_CONFIGURED`。
+
+### `GET /internal/cron/digest-tick`
+
+内部 cron 端点（Bearer `CRON_SECRET`，cron-worker 每日 `0 1 * * *` 档调用）：
+聚合每个 email_digest 订阅自 `last_sent_at`（缺省 24h）以来新增的 pending
+候选，产出 `{ digests: [{ subscriptionId, to, subject, text, html }] }`。
+零候选的订阅不产信、也不回写窗口（窗口只在真正发出时推进）。
+
+### `POST /internal/cron/digest-sent`
+
+内部 cron 端点（Bearer `CRON_SECRET`）：cron-worker 用 Email Service 实际
+发出后回调，`{ subscriptionIds: [...] }` 回写 `last_sent_at`。
+
 ## 3.9 LLM 模型供给（决策 #21，需登录）
 
 内置目录与 BYOK 双轨，全量设计见 `docs/design-llm-model-provisioning-20261003.md`。

@@ -44,6 +44,10 @@ export type { IUserLlmConfigsRepository } from './repositories/user-llm-configs.
 export type { IExtensionAuthCodesRepository } from './repositories/extension-auth-codes.js';
 export type { IApiTokensRepository } from './repositories/api-tokens.js';
 export type { ICronHeartbeatRepository } from './repositories/cron-heartbeat.js';
+export type {
+  INotificationSubscriptionsRepository,
+  NewNotificationSubscription,
+} from './repositories/notification-subscriptions.js';
 
 // 实体领域类型
 export type {

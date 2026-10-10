@@ -209,3 +209,10 @@ export type {
   RawSearchRunRow,
 } from './search-run.js';
 export { toStoredSearchRun, SEARCH_RUN_STATUSES_LIST } from './search-run.js';
+
+export type {
+  NotificationChannel,
+  StoredNotificationSubscription,
+  RawNotificationSubscriptionRow,
+} from './notification-subscription.js';
+export { toStoredNotificationSubscription } from './notification-subscription.js';

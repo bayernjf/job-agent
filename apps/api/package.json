@@ -25,13 +25,16 @@
     "@jobagent/job-source": "workspace:*",
     "@jobagent/llm": "workspace:*",
     "@jobagent/resume-core": "workspace:*",
+    "@jobagent/search-source": "workspace:*",
     "@jobagent/shared": "workspace:*",
     "@jobagent/storage": "workspace:*",
     "@jobagent/worker": "workspace:*",
     "hono": "^4.6.0",
     "undici": "^7.30.0",
-    "zod": "^3.23.0",
-    "@jobagent/search-source": "workspace:*"
+    "web-push": "^3.6.7",
+    "zod": "^3.23.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/web-push": "^3.6.4"
+  }
 }

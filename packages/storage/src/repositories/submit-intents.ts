@@ -32,6 +32,11 @@ export interface ISubmitIntentsRepository {
    */
   listFillableByAccount(accountId: string, limit?: number): Promise<StoredSubmitIntent[]>;
   /**
+   * 触达通道（决策 #25）：跨 run 列出某账号 `created_at >= since` 的票据，digest-tick
+   * 聚合"距上次 digest 后新增的待确认候选"用。按 created_at 升序。
+   */
+  listByAccountSince(accountId: string, since: string, limit?: number): Promise<StoredSubmitIntent[]>;
+  /**
    * 批量确认：只改**该 run 内、当前为 'pending'** 的指定票据，返回真正被移动的行数。
    * 计数即"这次确认了几张票"，调用方据此判断是否有票据已被人抢先处理。
    */

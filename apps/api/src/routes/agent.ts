@@ -44,6 +44,7 @@ import {
 import { aiAssistedDisclosure, renderHtml } from '@jobagent/resume-core';
 import { resolveTextLlm } from './llm-resolve.js';
 import { describeError } from './helpers.js';
+import { sendWebPush } from '../web-push.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
@@ -632,6 +633,36 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     const started = now();
     try {
       const outcome = await runAgentTickOnce({ repos: agentRepos, now, config: agentConfig });
+      // 触达通道（决策 #25-2）：本轮有 run 新进入 awaiting_approval（pending 候选>0）时，
+      // 对该 account 的启用 web_push 订阅发推送。失败绝不阻塞 tick、不记 run 失败；
+      // 404/410 端点即时删行（决策 #25-2 不留沉默订阅）。
+      for (const r of outcome.results) {
+        if (r.status !== 'awaiting_approval' || r.intents === 0) continue;
+        try {
+          const run = await repos.jobRuns.getById(r.runId);
+          if (!run) continue;
+          const subs = await repos.notificationSubscriptions.listEnabledByAccountChannel(
+            run.accountId,
+            'web_push',
+          );
+          if (subs.length === 0) continue;
+          const sent = await sendWebPush(subs, {
+            title: 'JobAgent 新候选 / New candidates',
+            body: `${r.intents} 个新候选待确认 / ${r.intents} candidate(s) awaiting approval`,
+            url: 'https://app.job-agent.bayjf.com/zh-CN/workbench',
+          });
+          const gone = sent.filter((s) => s.gone).map((s) => s.subscriptionId);
+          for (const id of gone) {
+            await repos.notificationSubscriptions.removeById(id);
+          }
+          const okIds = sent.filter((s) => s.ok).map((s) => s.subscriptionId);
+          if (okIds.length > 0) {
+            await repos.notificationSubscriptions.markSent(okIds, now());
+          }
+        } catch (pushErr) {
+          console.error('[cron] agent-tick web push failed:', JSON.stringify(describeError(pushErr)));
+        }
+      }
       // 心跳回写：消费方活着；结果摘要让 /health?deep=1 一眼看出推进了多少任务
       await repos.cronHeartbeat.recordSuccess(
         'agent-tick',
