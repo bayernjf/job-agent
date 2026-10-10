@@ -418,4 +418,136 @@ describe('GET /internal/cron/watch-heartbeat (liveness watchdog)', () => {
     const deepRes = await app.request('/health?deep=1');
     expect(deepRes.status).toBe(200);
   });
+
+  // 自动告警（deferred「Cron Worker 的失败信号没有任何读者」闭环）：stale 翻转边沿
+  // 推 Web Push、持续 stale 不重复推、恢复后再 stale 再推、无订阅不推。
+  function seedWebPush(repos: StorageContext): Promise<unknown> {
+    // 034 迁移对 notification_subscriptions.account_id 有 FK → accounts，先落一行账号
+    return repos.accounts
+      .upsertFromProvider({
+        id: 'acc-alert-1',
+        identity: {
+          platform: 'github',
+          providerAccountId: 'alert-1',
+          login: 'alert-owner',
+          name: 'Alert Owner',
+          email: null,
+          avatarUrl: null,
+        },
+      })
+      .then(() =>
+        repos.notificationSubscriptions.upsert({
+          id: 'nsub-alert-1',
+          accountId: 'acc-alert-1',
+          channel: 'web_push',
+          endpoint: 'https://push.example/ep1',
+          keys: { p256dh: 'k1', auth: 'a1' },
+          createdAt: new Date().toISOString(),
+        }),
+      );
+  }
+
+  it('pushes a Web Push alert on the fresh→stale edge (first stale round)', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    await seedWebPush(repos);
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'advanced=1,recycled=0',
+    );
+    const sendWebPush = vi.fn(
+      async (..._args: Parameters<typeof import('./web-push.js').sendWebPush>) => [
+        { subscriptionId: 'nsub-alert-1', ok: true, gone: false },
+      ],
+    );
+    const app = await createApp({ repos, sendWebPush });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(503);
+    expect(sendWebPush).toHaveBeenCalledOnce();
+    const payload = sendWebPush.mock.calls[0]?.[1] as { title: string; body: string };
+    expect(payload.title).toContain('服务告警');
+    expect(payload.body).toContain('agent-tick');
+  });
+
+  it('does not re-push while the same stale persists (watchdog lastError already set)', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    await seedWebPush(repos);
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'advanced=1,recycled=0',
+    );
+    const sendWebPush = vi.fn(
+      async (..._args: Parameters<typeof import('./web-push.js').sendWebPush>) => [
+        { subscriptionId: 'nsub-alert-1', ok: true, gone: false },
+      ],
+    );
+    const app = await createApp({ repos, sendWebPush });
+
+    const first = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(first.status).toBe(503);
+    expect(sendWebPush).toHaveBeenCalledOnce();
+
+    // 同一 stale 持续（agent-tick 心跳仍未更新）：第二、三轮不再打扰
+    const second = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(second.status).toBe(503);
+    const third = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(third.status).toBe(503);
+    expect(sendWebPush).toHaveBeenCalledOnce();
+  });
+
+  it('re-pushes after recovery (stale → fresh → stale is a new event)', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    await seedWebPush(repos);
+    const sendWebPush = vi.fn(
+      async (..._args: Parameters<typeof import('./web-push.js').sendWebPush>) => [
+        { subscriptionId: 'nsub-alert-1', ok: true, gone: false },
+      ],
+    );
+    const app = await createApp({ repos, sendWebPush });
+
+    // 第一段 stale
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'old',
+    );
+    expect((await app.request('/internal/cron/watch-heartbeat', auth)).status).toBe(503);
+    expect(sendWebPush).toHaveBeenCalledOnce();
+
+    // 恢复
+    await repos.cronHeartbeat.recordSuccess('agent-tick', new Date().toISOString(), 'ok');
+    expect((await app.request('/internal/cron/watch-heartbeat', auth)).status).toBe(200);
+
+    // 再次 stale = 新事件
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'old-again',
+    );
+    expect((await app.request('/internal/cron/watch-heartbeat', auth)).status).toBe(503);
+    expect(sendWebPush).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips push when no web_push subscription exists', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'old',
+    );
+    const sendWebPush = vi.fn(
+      async (..._args: Parameters<typeof import('./web-push.js').sendWebPush>) => [],
+    );
+    const app = await createApp({ repos, sendWebPush });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(503);
+    expect(sendWebPush).not.toHaveBeenCalled();
+  });
 });

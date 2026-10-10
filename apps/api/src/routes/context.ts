@@ -42,4 +42,6 @@ export interface RouteDeps {
   cronAuthorized: (c: Context) => boolean;
   /** 原始注入依赖（cron override：processJobOnce / runMaintenance） */
   deps: ApiDeps;
+  /** Web Push 发送器（决策 #25-2；watch-heartbeat 告警用，测试注入 fake） */
+  sendWebPush: typeof import('../web-push.js').sendWebPush;
 }

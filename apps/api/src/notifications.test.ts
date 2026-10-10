@@ -240,6 +240,80 @@ describe('digest-tick', () => {
     expect(((await after.json()) as { digests: unknown[] }).digests).toHaveLength(0);
   });
 
+  it('emits a pure health-alert digest when consumers are stale and no candidates exist', async () => {
+    const { repos, app, Cookie } = await harness();
+    await app.request('/agent/notifications/email-digest', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ enabled: true }),
+    });
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'advanced=1,recycled=0',
+    );
+
+    const tick = await app.request('/internal/cron/digest-tick', { headers: cronHeaders });
+    expect(tick.status).toBe(200);
+    const digests = (
+      (await tick.json()) as { digests: Array<{ subject: string; text: string; html: string }> }
+    ).digests;
+    expect(digests).toHaveLength(1);
+    expect(digests[0]?.subject).toContain('服务告警');
+    expect(digests[0]?.text).toContain('agent-tick');
+    expect(digests[0]?.html).toContain('agent-tick');
+  });
+
+  it('prepends the health-alert block to a candidate digest when consumers are stale', async () => {
+    const { repos, app, Cookie } = await harness();
+    await app.request('/agent/notifications/email-digest', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ enabled: true }),
+    });
+    const aliceAccount = (await repos.accounts.getByProvider('github', '911'))!;
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'old',
+    );
+    const nowIso = new Date().toISOString();
+    await repos.submitIntents.insert({
+      id: 'intent-n2',
+      runId: 'run-n2',
+      accountId: aliceAccount.id,
+      profileId: 'prof-n2',
+      jobId: 'job-n2',
+      jobSource: 'remotive',
+      job: {
+        jobId: 'job-n2',
+        source: 'remotive',
+        sourceUrl: 'https://remotive.example/job-n2',
+        title: 'Frontend Engineer',
+        company: 'Beta',
+        remote: true,
+        tags: [],
+        postedAt: nowIso,
+      },
+      matchScore: 8,
+      matchTier: 'high',
+      report: { version: 1, matched: [], gaps: [] } as never,
+      status: 'pending',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    const tick = await app.request('/internal/cron/digest-tick', { headers: cronHeaders });
+    const digests = (
+      (await tick.json()) as { digests: Array<{ subject: string; text: string }> }
+    ).digests;
+    expect(digests).toHaveLength(1);
+    // 候选主题保留；正文顶部带告警段
+    expect(digests[0]?.subject).toContain('新候选');
+    expect(digests[0]?.text).toContain('系统健康告警');
+    expect(digests[0]?.text).toContain('Frontend Engineer');
+  });
+
   it('rejects unauthorized callers', async () => {
     const { app } = await harness();
     expect((await app.request('/internal/cron/digest-tick')).status).toBe(401);

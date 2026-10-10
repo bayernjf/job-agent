@@ -39,7 +39,7 @@ export { REQUIRED_COLUMNS };
  * 更低频调度/更长任务）。未知 consumer 一律忽略，不误报。
  */
 const WATCHDOG_CONSUMER = 'watchdog';
-const WATCHDOG_STALE_THRESHOLDS: Record<string, number> = {
+export const WATCHDOG_STALE_THRESHOLDS: Record<string, number> = {
   'agent-tick': 15 * 60_000,
   'process-job': 30 * 60_000,
   // 每日档（01:00 UTC）：给 25h，容忍一轮丢失
@@ -48,8 +48,42 @@ const WATCHDOG_STALE_THRESHOLDS: Record<string, number> = {
 /** deep 探活中，watchdog 最近一次失败记录（last_error 非空）视为不健康的时间窗 */
 const WATCHDOG_UNHEALTHY_WINDOW_MS = 30 * 60_000;
 
+/**
+ * 心跳告警推送（deferred「Cron Worker 的失败信号没有任何读者」闭环，2026-10-10）：
+ * 复用决策 #25-2 的 Web Push 通道，模式与 agent-tick 的候选推送一致——gone 删行、
+ * ok 记 markSent、失败只 console.error 绝不抛（watchdog 本体照常记录失败心跳）。
+ * VAPID 未配置时 sendWebPush 返回 []，天然降级为"只记心跳不打扰"。
+ */
+async function maybePushWatchdogAlert(
+  repos: RouteDeps['repos'],
+  sendWebPush: RouteDeps['sendWebPush'],
+  now: () => string,
+  stale: string[],
+): Promise<void> {
+  if (stale.length === 0) return;
+  try {
+    const subs = await repos.notificationSubscriptions.listEnabledByChannel('web_push');
+    if (subs.length === 0) return;
+    const sent = await sendWebPush(subs, {
+      title: 'JobAgent 服务告警 / Service alert',
+      body: `消费心跳过期: ${stale.join('; ')}`,
+      url: 'https://app.job-agent.bayjf.com/zh-CN/workbench',
+    });
+    const gone = sent.filter((s) => s.gone).map((s) => s.subscriptionId);
+    for (const id of gone) {
+      await repos.notificationSubscriptions.removeById(id);
+    }
+    const okIds = sent.filter((s) => s.ok).map((s) => s.subscriptionId);
+    if (okIds.length > 0) {
+      await repos.notificationSubscriptions.markSent(okIds, now());
+    }
+  } catch (err) {
+    console.error('[cron] watch-heartbeat web push failed:', JSON.stringify(describeError(err)));
+  }
+}
+
 export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now, deps, cronAuthorized } = d;
+  const { repos, now, deps, cronAuthorized, sendWebPush } = d;
 
   // 健康检查：浅检查（默认）不依赖 DB，恒定返回进程存活；
   // ?deep=1（或 ?deep=true）额外执行一次持久化层 SELECT 1 往返，DB 不可达时返回 503，
@@ -185,6 +219,17 @@ export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
       }
       if (stale.length > 0) {
         const message = `stale: ${stale.join('; ')}`;
+        // 自动告警（deferred「Cron Worker 的失败信号没有任何读者」已闭环）：
+        // 只在"上轮健康 → 本轮 stale"的翻转边沿向启用 web_push 的订阅推一次告警。
+        // 防抖依据 watchdog 行 last_error：持续 stale 期间它非空（recordFailure 不清
+        // last_success_at 也不清自身 last_error），同一事件不重复打扰；恢复时
+        // recordSuccess 清空，下次新事件才会再推。digest-tick 每日邮件兜底。
+        const watchdogPrev = heartbeats.find((hb) => hb.consumer === WATCHDOG_CONSUMER);
+        const wasAlreadyStale =
+          watchdogPrev != null && watchdogPrev.lastError != null && watchdogPrev.lastError !== '';
+        if (!wasAlreadyStale) {
+          await maybePushWatchdogAlert(repos, sendWebPush, now, stale);
+        }
         await repos.cronHeartbeat.recordFailure(WATCHDOG_CONSUMER, started, message);
         return c.json({ status: 'error', stale }, 503);
       }

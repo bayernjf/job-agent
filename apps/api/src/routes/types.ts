@@ -139,6 +139,11 @@ export interface ApiDeps {
    * BYOK 保存（503 ENCRYPTION_NOT_CONFIGURED）。
    */
   llmEncKey?: string | null;
+  /**
+   * Web Push 发送器（决策 #25-2 触达通道）。不传 = 用 web-push.ts 的 sendWebPush
+   * （VAPID 未配置时返回 []，不真发）；测试注入 fake 断言告警推送。
+   */
+  sendWebPush?: typeof import('../web-push.js').sendWebPush;
 }
 
 /** Hono 应用环境变量类型（principal 由全局中间件注入）。 */

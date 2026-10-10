@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { AUTH_ERROR_CODES } from '@jobagent/shared';
 import { describeError } from './helpers.js';
+import { WATCHDOG_STALE_THRESHOLDS } from './system.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
@@ -155,11 +156,35 @@ export function registerNotifications(app: Hono<HonoEnv>, d: RouteDeps): void {
 
   // GET /internal/cron/digest-tick：聚合各 email_digest 订阅的新候选，产出待发 digest 列表。
   // 零候选的订阅不产信（也不回写窗口——窗口只在真正发出时推进）。
+  // 系统健康兜底（deferred「Cron Worker 的失败信号没有任何读者」闭环，2026-10-10）：
+  // 每日 digest 顺带携带消费心跳 stale 状态——有 pending 的信正文顶部加告警段；
+  // 即使当天零候选，只要系统不健康也产一封纯告警信，保证 Web Push 没被看到时仍有
+  // 每日邮件兜底（判据与 watch-heartbeat 同源：WATCHDOG_STALE_THRESHOLDS）。
   app.get('/internal/cron/digest-tick', async (c) => {
     if (!cronAuthorized(c)) return c.json({ error: 'unauthorized' }, 401);
     const started = now();
     try {
       const subs = await repos.notificationSubscriptions.listEnabledByChannel('email_digest');
+      const heartbeats = await repos.cronHeartbeat.listAll();
+      const staleConsumers = heartbeats
+        .filter((hb) => {
+          const threshold = WATCHDOG_STALE_THRESHOLDS[hb.consumer];
+          if (threshold === undefined) return false;
+          const lastOk = hb.lastSuccessAt ? new Date(hb.lastSuccessAt).getTime() : 0;
+          return Date.now() - lastOk > threshold;
+        })
+        .map((hb) => `${hb.consumer} lastOk=${hb.lastSuccessAt ?? 'never'}`);
+      const staleText = staleConsumers.join('; ');
+      const staleBlock =
+        staleConsumers.length === 0
+          ? null
+          : {
+              text: [
+                '⚠ 系统健康告警：以下 cron 消费方心跳过期（可能未部署/故障），请查 /health?deep=1：',
+                `⚠ Service alert — stale consumer heartbeat: ${staleText}`,
+              ].join('\n'),
+              html: `<p><b>⚠ 系统健康告警 / Service alert</b><br/>${escapeHtml(staleText)}</p>`,
+            };
       const digests: Array<{
         subscriptionId: string;
         to: string;
@@ -172,13 +197,26 @@ export function registerNotifications(app: Hono<HonoEnv>, d: RouteDeps): void {
           sub.lastSentAt ?? new Date(Date.parse(started) - DIGEST_DEFAULT_WINDOW_MS).toISOString();
         const intents = await repos.submitIntents.listByAccountSince(sub.accountId, sinceIso, 50);
         const pending = intents.filter((i) => i.status === 'pending');
-        if (pending.length === 0) continue;
+        if (pending.length === 0) {
+          // 零候选但系统不健康：仍产一封纯告警信（每日兜底，不回写窗口无妨——未发候选信）
+          if (staleBlock) {
+            digests.push({
+              subscriptionId: sub.id,
+              to: sub.endpoint,
+              subject: '[JobAgent 服务告警] 消费心跳异常 / Consumer heartbeat stale',
+              text: staleBlock.text,
+              html: staleBlock.html,
+            });
+          }
+          continue;
+        }
         const lines = pending.map(
           (i) => `- ${i.job.title} @ ${i.job.company}（${i.matchTier}）${i.job.sourceUrl}`,
         );
         const count = pending.length;
         const subject = `[JobAgent] ${count} 个新候选待确认 / ${count} new candidate(s) awaiting approval`;
         const textBody = [
+          ...(staleBlock ? [staleBlock.text, ''] : []),
           `你的求职 Agent 自 ${sinceIso} 以来扫到 ${count} 个新候选，正在工作台等你确认：`,
           `Your agent found ${count} new candidate(s) since ${sinceIso}, awaiting your approval:`,
           '',
@@ -189,6 +227,7 @@ export function registerNotifications(app: Hono<HonoEnv>, d: RouteDeps): void {
           '关闭本邮件通知 / Disable: 工作台 → 通知设置 / Workbench → Notification settings',
         ].join('\n');
         const htmlBody = [
+          ...(staleBlock ? [staleBlock.html, '<hr/>'] : []),
           `<p>你的求职 Agent 自 ${sinceIso} 以来扫到 <b>${count}</b> 个新候选，正在工作台等你确认。<br/>`,
           `Your agent found <b>${count}</b> new candidate(s) since ${sinceIso}, awaiting your approval.</p>`,
           '<ul>',
@@ -202,7 +241,11 @@ export function registerNotifications(app: Hono<HonoEnv>, d: RouteDeps): void {
         ].join('\n');
         digests.push({ subscriptionId: sub.id, to: sub.endpoint, subject, text: textBody, html: htmlBody });
       }
-      await repos.cronHeartbeat.recordSuccess('digest-tick', started, `digests=${digests.length}`);
+      await repos.cronHeartbeat.recordSuccess(
+        'digest-tick',
+        started,
+        `digests=${digests.length}${staleConsumers.length > 0 ? ` stale=${staleConsumers.length}` : ''}`,
+      );
       return c.json({ ok: true, digests });
     } catch (err) {
       console.error('[cron] digest-tick failed:', JSON.stringify(describeError(err)));
