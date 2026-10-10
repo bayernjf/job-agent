@@ -236,6 +236,12 @@
   color: var(--ja-color-warning);
 }
 
+/* display:flex 会盖过 UA 的 [hidden]{display:none}，认领成功后 JS 置 hidden 将失效
+   （account-auth E2E「认领后提示条必须收起」回归，2026-10-10） */
+.unclaimed-notice[hidden] {
+  display: none;
+}
+
 .view-toggle {
   padding: var(--ja-space-1) var(--ja-space-3);
   font-size: var(--ja-text-sm);
