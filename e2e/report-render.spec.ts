@@ -149,3 +149,30 @@ test.describe('next steps suggestions', () => {
     expect(await page.getByTestId('next-steps').count()).toBe(0);
   });
 });
+
+/**
+ * 报告页右侧章节锚点导航（UI 定向升级 P0 V3）：
+ * - 宽屏渲染 .report-toc 锚点列表；初始高亮第一节；
+ * - 滚动后当前章节高亮切换（IntersectionObserver 真实浏览器行为）。
+ */
+test.describe('report TOC anchor navigation', () => {
+  test('renders anchors and highlights the section in view', async ({ page }) => {
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+    const toc = page.locator('.report-toc');
+    await expect(toc).toBeVisible();
+
+    const authLink = toc.locator('a[href="#section-authenticity"]');
+    await expect(authLink).toHaveCount(1);
+
+    // 初始高亮第一个章节（概述）
+    await expect(toc.locator('a.is-active').first()).toHaveAttribute('href', '#section-summary');
+
+    // CI（Linux headless）下 CSS 平滑滚动时长与本地不一致，IO 高亮切换可能超出默认断言
+    // 超时导致偶发红；测试只关心「锚点跳转后高亮切换」，关掉动画让跳转即时完成
+    await page.addStyleTag({ content: 'html { scroll-behavior: auto !important; }' });
+
+    // 点击锚点（真实用户路径）→ 滚动到 #section-authenticity（scroll-margin-top 88px）→ 高亮切换
+    await authLink.click();
+    await expect(authLink).toHaveClass(/is-active/);
+  });
+});

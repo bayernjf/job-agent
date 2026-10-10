@@ -66,7 +66,7 @@ h4 { font-size: var(--ja-text-lg); }
 /* ─── 通用工具类（基于 token） ──────────────────────────────────────── */
 
 .ja-container {
-  max-width: 800px;
+  max-width: var(--ja-container-max);
   margin: 0 auto;
   padding: var(--ja-space-6) var(--ja-space-5);
 }
@@ -96,21 +96,25 @@ h4 { font-size: var(--ja-text-lg); }
 .ja-badge--likely {
   background: var(--ja-color-auth-likely-bg);
   color: var(--ja-color-auth-likely);
+  border: 1px solid var(--ja-color-auth-likely-border);
 }
 
 .ja-badge--mixed {
   background: var(--ja-color-auth-mixed-bg);
   color: var(--ja-color-auth-mixed);
+  border: 1px solid var(--ja-color-auth-mixed-border);
 }
 
 .ja-badge--suspicious {
   background: var(--ja-color-auth-suspicious-bg);
   color: var(--ja-color-auth-suspicious);
+  border: 1px solid var(--ja-color-auth-suspicious-border);
 }
 
 .ja-badge--insufficient {
   background: var(--ja-color-auth-insufficient-bg);
   color: var(--ja-color-auth-insufficient);
+  border: 1px solid var(--ja-color-auth-insufficient-border);
 }
 
 .ja-badge--fused {
@@ -152,6 +156,17 @@ h4 { font-size: var(--ja-text-lg); }
   background: var(--ja-color-danger-bg);
   color: var(--ja-color-danger-fg);
   border-color: var(--ja-color-danger-border);
+}
+/* 别名变体：组件历史使用过 --danger/--warning，与 --error/--warn 同义（2026-10-10 UI 排查补齐） */
+.ja-alert--danger {
+  background: var(--ja-color-danger-bg);
+  color: var(--ja-color-danger-fg);
+  border-color: var(--ja-color-danger-border);
+}
+.ja-alert--warning {
+  background: var(--ja-color-amber-50);
+  color: var(--ja-color-warning);
+  border-color: var(--ja-color-warning);
 }
 .ja-alert--partial {
   background: var(--ja-color-amber-50);
@@ -346,6 +361,26 @@ h4 { font-size: var(--ja-text-lg); }
   cursor: not-allowed;
 }
 
+/* 按钮变体（2026-10-10 UI 排查补齐：组件已用但此前无定义） */
+.ja-btn--primary {
+  background: var(--ja-color-accent);
+  color: var(--ja-color-accent-fg);
+}
+.ja-btn--primary:hover {
+  background: var(--ja-color-accent-hover);
+}
+.ja-btn--danger {
+  background: var(--ja-color-danger);
+  color: var(--ja-color-accent-fg);
+}
+.ja-btn--danger:hover {
+  background: var(--ja-color-red-600);
+}
+.ja-btn--sm {
+  padding: var(--ja-space-1) var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+}
+
 .ja-input {
   width: 100%;
   padding: var(--ja-space-3) var(--ja-space-4);
@@ -364,6 +399,132 @@ h4 { font-size: var(--ja-text-lg); }
 .ja-muted {
   color: var(--ja-color-fg-muted);
   font-size: var(--ja-text-sm);
+}
+
+/* ===== 共享表单基元（ja-form/ja-field）与状态文本（ja-error/ja-success/ja-warn/ja-danger） =====
+   工作台搜岗、ModelSettings、Admin 面板共用；只引用 token，不写硬编码值。 */
+.ja-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+}
+
+.ja-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  min-width: 0;
+}
+
+.ja-field > span {
+  font-size: var(--ja-text-sm);
+  color: var(--ja-color-fg-muted);
+}
+
+.ja-field input:not([type='checkbox']),
+.ja-field select,
+.ja-field textarea,
+.ja-form > input:not([type='checkbox']),
+.ja-form > textarea {
+  width: 100%;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-base);
+  font-family: var(--ja-font-sans);
+  box-sizing: border-box;
+}
+
+.ja-field input:focus,
+.ja-field select:focus,
+.ja-field textarea:focus,
+.ja-form > input:focus,
+.ja-form > textarea:focus {
+  outline: 2px solid var(--ja-color-accent);
+  outline-offset: -1px;
+}
+
+.ja-error {
+  color: var(--ja-color-danger-fg);
+  font-size: var(--ja-text-sm);
+}
+
+.ja-success {
+  color: var(--ja-color-success-fg);
+  font-size: var(--ja-text-sm);
+}
+
+.ja-warn {
+  color: var(--ja-color-amber-600);
+  font-size: var(--ja-text-sm);
+}
+
+.ja-danger {
+  color: var(--ja-color-danger);
+}
+
+.ja-btn-row {
+  display: flex;
+  gap: var(--ja-space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ===== 组件容器补齐（2026-10-10 UI 排查：组件已用但此前无定义的类） ===== */
+.agent-prefs,
+.agent-runs,
+.agent-pending,
+.claim-verifier,
+.job-recs,
+.resume-target,
+.resume-suggestions,
+.resume-gaps,
+.resume-coverletter-output,
+.signals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+}
+
+.resume-row-remove {
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+
+.ivp-field-hint {
+  margin: 0;
+}
+
+.ivp-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  min-width: 0;
+}
+
+.ivp-item-app {
+  font-size: var(--ja-text-xs);
+}
+
+.ivp-item-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+  align-items: flex-end;
+}
+
+.ivp-result-field--wide {
+  grid-column: 1 / -1;
+}
+
+.ivp-result-actions {
+  display: flex;
+  gap: var(--ja-space-2);
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .ja-stack-1 > * + * { margin-top: var(--ja-space-1); }

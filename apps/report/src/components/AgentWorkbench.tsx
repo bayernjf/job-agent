@@ -43,6 +43,7 @@ import type {
   OutcomeFeedback,
   SubmitIntentStatus,
 } from '@jobagent/shared';
+import EmptyState from './EmptyState';
 
 /**
  * 读本机「统一本地档案」（canonical，含旧键一次性迁移）并投影成简历请求字段。
@@ -1284,9 +1285,18 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
         )}
 
         {!prefsLoading && preferences.length === 0 && (
-          <p className="ja-muted" data-testid="agent-prefs-empty">
-            {labels.preferences.empty}
-          </p>
+          <EmptyState
+            icon="briefcase"
+            title={labels.preferences.empty}
+            ctaLabel={labels.preferences.add}
+            onCta={() => {
+              setShowPrefForm(true);
+              setFormError(null);
+              requestAnimationFrame(() => {
+                document.getElementById('agent-pref-label')?.focus();
+              });
+            }}
+          />
         )}
 
         {preferences.length > 0 && (
@@ -1418,9 +1428,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
         )}
 
         {!runsLoading && runItems.length === 0 && (
-          <p className="ja-muted" data-testid="agent-runs-empty">
-            {labels.runs.empty}
-          </p>
+          <EmptyState icon="search" title={labels.runs.empty} />
         )}
 
         {runItems.length > 0 && (
@@ -1538,9 +1546,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
         )}
 
         {!pendingLoading && pendingItems.length === 0 && (
-          <p className="ja-muted" data-testid="agent-pending-empty">
-            {labels.pending.empty}
-          </p>
+          <EmptyState icon="inbox" title={labels.pending.empty} />
         )}
 
         {pendingItems.length > 0 && (
@@ -1552,9 +1558,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
         <h2>{labels.submissions.title}</h2>
         <p className="ja-muted">{labels.submissions.hint}</p>
         {submissions.length === 0 ? (
-          <p className="ja-muted" data-testid="agent-submissions-empty">
-            {labels.submissions.empty}
-          </p>
+          <EmptyState icon="send" title={labels.submissions.empty} />
         ) : (
           <ul className="agent-intent-list">
             {submissions.map((row) => (

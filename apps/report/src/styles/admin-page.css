@@ -1,0 +1,39 @@
+/**
+ * Admin 面板 /[locale]/admin 页面专属样式（design-llm-model-provisioning-20261003）。
+ * 表单/状态基元在 global.css；本文件只放 admin 组件级布局。
+ */
+
+.admin-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+}
+
+.admin-catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ja-text-sm);
+}
+
+.admin-catalog-table th,
+.admin-catalog-table td {
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border-bottom: 1px solid var(--ja-color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-catalog-table th {
+  color: var(--ja-color-fg-muted);
+  font-weight: 600;
+}
+
+.admin-catalog-table input,
+.admin-catalog-table select {
+  padding: var(--ja-space-1) var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface);
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+}

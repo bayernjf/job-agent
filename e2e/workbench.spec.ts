@@ -314,7 +314,7 @@ test.describe('job workbench — signed in', () => {
     await page.goto(WORKBENCH_PATH);
 
     const pending = page.getByTestId('agent-pending');
-    await expect(pending.getByTestId('agent-pending-empty')).toContainText(
+    await expect(pending.getByTestId('empty-state')).toContainText(
       'No jobs waiting for your approval',
     );
     await expect(pending.getByTestId('agent-intent')).toHaveCount(0);

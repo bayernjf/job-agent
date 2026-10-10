@@ -93,16 +93,26 @@
   background: var(--ja-color-surface-muted);
 }
 
+/* P1 V2 三通道：信号分级加图标 + 背景色（颜色/图标/文字三通道，保留规则 ID 文本） */
+.signal .signal-icon {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: var(--ja-space-1);
+}
+
 .signal--info {
   border-left-color: var(--ja-color-info);
+  background: var(--ja-color-auth-likely-bg);
 }
 
 .signal--warn {
   border-left-color: var(--ja-color-warning);
+  background: var(--ja-color-auth-mixed-bg);
 }
 
 .signal--risk {
   border-left-color: var(--ja-color-danger);
+  background: var(--ja-color-auth-suspicious-bg);
 }
 
 .signal p {
@@ -203,8 +213,12 @@
   color: var(--ja-color-fg-muted);
 }
 
-/* 决策 #1-A 的"显著标注"：琥珀色左边框提示条，正文用前景色保证可读性 */
+/* 决策 #1-A 的"显著标注"：琥珀色左边框提示条，正文用前景色保证可读性；
+   P2 V4 强化：加警告图标（内联 SVG 由模板渲染），icon 与文本基线对齐 */
 .unclaimed-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ja-space-2);
   margin-top: var(--ja-space-3);
   padding: var(--ja-space-2) var(--ja-space-3);
   border: 1px solid var(--ja-color-border);
@@ -214,6 +228,18 @@
   color: var(--ja-color-fg);
   font-size: var(--ja-text-sm);
   line-height: var(--ja-leading-normal);
+}
+
+.unclaimed-notice__icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ja-color-warning);
+}
+
+/* display:flex 会盖过 UA 的 [hidden]{display:none}，认领成功后 JS 置 hidden 将失效
+   （account-auth E2E「认领后提示条必须收起」回归，2026-10-10） */
+.unclaimed-notice[hidden] {
+  display: none;
 }
 
 .view-toggle {
@@ -344,175 +370,121 @@
   font-size: var(--ja-text-sm);
 }
 
-/* ===== 搜岗工作台（design-websearch-job-discovery-20261008 §5） ===== */
-.ja-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--ja-space-2);
-  border-radius: var(--ja-radius-sm);
-  background: var(--ja-color-surface-muted);
-  color: var(--ja-color-fg-muted);
-  font-size: var(--ja-text-xs);
-  line-height: var(--ja-leading-normal);
-  white-space: nowrap;
-}
-.ja-chip--small {
-  font-size: var(--ja-text-xs);
-}
+/* 搜岗工作台样式已迁至 workbench-page.css（2026-10-10 修复：该样式此前只在报告页加载，
+   工作台页从未引入，导致搜岗 UI 无样式渲染）。 */
 
-.search-workbench {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ja-space-4);
-}
-.search-workbench__header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ja-space-1);
-}
-.search-workbench__desc,
-.search-workbench__note {
-  margin: 0;
-}
-.search-workbench__grid {
+/* ─── UI 定向升级 P0（design-ui-polish-20261010.md V1/V3）：宽屏栅格 + 章节锚点导航 ─── */
+/* 断点写死并注释对齐 --ja-breakpoint-lg（media query 不支持 var()）；--ja-container-max 见 ui-tokens */
+
+.report-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
-  gap: var(--ja-space-4);
+  grid-template-areas: 'main toc';
+  grid-template-columns: minmax(0, 1fr) 232px;
+  gap: var(--ja-space-8);
   align-items: start;
 }
-.search-workbench__main,
-.search-workbench__presets {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ja-space-3);
+
+.report-main {
+  grid-area: main;
   min-width: 0;
 }
-.search-workbench__filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ja-space-3);
-  align-items: flex-end;
+
+.report-toc {
+  grid-area: toc;
+  position: sticky;
+  top: calc(var(--ja-space-8) + 40px);
+  max-height: calc(100vh - var(--ja-space-8) - 64px);
+  overflow-y: auto;
 }
-.search-workbench__filters .ja-field {
-  flex: 1 1 200px;
-  min-width: 0;
-}
-.search-workbench__remote {
-  flex: 0 0 auto !important;
-  display: flex;
-  align-items: center;
-  gap: var(--ja-space-2);
-}
-.search-workbench__actions {
-  display: flex;
-  gap: var(--ja-space-2);
-  align-items: center;
-  flex-wrap: wrap;
-}
-.search-workbench__result-tools {
-  display: flex;
-  gap: var(--ja-space-2);
-  align-items: center;
-  flex-wrap: wrap;
-  padding: var(--ja-space-2);
-  border: 1px solid var(--ja-color-border);
-  border-radius: var(--ja-radius-md);
-  background: var(--ja-color-surface);
-}
-.search-workbench__result-tools input[type='text'] {
-  flex: 1 1 160px;
-  min-width: 0;
-}
-.search-workbench__results {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ja-space-2);
-}
-.search-workbench__result {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--ja-space-3);
-  padding: var(--ja-space-3);
-  border: 1px solid var(--ja-color-border);
-  border-radius: var(--ja-radius-md);
-  background: var(--ja-color-surface);
-}
-.search-workbench__result-main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ja-space-1);
-  min-width: 0;
-}
-.search-workbench__result-title {
-  font-size: var(--ja-text-base);
-  font-weight: 600;
-  margin: 0;
-}
-.search-workbench__result-side {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--ja-space-2);
-  align-items: flex-end;
-}
-.search-workbench__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ja-space-1);
-}
-.search-workbench__presets-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ja-space-2);
-}
-.search-workbench__presets-head h3 {
-  margin: 0;
-  font-size: var(--ja-text-base);
-}
-.search-workbench__preset-list,
-.search-workbench__history-list {
+
+.report-toc ul {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 var(--ja-space-2);
+  border-left: 1px solid var(--ja-color-border);
+}
+
+.report-toc a {
+  display: block;
+  padding: var(--ja-space-1) var(--ja-space-3);
+  font-size: var(--ja-text-sm);
+  line-height: var(--ja-leading-normal);
+  color: var(--ja-color-fg-muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  margin-left: -1px;
+}
+
+.report-toc a:hover {
+  color: var(--ja-color-fg);
+}
+
+.report-toc a.is-active {
+  color: var(--ja-color-accent);
+  border-left-color: var(--ja-color-accent);
+  font-weight: 500;
+}
+
+@media (max-width: 960px) {
+  /* 对齐 --ja-breakpoint-lg：窄屏隐藏锚点导航，回到单列 */
+  .report-layout {
+    grid-template-areas: 'main';
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .report-toc {
+    display: none;
+  }
+}
+
+/* 锚点跳转给 sticky header 留白（对齐现有 .claim-anchor 等 scroll-margin-top） */
+/* 88px 与 ReportToc 的 IO rootMargin 顶部 -72px 错开 16px：锚点直达后 section 停在判定带起点之下，
+   交集 >0 保证当前章节必高亮（若与判定带起点完全重合则交集为零宽不触发） */
+#section-summary,
+#section-authenticity,
+#section-skills,
+#section-activity,
+#section-collaboration,
+#section-interview,
+#applications-section,
+#resume-section {
+  scroll-margin-top: 88px;
+}
+
+/* ─── P2 V4：空态卡（EmptyState 组件） ─────────────────────────────── */
+.ja-empty {
   display: flex;
   flex-direction: column;
-  gap: var(--ja-space-2);
-}
-.search-workbench__preset,
-.search-workbench__history-item {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--ja-space-2);
-  padding: var(--ja-space-2);
-  border: 1px solid var(--ja-color-border);
-  border-radius: var(--ja-radius-sm);
+  padding: var(--ja-space-6) var(--ja-space-4);
+  border: 1px dashed var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
   background: var(--ja-color-surface);
+  text-align: center;
 }
-.search-workbench__preset-use,
-.search-workbench__history-main {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--ja-space-1);
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+
+.ja-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ja-radius-lg);
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
 }
-.search-workbench__history-query {
-  overflow-wrap: anywhere;
+
+.ja-empty__title {
+  font-size: var(--ja-text-base);
+  font-weight: 500;
+  color: var(--ja-color-fg);
 }
-.search-workbench__history {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ja-space-2);
-  border-top: 1px solid var(--ja-color-border);
-  padding-top: var(--ja-space-3);
-  margin-top: var(--ja-space-2);
+
+.ja-empty__hint {
+  font-size: var(--ja-text-sm);
+  max-width: 34rem;
+}
+
+.ja-empty__cta {
+  margin-top: var(--ja-space-1);
 }

@@ -54,3 +54,4 @@ e2e/.tmp-agent/
 
 # local database dumps (produced by `bash tools/backup-db.sh`) — contain PII
 backups/
+.pnpm-store/
