@@ -129,6 +129,12 @@ export interface Labels {
     scanResult: string;
     timeline: string;
     timelineEmpty: string;
+    /** 折叠行的时间范围模板（`{from}` / `{to}`） */
+    eventRange: string;
+    /** 折叠行的重复次数模板（`{count}`） */
+    eventRepeat: string;
+    expandStream: string;
+    collapseStream: string;
     newCandidates: string;
     from: string;
     actorLabel: string;
@@ -277,6 +283,54 @@ export function formatEventTime(iso: string, locale: string): string {
   }
 }
 
+/** 事件流折叠行：连续同质的迁移（同事件码 + 同 from→to + 同动作方）合成一行。 */
+export interface EventGroup {
+  key: string;
+  event: JobRunEventKind;
+  fromStatus: JobRunStatus | null;
+  toStatus: JobRunStatus;
+  actor: JobRunEvent['actor'];
+  count: number;
+  firstAt: string;
+  lastAt: string;
+}
+
+/**
+ * 纯 helper：把正序事件流里**相邻**的同质迁移折叠成一行。
+ *
+ * 一个 watching 的 run 每 5 分钟落一条 `watching --rescan--> watching`，不折叠就是几十行
+ * 重复噪音、把真正的状态变化挤出视野。只折相邻、不做全量聚合，所以穿插在中间的其它迁移
+ * 仍各自成行；折叠纯粹是显示层，审计流本身一条不少（展开可看完整流水）。
+ */
+export function groupRunEvents(events: JobRunEvent[]): EventGroup[] {
+  const groups: EventGroup[] = [];
+  for (const event of events) {
+    const prev = groups[groups.length - 1];
+    if (
+      prev &&
+      prev.event === event.event &&
+      prev.fromStatus === event.fromStatus &&
+      prev.toStatus === event.toStatus &&
+      prev.actor === event.actor
+    ) {
+      prev.count += 1;
+      prev.lastAt = event.createdAt;
+    } else {
+      groups.push({
+        key: event.eventId,
+        event: event.event,
+        fromStatus: event.fromStatus,
+        toStatus: event.toStatus,
+        actor: event.actor,
+        count: 1,
+        firstAt: event.createdAt,
+        lastAt: event.createdAt,
+      });
+    }
+  }
+  return groups;
+}
+
 /** 纯 helper：模板占位替换（`{skill}` / `{points}` / `{tag}` 等）。 */
 export function fillTemplate(
   template: string,
@@ -417,6 +471,8 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const [scanning, setScanning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [scanNote, setScanNote] = useState<string | null>(null);
+  /** 事件流是否摊开完整流水（默认把相邻同质迁移折叠成一行） */
+  const [showFullTimeline, setShowFullTimeline] = useState(false);
   const [busyIntentId, setBusyIntentId] = useState<string | null>(null);
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
   const [approvedNote, setApprovedNote] = useState<string | null>(null);
@@ -914,6 +970,25 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   );
 
   const activeRun = runView?.run ?? runs.find((r) => r.runId === selectedRunId) ?? null;
+  /**
+   * 事件流显示行：默认把相邻同质迁移折叠成一行，`showFullTimeline` 时逐条摊开。
+   * 折叠只发生在这里，`runView.events` 本身一条不少（可回放审计流的完整性不受展示层影响）。
+   */
+  const timelineRows = useMemo<EventGroup[]>(() => {
+    const events = runView?.events ?? [];
+    if (!showFullTimeline) return groupRunEvents(events);
+    return events.map((event) => ({
+      key: event.eventId,
+      event: event.event,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+      actor: event.actor,
+      count: 1,
+      firstAt: event.createdAt,
+      lastAt: event.createdAt,
+    }));
+  }, [runView, showFullTimeline]);
+
   const pendingItems = pending ?? [];
   const loading = prefsLoading || runsLoading || pendingLoading;
   const workbenchError = prefsError ?? runsError ?? pendingError;
@@ -1498,27 +1573,48 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
             {runView && runView.events.length === 0 && (
               <p className="ja-muted">{labels.runs.timelineEmpty}</p>
             )}
-            {runView && runView.events.length > 0 && (
+            {timelineRows.length > 0 && (
               <ol className="agent-timeline" data-testid="agent-timeline">
-                {runView.events.map((event) => (
-                  <li className="agent-event" key={event.eventId} data-testid="agent-event">
+                {timelineRows.map((row) => (
+                  <li className="agent-event" key={row.key} data-testid="agent-event">
                     <span className="agent-event-kind">
-                      {eventKindLabel(event.event, labels.eventKinds)}
+                      {eventKindLabel(row.event, labels.eventKinds)}
                     </span>
                     <span className="agent-event-transition ja-muted">
-                      {event.fromStatus
-                        ? `${labels.runs.from} ${labels.statuses[event.fromStatus]} → ${labels.statuses[event.toStatus]}`
-                        : labels.statuses[event.toStatus]}
+                      {row.fromStatus
+                        ? `${labels.runs.from} ${labels.statuses[row.fromStatus]} → ${labels.statuses[row.toStatus]}`
+                        : labels.statuses[row.toStatus]}
                     </span>
+                    {row.count > 1 && (
+                      <span className="agent-event-count" data-testid="agent-event-count">
+                        {fillTemplate(labels.runs.eventRepeat, { count: row.count })}
+                      </span>
+                    )}
                     <span className="ja-muted">
-                      {labels.runs.actorLabel}: {labels.actors[event.actor]}
+                      {labels.runs.actorLabel}: {labels.actors[row.actor]}
                     </span>
-                    <time className="ja-muted" dateTime={event.createdAt}>
-                      {formatEventTime(event.createdAt, locale)}
+                    <time className="ja-muted" dateTime={row.lastAt}>
+                      {row.count > 1
+                        ? fillTemplate(labels.runs.eventRange, {
+                            from: formatEventTime(row.firstAt, locale),
+                            to: formatEventTime(row.lastAt, locale),
+                          })
+                        : formatEventTime(row.lastAt, locale)}
                     </time>
                   </li>
                 ))}
               </ol>
+            )}
+            {runView && runView.events.length > timelineRows.length && (
+              <button
+                type="button"
+                className="ja-btn ja-btn--ghost agent-timeline-toggle"
+                data-testid="agent-timeline-toggle"
+                aria-expanded={showFullTimeline}
+                onClick={() => setShowFullTimeline((open) => !open)}
+              >
+                {showFullTimeline ? labels.runs.collapseStream : labels.runs.expandStream}
+              </button>
             )}
           </div>
         )}

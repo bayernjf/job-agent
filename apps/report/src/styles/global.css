@@ -1907,6 +1907,24 @@ h4 { font-size: var(--ja-text-lg); }
   font-size: var(--ja-text-xs);
 }
 
+/* 折叠行的重复次数（「×195」）——做成徽标而非正文，避免被读成一条新事件 */
+.agent-event-count {
+  padding: 0 var(--ja-space-1);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg-muted);
+  font-family: var(--ja-font-mono);
+  font-size: var(--ja-text-xs);
+  white-space: nowrap;
+}
+
+/* 折叠只在显示层，审计流一条不少；展开/收起靠在这张表下方 */
+.agent-timeline-toggle {
+  margin-top: var(--ja-space-2);
+  font-size: var(--ja-text-xs);
+}
+
 .agent-intent {
   margin: 0;
   display: flex;

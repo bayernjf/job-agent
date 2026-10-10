@@ -111,6 +111,8 @@ const REJECT_MATCH = '**/agent/runs/*/reject';
 interface WorkbenchMocks {
   /** 待投清单条目（默认一条 pending 票据） */
   pendingItems?: unknown[];
+  /** 任务视图的事件流（默认一条 generated；折叠用例传长流） */
+  timelineEvents?: unknown[];
   /** 非 pending 端点的统一失败状态码（500 → role=alert） */
   failStatus?: number;
   /** 请求记录（确认/拒绝的 body 断言用） */
@@ -119,7 +121,7 @@ interface WorkbenchMocks {
 
 /** 把 /agent/* 全部 mock 掉：人机闸两条动作单独记录 body，其余按端点回固定夹具。 */
 async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> {
-  const { pendingItems = [INTENT], failStatus, requests } = mocks;
+  const { pendingItems = [INTENT], timelineEvents = [EVENT], failStatus, requests } = mocks;
 
   await page.route('**/agent/**', async (route: Route) => {
     const request = route.request();
@@ -191,7 +193,7 @@ async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> 
         contentType: 'application/json',
         body: JSON.stringify({
           run: RUN,
-          events: [EVENT],
+          events: timelineEvents,
           intents: pendingItems,
         }),
       });
@@ -357,5 +359,38 @@ test.describe('job workbench — signed in', () => {
     await expect(event).not.toContainText('awaiting_approval');
     await expect(event).toContainText('Actor: Agent');
     await expect(event.locator('time')).toHaveAttribute('datetime', EVENT.createdAt);
+  });
+
+  test('folds repeated self-transitions without hiding the newest events', async ({ page }) => {
+    // 回归 2026-10-10 的两处叠加：仓储 asc + limit 只给**最旧** 200 条，界面又把每条
+    // `watching --rescan--> watching` 平铺成一行——一个每 5 分钟自迁移的 run 跑满上限后
+    // 事件流冻住（系统在跑，审计流不再更新），且满屏是同一条重复。
+    const base = Date.parse('2026-10-10T00:00:00.000Z');
+    const rescan = (i: number) => ({
+      eventId: `evt-rescan-${i}`,
+      runId: RUN_ID,
+      event: 'rescan',
+      fromStatus: 'watching',
+      toStatus: 'watching',
+      actor: 'agent',
+      payload: {},
+      createdAt: new Date(base + i * 300_000).toISOString(),
+    });
+    await mockAgent(page, {
+      timelineEvents: [EVENT, ...Array.from({ length: 200 }, (_, i) => rescan(i))],
+    });
+    await page.goto(WORKBENCH_PATH);
+
+    // 201 条折叠成 2 行：真实推进一行 + 重复自迁移一行带次数徽标
+    const rows = page.getByTestId('agent-event');
+    await expect(rows).toHaveCount(2);
+    const folded = rows.nth(1);
+    await expect(folded.getByTestId('agent-event-count')).toHaveText('×200');
+    // 最新一条必须可见（旧语义里它被截在最旧 200 条之外）
+    await expect(folded.locator('time')).toHaveAttribute('datetime', rescan(199).createdAt);
+
+    // 折叠只在显示层：展开仍能看到完整流水（可回放审计的完整性）
+    await page.getByTestId('agent-timeline-toggle').click();
+    await expect(page.getByTestId('agent-event')).toHaveCount(201);
   });
 });
