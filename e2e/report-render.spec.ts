@@ -167,6 +167,10 @@ test.describe('report TOC anchor navigation', () => {
     // 初始高亮第一个章节（概述）
     await expect(toc.locator('a.is-active').first()).toHaveAttribute('href', '#section-summary');
 
+    // CI（Linux headless）下 CSS 平滑滚动时长与本地不一致，IO 高亮切换可能超出默认断言
+    // 超时导致偶发红；测试只关心「锚点跳转后高亮切换」，关掉动画让跳转即时完成
+    await page.addStyleTag({ content: 'html { scroll-behavior: auto !important; }' });
+
     // 点击锚点（真实用户路径）→ 滚动到 #section-authenticity（scroll-margin-top 88px）→ 高亮切换
     await authLink.click();
     await expect(authLink).toHaveClass(/is-active/);
