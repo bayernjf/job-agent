@@ -67,6 +67,7 @@ import { registerAgent } from './routes/agent.js';
 import { registerSearch } from './routes/search.js';
 import { registerLlmRoutes } from './routes/llm.js';
 import { registerClaimVerifications } from './routes/claim-verifications.js';
+import { registerNotifications } from './routes/notifications.js';
 import { describeError } from './routes/helpers.js';
 import type { RouteDeps } from './routes/context.js';
 import type { ApiDeps, ApiRepos, HonoEnv } from './routes/types.js';
@@ -246,6 +247,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   registerSearch(app, routeDeps);
   registerLlmRoutes(app, routeDeps);
   registerClaimVerifications(app, routeDeps);
+  registerNotifications(app, routeDeps);
 
   // 404 兜底
   app.notFound((c) => {
