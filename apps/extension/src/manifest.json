@@ -22,7 +22,8 @@
       "matches": [
         "https://*.greenhouse.io/*",
         "https://*.lever.co/*",
-        "https://*.myworkdayjobs.com/*"
+        "https://*.myworkdayjobs.com/*",
+        "https://*.ashbyhq.com/*"
       ],
       "js": [
         "content.js"
@@ -55,6 +56,7 @@
     "https://*.greenhouse.io/*",
     "https://*.lever.co/*",
     "https://*.myworkdayjobs.com/*",
+    "https://*.ashbyhq.com/*",
     "http://localhost:3000/*",
     "http://127.0.0.1:3000/*",
     "https://app.job-agent.bayjf.com/*"

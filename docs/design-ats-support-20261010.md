@@ -20,19 +20,18 @@ ATS 是招聘方用来管理「岗位发布 → 申请收集 → 筛选 → 面�
 | --- | --- | --- | --- |
 | **Greenhouse** | 现代 SaaS | ✅ 完整 + 真机验证 | 7 类标准字段 + 动机问题（why_company/why_role）识别；真实 Vercel Greenhouse 岗位页端到端实测通过（item114，2026-10-04） |
 | **Lever** | 现代 SaaS | ✅ 完整 + 真机验证 | name 直填 + `questions[]` 数组（含 how_did_you_hear 语义防误填，2026-10-04 修正） |
+| **Ashby** | 现代 SaaS | ✅ 完整 + 真机验证 | 2026-10-10 落地：系统字段 id 前缀 `_systemfield_`（name/email/resume 等）；GitHub/LinkedIn/Portfolio 等 URL 槽在不同公司被配置为**自定义问题**（Linear/Supabase 实测），按 label 文本定位（新增通用 `findFieldsByLabel`）；求职信只写动机/自我介绍类自定义问题（UUID id + label 命中 SUMMARY_HINTS），不写引流/国家/授权类；location 类字段暂不填（宁缺毋滥） |
 | **Workday** | 大企业套件（招聘模块） | ⚠️ 骨架 | `*.myworkdayjobs.com` 识别 + 填最外层可见标准字段（input[name] 匹配）；深 shadow DOM / aria 组件结构字段定位成本高，**显式跳过列 deferred**。真人验证法见 handoff「已知限制」P1 扩展段（探测脚本 `data/workday-probe.cjs`，gitignored） |
 
 manifest `host_permissions` 目前为六条精确项：三 ATS 域 + `localhost:3000` + `127.0.0.1:3000` + 生产报告域（S6 收窄后，2026-10-03 item108）。
 
 ## 3. 扩展路线（按适配成本 × 目标用户价值排）
 
-### 3.1 第一优先：Ashby
+### 3.1 已落地：Ashby（2026-10-10）
 
-- 海外科技公司使用率增长最快（与 Greenhouse/Lever 同类的「现代 ATS」阵营）；
-- 表单结构规整、与 Greenhouse/Lever 语义同构 → 适配成本低（预计一个适配器 + 测试即可）；
-- 与产品现有用户画像（海外技术岗求职者）重合度高。
+海外科技公司使用率增长最快的「现代 ATS」阵营（与 Greenhouse/Lever 同类）；表单结构规整。已随本批次落地：`ats/ashby.ts` + 通用层 `findFieldsByLabel` + manifest（host_permissions 与 content_scripts 各加 `https://*.ashbyhq.com/*` 精确域）+ 6 个单测 + 真机验证（真实 `jobs.ashbyhq.com` 申请页 FAB 注入 + 面板识别 Ashby）。
 
-### 3.2 第二梯队：中型 SaaS
+### 3.2 下一梯队：中型 SaaS
 
 | ATS | 说明 | 适配成本 |
 | --- | --- | --- |
