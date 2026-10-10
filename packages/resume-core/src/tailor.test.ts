@@ -263,4 +263,21 @@ describe('buildResume', () => {
       }).header.headline,
     ).toBe('typescript developer with 8 months of Gitee activity');
   });
+
+  // 回归（生产 2026-10-10 求职信 500 ZodError）：老版本 analyzer 产出的画像
+  // externalMergedContributions 非空但 collaboration.evidenceRefs 缺失时，
+  // buildResume 不得产出空 refs 的 profile 条目，也不得整体抛错。
+  it('skips collaboration entries when collaboration evidenceRefs is empty', () => {
+    const base = makeInput();
+    const staleProfile: AbilityProfile = {
+      ...base.profile,
+      collaboration: {
+        prSummary: 'Merged PRs across teams',
+        externalMergedContributions: ['Merged PR #123 into vercel/next.js'],
+        evidenceRefs: [],
+      },
+    };
+    const draft = buildResume({ ...base, profile: staleProfile });
+    expect(draft.collaboration).toEqual([]);
+  });
 });
