@@ -38,6 +38,7 @@ import { createStorage } from '@jobagent/storage';
 import {
   createCatalogCache,
   createCoverLetterProviderFromEnv,
+  createJdExtractionProviderFromEnv,
   createResumePolishProviderFromEnv,
 } from '@jobagent/llm';
 import { loadDemoConfig } from './demo-config.js';
@@ -200,6 +201,21 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   };
 
   const agentConfig = deps.agentConfig ?? loadAgentConfig();
+
+  // C1 求职 Agent 语义增强（阶段 3，默认关闭）：AGENT_JD_LLM_ENABLED=true 且内置
+  // LLM_* 凭证可用时，给推荐链路注入「LLM 读 JD」端口；无 key 返回 null（不注入＝纯规则），
+  // 有 key 缺 model 由工厂抛错。后台 cron 无登录用户上下文，故只走内置 env、不走 BYOK。
+  if (!deps.agentConfig) {
+    const jdEnabled = ['true', '1'].includes(
+      (process.env.AGENT_JD_LLM_ENABLED ?? '').trim().toLowerCase(),
+    );
+    if (jdEnabled) {
+      const jdProvider = createJdExtractionProviderFromEnv();
+      if (jdProvider) {
+        agentConfig.jdExtractor = (title, description) => jdProvider.extract(title, description);
+      }
+    }
+  }
 
   // LLM 供给（决策 #21）：内置目录缓存启动加载一次（表为空→代码默认目录），
   // admin 写入后显式刷新；BYOK 密钥加密钥来自 LLM_ENC_KEY（未配则 BYOK 保存 503）。

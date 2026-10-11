@@ -18,6 +18,8 @@ import { createApp, type ApiDeps } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';
 import { loadAuthConfig } from './auth-config.js';
+import { loadAgentConfig } from './agent-config.js';
+import type { JdExtractor } from '@jobagent/agent-core';
 
 const ALICE: OAuthProfile = {
   platform: 'github',
@@ -1064,5 +1066,101 @@ describe('agent workbench — event stream paging', () => {
       const res = await json(`/agent/runs/${runId}/events?${q}`);
       expect(res.status, q).toBe(400);
     }
+  });
+});
+
+describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
+  /** 起内存库 + 已登录 Alice，并注入带 jdExtractor 的 AgentConfig。 */
+  async function harnessWithJd(jdExtractor: JdExtractor) {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const { Cookie } = await loginUser(repos, ALICE);
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+      agentConfig: { ...loadAgentConfig(), jdExtractor },
+    });
+    const json = (path: string, init: RequestInit = {}) =>
+      app.request(path, {
+        ...init,
+        headers: { 'Content-Type': 'application/json', Cookie, ...(init.headers ?? {}) },
+      });
+    return { repos, json };
+  }
+
+  /** 认领画像 + 岗位池一条岗位 + 偏好 + 建 run，返回首扫响应里的票据。 */
+  async function scanOnce(json: Awaited<ReturnType<typeof harnessWithJd>>['json'], repos: StorageContext) {
+    await insertProfile(repos, 'p-c1', ALICE.login);
+    const claim = await json('/profiles/p-c1/claim', { method: 'POST' });
+    expect(claim.status).toBe(200);
+    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-c1' }),
+    });
+    expect(runRes.status).toBe(201);
+    return (await runRes.json()) as {
+      run: { status: string };
+      events: Array<{ event: string }>;
+      intents: Array<{
+        matchTier: string;
+        report: {
+          score: number;
+          tier: string;
+          jdInsight?: unknown;
+          gaps: Array<{ code: string; tag: string }>;
+        };
+      }>;
+    };
+  }
+
+  it('keeps the pure-rule report and still reaches the approval gate when the LLM throws', async () => {
+    const extractor: JdExtractor = async () => {
+      throw new Error('llm down');
+    };
+    const { repos, json } = await harnessWithJd(extractor);
+    const body = await scanOnce(json, repos);
+
+    expect(body.run.status).toBe('awaiting_approval');
+    expect(body.events.map((e) => e.event)).toContain('generated');
+    const report = body.intents[0]!.report;
+    expect(report.jdInsight).toBeUndefined();
+    // 失败时不产生语义缺口，只剩规则缺口（node 画像无证据）
+    expect(report.gaps.every((g) => g.code === 'tag_not_in_profile')).toBe(true);
+  });
+
+  it('merges LLM-extracted JD requirements into gaps without changing score/tier', async () => {
+    const seen: Array<{ title: string; description: string }> = [];
+    const extractor: JdExtractor = async (title, description) => {
+      seen.push({ title, description });
+      return {
+        responsibilities: ['Build backend services'],
+        requiredSkills: ['Rust'],
+        qualifications: ['5+ years experience'],
+      };
+    };
+    const { repos, json } = await harnessWithJd(extractor);
+    const body = await scanOnce(json, repos);
+
+    // extractor 收到真实标题与 JD 正文
+    expect(seen[0]?.title).toBe('Senior TypeScript Engineer');
+    expect(seen[0]?.description).toBe('Build TypeScript services.');
+
+    const report = body.intents[0]!.report;
+    expect(report.jdInsight).toEqual({
+      responsibilities: ['Build backend services'],
+      requiredSkills: ['Rust'],
+      qualifications: ['5+ years experience'],
+    });
+    // 规则缺口（node）在前，语义缺口（Rust）在后；资历/职责不产缺口
+    expect(report.gaps.map((g) => g.code)).toEqual([
+      'tag_not_in_profile',
+      'jd_requirement_not_in_profile',
+    ]);
+    expect(report.gaps.map((g) => g.tag)).toEqual(['node', 'Rust']);
+    // 档位仍由规则决定
+    expect(report.tier).toBe('high');
   });
 });
