@@ -523,6 +523,7 @@
   "workbench.match.reason.tagMatch": "岗位标签命中「{skill}」{points}",
   "workbench.match.reason.descriptionMatch": "岗位描述命中「{skill}」{points}",
   "workbench.match.gap.tagNotInProfile": "岗位要求「{tag}」，画像里还没有这条技能的记录",
+  "workbench.match.gap.jdRequirementNotInProfile": "职位描述提到要求「{tag}」，画像里还没有这条技能的记录",
   "workbench.match.boost.addEvidenceForTag": "为「{skill}」补一条可回溯的证据，可提高这条岗位的匹配度",
   "workbench.tiers.high": "高度匹配",
   "workbench.tiers.mid": "较为匹配",

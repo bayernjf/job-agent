@@ -523,6 +523,7 @@
   "workbench.match.reason.tagMatch": "Job tags match \"{skill}\" {points}",
   "workbench.match.reason.descriptionMatch": "Job description matches \"{skill}\" {points}",
   "workbench.match.gap.tagNotInProfile": "The job asks for \"{tag}\", which has no record in your profile yet",
+  "workbench.match.gap.jdRequirementNotInProfile": "The job description asks for \"{tag}\", which has no record in your profile yet",
   "workbench.match.boost.addEvidenceForTag": "Add one traceable evidence item for \"{skill}\" to raise the match for this job",
   "workbench.tiers.high": "Strong match",
   "workbench.tiers.mid": "Fair match",

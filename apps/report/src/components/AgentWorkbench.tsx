@@ -185,7 +185,7 @@ export interface Labels {
     none: string;
     points: string;
     reason: Record<'title_match' | 'tag_match' | 'description_match', string>;
-    gap: Record<'tag_not_in_profile', string>;
+    gap: Record<'tag_not_in_profile' | 'jd_requirement_not_in_profile', string>;
     boost: Record<'add_evidence_for_tag', string>;
   };
   statuses: Record<JobRunStatus, string>;
