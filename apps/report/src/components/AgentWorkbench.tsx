@@ -92,6 +92,8 @@ export interface Labels {
     loading: string;
     empty: string;
     add: string;
+    /** 空态 CTA 专用文案：不能与头部 add 同名，否则屏幕阅读器与严格选择器都歧义 */
+    addFirst: string;
     create: string;
     cancel: string;
     delete: string;
@@ -1437,7 +1439,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
           <EmptyState
             icon="briefcase"
             title={labels.preferences.empty}
-            ctaLabel={labels.preferences.add}
+            ctaLabel={labels.preferences.addFirst}
             onCta={() => {
               setShowPrefForm(true);
               setFormError(null);
