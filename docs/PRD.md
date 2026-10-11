@@ -274,7 +274,7 @@ flowchart LR
   2. **admin 闸**：非 `is_admin` 访问 admin 端点 403、未登录 401；面板按 `/auth/me.canManageLlmCatalog` 决定显示；
   3. **BYOK 隔离与加密**：配置只对本人可见（非本人/不存在同形 404）；apiKey 落库必为 AES-256-GCM 密文，GET 只回 `keyMasked`，无 `LLM_ENC_KEY` 时 BYOK 端点 503 如实标注；
   4. **请求路由**：登录用户配了 BYOK→请求打到用户端点；否则内置目录；`validate` 用最小请求（max_tokens=1）真实探测配置可用性，失败 502 且错误体脱敏；
-  5. **内置默认可用**：目录空表时回退代码内置默认（agnes-2.5-flash），首启/换 env 无需手工录入即可用；默认模型未列出视为下架报错；
+  5. **内置默认可用**：目录空表时回退代码内置默认（agnes-3.0-flash），首启/换 env 无需手工录入即可用；默认模型未列出视为下架报错；
   6. **可追溯**：admin 目录变更落结构化日志（`[admin-catalog] ...`），规则版本沿用既有版本化体系。
 
 ---

@@ -2000,7 +2000,7 @@ export type LlmCatalogModality = z.infer<typeof LlmCatalogModalitySchema>;
  * 的字段；baseUrl / apiKey 永远来自 env，结构上不可被目录覆盖。
  */
 export const LlmCatalogModelSchema = z.object({
-  id: z.string().min(1), // 目录 id，如 agnes-2.5-flash
+  id: z.string().min(1), // 目录 id，如 agnes-3.0-flash
   provider: z.string().min(1), // provenance 标识，如 'agnes'
   model: z.string().min(1), // 请求实际 model id
   enabled: z.boolean(), // 停用＝下架（请求如实报错，不静默降级）

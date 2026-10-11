@@ -875,7 +875,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 // 200
 { "subject": "Application for Senior TypeScript Engineer",
   "body": "Dear hiring team, …（由 LLM 生成，仅引用简历与岗位中已有事实）",
-  "provenance": { "provider": "agnes", "model": "agnes-2.5-flash", "promptVersion": "cover-letter-0.1" } }
+  "provenance": { "provider": "agnes", "model": "agnes-3.0-flash", "promptVersion": "cover-letter-0.1" } }
 ```
 
 - `200`：`{ subject?, body, provenance }`。
@@ -1479,12 +1479,12 @@ Web Push 应用服务器公钥；未配 `VAPID_PUBLIC_KEY` 时 503 `VAPID_NOT_CO
 
 ### `GET /admin/llm-catalog`
 
-admin 面。返回合并后内置目录（空表回代码默认 agnes-2.5-flash）与内置凭证配置态：
+admin 面。返回合并后内置目录（空表回代码默认 agnes-3.0-flash）与内置凭证配置态：
 
 ```json
 {
   "models": [
-    { "id": "agnes-2.5-flash", "provider": "agnes", "model": "agnes-2.5-flash",
+    { "id": "agnes-3.0-flash", "provider": "agnes", "model": "agnes-3.0-flash",
       "enabled": true, "isDefault": true, "sortOrder": 1, "modalities": ["text"] }
   ],
   "envConfigured": true

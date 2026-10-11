@@ -142,7 +142,7 @@ describe('GET /admin/llm-catalog（admin 面鉴权）', () => {
     const body = (await res.json()) as { models?: Array<Record<string, unknown>>; envConfigured?: boolean };
     expect(body.models!).toHaveLength(1);
     expect(body.models![0]).toMatchObject({
-      id: 'agnes-2.5-flash',
+      id: 'agnes-3.0-flash',
       provider: 'agnes',
       enabled: true,
       isDefault: true,
@@ -170,7 +170,7 @@ describe('PUT /admin/llm-catalog（整体替换 + 缓存刷新）', () => {
       headers: { ...auth, 'content-type': 'application/json' },
       body: JSON.stringify({
         models: [
-          { id: 'agnes-2.5-flash', provider: 'agnes', model: 'agnes-2.5-flash', enabled: false, isDefault: false, sortOrder: 1, modalities: ['text'] },
+          { id: 'agnes-3.0-flash', provider: 'agnes', model: 'agnes-3.0-flash', enabled: false, isDefault: false, sortOrder: 1, modalities: ['text'] },
           { id: 'm2', provider: 'b', model: 'b-model', enabled: true, isDefault: true, sortOrder: 2, modalities: ['text'] },
         ],
       }),
