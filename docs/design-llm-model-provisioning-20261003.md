@@ -101,9 +101,10 @@ CREATE TABLE user_llm_configs (
 
 - **密钥加密（决策 #21 子问 1，已倾向服务端加密列）**：AES-256-GCM，主密钥 `LLM_ENC_KEY`（env，与 `LLM_API_KEY` 同等保密）；解密仅在内存、调用后即弃；任何日志/错误体不回显 key（复用 S5 `apiKey → [REDACTED]`）；API 回显只给掩码 `sk-****<末4位>`。**否决仅浏览器本地**：LLM 调用发生在 api 服务端，本地 key 必须随请求上传＝明文过网络，且多端不一致。
 - **API（仅登录 user）**：`GET /account/llm-config`（含 keyMasked）/ `PUT /account/llm-config`（未传 key 不覆盖既有 key）/ `DELETE /account/llm-config` / `POST /account/llm-config/validate`（最小 `max_tokens=1` 验证）。
+  - **validate 的请求体两种模式必须各自闭合（2026-10-11 修订，此前写法让按钮恒 400）**：带 `apiKey` 就同时带 `baseUrl`+`model`＝测表单这一组；**整个体省略**＝测服务端**已保存**的那一组（密钥框保存后本来就是空的，要求重敲 key 等于让"测试连接"永远不可用）。**禁止混搭**——只给 `baseUrl`/`model` 不给 key 一律 400 且上游零调用：拿保存的 key 去打一个用户尚未确认保存的地址，等于替他做一次凭据外发。契约与错误码见 [API.md](API.md) 对应节。
 - **请求路由（api 层）**：polish / cover-letter 每次调用前，取登录账号 llm-config → 有则 BYOK provider（`provider:'custom'`，provenance 标注用户自配）；无则回落内置目录；内置也未配 → 按功能既有策略（polish 规则版 / cover-letter 503）。**2026-10-10 修订（决策 #21-4）**：内置回落仅对 `ADMIN_ACCOUNT_LOGINS` 白名单账号开放（内置 LLM 由产品方/owner 付费）；非白名单登录用户、demo、匿名无 BYOK 时直接落 none（polish 规则版 / cover-letter LLM_NOT_CONFIGURED）。搜岗 worker 的 LLM 意图解析/JD 抽取不在本次限制内（搜岗有每日次数上限护栏，且 Tavily 同为全局 env，属搜岗功能成本）。
 - **安全**：配置按 `account_id` 隔离（他人 404/403）；`base_url` 必须 `https://`、字段长度上限；出站**超时 + 不跟随重定向 + 账号级限流**（BYOK 任意 base_url 是出站代理面，风险登记见 §7）。
-- **UI**：工作台「模型设置」面板：模式切换（内置 / 自带 Key）、BYOK 表单、保存即 validate、掩码展示、清除；调用入口（ResumeBuilder / 求职信区）在 BYOK 生效时显示「你的模型」徽标。
+- **UI**：工作台「模型设置」面板：模式切换（内置 / 自带 Key）、BYOK 表单、掩码展示、清除；调用入口（ResumeBuilder / 求职信区）在 BYOK 生效时显示「你的模型」徽标。**与设计的一处偏差（登记为待拍板的小项，非遗漏）**：原写"保存即 validate"，代码里**保存不发验证请求**——validate 是一次真实上游调用（消耗用户自己的 token/计费），把它挂在每次保存上等于替用户花钱。今天的路径是"保存 → 用户自己点「测试连接」"，该按钮自 2026-10-11 起可用（`045df3f`）。要不要改成"保存后自动测一次"，请你拍板。
 
 ### 4.4 与 agent-world 的差异适配（JobAgent 缺失项）
 
