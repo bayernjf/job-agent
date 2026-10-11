@@ -4,12 +4,14 @@ import { AGENT_RULE_VERSION } from './rules.js';
 import {
   MATCH_FIELD_POINTS,
   buildMatchReport,
+  enhanceMatchReportWithJd,
   matchGaps,
   matchReasons,
   passesTitleOrTagGuard,
   selectCandidates,
   selectCandidatesForPreference,
 } from './match-report.js';
+import type { JdInsight } from '@jobagent/shared';
 import { planIntents, toSubmitIntentJob, type IntentJobSnapshotSource } from './plan.js';
 import type { MatchLike } from './match-report.js';
 import type { PreferencePostingLike } from './preferences.js';
@@ -248,5 +250,96 @@ describe('plan', () => {
     expect(planned[0]!.job.sourceUrl).toBe('https://x.test/1');
     // 票据必须带上岗位池主键，否则 /resumes/build 取不到岗位行（工作台下载简历曾因此 404）
     expect(planned[0]!.job.postingId).toBe('pool-key-1');
+  });
+});
+
+describe('enhanceMatchReportWithJd (C1 LLM JD extraction)', () => {
+  function ruleReport(): ReturnType<typeof buildMatchReport> {
+    // 规则缺口：React、Kubernetes（画像只有 TypeScript）
+    return buildMatchReport({
+      match: match(),
+      tags: ['TypeScript', 'React', 'Kubernetes'],
+      profileSkills: ['TypeScript'],
+    });
+  }
+
+  const insight: JdInsight = {
+    responsibilities: ['Build and maintain backend services'],
+    requiredSkills: ['Kubernetes', ' react ', 'Rust', 'Go', 'TypeScript'],
+    qualifications: ["Bachelor's degree", '5+ years experience'],
+  };
+
+  it('never changes score/tier/reasons/fieldScores/matchedSkills/ruleVersion', () => {
+    const base = ruleReport();
+    const before = {
+      score: base.score,
+      tier: base.tier,
+      reasons: base.reasons,
+      fieldScores: base.fieldScores,
+      matchedSkills: base.matchedSkills,
+      ruleVersion: base.ruleVersion,
+    };
+    const out = enhanceMatchReportWithJd(base, insight, ['TypeScript']);
+    expect({
+      score: out.score,
+      tier: out.tier,
+      reasons: out.reasons,
+      fieldScores: out.fieldScores,
+      matchedSkills: out.matchedSkills,
+      ruleVersion: out.ruleVersion,
+    }).toEqual(before);
+    expect(out.jdInsight).toEqual(insight);
+  });
+
+  it('adds only missing requiredSkills as jd_requirement_not_in_profile, deduping against profile and rule gaps', () => {
+    const out = enhanceMatchReportWithJd(ruleReport(), insight, ['TypeScript']);
+    const tags = out.gaps.map((g) => g.tag);
+    // 规则缺口保留在前（React、Kubernetes）；Kubernetes/react 与规则缺口重复去重；
+    // TypeScript 画像已有去重；只剩 Rust、Go 两个语义缺口。
+    expect(tags).toEqual(['React', 'Kubernetes', 'Rust', 'Go']);
+    expect(out.gaps.filter((g) => g.code === 'jd_requirement_not_in_profile').map((g) => g.tag)).toEqual([
+      'Rust',
+      'Go',
+    ]);
+    expect(out.gaps.filter((g) => g.code === 'tag_not_in_profile').map((g) => g.tag)).toEqual([
+      'React',
+      'Kubernetes',
+    ]);
+    // suggestedBoost 与全部缺口一一对应
+    expect(out.suggestedBoost.map((b) => b.skill)).toEqual(['React', 'Kubernetes', 'Rust', 'Go']);
+    expect(out.suggestedBoost.every((b) => b.code === 'add_evidence_for_tag')).toBe(true);
+  });
+
+  it('does not turn responsibilities or qualifications into gaps', () => {
+    const onlyQuals: JdInsight = {
+      responsibilities: ['Lead a small team'],
+      requiredSkills: [],
+      qualifications: ["Master's degree", '8 years experience'],
+    };
+    const out = enhanceMatchReportWithJd(ruleReport(), onlyQuals, ['TypeScript']);
+    expect(out.gaps.map((g) => g.tag)).toEqual(['React', 'Kubernetes']);
+    expect(out.jdInsight).toEqual(onlyQuals);
+  });
+
+  it('respects the maxGaps budget with rule gaps taking priority', () => {
+    // 规则已占 2 个缺口，maxGaps=3 → 语义只剩 1 个名额（取第一个缺失项 Rust）
+    const out = enhanceMatchReportWithJd(ruleReport(), insight, ['TypeScript'], 3);
+    expect(out.gaps.map((g) => g.tag)).toEqual(['React', 'Kubernetes', 'Rust']);
+  });
+
+  it('attaches jdInsight even when it adds no gaps and does not mutate the input', () => {
+    const base = ruleReport();
+    const gapsBefore = base.gaps.length;
+    const covered: JdInsight = {
+      responsibilities: [],
+      requiredSkills: ['React', 'Kubernetes'], // 都已是规则缺口
+      qualifications: [],
+    };
+    const out = enhanceMatchReportWithJd(base, covered, ['TypeScript']);
+    expect(out.gaps).toHaveLength(gapsBefore);
+    expect(out.jdInsight).toEqual(covered);
+    // 入参不被修改
+    expect(base.gaps).toHaveLength(gapsBefore);
+    expect(base.jdInsight).toBeUndefined();
   });
 });

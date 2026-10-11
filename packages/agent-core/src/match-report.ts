@@ -1,5 +1,6 @@
 import {
   matchScoreTier,
+  type JdInsight,
   type MatchBoost,
   type MatchGap,
   type MatchReason,
@@ -119,6 +120,63 @@ export function buildMatchReport(input: BuildMatchReportInput): MatchReport {
     gaps,
     suggestedBoost,
   };
+}
+
+/**
+ * C1 语义增强的 I/O 端口（设计 §3.2 / §10 C1）。
+ *
+ * agent-core 是纯函数包、零网络依赖，因此只定义端口形状：由编排壳（apps/api
+ * agent-runner）注入真正的 LLM provider 调用。返回 null 表示无可用 LLM / 提取失败，
+ * 调用方据此保留纯规则报告（fail-closed，绝不阻塞推荐链路）。
+ */
+export type JdExtractor = (title: string, description: string) => Promise<JdInsight | null>;
+
+/**
+ * 用 LLM 从 JD 正文提取的**岗位侧事实**增强纯规则报告（C1，阶段 3）。
+ *
+ * 不可变：返回新报告，不改入参。硬边界（设计 §83「确定性分层」）：
+ * - **绝不改 score / tier / reasons / fieldScores / matchedSkills / ruleVersion**——
+ *   打分与命中事实永远走规则引擎，LLM 不参与评分、不造画像侧事实；
+ * - 只从 `insight.requiredSkills` 补「岗位要求但画像技能标签无证据」的缺口，
+ *   code 用 `jd_requirement_not_in_profile` 与规则的 `tag_not_in_profile` 区分；
+ * - `responsibilities` / `qualifications` 只挂到 `jdInsight` 供渲染「岗位要求」，
+ *   不产生缺口（资历/学历不是「补一条 GitHub 证据」能解决的，不生成误导性补强建议）；
+ * - 规则缺口优先：总缺口数不超过 maxGaps，语义缺口只填规则缺口没用完的名额；
+ * - 与画像技能、已有缺口（规则或语义）normalize 后相同的要求去重跳过。
+ */
+export function enhanceMatchReportWithJd(
+  report: MatchReport,
+  insight: JdInsight,
+  profileSkills: readonly string[],
+  maxGaps: number = DEFAULT_MAX_GAPS,
+): MatchReport {
+  const known = new Set(profileSkills.map((s) => normalizeText(s)).filter((s) => s.length > 0));
+  const existingTags = new Set(report.gaps.map((gap) => normalizeText(gap.tag)));
+
+  const semanticGaps: MatchGap[] = [];
+  const slots = Math.max(0, maxGaps - report.gaps.length);
+  for (const rawSkill of insight.requiredSkills) {
+    if (semanticGaps.length >= slots) break;
+    const skill = rawSkill.trim();
+    const norm = normalizeText(skill);
+    if (norm.length === 0 || known.has(norm) || existingTags.has(norm)) continue;
+    existingTags.add(norm);
+    semanticGaps.push({ code: 'jd_requirement_not_in_profile', tag: skill });
+  }
+
+  if (semanticGaps.length === 0) {
+    // 没有新增语义缺口：仍挂上 jdInsight（岗位要求可展示），其余字段原样。
+    return { ...report, jdInsight: insight };
+  }
+
+  const gaps: MatchGap[] = [...report.gaps, ...semanticGaps];
+  // suggestedBoost 与全部缺口（规则 + 语义）一一对应，建议补一条可回溯证据。
+  const suggestedBoost: MatchBoost[] = gaps.map((gap) => ({
+    code: 'add_evidence_for_tag',
+    skill: gap.tag,
+  }));
+
+  return { ...report, gaps, suggestedBoost, jdInsight: insight };
 }
 
 export interface CandidateLike {
