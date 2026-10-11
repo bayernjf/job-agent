@@ -1,7 +1,9 @@
 /**
  * CLI semantic 子命令：L3 语义层（设计见 docs/design-semantic-layer-20261011.md）。
  * 用法：
- *   jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown]
+ *   jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown] [--llm]
+ * --llm：启用 L3-B LLM 语义摘要（每画像 +1 次 LLM 调用、按决策 #21 双轨计费）；
+ *        无 LLM_API_KEY 或 LLM 失败时 fail-closed 回落规则版（不伪造摘要）。
  * 凭证：GITHUB_TOKEN（与 analyze 同源）。
  */
 import { parseArgs } from 'node:util';
@@ -9,7 +11,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { analyzeSemantic } from '@jobagent/semantic-core';
 import { SemanticSource, type L3CollectedData } from '@jobagent/semantic-source';
+import { createSemanticProviderFromEnv } from '@jobagent/llm';
+import type { L3Signals } from '@jobagent/shared';
 import type { CliDeps } from './index.js';
+
+const USAGE =
+  'Usage: jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown] [--llm]';
 
 export async function runSemantic(rest: string[], deps: CliDeps): Promise<number> {
   const logger = deps.logger ?? console;
@@ -17,7 +24,7 @@ export async function runSemantic(rest: string[], deps: CliDeps): Promise<number
   const [sub, ...subRest] = rest;
 
   if (sub !== 'analyze') {
-    logger.error('Usage: jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown]');
+    logger.error(USAGE);
     return 2;
   }
 
@@ -28,12 +35,13 @@ export async function runSemantic(rest: string[], deps: CliDeps): Promise<number
       repos: { type: 'string' },
       out: { type: 'string', short: 'o' },
       format: { type: 'string' },
+      llm: { type: 'boolean' },
     },
   });
 
   const login = positionals[0];
   if (!login) {
-    logger.error('Usage: jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown]');
+    logger.error(USAGE);
     return 2;
   }
 
@@ -50,12 +58,18 @@ export async function runSemantic(rest: string[], deps: CliDeps): Promise<number
     logger.error('--format must be one of: json, markdown (default json)');
     return 2;
   }
+  const withLlm = values.llm ?? false;
 
   try {
     const source: { collect(login: string): Promise<L3CollectedData> } =
       deps.semanticSource ?? makeSemanticSource(deps, reposN);
     const collected = await source.collect(login);
-    const signals = analyzeSemantic(collected.input);
+    let signals: L3Signals = analyzeSemantic(collected.input);
+
+    if (withLlm) {
+      signals = await attachLlmSummary(signals, collected, deps, logger);
+    }
+
     const content =
       format === 'json'
         ? JSON.stringify({ collected: { meta: collected.meta }, signals }, null, 2)
@@ -75,7 +89,46 @@ export async function runSemantic(rest: string[], deps: CliDeps): Promise<number
   }
 }
 
-function makeSemanticSource(
+/**
+ * L3-B：LLM 语义摘要，fail-closed 规则回落。
+ * 无 provider（未配 LLM_API_KEY）→ 提示并返回规则版；LLM 调用/校验失败 →
+ * 只回退 llmSummary（不整命令失败），保证 CLI 输出始终可用。
+ * （analyze --semantic --llm 与 semantic analyze --llm 共用）
+ */
+export async function attachLlmSummary(
+  signals: L3Signals,
+  collected: L3CollectedData,
+  deps: CliDeps,
+  logger: Pick<Console, 'error' | 'warn' | 'info' | 'log'>,
+): Promise<L3Signals> {
+  const provider = deps.semanticProvider ?? createSemanticProviderFromEnv();
+  if (!provider) {
+    logger.warn(
+      '--llm requested but LLM_API_KEY is not set; using rule-based signals (no LLM summary).',
+    );
+    return signals;
+  }
+  try {
+    const out = await provider.generate(collected.input);
+    return {
+      ...signals,
+      llmSummary: {
+        repoSummary: out.repoSummary,
+        designDecisions: out.designDecisions,
+        provider: provider.provider,
+        model: provider.model,
+      },
+    };
+  } catch (err) {
+    // fail-closed：任何 LLM 失败（网络/HTTP/校验）都只回退 llmSummary，不整命令失败
+    logger.warn(
+      `LLM semantic summary failed (${(err as Error).message}); falling back to rule-based signals.`,
+    );
+    return signals;
+  }
+}
+
+export function makeSemanticSource(
   deps: CliDeps,
   reposN: number,
 ): { collect(login: string): Promise<L3CollectedData> } {
@@ -99,6 +152,17 @@ function renderMarkdown(
   lines.push('');
   lines.push(`- 规则版本：\`${signals.ruleVersion}\`；扫描仓库 ${collected.meta.reposScanned} 个（REST ${collected.meta.restCalls} 次）`);
   lines.push('');
+  if (signals.llmSummary) {
+    lines.push(`**LLM 语义摘要**（${signals.llmSummary.provider}/${signals.llmSummary.model}）`);
+    lines.push('');
+    lines.push(signals.llmSummary.repoSummary);
+    if (signals.llmSummary.designDecisions.length > 0) {
+      lines.push('');
+      lines.push('设计决策：');
+      for (const d of signals.llmSummary.designDecisions) lines.push(`- ${d}`);
+    }
+    lines.push('');
+  }
   if (signals.summary.techStack.length > 0) {
     lines.push(`**技术栈**：${signals.summary.techStack.join(', ')}`);
   }

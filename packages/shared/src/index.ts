@@ -224,6 +224,7 @@ export const AbilityProfileSchema = z.object({
   improvementSuggestions: z.array(ImprovementSuggestionSchema).optional(), // C 端 P1（T09 产、T10 渲染）
   caveats: z.array(z.string()), // 明确"无法判断"的盲区
   fusion: FusionReportSchema.optional(), // 仅双源融合画像存在（platform=all），单源画像缺省
+  semantic: z.lazy(() => L3SignalsSchema).optional(), // L3 语义层信号（L3-A 规则版 / L3-B LLM 摘要），调用方透传并入快照
 });
 export type AbilityProfile = z.infer<typeof AbilityProfileSchema>;
 
@@ -2581,36 +2582,46 @@ export interface L3RepoFiles {
   missing: L3MissingKey[];
 }
 
-/** L3 语义层输出：规则版信号（纯 code + facts，句子由渲染侧按 locale 现拼） */
-export interface L3Signals {
-  ruleVersion: string;
-  repos: L3RepoSignal[];
-  summary: {
+/** L3 语义层输出：规则版信号（纯 code + facts，句子由渲染侧按 locale 现拼）。
+ * Zod schema 是单一事实源（同时供 AbilityProfileSchema.semantic 可选节校验）。 */
+export const L3SignalsSchema = z.object({
+  ruleVersion: z.string().min(1),
+  repos: z.array(
+    z.object({
+      owner: z.string().min(1),
+      name: z.string().min(1),
+      maturity: z.object({
+        hasTests: z.boolean(),
+        hasCi: z.boolean(),
+        hasDocs: z.boolean(),
+        hasLicense: z.boolean(),
+        hasDockerfile: z.boolean(),
+        fileCount: z.number().int().nonnegative(),
+        starBand: z.enum(['none', 'low', 'mid', 'high']),
+      }),
+      techStack: z.array(z.string().min(1)).max(20),
+      repoKind: z.enum(['library', 'framework', 'tool', 'application', 'boilerplate', 'unknown']),
+      domainHints: z.array(z.string().min(1)).max(10),
+      /** 本仓库缺失标注（透传采集侧） */
+      missing: z.array(z.enum(L3_MISSING_KEYS)),
+    }),
+  ),
+  summary: z.object({
     /** 跨仓库归并的技术栈标签（去重，≤20） */
-    techStack: string[];
+    techStack: z.array(z.string().min(1)).max(20),
     /** 领域提示标签（去重，≤10） */
-    domainHints: string[];
-  };
-}
-
-export interface L3RepoSignal {
-  owner: string;
-  name: string;
-  maturity: {
-    hasTests: boolean;
-    hasCi: boolean;
-    hasDocs: boolean;
-    hasLicense: boolean;
-    hasDockerfile: boolean;
-    /** 文件树条目数 */
-    fileCount: number;
-    starBand: 'none' | 'low' | 'mid' | 'high';
-  };
-  /** 依赖清单解析出的技术栈标签（≤20） */
-  techStack: string[];
-  repoKind: 'library' | 'framework' | 'tool' | 'application' | 'boilerplate' | 'unknown';
-  /** 领域提示（≤10） */
-  domainHints: string[];
-  /** 本仓库缺失标注（透传采集侧） */
-  missing: L3MissingKey[];
-}
+    domainHints: z.array(z.string().min(1)).max(10),
+  }),
+  /** L3-B：LLM 语义摘要（数据层原文，渲染侧按 locale 展示；规则版缺省） */
+  llmSummary: z
+    .object({
+      repoSummary: z.string().min(1),
+      designDecisions: z.array(z.string().min(1)).max(6),
+      provider: z.string().min(1),
+      model: z.string().min(1),
+    })
+    .optional(),
+});
+export type L3Signals = z.infer<typeof L3SignalsSchema>;
+/** 单仓库语义信号（由 L3SignalsSchema.repos 元素派生） */
+export type L3RepoSignal = L3Signals['repos'][number];

@@ -88,7 +88,7 @@ const EVIDENCE: EvidenceItem[] = [
 function abilityProfile(profileId: string, login: string): AbilityProfile {
   return {
     profileId,
-    analyzerVersion: '0.1-0.8',
+    analyzerVersion: '0.1-0.9',
     generatedAt: '2026-10-01T00:00:00.000Z',
     dataWindow: { since: '2025-10-01T00:00:00.000Z', until: '2026-10-01T00:00:00.000Z' },
     analysisLayers: ['L0', 'L1'],
@@ -120,7 +120,7 @@ function abilityProfile(profileId: string, login: string): AbilityProfile {
 async function insertProfile(repos: StorageContext, id: string, login: string): Promise<void> {
   await repos.profiles.insert({
     id,
-    analyzerVersion: '0.1-0.8',
+    analyzerVersion: '0.1-0.9',
     subjectPlatform: 'github',
     subjectLogin: login,
     dataWindowSince: '2025-10-01T00:00:00.000Z',

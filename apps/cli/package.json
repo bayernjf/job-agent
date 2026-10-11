@@ -25,6 +25,7 @@
     "@jobagent/gitee-source": "workspace:*",
     "@jobagent/github-source": "workspace:*",
     "@jobagent/job-source": "workspace:*",
+    "@jobagent/llm": "workspace:*",
     "@jobagent/resume-core": "workspace:*",
     "@jobagent/semantic-core": "workspace:*",
     "@jobagent/semantic-source": "workspace:*",

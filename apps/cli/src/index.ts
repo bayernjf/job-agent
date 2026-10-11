@@ -21,6 +21,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { analyze, fuseInputs, type AnalyzerInput, type FusionReport } from '@jobagent/analyzer-core';
+import { analyzeSemantic } from '@jobagent/semantic-core';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
 import { GiteeSource, type GiteeCollectedData } from '@jobagent/gitee-source';
 import type { SupportedPlatform } from '@jobagent/shared';
@@ -34,8 +35,10 @@ import { runAuth } from './auth-commands.js';
 import { runProfiles } from './profiles-commands.js';
 import { runRemoval } from './removal-commands.js';
 import { runResume } from './resume-commands.js';
-import { runSemantic } from './semantic-commands.js';
+import { runSemantic, attachLlmSummary, makeSemanticSource } from './semantic-commands.js';
 import type { L3CollectedData } from '@jobagent/semantic-source';
+import type { L3Signals } from '@jobagent/shared';
+import type { SemanticProvider } from '@jobagent/llm';
 
 export interface CliDeps {
   /** 环境变量 GITHUB_TOKEN 的值（由调用方注入，便于测试） */
@@ -54,6 +57,8 @@ export interface CliDeps {
   jobAdapters?: JobSourceAdapter[];
   /** L3 语义采集器注入点（semantic 子命令测试用 fake；生产默认 new SemanticSource） */
   semanticSource?: { collect(login: string): Promise<L3CollectedData> };
+  /** L3-B LLM 语义 provider 注入点（测试用 fake/回落；生产默认 createSemanticProviderFromEnv） */
+  semanticProvider?: SemanticProvider | null;
   logger?: Pick<Console, 'error' | 'warn' | 'info' | 'log'>;
   /** 注入"现在"（测试确定性）；默认 new Date().toISOString() */
   now?: () => string;
@@ -106,7 +111,27 @@ export async function analyzeLogin(
   login: string,
   deps: CliDeps,
   platform: SupportedPlatform | 'all' = 'github',
+  options: { semantic?: boolean; llm?: boolean } = {},
 ): Promise<AnalyzeResult> {
+  const logger = deps.logger ?? console;
+
+  /** L3 语义信号（analyze --semantic 用）：采集→规则版→可选 LLM 摘要；任一步失败降级为无 semantic 节 */
+  async function collectSemantic(): Promise<L3Signals | undefined> {
+    if (!options.semantic) return undefined;
+    try {
+      const source = deps.semanticSource ?? makeSemanticSource(deps, 5);
+      const collected = await source.collect(login);
+      let signals: L3Signals = analyzeSemantic(collected.input);
+      if (options.llm) {
+        signals = await attachLlmSummary(signals, collected, deps, logger);
+      }
+      return signals;
+    } catch (err) {
+      logger.warn(`L3 semantic collection failed for ${login} (${(err as Error).message}); profile proceeds without semantic section.`);
+      return undefined;
+    }
+  }
+
   if (platform === 'all') {
     // B-5 最小双源融合：分别采集 GitHub/Gitee，去重镜像后由同一内核分析（在线多源融合仍缓做）
     const gh = await makeSource(deps, 'github').collect(login);
@@ -115,20 +140,24 @@ export async function analyzeLogin(
       primary: 'github',
       secondary: 'gitee',
     });
+    const semantic = await collectSemantic();
     const fusedProfile = analyze(fused.input, {
       profileId: randomUUID(),
       claimed: false,
       platform: 'github',
       fusion: fused.report,
+      ...(semantic ? { semantic } : {}),
     });
     return { profile: fusedProfile, meta: { ...gh.meta, fusion: fused.report } };
   }
   const source = makeSource(deps, platform);
   const collected = await source.collect(login);
+  const semantic = await collectSemantic();
   const profile = analyze(collected.input as AnalyzerInput, {
     profileId: randomUUID(),
     claimed: false,
     platform,
+    ...(semantic ? { semantic } : {}),
   });
   return { profile, meta: collected.meta };
 }
@@ -182,6 +211,8 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
         out: { type: 'string', short: 'o' },
         platform: { type: 'string' },
         format: { type: 'string' },
+        semantic: { type: 'boolean' },
+        llm: { type: 'boolean' },
       },
     });
     const login = positionals[0];
@@ -196,11 +227,14 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
       return 2;
     }
     if (!login) {
-      logger.error('Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] [--platform github|gitee|all]');
+      logger.error('Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] [--platform github|gitee|all] [--semantic [--llm]]');
       return 2;
     }
     try {
-      const result = await analyzeLogin(login, deps, platform);
+      const result = await analyzeLogin(login, deps, platform, {
+        semantic: values.semantic ?? false,
+        llm: values.llm ?? false,
+      });
       writeOutput(values.out, renderProfile(result, format), logger, stdout);
       return 0;
     } catch (err) {

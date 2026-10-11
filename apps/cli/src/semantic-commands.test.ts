@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { run } from './index.js';
+import { run, type CliDeps } from './index.js';
 import { analyzeSemantic } from '@jobagent/semantic-core';
 import type { L3CollectedData } from '@jobagent/semantic-source';
 
@@ -30,15 +30,13 @@ const fakeInput: L3CollectedData = {
 
 function makeCli() {
   const out: string[] = [];
-  return {
-    deps: {
-      token: 'fake-token',
-      semanticSource: { collect: async () => fakeInput },
-      logger: { error: (m: string) => out.push(m), warn: () => {}, info: () => {}, log: () => {} },
-      stdout: { write: (c: string) => out.push(c) },
-    },
-    out,
+  const deps: CliDeps = {
+    token: 'fake-token',
+    semanticSource: { collect: async () => fakeInput },
+    logger: { error: (m: string) => out.push(m), warn: () => {}, info: () => {}, log: () => {} },
+    stdout: { write: (c: string) => out.push(c) },
   };
+  return { deps, out };
 }
 
 describe('semantic CLI', () => {
@@ -79,5 +77,68 @@ describe('semantic CLI', () => {
     const code = await run(['semantic', 'analyze', 'ghost'], deps);
     expect(code).toBe(1);
     expect(out.join('')).toContain('semantic analyze failed for ghost: not_found');
+  });
+
+  it('--llm attaches the LLM summary when a provider is injected', async () => {
+    const { deps, out } = makeCli();
+    deps.semanticProvider = {
+      provider: 'fake',
+      model: 'fake-model-1',
+      promptVersion: 'semantic-0.1',
+      generate: async () => ({
+        repoSummary: 'Focuses on TypeScript agent frameworks.',
+        designDecisions: ['React UI layer (evidence: package.json)'],
+      }),
+    };
+    const code = await run(['semantic', 'analyze', 'dev-user', '--llm'], deps);
+    expect(code).toBe(0);
+    const parsed = JSON.parse(out.join(''));
+    expect(parsed.signals.llmSummary).toEqual({
+      repoSummary: 'Focuses on TypeScript agent frameworks.',
+      designDecisions: ['React UI layer (evidence: package.json)'],
+      provider: 'fake',
+      model: 'fake-model-1',
+    });
+  });
+
+  it('--llm without a provider warns and falls back to rule-based signals', async () => {
+    const { deps, out } = makeCli();
+    const warns: string[] = [];
+    deps.logger = {
+      error: (m: string) => out.push(m),
+      warn: (m: string) => warns.push(m),
+      info: () => {},
+      log: () => {},
+    };
+    deps.semanticProvider = null; // 模拟未配 LLM_API_KEY
+    const code = await run(['semantic', 'analyze', 'dev-user', '--llm'], deps);
+    expect(code).toBe(0);
+    expect(warns.join('')).toContain('LLM_API_KEY is not set');
+    const parsed = JSON.parse(out.join(''));
+    expect(parsed.signals.llmSummary).toBeUndefined();
+  });
+
+  it('--llm falls back to rule-based signals when the LLM call fails (fail-closed)', async () => {
+    const { deps, out } = makeCli();
+    const warns: string[] = [];
+    deps.logger = {
+      error: (m: string) => out.push(m),
+      warn: (m: string) => warns.push(m),
+      info: () => {},
+      log: () => {},
+    };
+    deps.semanticProvider = {
+      provider: 'fake',
+      model: 'fake-model-1',
+      promptVersion: 'semantic-0.1',
+      generate: async () => {
+        throw new Error('upstream 500');
+      },
+    };
+    const code = await run(['semantic', 'analyze', 'dev-user', '--llm'], deps);
+    expect(code).toBe(0);
+    expect(warns.join('')).toContain('falling back to rule-based signals');
+    const parsed = JSON.parse(out.join(''));
+    expect(parsed.signals.llmSummary).toBeUndefined();
   });
 });

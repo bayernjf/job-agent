@@ -31,7 +31,7 @@ function evidence(id: string, sourceType: EvidenceItem['sourceType'], claim: str
 function makeProfile(skills: SkillTag[], overrides: Partial<AbilityProfile> = {}): AbilityProfile {
   return {
     profileId: 'p-1',
-    analyzerVersion: '0.1-0.8',
+    analyzerVersion: '0.1-0.9',
     generatedAt: '2026-10-01T00:00:00.000Z',
     dataWindow: { since: '2024-01-01T00:00:00.000Z', until: '2026-10-01T00:00:00.000Z' },
     analysisLayers: ['L0', 'L1'],
@@ -111,7 +111,7 @@ describe('buildCoverLetter', () => {
     expect(draft.ruleVersion).toBe(COVER_LETTER_RULE_VERSION);
     expect(draft.provenance).toEqual({
       profileId: 'p-1',
-      analyzerVersion: '0.1-0.8',
+      analyzerVersion: '0.1-0.9',
       ruleVersion: COVER_LETTER_RULE_VERSION,
     });
     expect(draft.generatedAt).toBe('2026-10-03T00:00:00.000Z');
