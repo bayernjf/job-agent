@@ -25,6 +25,8 @@ COPY packages/search-source/package.json packages/search-source/
 COPY packages/ui-tokens/package.json packages/ui-tokens/
 COPY packages/gitee-source/package.json packages/gitee-source/
 COPY packages/claim-core/package.json packages/claim-core/
+COPY packages/semantic-core/package.json packages/semantic-core/
+COPY packages/semantic-source/package.json packages/semantic-source/
 COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/
 COPY apps/cli/package.json apps/cli/

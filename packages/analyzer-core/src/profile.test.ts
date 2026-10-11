@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyze, RULE_VERSION } from './index.js';
-import { AbilityProfileSchema, SCHEMA_VERSION } from '@jobagent/shared';
+import { AbilityProfileSchema, SCHEMA_VERSION, type L3Signals } from '@jobagent/shared';
 import { buildInput } from './test-input.js';
 
 describe('analyze (profile assembly)', () => {
@@ -48,6 +48,40 @@ describe('analyze (profile assembly)', () => {
   it('omits fusion from a single-source profile', () => {
     const profile = analyze(buildInput(), { profileId: 'single-p' });
     expect(profile.fusion).toBeUndefined();
+  });
+
+  it('attaches the L3 semantic signals to the snapshot when provided (L3-C)', () => {
+    const semantic: L3Signals = {
+      ruleVersion: '0.1',
+      repos: [
+        {
+          owner: 'dev-strong',
+          name: 'engine',
+          repoKind: 'application',
+          maturity: {
+            hasTests: true,
+            hasCi: true,
+            hasDocs: true,
+            hasLicense: false,
+            hasDockerfile: false,
+            fileCount: 42,
+            starBand: 'low',
+          },
+          techStack: ['typescript'],
+          domainHints: ['agent'],
+          missing: [],
+        },
+      ],
+      summary: { techStack: ['typescript'], domainHints: ['agent'] },
+    };
+    const profile = analyze(buildInput(), { profileId: 'semantic-p', semantic });
+    expect(profile.semantic).toEqual(semantic);
+    expect(AbilityProfileSchema.safeParse(profile).success).toBe(true);
+  });
+
+  it('omits the semantic section when L3 is not enabled', () => {
+    const profile = analyze(buildInput(), { profileId: 'no-semantic-p' });
+    expect(profile.semantic).toBeUndefined();
   });
 
   it('produces a deterministic, schema-valid profile for a strong account', () => {

@@ -105,11 +105,20 @@ const {
   disputeEmail,
 } = pageData;
 
+// L3 语义洞察：仓库类型计数（报告页 semantic 板块用）
+const semanticKindCounts: Record<string, number> = {};
+if (profile.semantic) {
+  for (const repo of profile.semantic.repos) {
+    semanticKindCounts[repo.repoKind] = (semanticKindCounts[repo.repoKind] ?? 0) + 1;
+  }
+}
+
 // 右侧章节锚点导航（design-ui-polish V3）：只列服务端确认真实渲染的章节
 const tocItems: { id: string; label: string }[] = [
   { id: 'section-summary', label: t('report.summary.title') },
   { id: 'section-authenticity', label: t('report.authenticity.title') },
   ...(profile.skillTags.length > 0 ? [{ id: 'section-skills', label: t('report.skills.title') }] : []),
+  ...(profile.semantic ? [{ id: 'section-semantic', label: t('report.semantic.title') }] : []),
   ...(!isRecruiter
     ? [
         { id: 'section-activity', label: t('report.activity.title') },
@@ -470,6 +479,87 @@ const tocItems: { id: string; label: string }[] = [
                     )}
                   </ul>
                 </div>
+              )
+            }
+          </div>
+        </section>
+      )
+    }
+
+    <!-- 语义洞察（L3，2026-10-11）：仓库成熟度 / 技术栈 / 领域线索 / 仓库类型；缺失传透不冒充 -->
+    {
+      profile.semantic && (
+        <section class="ja-card" id="section-semantic">
+          <h2>{t('report.semantic.title')}</h2>
+          <p class="ja-muted">{t('report.semantic.reposScanned').replace('{n}', String(profile.semantic.repos.length))}</p>
+          <div class="ja-stack-3">
+            <div>
+              <h3 class="kind-label">{t('report.semantic.maturity')}</h3>
+              <ul class="tag-list">
+                {(['hasTests', 'hasCi', 'hasDocs', 'hasLicense', 'hasDockerfile'] as const).map((flag) => {
+                  const count = profile.semantic!.repos.filter((r) => r.maturity[flag]).length;
+                  return (
+                    <li class="skill-tag">
+                      {t(`report.semantic.${flag}` as MessageKey)} × {count}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            {
+              profile.semantic.summary.techStack.length > 0 && (
+                <div>
+                  <h3 class="kind-label">{t('report.semantic.techStack')}</h3>
+                  <div class="tag-list">
+                    {profile.semantic.summary.techStack.map((s) => (
+                      <span class="skill-tag">{s}</span>
+                    ))}
+                  </div>
+                </div>
+              )
+            }
+            {
+              profile.semantic.summary.domainHints.length > 0 && (
+                <div>
+                  <h3 class="kind-label">{t('report.semantic.domainHints')}</h3>
+                  <div class="tag-list">
+                    {profile.semantic.summary.domainHints.map((h) => (
+                      <span class="skill-tag">{h}</span>
+                    ))}
+                  </div>
+                </div>
+              )
+            }
+            <div>
+              <h3 class="kind-label">{t('report.semantic.repoKinds')}</h3>
+              <div class="tag-list">
+                {Object.entries(semanticKindCounts).map(([kind, count]) => (
+                  <span class="skill-tag">
+                    {t(`report.semantic.repoKind.${kind}` as MessageKey)} × {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {
+              profile.semantic.llmSummary && (
+                <div>
+                  <h3 class="kind-label">{t('report.semantic.llmSummary')}</h3>
+                  <p class="ja-stack-1">{profile.semantic.llmSummary.repoSummary}</p>
+                  {
+                    profile.semantic.llmSummary.designDecisions.length > 0 && (
+                      <ul class="ja-stack-1">
+                        {profile.semantic.llmSummary.designDecisions.map((d) => (
+                          <li>{d}</li>
+                        ))}
+                      </ul>
+                    )
+                  }
+                </div>
+              )
+            }
+            {
+              profile.semantic.repos.some((r) => r.missing.length > 0) && (
+                <p class="ja-muted">{t('report.semantic.missingNote')}</p>
               )
             }
           </div>

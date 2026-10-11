@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createStorage } from '@jobagent/storage';
 import type { StorageContext } from '@jobagent/storage';
 import type { GitHubCollectedData } from '@jobagent/github-source';
-import { run, type CliDeps, type AnalyzeResult } from './index.js';
+import { run, analyzeLogin, type CliDeps, type AnalyzeResult } from './index.js';
 
 function makeInput(login: string) {
   return {
@@ -230,6 +230,70 @@ describe('cli run', () => {
     const parsed = JSON.parse(c.stdout) as AnalyzeResult;
     expect(parsed.profile.subject.login).toBe('dev-strong');
     expect((parsed.meta.budgetUsed as { graphqlPoints?: number }).graphqlPoints).toBe(10);
+  });
+
+  it('analyze --semantic merges L3 signals into the profile snapshot', async () => {
+    const c = capture();
+    const deps: CliDeps = {
+      ...c.deps({ collect: async (login) => fakeCollected(login) }),
+      semanticSource: {
+        collect: async () => ({
+          input: {
+            collectedAt: '2026-10-11T00:00:00.000Z',
+            login: 'dev-strong',
+            repos: [
+              {
+                owner: 'dev-strong',
+                name: 'alpha',
+                defaultBranch: 'main',
+                language: 'TypeScript',
+                topics: ['ai'],
+                description: 'Agent framework',
+                starred: 120,
+                fileTree: ['package.json', 'src/index.test.ts'],
+                readmeExcerpt: '# Alpha',
+                keyFiles: { 'package.json': '{"dependencies":{"react":"^18"}}' },
+                missing: [],
+              },
+            ],
+          },
+          meta: { platform: 'github', restCalls: 3, reposScanned: 1 },
+        }),
+      },
+    };
+    const direct = await analyzeLogin('dev-strong', deps, 'github', { semantic: true });
+    expect(direct.profile.semantic).toBeDefined();
+    const code = await run(['analyze', 'dev-strong', '--semantic'], deps);
+    expect(code).toBe(0);
+    const parsed = JSON.parse(c.stdout) as AnalyzeResult;
+    expect(parsed.profile.semantic).toBeDefined();
+    expect(parsed.profile.semantic?.ruleVersion).toBe('0.1');
+    expect(parsed.profile.semantic?.summary.techStack).toContain('react');
+    expect(parsed.profile.analyzerVersion.endsWith('-0.9')).toBe(true);
+  });
+
+  it('analyze --semantic fails softly to no-semantic when collection errors', async () => {
+    const c = capture();
+    const warns: string[] = [];
+    const deps: CliDeps = {
+      ...c.deps({ collect: async (login) => fakeCollected(login) }),
+      logger: {
+        error: () => {},
+        warn: (m: string) => warns.push(m),
+        info: () => {},
+        log: () => {},
+      },
+      semanticSource: {
+        collect: async () => {
+          throw new Error('budget_exhausted: REST budget 60');
+        },
+      },
+    };
+    const code = await run(['analyze', 'dev-strong', '--semantic'], deps);
+    expect(code).toBe(0);
+    const parsed = JSON.parse(c.stdout) as AnalyzeResult;
+    expect(parsed.profile.semantic).toBeUndefined();
+    expect(warns.join('')).toContain('proceeds without semantic section');
   });
 
   it('forwards --platform gitee to the analyzer', async () => {

@@ -20,9 +20,16 @@ export {
   type CoverLetterProvider,
 } from './cover-letter.js';
 export {
+  LlmSemanticProvider,
+  SEMANTIC_PROMPT_VERSION,
+  type LlmSemanticSummary,
+  type SemanticProvider,
+} from './semantic.js';
+export {
   OpenAICompatibleClient,
   createResumePolishProviderFromEnv,
   createCoverLetterProviderFromEnv,
+  createSemanticProviderFromEnv,
   providerFromBaseUrl,
   parseJsonObject,
 } from './openai-compatible-client.js';

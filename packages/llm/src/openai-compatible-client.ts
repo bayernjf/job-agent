@@ -14,6 +14,7 @@ import type { LlmClient, LlmJsonRequest } from './port.js';
 import { LlmResponseError } from './port.js';
 import { LlmCoverLetterProvider, type CoverLetterProvider } from './cover-letter.js';
 import { LlmResumePolishProvider } from './resume-polish.js';
+import { LlmSemanticProvider, type SemanticProvider } from './semantic.js';
 
 /** 可注入的最小响应形状（不依赖 DOM lib 的 Response 类型）。 */
 export interface LlmFetchResponse {
@@ -298,4 +299,41 @@ export function createCoverLetterProviderFromEnv(
     fetchImpl: options.fetchImpl,
   });
   return new LlmCoverLetterProvider(client);
+}
+
+/**
+ * 仅从**服务端**环境变量构造 L3-B 语义摘要 provider（2026-10-11）。
+ * 与 createResumePolishProviderFromEnv 同款默认关闭策略：无 LLM_API_KEY →
+ * null（调用方如实走规则版，不伪造语义摘要）；有 key 缺 LLM_MODEL → 抛错。
+ */
+export function createSemanticProviderFromEnv(
+  env: LlmEnv = process.env,
+  options: CreateProviderOptions = {},
+): SemanticProvider | null {
+  const apiKey = env.LLM_API_KEY?.trim() ?? '';
+  if (!apiKey) return null;
+
+  const model = env.LLM_MODEL?.trim() ?? '';
+  if (!model) {
+    throw new Error(
+      'LLM_API_KEY is set but LLM_MODEL is missing; set an OpenAI-compatible model id',
+    );
+  }
+
+  const baseUrl = stripTrailingSlash(env.LLM_BASE_URL?.trim() || 'https://api.openai.com/v1');
+  const parsedTimeout = Number(env.LLM_TIMEOUT_MS);
+  const timeoutMs =
+    env.LLM_TIMEOUT_MS && Number.isFinite(parsedTimeout) && parsedTimeout > 0
+      ? parsedTimeout
+      : undefined;
+
+  const client = new OpenAICompatibleClient({
+    baseUrl,
+    apiKey,
+    model,
+    provider: env.LLM_PROVIDER?.trim() || undefined,
+    timeoutMs,
+    fetchImpl: options.fetchImpl,
+  });
+  return new LlmSemanticProvider(client);
 }

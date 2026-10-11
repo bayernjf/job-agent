@@ -8,6 +8,7 @@ import {
   composePrSummary,
   type AbilityProfile,
   type FusionReport,
+  type L3Signals,
   type SupportedPlatform,
 } from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
@@ -36,6 +37,11 @@ export interface AnalyzeOptions {
    * 传 ['L0']，避免快照宣称"L1 已分析"而实际没有行为数据。
    */
   layers?: Array<'L0' | 'L1'>;
+  /**
+   * L3 语义信号（L3-C）：由调用方（CLI --semantic / 未来 Worker）显式透传，
+   * 内核不解读、只原样挂到画像快照随快照持久化；未启用 L3 时缺省。
+   */
+  semantic?: L3Signals;
 }
 
 export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): AbilityProfile {
@@ -115,5 +121,7 @@ export function assembleProfile(input: AnalyzerInput, options: AnalyzeOptions): 
     caveats,
     // 跨源融合报告仅由调用方在双源融合时透传，原样落快照；单源画像无此节
     ...(options.fusion ? { fusion: options.fusion } : {}),
+    // L3 语义信号仅由调用方在启用 L3 时显式透传，原样落快照；未启用无此节
+    ...(options.semantic ? { semantic: options.semantic } : {}),
   };
 }

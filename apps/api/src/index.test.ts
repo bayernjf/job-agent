@@ -635,6 +635,54 @@ describe('GET /profiles/:id 授权收口（面试题文本按身份可见）', (
     expect(body.authorizationNotice).toBe(UNAUTHORIZED_NOTICE);
   });
 
+  it('L3 semantic signals stay public for anonymous viewers (only question text is gated)', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({ repos });
+    const withSemantic: AbilityProfile = {
+      ...sampleProfileWithQuestions('prof-semantic-anon'),
+      semantic: {
+        ruleVersion: '0.1',
+        repos: [
+          {
+            owner: 'gated-subject',
+            name: 'alpha',
+            maturity: {
+              hasTests: true,
+              hasCi: true,
+              hasDocs: true,
+              hasLicense: false,
+              hasDockerfile: true,
+              fileCount: 42,
+              starBand: 'low',
+            },
+            techStack: ['typescript', 'react'],
+            repoKind: 'application',
+            domainHints: ['ai'],
+            missing: [],
+          },
+        ],
+        summary: { techStack: ['typescript', 'react'], domainHints: ['ai'] },
+        llmSummary: {
+          repoSummary: 'A focused agent workbench with typed contracts.',
+          designDecisions: ['Type-first contracts in shared'],
+          provider: 'fake',
+          model: 'fake-model-1',
+        },
+      },
+    };
+    await insertSnapshot(repos, withSemantic);
+
+    const res = await app.request('/profiles/prof-semantic-anon');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.snapshot.semantic).toBeDefined();
+    expect(body.snapshot.semantic.summary.techStack).toContain('typescript');
+    expect(body.snapshot.semantic.repos[0].maturity.hasTests).toBe(true);
+    expect(body.snapshot.semantic.llmSummary.repoSummary).toContain('agent workbench');
+    // 语义是公开结构化事实；被收口的仍然只有面试题
+    expect(body.snapshot.interviewQuestions).toEqual([]);
+  });
+
   it('a demo session is gated the same way as an anonymous request', async () => {
     const repos = await freshRepos();
     const app = await createApp({ repos });
