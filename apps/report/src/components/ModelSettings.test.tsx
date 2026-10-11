@@ -127,6 +127,33 @@ describe('ModelSettings 测试连接', () => {
     });
   });
 
+  it('保存成功后自动发一次空体 validate，并回显连接结果', async () => {
+    const calls = stubFetch();
+    render(<ModelSettings apiBase="https://api.test" locale="zh-CN" labels={labels} />);
+
+    await waitFor(() => expect(screen.getByTestId('model-settings-key')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('model-settings-save'));
+
+    // PUT 成功后必须自动接一次 validate（空体＝测刚保存的那一组）
+    await waitFor(() =>
+      expect(calls.filter((c) => c.url.endsWith('/validate'))).toHaveLength(1),
+    );
+    const validateCall = calls.find((c) => c.url.endsWith('/validate'))!;
+    expect(validateCall.method).toBe('POST');
+    expect(validateCall.body).toBe('{}');
+    // 顺序：先 PUT 保存，后 POST 验证
+    const putIndex = calls.findIndex(
+      (c) => c.url.endsWith('/account/llm-config') && c.method === 'PUT',
+    );
+    const validateIndex = calls.findIndex((c) => c.url.endsWith('/validate'));
+    expect(putIndex).toBeGreaterThanOrEqual(0);
+    expect(validateIndex).toBeGreaterThan(putIndex);
+    // 自动验证成功后回显连接结果（等价于帮用户点了一次测试连接）
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('连接成功：saved-model'),
+    );
+  });
+
   it('失败时显示服务端给的 error 原文，而不是只剩状态码', async () => {
     const calls: Array<{ url: string; body: string | null }> = [];
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
