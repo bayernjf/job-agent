@@ -152,12 +152,22 @@ export class OpenAICompatibleClient implements LlmClient {
     try {
       res = await this.fetchImpl(this.endpoint, init);
     } catch (err) {
-      if ((err as { name?: string } | null)?.name === 'AbortError') {
-        throw new LlmResponseError(`LLM request timed out after ${this.timeoutMs}ms`, err);
+      const name = (err as { name?: string } | null)?.name;
+      // 实测（Node 24 真 fetch 打一个不回包的本地服务）：AbortSignal.timeout() 抛的是
+      // name='TimeoutError'／message='The operation was aborted due to timeout'，不是 AbortError。
+      // 只判 AbortError 就会把真正的超时归到下面的网络分支里，timeoutMs 随之丢失
+      // ——2026-10-10 生产求职信 502 的 reason 就是这个被降级后的句子。
+      if (name === 'AbortError' || name === 'TimeoutError') {
+        // 超时预算进 detail：日志里"60s 到了没返回"和"上游 401"是两种完全不同的故障
+        throw new LlmResponseError(`LLM request timed out after ${this.timeoutMs}ms`, err, {
+          kind: 'timeout',
+          timeoutMs: this.timeoutMs,
+        });
       }
       throw new LlmResponseError(
         `LLM request failed: ${(err as Error)?.message ?? 'network error'}`,
         err,
+        { kind: 'network' },
       );
     }
 
@@ -171,6 +181,8 @@ export class OpenAICompatibleClient implements LlmClient {
       }
       throw new LlmResponseError(
         `LLM endpoint returned HTTP ${res.status}${detail ? `: ${detail}` : ''}`,
+        undefined,
+        { kind: 'http', status: res.status },
       );
     }
 
@@ -178,17 +190,21 @@ export class OpenAICompatibleClient implements LlmClient {
     try {
       data = await res.json();
     } catch (err) {
-      throw new LlmResponseError('LLM response body is not valid JSON', err);
+      throw new LlmResponseError('LLM response body is not valid JSON', err, { kind: 'parse' });
     }
 
     const content = (
       data as { choices?: Array<{ message?: { content?: unknown } }> } | null
     )?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || !content.trim()) {
-      throw new LlmResponseError('LLM response missing choices[0].message.content string');
+      throw new LlmResponseError('LLM response missing choices[0].message.content string', undefined, {
+        kind: 'parse',
+      });
     }
     const parsed = parseJsonObject(content);
-    if (parsed === undefined) throw new LlmResponseError('LLM content is not a JSON object');
+    if (parsed === undefined) {
+      throw new LlmResponseError('LLM content is not a JSON object', undefined, { kind: 'parse' });
+    }
     return parsed as T;
   }
 }
