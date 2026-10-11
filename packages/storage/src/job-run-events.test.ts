@@ -72,7 +72,7 @@ describe('SqliteJobRunEventsRepository', () => {
       }),
     );
 
-    const stream = await repo.listByRun('run-1');
+    const stream = (await repo.listLatestPage('run-1')).events;
     expect(stream.map((e) => e.id)).toEqual(['evt-1', 'evt-2']);
     expect(stream[0]!.fromStatus).toBeNull();
     expect(stream[0]!.toStatus).toBe('configured');
@@ -83,7 +83,7 @@ describe('SqliteJobRunEventsRepository', () => {
 
     // 契约（2026-10-10 改）：limit 取的是**最新** N 条，返回顺序仍是时间正序。
     // 旧语义（asc + limit）取的是最旧 N 条，会让事件流在跑满上限后冻住。
-    expect((await repo.listByRun('run-1', 1)).map((e) => e.id)).toEqual(['evt-2']);
+    expect((await repo.listLatestPage('run-1', 1)).events.map((e) => e.id)).toEqual(['evt-2']);
     close();
   });
 
@@ -104,13 +104,15 @@ describe('SqliteJobRunEventsRepository', () => {
       );
     }
 
-    const page = await repo.listByRun('run-big', 200);
-    expect(page).toHaveLength(200);
+    const page = await repo.listLatestPage('run-big', 200);
+    expect(page.events).toHaveLength(200);
     // 最旧 50 条被截断，最新一条必须在；顺序仍是正序（回放顺序）
-    expect(page[0]!.id).toBe('evt-050');
-    expect(page[page.length - 1]!.id).toBe('evt-249');
-    const times = page.map((e) => Date.parse(e.createdAt));
+    expect(page.events[0]!.id).toBe('evt-050');
+    expect(page.events[page.events.length - 1]!.id).toBe('evt-249');
+    const times = page.events.map((e) => Date.parse(e.createdAt));
     expect(times).toEqual([...times].sort((a, b) => a - b));
+    // 哨兵行探出来的，不是"没满一页"猜的
+    expect(page.hasMore).toBe(true);
     close();
   });
 
@@ -134,17 +136,69 @@ describe('SqliteJobRunEventsRepository', () => {
       );
     }
 
-    expect((await repo.listByRun('run-tie')).map((e) => e.id)).toEqual(order);
+    expect((await repo.listLatestPage('run-tie')).events.map((e) => e.id)).toEqual(order);
     // 窗口正好截在同一时刻中间时，留下的是该时刻**后写入**的那两条（取最新），
     // 但它们的相对顺序仍按写入顺序返回，不会倒过来
-    expect((await repo.listByRun('run-tie', 2)).map((e) => e.id)).toEqual(['evt-mmm', 'evt-aaa']);
+    expect((await repo.listLatestPage('run-tie', 2)).events.map((e) => e.id)).toEqual([
+      'evt-mmm',
+      'evt-aaa',
+    ]);
+    close();
+  });
+
+  it('walks the whole stream backwards without losing or repeating an event', async () => {
+    const { repo, close } = freshRepo();
+    const base = Date.parse('2026-10-10T00:00:00.000Z');
+    // 7 条：0-2 同一时刻（一次 tick 落三条），之后每条隔一分钟
+    const times = (i: number) =>
+      new Date(base + (i < 3 ? 0 : (i - 2) * 60_000)).toISOString();
+    for (let i = 0; i < 7; i += 1) {
+      await repo.insert(
+        evt({
+          id: `evt-${i}`,
+          runId: 'run-walk',
+          event: 'rescan',
+          fromStatus: 'watching',
+          toStatus: 'watching',
+          createdAt: times(i),
+        }),
+      );
+    }
+
+    const first = await repo.listLatestPage('run-walk', 3);
+    expect(first.events.map((e) => e.id)).toEqual(['evt-4', 'evt-5', 'evt-6']);
+    expect(first.hasMore).toBe(true);
+
+    const second = await repo.listOlderPage('run-walk', first.events[0]!.id, 3);
+    // 游标 evt-4 之前的最新三条是 1/2/3（同刻那组里 0 更靠后写入，留在下一页）
+    expect(second!.events.map((e) => e.id)).toEqual(['evt-1', 'evt-2', 'evt-3']);
+    expect(second!.hasMore).toBe(true);
+
+    const third = await repo.listOlderPage('run-walk', second!.events[0]!.id, 3);
+    expect(third!.events.map((e) => e.id)).toEqual(['evt-0']);
+    expect(third!.hasMore).toBe(false);
+
+    // 三页接起来正好是全集：不重、不漏（这就是"分页不吞审计事件"的判据）
+    const walked = [...third!.events, ...second!.events, ...first.events].map((e) => e.id);
+    expect(walked).toEqual([
+      'evt-0',
+      'evt-1',
+      'evt-2',
+      'evt-3',
+      'evt-4',
+      'evt-5',
+      'evt-6',
+    ]);
+
+    expect(await repo.listOlderPage('run-walk', 'evt-does-not-exist', 3)).toBeUndefined();
+    expect(await repo.listOlderPage('run-other', 'evt-0', 3)).toBeUndefined();
     close();
   });
 
   it('defaults an omitted payload to an empty object', async () => {
     const { repo, close } = freshRepo();
     await repo.insert(evt({ id: 'evt-1', runId: 'run-1', createdAt: '2026-10-03T01:00:00.000Z' }));
-    const [stored] = await repo.listByRun('run-1');
+    const [stored] = (await repo.listLatestPage('run-1')).events;
     expect(stored!.payload).toEqual({});
     close();
   });
