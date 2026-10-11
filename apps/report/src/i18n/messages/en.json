@@ -596,6 +596,7 @@
   "admin.saveSuccess": "Catalog saved and active",
   "admin.saveFailed": "Save failed",
   "admin.loadFailed": "Failed to load catalog",
+  "admin.loading": "Loading model catalog…",
   "admin.unauthorized": "Not signed in or session expired",
   "admin.emptyHint": "An empty catalog falls back to the code default (agnes-3.0-flash)",
   "modelSettings.title": "My model settings",

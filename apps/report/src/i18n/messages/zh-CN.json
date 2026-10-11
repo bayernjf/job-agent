@@ -596,6 +596,7 @@
   "admin.saveSuccess": "目录已保存并生效",
   "admin.saveFailed": "保存失败",
   "admin.loadFailed": "加载目录失败",
+  "admin.loading": "正在加载模型目录…",
   "admin.unauthorized": "未登录或会话已过期",
   "admin.emptyHint": "目录为空时将回退代码默认（agnes-3.0-flash）",
   "modelSettings.title": "我的模型设置",
