@@ -63,6 +63,7 @@
 | `DEMO_MATCH_RATE_PER_HOUR` | `60` | match 计算 IP 兜底窗口（仅观测/防刷） |
 | `DEMO_SUBJECT_RATE_PER_HOUR` | `120` | `by-subject` 公开主体解析的 IP 兜底窗口（仅防刷，防 login 字典枚举） |
 | `DEMO_REMOVAL_RATE_PER_HOUR` | `5` | 提交移除申请（`POST /profiles/:id/removal-request`）的 IP 兜底窗口（仅防刷） |
+| `DEMO_CANDIDATES_RATE_PER_HOUR` | `120` | 人才检索（`GET /candidates` 与 `GET /candidates/export`）的 IP 兜底窗口（仅防刷，防自声明招聘方顺 offset 拖库） |
 | `DEMO_IP_SALT` | 空（进程内随机） | IP 哈希盐，生产必填 |
 | `DEMO_PRESET_LOGINS` | 空 | 预置示例清单，形如 `github:alice,gitee:bob` |
 | `CORS_ALLOW_ORIGINS` | 空 | 跨域 Origin 白名单（逗号分隔） |
@@ -896,6 +897,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 实现上仓储层先用一条粗筛 SQL 取最近不超过 1000 条 complete 画像（刻意规避 SQLite/Postgres 的 JSON 查询方言差异），技能/真实性/置信度/关键词等精细过滤与排序全部在源无关的纯函数层（`packages/storage` 的 `searchCandidates`）完成。
 
 **访问前提（F10，2026-09-30 起，决策 #17 第一期）**——本端点是唯一仍可批量检索未经本人授权画像库的入口，故只对**已显式声明招聘方**的登录用户开放：anonymous/demo → `401 AUTH_REQUIRED`；已登录未声明 → `403 RECRUITER_DECLARATION_REQUIRED`（响应体不含任何画像字段）；已声明 → 200。声明经 `PUT /auth/recruiter` 完成（无审核、自声明）。单张画像的公开只读口径（`GET /profiles/:id`、`/exportable`、`/by-subject/*`）不受影响，仍全放行（决策 #1-A）。报告页 `/[locale]/recruit` 对未声明身份 SSR 渲染声明墙，墙同时替换首屏候选人列表（不存在半屏数据）。
+
+**IP 兜底限流（2026-10-11 起，决策 B2）**——F10 闸是"自声明"（零审核），而本端点可顺 offset 拖走整条精筛窗，故按 IP 滑窗计数（与 `by-subject` 同款机制，`DEMO_CANDIDATES_RATE_PER_HOUR` 默认 120/小时）：超限返回 429 `{ "error": "candidates rate limit exceeded", "code": "DEMO_RATE_LIMITED", "bucket": "candidates", "retryAfterSeconds": 3600 }`；`GET /candidates/export` 与 `GET /candidates` **共用一个桶**。仅防刷，不影响正常检索。
 
 #### Query 参数（全部可选）
 

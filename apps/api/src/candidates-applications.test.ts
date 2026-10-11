@@ -13,6 +13,7 @@ import { createApp } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';
 import { loadAuthConfig } from './auth-config.js';
+import { loadDemoConfig } from './demo-config.js';
 
 interface CandidateItem {
   profileId: string;
@@ -348,6 +349,54 @@ describe('GET /candidates/export (B1-c CSV export)', () => {
     const headers = await recruiterHeaders(repos);
     const bad = await app.request('/candidates/export?authenticity=likely_authentic,bogus', { headers });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe('GET /candidates rate limiting (2026-10-11, by-subject style IP sliding window)', () => {
+  // F10 招聘方闸是"自声明"（PUT /auth/recruiter 零审核），而 /candidates 与
+  // /candidates/export 可顺 offset 拖走 CANDIDATE_SCAN_CAP 精筛窗——必须按 IP 计数防拖库。
+  async function rateLimitedApp(repos: StorageContext) {
+    return createApp({
+      repos,
+      demoConfig: {
+        ...loadDemoConfig(),
+        candidatesRatePerHour: 1,
+        trustProxy: true,
+        ipSalt: 'test-salt',
+      },
+    });
+  }
+
+  it('blocks the second /candidates request from the same IP with 429', async () => {
+    const { repos } = await harness();
+    const app = await rateLimitedApp(repos);
+    const headers = { ...(await recruiterHeaders(repos)), 'x-forwarded-for': '203.0.113.7' };
+
+    const first = await app.request('/candidates', { headers });
+    expect(first.status).toBe(200);
+
+    const second = await app.request('/candidates', { headers });
+    expect(second.status).toBe(429);
+    const body = (await second.json()) as { code?: string; bucket?: string; retryAfterSeconds?: number };
+    expect(body.code).toBe('DEMO_RATE_LIMITED');
+    expect(body.bucket).toBe('candidates');
+    expect(body.retryAfterSeconds).toBe(3600);
+  });
+
+  it('shares one bucket across /candidates and /candidates/export; a different IP is unaffected', async () => {
+    const { repos } = await harness();
+    const app = await rateLimitedApp(repos);
+    const headersA = { ...(await recruiterHeaders(repos)), 'x-forwarded-for': '203.0.113.9' };
+    const headersB = { ...(await recruiterHeaders(repos)), 'x-forwarded-for': '203.0.113.10' };
+
+    const exportOk = await app.request('/candidates/export', { headers: headersA });
+    expect(exportOk.status).toBe(200);
+
+    const blocked = await app.request('/candidates', { headers: headersA });
+    expect(blocked.status).toBe(429);
+
+    const other = await app.request('/candidates', { headers: headersB });
+    expect(other.status).toBe(200);
   });
 });
 
