@@ -1858,9 +1858,32 @@ export type JobRunRejectInput = z.infer<typeof JobRunRejectSchema>;
 export const AgentRunViewSchema = z.object({
   run: JobRunSchema,
   events: z.array(JobRunEventSchema),
+  /** 事件流本页之外是否还有更早的内容（游标走 GET /agent/runs/:id/events） */
+  eventsHasMore: z.boolean(),
   intents: z.array(SubmitIntentSchema),
 });
 export type AgentRunView = z.infer<typeof AgentRunViewSchema>;
+
+/**
+ * GET /agent/runs/:id/events 查询串：事件流往前翻。
+ *
+ * 游标是**事件 id**而不是时间戳——同一次 tick 落的多条迁移共用同一个 created_at，
+ * 时间戳游标会把它们从中间切断（丢事件）。
+ */
+export const RunEventsQuerySchema = z
+  .object({
+    before: z.string().min(1).max(200).optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+export type RunEventsQuery = z.infer<typeof RunEventsQuerySchema>;
+
+/** GET /agent/runs/:id/events 响应体：正序的一页事件 + 是否还有更早的。 */
+export const RunEventsPageSchema = z.object({
+  events: z.array(JobRunEventSchema),
+  hasMore: z.boolean(),
+});
+export type RunEventsPage = z.infer<typeof RunEventsPageSchema>;
 
 /** GET /agent/runs/:id/pending-approvals 响应体：待投清单（阶段 1 的主交付物）。 */
 export const PendingApprovalsSchema = z.object({
@@ -1882,6 +1905,7 @@ export const AGENT_ERROR_CODES = {
   preferenceInUse: 'AGENT_PREFERENCE_IN_USE', // 409：该偏好仍被未结束的求职任务引用，不能删除
   dailyLimitReached: 'AGENT_DAILY_SUBMIT_LIMIT_REACHED', // 429：该来源当日投递已达上限（限频闸）
   artifactsUnavailable: 'AGENT_ARTIFACTS_UNAVAILABLE', // 409：简历/求职信生成失败（画像或岗位不足以装配）
+  eventCursorInvalid: 'AGENT_EVENT_CURSOR_INVALID', // 400：事件流游标不是该任务的真实事件 id
 } as const;
 export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[keyof typeof AGENT_ERROR_CODES];
 

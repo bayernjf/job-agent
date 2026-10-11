@@ -80,7 +80,10 @@ export interface AgentScanStats {
 
 export interface AgentRunViewData {
   run: StoredJobRun;
+  /** 最新一页事件（默认 200 条，正序）。更早的走 `GET /agent/runs/:id/events` */
   events: StoredJobRunEvent[];
+  /** 事件流是否还有本页之外的更早内容（仓储哨兵行探出来的） */
+  eventsHasMore: boolean;
   intents: StoredSubmitIntent[];
 }
 
@@ -93,11 +96,11 @@ export async function loadRunView(
   repos: Pick<AgentRepos, 'jobRuns' | 'jobRunEvents' | 'submitIntents'>,
   run: StoredJobRun,
 ): Promise<AgentRunViewData> {
-  const [events, intents] = await Promise.all([
-    repos.jobRunEvents.listByRun(run.id),
+  const [page, intents] = await Promise.all([
+    repos.jobRunEvents.listLatestPage(run.id),
     repos.submitIntents.listByRun(run.id),
   ]);
-  return { run, events, intents };
+  return { run, events: page.events, eventsHasMore: page.hasMore, intents };
 }
 
 /**

@@ -1214,6 +1214,16 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 任务状态 + 事件流（可回放）+ 全部票据。`404 AGENT_RUN_NOT_FOUND`（不存在或非本人）。
 
+事件流只带**最新一页**（200 条，`created_at` 正序）；`eventsHasMore: true` 表示还有更早的，靠 `GET /agent/runs/:id/events` 往前翻。
+
+### `GET /agent/runs/:id/events`
+
+事件流往前翻一页（工作台「加载更早的事件」按钮）。查询参数：`before`＝游标，上一页最早那条的**事件 id**，缺省表示取最新一页；`limit`＝1–500，默认 200。
+
+`200`：`{ "events": [<JobRunEvent>...], "hasMore": <boolean> }`，`events` 按 `created_at` 正序；`hasMore` 由仓储的哨兵行探出（不是"没满一页"猜的）。游标不是该任务里的真实事件 → `400 AGENT_EVENT_CURSOR_INVALID`（**不伪装成"已经没有更早的了"**）；任务不存在或非本人 → `404 AGENT_RUN_NOT_FOUND`；未登录 → `401`。
+
+> 为什么游标是事件 id 而不是时间戳：同一次 tick 落的多条迁移共用同一个 `created_at`，时间戳游标会把它们从中间切断（丢事件）。仓储按 `(created_at, 写入序)` 定边界与排序——SQLite 用 `rowid`、Postgres 用 `ctid`（本表 append-only、仓储不暴露 UPDATE/DELETE，故物理位置即写入顺序）；主键 `evt-<uuid>` 的字典序与时间无关，既不能当排序键也不能当游标。
+
 ### `POST /agent/runs/:id/scan`
 
 手动推进一轮（不等 cron）。终态返回 `409 AGENT_RUN_NOT_ACTIVE`；已是 `awaiting_approval` 时只回当前视图。响应同 `POST /agent/runs`（带 `scan`）。

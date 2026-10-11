@@ -210,6 +210,7 @@ describe('agent workbench — auth and ownership', () => {
       ['GET', '/agent/runs'],
       ['POST', '/agent/runs'],
       ['GET', '/agent/runs/run-x'],
+      ['GET', '/agent/runs/run-x/events'],
       ['POST', '/agent/runs/run-x/scan'],
       ['POST', '/agent/runs/run-x/view'],
       ['POST', '/agent/runs/run-x/approve'],
@@ -944,5 +945,124 @@ describe('agent stage 2 — extension pending-fills, outcome write-back, LLM pol
     expect(body.subject).toBeNull();
     expect(body.body.length).toBeGreaterThan(20);
     void runId;
+  });
+});
+
+describe('agent workbench — event stream paging', () => {
+  type Harness = Awaited<ReturnType<typeof harness>>;
+
+  /** 建一个跑过一轮的任务，并补写一批历史事件。返回 runId 与补写的同刻那组 id。 */
+  async function seededRun(repos: Harness['repos'], json: Harness['json']) {
+    await insertProfile(repos, 'p-page', ALICE.login);
+    expect((await json('/profiles/p-page/claim', { method: 'POST' })).status).toBe(200);
+    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    const prefRes = await json('/agent/preferences', {
+      method: 'POST',
+      body: JSON.stringify(PREFERENCE),
+    });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-page' }),
+    });
+    const { run } = (await runRes.json()) as { run: { runId: string } };
+
+    // 三条共用同一时刻的自迁移＝"一次 tick 落多条"的真实形状：时间戳游标会把它们从中间切断
+    const base = Date.parse('2026-10-04T00:00:00.000Z');
+    const tied = [
+      { id: 'evt-t0', at: base },
+      { id: 'evt-t1', at: base },
+      { id: 'evt-t2', at: base },
+      { id: 'evt-later', at: base + 60_000 },
+    ];
+    for (const e of tied) {
+      await repos.jobRunEvents.insert({
+        id: e.id,
+        runId: run.runId,
+        event: 'rescan',
+        fromStatus: 'watching',
+        toStatus: 'watching',
+        actor: 'agent',
+        createdAt: new Date(e.at).toISOString(),
+      });
+    }
+    return { runId: run.runId, tied: tied.filter((e) => e.at === base).map((e) => e.id) };
+  }
+
+  it('reports whether the run view truncated the stream, truthfully', async () => {
+    const { repos, json } = await harness();
+    const { runId } = await seededRun(repos, json);
+
+    const view = (await (await json(`/agent/runs/${runId}`)).json()) as {
+      events: Array<{ eventId: string }>;
+      eventsHasMore: boolean;
+    };
+    // 8 条远不到 200 的窗口 ⇒ 如实报"没有更早的"，不给一个空转的按钮
+    expect(view.events.length).toBeLessThan(200);
+    expect(view.eventsHasMore).toBe(false);
+
+    // 游标端点第一页同样据实回答
+    const first = (await (await json(`/agent/runs/${runId}/events?limit=3`)).json()) as {
+      events: Array<{ eventId: string }>;
+      hasMore: boolean;
+    };
+    expect(first.events).toHaveLength(3);
+    expect(first.hasMore).toBe(true);
+  });
+
+  it('walks the whole stream backwards without losing or repeating an event', async () => {
+    const { repos, json } = await harness();
+    const { runId, tied } = await seededRun(repos, json);
+
+    const view = (await (await json(`/agent/runs/${runId}`)).json()) as {
+      events: Array<{ eventId: string }>;
+    };
+    const full = view.events.map((e) => e.eventId);
+
+    const walked: string[] = [];
+    let cursor: string | undefined;
+    for (let guard = 0; guard < 20; guard += 1) {
+      const res = await json(
+        `/agent/runs/${runId}/events?limit=2${cursor ? `&before=${cursor}` : ''}`,
+      );
+      expect(res.status).toBe(200);
+      const page = (await res.json()) as {
+        events: Array<{ eventId: string }>;
+        hasMore: boolean;
+      };
+      expect(page.events.length).toBeGreaterThan(0);
+      walked.unshift(...page.events.map((e) => e.eventId));
+      if (!page.hasMore) break;
+      cursor = page.events[0]!.eventId;
+    }
+
+    // 逐页接起来必须与整条流逐字节一致：不重、不漏、顺序不变
+    expect(walked).toEqual(full);
+    // 同刻那一组必须整段连续出现（被切断就会在这里露出来）
+    const positions = tied.map((id) => walked.indexOf(id));
+    expect(positions.sort((a, b) => a - b)).toEqual([
+      positions[0]!,
+      positions[0]! + 1,
+      positions[0]! + 2,
+    ]);
+  });
+
+  it('rejects a cursor that is not part of this run instead of claiming the stream ended', async () => {
+    const { repos, json } = await harness();
+    const { runId } = await seededRun(repos, json);
+
+    const bad = await json(`/agent/runs/${runId}/events?before=evt-never-existed`);
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { code: string }).code).toBe('AGENT_EVENT_CURSOR_INVALID');
+
+    // 别的 run 的真实事件 id 也不能当本 run 的游标
+    const foreign = await json(`/agent/runs/${runId}/events?before=evt-1`);
+    expect(foreign.status).toBe(400);
+
+    // limit 越界与非法参数一律 400（不是静默按默认值跑）
+    for (const q of ['limit=0', 'limit=9999', 'limit=abc', 'unknown=1']) {
+      const res = await json(`/agent/runs/${runId}/events?${q}`);
+      expect(res.status, q).toBe(400);
+    }
   });
 });
