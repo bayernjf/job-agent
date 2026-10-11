@@ -11,6 +11,7 @@
  *   jobagent removal list [--status pending] [--limit N]        # 列出移除申请单（审计 S3 复核队列）
  *   jobagent removal approve --request <id>                     # 复核通过：级联删除画像并结单
  *   jobagent removal reject --request <id>                      # 复核驳回：清除软挂起并结单
+ *   jobagent semantic analyze <user> [--repos N] [--format json|markdown]  # L3 语义信号（不 clone，见 design-semantic-layer）
  *
  * 凭证：环境变量 GITHUB_TOKEN（本地 PAT，见 .env.example；绝不下发前端/不入 Git）。
  */
@@ -33,6 +34,8 @@ import { runAuth } from './auth-commands.js';
 import { runProfiles } from './profiles-commands.js';
 import { runRemoval } from './removal-commands.js';
 import { runResume } from './resume-commands.js';
+import { runSemantic } from './semantic-commands.js';
+import type { L3CollectedData } from '@jobagent/semantic-source';
 
 export interface CliDeps {
   /** 环境变量 GITHUB_TOKEN 的值（由调用方注入，便于测试） */
@@ -49,6 +52,8 @@ export interface CliDeps {
   storage?: StorageContext;
   /** Test injection for `jobs sync` (defaults to createDefaultAdapters) */
   jobAdapters?: JobSourceAdapter[];
+  /** L3 语义采集器注入点（semantic 子命令测试用 fake；生产默认 new SemanticSource） */
+  semanticSource?: { collect(login: string): Promise<L3CollectedData> };
   logger?: Pick<Console, 'error' | 'warn' | 'info' | 'log'>;
   /** 注入"现在"（测试确定性）；默认 new Date().toISOString() */
   now?: () => string;
@@ -327,8 +332,12 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     return runRemoval(rest, deps);
   }
 
+  if (command === 'semantic') {
+    return runSemantic(rest, deps);
+  }
+
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | auth cleanup | resume build ... | resume batch ... | profiles delete --profile <id> | removal list|approve|reject ...',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | auth cleanup | resume build ... | resume batch ... | profiles delete --profile <id> | removal list|approve|reject ... | semantic analyze <user> [--repos N]',
   );
   return 2;
 }

@@ -26,6 +26,8 @@
     "@jobagent/github-source": "workspace:*",
     "@jobagent/job-source": "workspace:*",
     "@jobagent/resume-core": "workspace:*",
+    "@jobagent/semantic-core": "workspace:*",
+    "@jobagent/semantic-source": "workspace:*",
     "@jobagent/shared": "workspace:*",
     "@jobagent/storage": "workspace:*"
   }

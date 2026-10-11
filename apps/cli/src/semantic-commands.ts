@@ -1,0 +1,121 @@
+/**
+ * CLI semantic 子命令：L3 语义层（设计见 docs/design-semantic-layer-20261011.md）。
+ * 用法：
+ *   jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown]
+ * 凭证：GITHUB_TOKEN（与 analyze 同源）。
+ */
+import { parseArgs } from 'node:util';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { analyzeSemantic } from '@jobagent/semantic-core';
+import { SemanticSource, type L3CollectedData } from '@jobagent/semantic-source';
+import type { CliDeps } from './index.js';
+
+export async function runSemantic(rest: string[], deps: CliDeps): Promise<number> {
+  const logger = deps.logger ?? console;
+  const stdout = deps.stdout ?? process.stdout;
+  const [sub, ...subRest] = rest;
+
+  if (sub !== 'analyze') {
+    logger.error('Usage: jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown]');
+    return 2;
+  }
+
+  const { values, positionals } = parseArgs({
+    args: subRest,
+    allowPositionals: true,
+    options: {
+      repos: { type: 'string' },
+      out: { type: 'string', short: 'o' },
+      format: { type: 'string' },
+    },
+  });
+
+  const login = positionals[0];
+  if (!login) {
+    logger.error('Usage: jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown]');
+    return 2;
+  }
+
+  let reposN = 5;
+  if (values.repos !== undefined) {
+    reposN = Number(values.repos);
+    if (!Number.isInteger(reposN) || reposN < 1 || reposN > 20) {
+      logger.error('--repos must be an integer in 1..20 (default 5)');
+      return 2;
+    }
+  }
+  const format = values.format ?? 'json';
+  if (!['json', 'markdown', 'md'].includes(format)) {
+    logger.error('--format must be one of: json, markdown (default json)');
+    return 2;
+  }
+
+  try {
+    const source: { collect(login: string): Promise<L3CollectedData> } =
+      deps.semanticSource ?? makeSemanticSource(deps, reposN);
+    const collected = await source.collect(login);
+    const signals = analyzeSemantic(collected.input);
+    const content =
+      format === 'json'
+        ? JSON.stringify({ collected: { meta: collected.meta }, signals }, null, 2)
+        : renderMarkdown(login, collected, signals);
+
+    if (values.out) {
+      mkdirSync(path.dirname(path.resolve(values.out)), { recursive: true });
+      writeFileSync(values.out, content, 'utf8');
+      logger.log(`Wrote ${values.out}`);
+    } else {
+      stdout.write(content);
+    }
+    return 0;
+  } catch (err) {
+    logger.error(`semantic analyze failed for ${login}: ${(err as Error).message}`);
+    return 1;
+  }
+}
+
+function makeSemanticSource(
+  deps: CliDeps,
+  reposN: number,
+): { collect(login: string): Promise<L3CollectedData> } {
+  const token = deps.token;
+  if (!token) {
+    throw new Error(
+      'GITHUB_TOKEN is not set. Create a fine-grained PAT (public repo read-only) and put it in the environment or .env (see .env.example).',
+    );
+  }
+  return new SemanticSource({ token, reposN, log: deps.logger ?? console });
+}
+
+/** markdown 汇报：简体中文（只重述 code + facts，不推断） */
+function renderMarkdown(
+  login: string,
+  collected: L3CollectedData,
+  signals: ReturnType<typeof analyzeSemantic>,
+): string {
+  const lines: string[] = [];
+  lines.push(`# L3 语义信号 — ${login}`);
+  lines.push('');
+  lines.push(`- 规则版本：\`${signals.ruleVersion}\`；扫描仓库 ${collected.meta.reposScanned} 个（REST ${collected.meta.restCalls} 次）`);
+  lines.push('');
+  if (signals.summary.techStack.length > 0) {
+    lines.push(`**技术栈**：${signals.summary.techStack.join(', ')}`);
+  }
+  if (signals.summary.domainHints.length > 0) {
+    lines.push(`**领域提示**：${signals.summary.domainHints.join(', ')}`);
+  }
+  lines.push('');
+  for (const repo of signals.repos) {
+    const m = repo.maturity;
+    const missing = repo.missing.length > 0 ? `（缺失：${repo.missing.join('/')}）` : '';
+    lines.push(
+      `## ${repo.owner}/${repo.name}${missing}\n\n` +
+        `- 仓库类型：${repo.repoKind}｜star：${m.starBand}（${repo.maturity.fileCount} 个文件）\n` +
+        `- 工程成熟度：测试 ${m.hasTests ? '✓' : '✗'}｜CI ${m.hasCi ? '✓' : '✗'}｜文档 ${m.hasDocs ? '✓' : '✗'}｜许可证 ${m.hasLicense ? '✓' : '✗'}｜Docker ${m.hasDockerfile ? '✓' : '✗'}\n` +
+        (repo.techStack.length > 0 ? `- 技术栈：${repo.techStack.join(', ')}\n` : '') +
+        (repo.domainHints.length > 0 ? `- 领域提示：${repo.domainHints.join(', ')}\n` : ''),
+    );
+  }
+  return lines.join('\n');
+}

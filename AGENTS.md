@@ -44,6 +44,8 @@ job-agent/
 │  ├─ analyzer-core/  # 纯函数：行为信号→真实性分级→能力标签→画像装配；规则版本化
 │  ├─ resume-core/    # 纯函数：画像+岗位+匹配→岗位定向简历 ResumeDraft（match-input 映射 / rank 排序 / tailor 装配 / render md+html / polish 受约束润色安全层；阶段 1 起也产规则版求职信 CoverLetterDraft；只重排不造事实，设计见 docs/design-targeted-resume-20260915.md）
 │  ├─ claim-core/     # 纯函数：简历声明逐条核验（决策 #23，反向通路）——声明+画像技能标签+真实证据行→supportable/partial/no_trace/insufficient_data；独立 CLAIM_RULE_VERSION、判定绝不回写画像、绝不升 RULE_VERSION；设计见 docs/design-claim-verification-20261005.md
+│  ├─ semantic-source/ # L3 语义采集（不 clone）：复用 createOctokit，listRepos sort=pushed + getTree recursive 截断 2000 + readme raw ≤16KB + 关键文件白名单（package.json/pyproject.toml/go.mod/Cargo.toml/requirements.txt/Dockerfile + workflows 第一条 ≤7 个）≤16KB；单仓降级 missing；REST 预算默认 60（超限硬失败，不降级）
+│  ├─ semantic-core/   # 纯函数 analyzeSemantic：成熟度五布尔 + fileCount + starBand、techStack 解析（deps/pyproject/go.mod/Cargo/requirements）、repoKind 六档、domainHints 词边界；缺失传透不冒充零；独立 SEMANTIC_RULE_VERSION='0.1'（L3-A，设计见 docs/design-semantic-layer-20261011.md）
 │  ├─ agent-core/     # 纯函数：求职任务状态机（JobRun 迁移表）、偏好→匹配条件/硬过滤、质量闸与候选选择、可解释匹配报告（只出 code+事实）、票据计划、投递限频判断（阶段 1 求职工作台，设计见 docs/设计-求职Agent-20261002.md §10）
 │  ├─ llm/            # LLM 端口（LlmClient）+ FakeLlmClient（测试）+ OpenAICompatibleClient（/chat/completions，注入 fetch 测试）+ LlmResumePolishProvider（Zod 校验）；createResumePolishProviderFromEnv 无 LLM_API_KEY 返回 null（默认关闭走规则版），凭证只从服务端 LLM_* env 读（见 .env.example、简历设计 §7/§10）
 │  └─ ui-tokens/      # 设计 token 单一事实源（无构建静态 CSS，--ja-* 变量；report 与 extension 共用，设计见 docs/design-tokens-20260910.md）
@@ -88,6 +90,7 @@ node apps/cli/dist/index.js resume batch --profile <id|file> --limit 5 --format 
 # 认证运维：物理清理过期/已撤销 auth_sessions（默认保留 24h）与无有效会话的未认领闲置 accounts（默认保留 30d），不触碰 profiles/evidence；生产 cron 调度随部署
 node apps/cli/dist/index.js auth cleanup [--retain-hours 24] [--account-retain-hours 720]
 # 在线生成等价端点：POST /resumes/build {profileId, jobId, local?, locale?, format?}（不入库，见 docs/API.md §3.4）；报告页深链 <locale>/report/<profileId>?resumeJob=<jobId>
+# L3 语义信号（不 clone，默认 5 仓）：node apps/cli/dist/index.js semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown]
 docker compose up -d             # Docker 运行时 smoke（SQLite；--profile with-pg 加 PG；需 GITHUB_TOKEN 给 worker）
 ```
 
