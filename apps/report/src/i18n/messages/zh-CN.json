@@ -597,7 +597,7 @@
   "admin.saveFailed": "保存失败",
   "admin.loadFailed": "加载目录失败",
   "admin.unauthorized": "未登录或会话已过期",
-  "admin.emptyHint": "目录为空时将回退代码默认（agnes-2.5-flash）",
+  "admin.emptyHint": "目录为空时将回退代码默认（agnes-3.0-flash）",
   "modelSettings.title": "我的模型设置",
   "modelSettings.subtitle": "BYOK（自带模型密钥）：请求将优先使用你的配置，其次回落到平台内置模型",
   "modelSettings.baseUrl": "API Base URL",

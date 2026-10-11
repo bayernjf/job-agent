@@ -23,6 +23,7 @@ function makeConfig(overrides: Partial<DemoConfig> = {}): DemoConfig {
     matchRatePerHour: 60,
     subjectRatePerHour: 120,
     removalRatePerHour: 5,
+    candidatesRatePerHour: 120,
     maxConcurrent: 1,
     backoffMs: 15_000,
     ipSalt: 'fixed-test-salt',

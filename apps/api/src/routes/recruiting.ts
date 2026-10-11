@@ -3,10 +3,12 @@
  * 企业侧人才检索（GET /candidates）、投递记录（applications）、面试计划（interviews）。
  */
 import type { Hono } from 'hono';
+import type { Context } from 'hono';
 import { randomUUID } from 'node:crypto';
 import {
   AUTH_ERROR_CODES,
   AUTHENTICITY_STATUSES,
+  DEMO_ERROR_CODES,
   InterviewCreateSchema,
   InterviewListQuerySchema,
   InterviewPatchSchema,
@@ -14,6 +16,7 @@ import {
 } from '@jobagent/shared';
 import type { ApplicationStatus, CandidateSearchQuery, CandidateSummary } from '@jobagent/storage';
 import { z } from 'zod';
+import { oneHourAgo } from '../demo-config.js';
 import {
   publicApplication,
   requireProfileOwner,
@@ -60,7 +63,36 @@ export function toCandidateCsv(items: CandidateSummary[]): string {
 }
 
 export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now } = d;
+  const { repos, now, cfg, ipHashOf } = d;
+
+  // 人才检索 IP 滑窗兜底（by-subject 同款机制，2026-10-11 决策）：
+  // /candidates 与 /candidates/export 只读已生成画像、按 offset 翻页可一次拖走
+  // CANDIDATE_SCAN_CAP 精筛窗，而 F10 招聘方闸是"自声明"（PUT /auth/recruiter 零审核），
+  // 必须按 IP 计数防"顺 offset 拖库"。与 demo 限流同机制：不设会话硬配额，只防刷。
+  async function enforceCandidatesRate(c: Context<HonoEnv>): Promise<Response | null> {
+    const ipHash = ipHashOf(c);
+    if (!ipHash) return null;
+    const rateNow = now();
+    const recent = await repos.demoSessions.countRateEvents(
+      ipHash,
+      'candidates',
+      oneHourAgo(rateNow),
+    );
+    if (recent >= cfg.candidatesRatePerHour) {
+      console.info('[candidates] result=blocked reason=ip_rate_limited');
+      return c.json(
+        {
+          error: 'candidates rate limit exceeded',
+          code: DEMO_ERROR_CODES.rateLimited,
+          bucket: 'candidates',
+          retryAfterSeconds: 3600,
+        },
+        429,
+      );
+    }
+    await repos.demoSessions.insertRateEvent(ipHash, 'candidates', rateNow);
+    return null;
+  }
 
   // 企业侧人才检索查询的共享解析（/candidates 与 /candidates/export 同口径）：
   // authenticity/skills 为逗号分隔集合，逐个校验；非法值返回明确 400，不静默忽略。
@@ -107,6 +139,8 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
     // 已登录未声明 403；单张画像公开口径（/profiles/:id 等）不变。
     const recruiter = await requireRecruiter(c, repos.accounts);
     if (recruiter instanceof Response) return recruiter;
+    const limited = await enforceCandidatesRate(c);
+    if (limited) return limited;
     const parsed = CandidateSearchQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
       return c.json({ error: 'invalid query', details: parsed.error.flatten() }, 400);
@@ -136,6 +170,8 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
   app.get('/candidates/export', async (c) => {
     const recruiter = await requireRecruiter(c, repos.accounts);
     if (recruiter instanceof Response) return recruiter;
+    const limited = await enforceCandidatesRate(c);
+    if (limited) return limited;
     const parsed = CandidateSearchQuerySchema.safeParse(c.req.query());
     if (!parsed.success) {
       return c.json({ error: 'invalid query', details: parsed.error.flatten() }, 400);

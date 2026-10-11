@@ -22,13 +22,14 @@ describe('RequesterKindSchema', () => {
 });
 
 describe('DemoRateKindSchema', () => {
-  it('accepts the session / analyze / match / subject / removal buckets', () => {
-    expect(DEMO_RATE_KINDS).toEqual(['session', 'analyze', 'match', 'subject', 'removal']);
+  it('accepts the session / analyze / match / subject / removal / candidates buckets', () => {
+    expect(DEMO_RATE_KINDS).toEqual(['session', 'analyze', 'match', 'subject', 'removal', 'candidates']);
     expect(DemoRateKindSchema.safeParse('session').success).toBe(true);
     expect(DemoRateKindSchema.safeParse('analyze').success).toBe(true);
     expect(DemoRateKindSchema.safeParse('match').success).toBe(true);
     expect(DemoRateKindSchema.safeParse('subject').success).toBe(true);
     expect(DemoRateKindSchema.safeParse('removal').success).toBe(true);
+    expect(DemoRateKindSchema.safeParse('candidates').success).toBe(true);
     expect(DemoRateKindSchema.safeParse('unknown').success).toBe(false);
   });
 });

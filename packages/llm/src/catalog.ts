@@ -16,9 +16,9 @@ import type { LlmCatalogModel, LlmCatalogModality } from '@jobagent/shared';
 /** 代码内默认内置目录（git 内）。表初始为空时回退到此目录。 */
 export const BUILTIN_CATALOG_DEFAULTS: readonly LlmCatalogModel[] = [
   {
-    id: 'agnes-2.5-flash',
+    id: 'agnes-3.0-flash',
     provider: 'agnes',
-    model: 'agnes-2.5-flash',
+    model: 'agnes-3.0-flash',
     enabled: true,
     isDefault: true,
     sortOrder: 0,

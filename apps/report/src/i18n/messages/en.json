@@ -597,7 +597,7 @@
   "admin.saveFailed": "Save failed",
   "admin.loadFailed": "Failed to load catalog",
   "admin.unauthorized": "Not signed in or session expired",
-  "admin.emptyHint": "An empty catalog falls back to the code default (agnes-2.5-flash)",
+  "admin.emptyHint": "An empty catalog falls back to the code default (agnes-3.0-flash)",
   "modelSettings.title": "My model settings",
   "modelSettings.subtitle": "BYOK: requests use your configuration first, falling back to platform built-in models",
   "modelSettings.baseUrl": "API Base URL",

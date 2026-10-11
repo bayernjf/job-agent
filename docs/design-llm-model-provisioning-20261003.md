@@ -54,7 +54,7 @@
 
 ```sql
 CREATE TABLE llm_catalog_models (
-  id           TEXT PRIMARY KEY,           -- 模型目录 id，如 agnes-2.5-flash
+  id           TEXT PRIMARY KEY,           -- 模型目录 id，如 agnes-3.0-flash
   provider     TEXT NOT NULL DEFAULT 'agnes',   -- provenance 标识
   model        TEXT NOT NULL,              -- 请求实际 model id
   enabled      INTEGER NOT NULL DEFAULT 1, -- 0=停用（下架）
@@ -67,7 +67,7 @@ CREATE TABLE llm_catalog_models (
 ```
 
 - **存储形态说明**：JobAgent 无 agent-world 的 `settings` 表，故新建独立表（不硬套"平台行"技巧）；`baseUrl` / `apiKey` 仍由 env 提供，表内**无凭证列**（结构上杜绝）。
-- **读取路径**：启动时加载一次到模块级缓存，admin 写入后**显式刷新缓存**（对齐 agent-world §六的"写路径必须显式失效缓存"纪律）；代码内默认目录（当前＝`agnes-2.5-flash` 单模型）仍在 git，**删掉数据行即回到代码默认**，天然可回滚。
+- **读取路径**：启动时加载一次到模块级缓存，admin 写入后**显式刷新缓存**（对齐 agent-world §六的"写路径必须显式失效缓存"纪律）；代码内默认目录（当前＝`agnes-3.0-flash` 单模型）仍在 git，**删掉数据行即回到代码默认**，天然可回滚。
 - **下架即报错（规则 A，对齐 agent-world §四）**：默认模型若被 admin 停用，polish / cover-letter 请求如实返回 `LLM_NOT_CONFIGURED`（不静默降级、不假成功）；报告页 UI 提示「内置模型已停用，请联系管理员」。
 
 **Admin 面（新权限层，JobAgent 首次引入管理员）**：
