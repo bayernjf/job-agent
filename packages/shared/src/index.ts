@@ -2038,6 +2038,24 @@ export const UserLlmConfigSaveSchema = UserLlmConfigSchema.extend({
 });
 export type UserLlmConfigSave = z.infer<typeof UserLlmConfigSaveSchema>;
 
+/**
+ * POST /account/llm-config/validate 请求体。
+ *
+ * 两种模式，各自必须闭合：**带 apiKey**＝测表单这一组（baseUrl/model 一起给）；
+ * **整组省略**＝测服务端已保存的那一组。不许混搭——"表单 URL + 已保存的 key"等于
+ * 把用户的密钥发往他刚敲进去的地址，那是替用户做一次他自己没确认的凭据外发。
+ */
+export const UserLlmConfigValidateSchema = z
+  .object({
+    baseUrl: z.string().url().optional(),
+    model: z.string().min(1).optional(),
+    apiKey: z.string().min(1).optional(),
+  })
+  .refine((v) => !v.apiKey || (Boolean(v.baseUrl) && Boolean(v.model)), {
+    message: 'apiKey requires baseUrl and model',
+  });
+export type UserLlmConfigValidate = z.infer<typeof UserLlmConfigValidateSchema>;
+
 /** BYOK 配置的对外视图：只回显掩码，永不回显完整 key。 */
 export const UserLlmConfigViewSchema = UserLlmConfigSchema.extend({
   keyMasked: z.string(), // 形如 sk-****<末4位>

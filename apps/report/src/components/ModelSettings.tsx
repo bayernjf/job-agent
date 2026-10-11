@@ -29,6 +29,8 @@ export interface ModelSettingsLabels {
   removeConfirm: string;
   testOk: string;
   testFailed: string;
+  /** 改了端点但没填 key：不能拿已保存的 key 去打新地址，先保存或补 key */
+  testNeedsKey: string;
   saveSuccess: string;
   removeSuccess: string;
   saveFailed: string;
@@ -147,6 +149,15 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
 
   const handleTest = async () => {
     if (status.kind === 'saving' || status.kind === 'testing' || !config) return;
+    const typedKey = apiKey.trim();
+    // 密钥框保存后就是空的（GET 只回掩码），所以"没填 key"是常态而不是错误：
+    // 此时测的是**已保存的那一组**。但端点/模型被改过时不能这么干——那等于拿旧 key
+    // 去打用户刚敲进去的地址，服务端也会拒绝，所以这里先给他一句人话。
+    if (!typedKey && (baseUrl !== config.baseUrl || model !== config.model)) {
+      setStatus({ kind: 'idle' });
+      setMessage(labels.testNeedsKey);
+      return;
+    }
     setMessage(null);
     setStatus({ kind: 'testing' });
     try {
@@ -154,12 +165,12 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify(typedKey ? { baseUrl, model, apiKey: typedKey } : {}),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { reason?: string } | null;
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
         setStatus({ kind: 'idle' });
-        setMessage(labels.testFailed.replace('{reason}', body?.reason ?? String(res.status)));
+        setMessage(labels.testFailed.replace('{reason}', body?.error ?? String(res.status)));
         return;
       }
       const data = (await res.json()) as { model: string };

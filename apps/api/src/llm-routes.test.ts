@@ -379,21 +379,114 @@ describe('POST /account/llm-config/validate（最小真实请求，stub fetch）
     expect(body.code).toBe('LLM_VALIDATION_FAILED');
   });
 
-  it('缺 apiKey → 400', async () => {
+  /** 本 describe 内共用：内存库 + bob 登录 + 已配 LLM_ENC_KEY。 */
+  async function bobApp(): Promise<{
+    app: Awaited<ReturnType<typeof createApp>>;
+    repos: StorageContext;
+    headers: Record<string, string>;
+  }> {
     const repos = await createStorage({ sqlitePath: ':memory:' });
-    const deps: ApiDeps = {
+    const app = await createApp({
       repos,
       authConfig: loadAuthConfig({}),
       githubAuthProvider: new FakeAuthProvider(BOB),
       llmCatalogCache: createCatalogCache(),
       llmEncKey: ENC_KEY,
-    };
-    const app = await createApp(deps);
+    });
     const cookies = await loginAs(BOB, repos, app);
+    return {
+      app,
+      repos,
+      headers: {
+        Cookie: cookieHeader(cookies, 'jobagent_session'),
+        'content-type': 'application/json',
+      },
+    };
+  }
+
+  it('缺 apiKey 且还没有已存配置 → 400', async () => {
+    const { app, headers } = await bobApp();
     const res = await app.request('/account/llm-config/validate', {
       method: 'POST',
-      headers: { Cookie: cookieHeader(cookies, 'jobagent_session'), 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify({ baseUrl: 'https://api.example.com/v1', model: 'm' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('空 body → 整组用已保存的配置去打（回归「测试连接」死按钮）', async () => {
+    // 保存之后密钥框本来就是空的（GET 只回掩码），要求再敲一次 key 等于让按钮永远不可用：
+    // 生产实测该按钮点下去恒 400。
+    const { app, headers } = await bobApp();
+    const save = await app.request('/account/llm-config', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        provider: 'custom',
+        baseUrl: 'https://saved.test/v1',
+        model: 'saved-model',
+        apiKey: 'sk-saved-1234',
+      }),
+    });
+    expect(save.status).toBe(200);
+
+    const seen: Array<{ url: string; auth?: string }> = [];
+    vi.stubGlobal('fetch', async (url: string, init: { headers?: Record<string, string> }) => {
+      seen.push({ url: String(url), auth: init?.headers?.authorization });
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"subject":"s","body":"b"}' } }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    const res = await app.request('/account/llm-config/validate', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; model?: string };
+    expect(body.ok).toBe(true);
+    expect(body.model).toBe('saved-model');
+    // 正控：真的拿解密后的保存凭据打保存的端点，而不是随便成了
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.url).toContain('https://saved.test/v1');
+    expect(seen[0]!.auth).toBe('Bearer sk-saved-1234');
+  });
+
+  it('只给新端点不给 key → 400，且一次上游请求都不发', async () => {
+    // 混搭（表单 URL ＋ 已保存 key）＝替用户把凭据发往他刚敲进去、还没保存的地址
+    const { app, headers } = await bobApp();
+    await app.request('/account/llm-config', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        provider: 'custom',
+        baseUrl: 'https://saved.test/v1',
+        model: 'saved-model',
+        apiKey: 'sk-saved-1234',
+      }),
+    });
+    let upstreamCalls = 0;
+    vi.stubGlobal('fetch', async () => {
+      upstreamCalls += 1;
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const res = await app.request('/account/llm-config/validate', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ baseUrl: 'https://evil.test/v1', model: 'other' }),
+    });
+    expect(res.status).toBe(400);
+    expect(upstreamCalls).toBe(0);
+  });
+
+  it('无已保存配置时空 body → 400（不是 500、也不是静默成功）', async () => {
+    const { app, headers } = await bobApp();
+    const res = await app.request('/account/llm-config/validate', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
   });

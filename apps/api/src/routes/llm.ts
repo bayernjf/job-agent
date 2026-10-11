@@ -15,6 +15,7 @@ import {
   AdminLlmCatalogViewSchema,
   LlmCatalogUpsertSchema,
   UserLlmConfigSaveSchema,
+  UserLlmConfigValidateSchema,
   UserLlmConfigGetResponseSchema,
   UserLlmConfigViewSchema,
   type LlmCatalogModel,
@@ -193,18 +194,45 @@ export function registerLlmRoutes(app: Hono<HonoEnv>, d: RouteDeps): void {
   app.post('/account/llm-config/validate', async (c) => {
     const guard = await requireUser(c, d);
     if (!guard.ok) return guard.response;
-    const body = UserLlmConfigSaveSchema.safeParse(await c.req.json().catch(() => null));
-    if (!body.success || !body.data.apiKey) {
+    const body = UserLlmConfigValidateSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) {
       c.status(400);
-      return c.json({ error: 'baseUrl/model/apiKey are required for validation', code: BAD_REQUEST });
+      return c.json({ error: 'invalid validation payload', code: BAD_REQUEST });
     }
+    const typed = body.data;
+    if ((typed.baseUrl || typed.model) && !typed.apiKey) {
+      // 给了新端点却没给 key：不能拿已保存的 key 去打这个新地址（见 shared 契约注释）
+      c.status(400);
+      return c.json({
+        error: 'testing an unsaved baseUrl/model requires its apiKey',
+        code: BAD_REQUEST,
+      });
+    }
+
+    // 没有 key 就整组用已保存的配置——这才是"测试连接"按钮的真实用法：密钥框保存后
+    // 本来就是空的（GET 只回掩码），要求它再敲一次 key 等于让该按钮永远不可用。
+    let target: { baseUrl: string; model: string; apiKey: string } | null = null;
+    if (typed.apiKey && typed.baseUrl && typed.model) {
+      target = { baseUrl: typed.baseUrl, model: typed.model, apiKey: typed.apiKey };
+    } else if (d.llmEncKey) {
+      const saved = await d.repos.userLlmConfigs.getByAccountId(guard.accountId);
+      const plaintext = saved ? decryptApiKey(saved.apiKeyEncrypted, d.llmEncKey) : null;
+      if (saved && plaintext) {
+        target = { baseUrl: saved.baseUrl, model: saved.model, apiKey: plaintext };
+      }
+    }
+    if (!target) {
+      c.status(400);
+      return c.json({ error: 'apiKey is required when no config exists yet', code: BAD_REQUEST });
+    }
+
     try {
       // 最小验证：max_tokens=1 的真实请求（用户自己的 key 打用户自己的端点；
       // SSRF 面记录在 design §7 风险表，MVP 接受：该请求只携带用户自己提供的凭证）
       const client = new OpenAICompatibleClient({
-        baseUrl: body.data.baseUrl,
-        apiKey: body.data.apiKey,
-        model: body.data.model,
+        baseUrl: target.baseUrl,
+        apiKey: target.apiKey,
+        model: target.model,
       });
       await client.generateJson({
         messages: [{ role: 'user', content: 'ping' }],
