@@ -10,7 +10,7 @@ import {
   DEFAULT_CALL_TIMEOUT_MS,
   type CronEnv,
 } from './tick.js';
-import { runDigestTick } from './digest.js';
+import { runDigestTick, type DigestPayload } from './digest.js';
 
 /** Five-minute consumption cron; also runs the heartbeat watchdog. */
 const FIVE_MIN_CRON = '*/5 * * * *';
@@ -19,7 +19,7 @@ const HOURLY_CRON = '0 * * * *';
 /** Daily email digest cron: 01:00 UTC = 09:00 CST (decision #25). */
 const DAILY_DIGEST_CRON = '0 1 * * *';
 
-/** Email Service binding shape (send_email in wrangler.jsonc). */
+/** Email Service binding shape (send_email in wrangler.jsonc, optional channel). */
 interface EmailBinding {
   send(message: {
     to: string;
@@ -30,10 +30,41 @@ interface EmailBinding {
   }): Promise<unknown>;
 }
 
+/**
+ * Send a digest via the Resend HTTP API — the free-tier fallback channel
+ * (2026-10-11). Cloudflare Email Service (send_email binding) requires the
+ * Workers Paid plan; on the Free plan the binding is configured but runtime
+ * EMAIL is undefined, so digest falls back here. Any non-2xx response throws;
+ * runDigestTick catches it, excludes the id from the sent-callback, and the
+ * digest is retried by tomorrow's tick.
+ */
+async function sendViaResend(
+  apiKey: string,
+  digest: DigestPayload,
+): Promise<void> {
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: 'JobAgent <digest@job-agent.bayjf.com>',
+      to: [digest.to],
+      subject: digest.subject,
+      text: digest.text,
+      html: digest.html,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`resend ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
 export default {
   async scheduled(
     controller: ScheduledController,
-    env: CronEnv & { EMAIL?: EmailBinding },
+    env: CronEnv & { EMAIL?: EmailBinding; RESEND_API_KEY?: string },
     ctx: ExecutionContext,
   ): Promise<void> {
     const origin = env.PROD_ORIGIN.replace(/\/+$/, '');
@@ -50,8 +81,8 @@ export default {
     if (controller.cron === DAILY_DIGEST_CRON) {
       ctx.waitUntil(
         (async () => {
-          if (!env.EMAIL) {
-            console.error('[cron-worker] digest skipped: EMAIL binding not configured');
+          if (!env.EMAIL && !env.RESEND_API_KEY) {
+            console.error('[cron-worker] digest skipped: neither EMAIL binding nor RESEND_API_KEY configured');
             return;
           }
           const call = async (
@@ -78,13 +109,20 @@ export default {
             (path) => call(path, { method: 'GET' }),
             (path, payload) => call(path, { method: 'POST', body: JSON.stringify(payload) }),
             async (digest) => {
-              await env.EMAIL!.send({
-                to: digest.to,
-                from: { email: 'digest@job-agent.bayjf.com', name: 'JobAgent' },
-                subject: digest.subject,
-                text: digest.text,
-                html: digest.html,
-              });
+              // Cloudflare Email Service first (needs Workers Paid); Resend
+              // HTTP API as the free fallback. Either channel can be switched
+              // at deploy time without code changes.
+              if (env.EMAIL) {
+                await env.EMAIL.send({
+                  to: digest.to,
+                  from: { email: 'digest@job-agent.bayjf.com', name: 'JobAgent' },
+                  subject: digest.subject,
+                  text: digest.text,
+                  html: digest.html,
+                });
+              } else {
+                await sendViaResend(env.RESEND_API_KEY!, digest);
+              }
             },
           );
           if (!log.tickOk || log.failed > 0) {
