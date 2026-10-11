@@ -138,6 +138,10 @@ export interface Labels {
     eventRepeat: string;
     expandStream: string;
     collapseStream: string;
+    /** 增量展开模板（`{count}`＝本次还将摊开的条数） */
+    expandMore: string;
+    /** 已把当前窗口内事件全部摊开 */
+    expandedAll: string;
     loadOlder: string;
     loadingOlder: string;
     oldestReached: string;
@@ -347,6 +351,9 @@ export function fillTemplate(
   );
 }
 
+/** 事件流「展开」的增量步长：展开态默认摊开最近 `EVENT_EXPAND_STEP` 条，可继续增量摊开。 */
+const EVENT_EXPAND_STEP = 50;
+
 /** 事务性错误信息载体：同时带上 code（取通用文案）与底层 message（诊断用）。 */
 class ApiCallError extends Error {
   readonly code: string | undefined;
@@ -496,6 +503,8 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const [scanNote, setScanNote] = useState<string | null>(null);
   /** 事件流是否摊开完整流水（默认把相邻同质迁移折叠成一行） */
   const [showFullTimeline, setShowFullTimeline] = useState(false);
+  /** 展开态已摊开的条数（从最新往旧数）；翻出更早页后只增大已加载窗口，不改变已摊开条数 */
+  const [expandedCount, setExpandedCount] = useState(0);
   const [busyIntentId, setBusyIntentId] = useState<string | null>(null);
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
   const [approvedNote, setApprovedNote] = useState<string | null>(null);
@@ -1048,22 +1057,31 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const olderCursor = olderEvents?.events[0]?.eventId ?? runView?.events[0]?.eventId ?? null;
 
   /**
-   * 事件流显示行：默认把相邻同质迁移折叠成一行，`showFullTimeline` 时逐条摊开。
+   * 事件流显示行：默认把相邻同质迁移折叠成一行；「展开」后把已加载窗口里**最新一截**
+   * （`expandedCount` 条）逐条摊开，更早部分仍保持折叠行——摊开是增量进行的，
+   * 不会一次渲染全部已加载事件（已加载窗口经「加载更早」可长达数百条）。
    * 折叠只发生在这里，`loadedEvents` 本身一条不少（可回放审计流的完整性不受展示层影响）。
    */
   const timelineRows = useMemo<EventGroup[]>(() => {
     if (!showFullTimeline) return groupRunEvents(loadedEvents);
-    return loadedEvents.map((event) => ({
-      key: event.eventId,
-      event: event.event,
-      fromStatus: event.fromStatus,
-      toStatus: event.toStatus,
-      actor: event.actor,
-      count: 1,
-      firstAt: event.createdAt,
-      lastAt: event.createdAt,
-    }));
-  }, [loadedEvents, showFullTimeline]);
+    const tailCount = Math.max(0, Math.min(expandedCount, loadedEvents.length));
+    const headCount = loadedEvents.length - tailCount;
+    const head = loadedEvents.slice(0, headCount);
+    const tail = loadedEvents.slice(headCount);
+    return [
+      ...groupRunEvents(head),
+      ...tail.map((event) => ({
+        key: event.eventId,
+        event: event.event,
+        fromStatus: event.fromStatus,
+        toStatus: event.toStatus,
+        actor: event.actor,
+        count: 1,
+        firstAt: event.createdAt,
+        lastAt: event.createdAt,
+      })),
+    ];
+  }, [loadedEvents, showFullTimeline, expandedCount]);
 
   const pendingItems = pending ?? [];
   const loading = prefsLoading || runsLoading || pendingLoading;
@@ -1698,16 +1716,43 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
                 ))}
               </ol>
             )}
-            {loadedEvents.length > timelineRows.length && (
+            {timelineRows.length > 0 && (!showFullTimeline ? loadedEvents.length > timelineRows.length : true) && (
               <button
                 type="button"
                 className="ja-btn ja-btn--ghost agent-timeline-toggle"
                 data-testid="agent-timeline-toggle"
                 aria-expanded={showFullTimeline}
-                onClick={() => setShowFullTimeline((open) => !open)}
+                onClick={() => {
+                  if (showFullTimeline) {
+                    setShowFullTimeline(false);
+                    setExpandedCount(0);
+                  } else {
+                    setShowFullTimeline(true);
+                    setExpandedCount(Math.min(EVENT_EXPAND_STEP, loadedEvents.length));
+                  }
+                }}
               >
                 {showFullTimeline ? labels.runs.collapseStream : labels.runs.expandStream}
               </button>
+            )}
+            {showFullTimeline && expandedCount < loadedEvents.length && (
+              <button
+                type="button"
+                className="ja-btn ja-btn--ghost agent-timeline-more"
+                data-testid="agent-timeline-expand-more"
+                onClick={() =>
+                  setExpandedCount((count) => Math.min(count + EVENT_EXPAND_STEP, loadedEvents.length))
+                }
+              >
+                {fillTemplate(labels.runs.expandMore, {
+                  count: Math.min(EVENT_EXPAND_STEP, loadedEvents.length - expandedCount),
+                })}
+              </button>
+            )}
+            {showFullTimeline && expandedCount >= loadedEvents.length && loadedEvents.length > 0 && (
+              <p className="ja-muted" data-testid="agent-timeline-expanded-all">
+                {labels.runs.expandedAll}
+              </p>
             )}
           </div>
         )}

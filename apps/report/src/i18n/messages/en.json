@@ -479,6 +479,8 @@
   "workbench.runs.eventRepeat": "×{count}",
   "workbench.runs.expandStream": "Show every event",
   "workbench.runs.collapseStream": "Fold repeated events",
+  "workbench.runs.expandMore": "Show {count} more earlier events",
+  "workbench.runs.expandedAll": "All events shown",
   "workbench.runs.loadOlder": "Load earlier events",
   "workbench.runs.loadingOlder": "Loading earlier events…",
   "workbench.runs.oldestReached": "This is the earliest event.",
