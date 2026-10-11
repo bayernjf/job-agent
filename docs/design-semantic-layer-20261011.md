@@ -124,16 +124,16 @@ jobagent semantic analyze <user> [--repos N] [--out <file>] [--format json|markd
 4. 纯函数 `analyzeSemantic` 对固定夹具输出逐字节稳定（钉字面量）；
 5. typecheck / 单测 / build / check-migrations / `git diff --check` / 文档守护全绿。
 
-## 7. 分期与决策点（L3-B / L3-C，未拍板）
+## 7. 分期与决策点（L3-B / L3-C，2026-10-11 已全部拍板）
 
-| 待拍板 | 内容 | 影响 |
+| 已拍板 | 内容 | 结论 |
 | --- | --- | --- |
-| L3-B 范围 | 是否启用 LLM 语义（README 摘要/设计决策/面试题增强） | 每画像 +1 次 LLM 调用；按决策 #21 双轨计费；fail-closed 规则回落 |
-| L3-B 配额 | demo 身份是否扣权重 | 建议仿 fusion 扣 2，待定 |
-| L3-C 融合 | 语义真实性并入主画像需升 `RULE_VERSION` + 报告页新板块 + API 投影 | 快照契约变更、缓存失效面，需单独评审 |
-| 采集扩容 | reposN=5 是否够、关键文件白名单是否加 | 依赖真实数据统计（CLI 验证后决定） |
+| L3-B 范围 | 是否启用 LLM 语义（README 摘要/设计决策/面试题增强） | ✅ 已拍板并落地（item150）：`--llm` 可选、fail-closed 规则回落；每画像 +1 次 LLM 调用、按决策 #21 双轨计费 |
+| L3-B 配额 | demo 身份是否扣权重 | 建议仿 fusion 扣 2——**按推荐实现，属建议非决策**（当前 L3 只在 CLI 手动 `--semantic` 触发，未进 demo 在线链路，无配额影响；若后续接入在线分析再定） |
+| L3-C 融合 | 语义真实性并入主画像需升 `RULE_VERSION` + 报告页新板块 + API 投影 | ✅ 已拍板并落地（item151）：`RULE_VERSION 0.8→0.9`（分级不受影响的结构性证明）；报告页「语义洞察」板块；API 投影＝semantic 属公开结构化事实，`formatProfileForViewer` 只剥面试题、semantic 天然透传 |
+| 采集扩容 | reposN=5 是否够、关键文件白名单是否加 | 依赖真实数据统计（CLI 验证后决定）；`--repos` 支持 1..20 可先行覆盖 |
 
-**L3-B/C 未拍板前**：不建表、不改 analyzer-core、不动报告页（对齐"建议≠已决策"纪律）。
+**L3-B/C 已由用户拍板（2026-10-11「都搞」）并全量落地**：不建表（无新增迁移）、analyzer-core 仅做结构性透传（不新增规则信号）、报告页/API 已按上表口径实现。
 
 ## 8. 与既有资产的关系
 

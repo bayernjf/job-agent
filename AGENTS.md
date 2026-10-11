@@ -25,7 +25,7 @@ JobAgent 把开发者的 GitHub/Gitee 行为痕迹（commit / PR / Issue / 项�
 - Gitee 采集（第二证据源，2026-09-14 G-A+G-B 落地）：官方 v5 **REST-only（无 GraphQL）**，匿名可读公开数据、`GITEE_TOKEN` 可选仅提额；产出与 GitHub 一致的证据源无关 `AnalyzerInput`，CLI `--platform gitee` 与在线链路（API `platform` 枚举、Worker 多源路由、报告页/扩展平台切换 UI）均已打通；events 行为流（方案 A 补近期 PushEvent 提交）与行为多样性弱信号（方案 B：双源聚合源无关 `BehaviorEventSummary`、analyzer 新增 `narrow_activity_scope`、规则版本 0.1→0.2）均已于 2026-09-15 落地；跨源镜像去重、在线多源融合画像（`platform=all` 一次作业双采）、跨源 PR/issue 同帖去重（7 天窗 `CROSS_SOURCE_THREAD_WINDOW_MS`，2026-09-18 锁定）与融合作业配额权重（demo 扣 2）均已落地；Gitee OAuth 登录/认领已随 item33（2026-09-19）落地（见 docs/design-gitee-oauth-20260919.md），仅剩真实 Gitee App 凭证首次冒烟与认证态精确限频缓做（见 deferred #12、docs/design-gitee-source-20260914.md、docs/design-behavior-diversity-20260915.md、docs/design-cross-source-fusion-20260915.md）
 - 页面：Astro + React islands；落地页是独立工程 `../job-agent-landing`；浏览器扩展 `apps/extension`（P1：三大 ATS 一键填充）
 - 测试：Vitest（就近单元）+ Playwright（E2E）
-- 分析深度：MVP 仅 **L0 元数据 + L1 行为时序**，**不 clone 仓库**（L2/L3/L4 见 docs/deferred-items）
+- 分析深度：MVP 为 **L0 元数据 + L1 行为时序**，**不 clone 仓库**；**L3 语义层 A/B/C 已全部落地（2026-10-11，`RULE_VERSION 0.9`）**——L3-A 不 clone 规则版（`semantic-source`/`semantic-core`）、L3-B LLM 语义摘要（`--llm`，fail-closed 回落）、L3-C 并入主画像（`analyze --semantic` + 报告页「语义洞察」板块 + API 公开透传；设计见 docs/design-semantic-layer-20261011.md）；L2/L4 见 docs/deferred-items
 - **LLM 模型供给双轨（决策 #21，2026-10-03 P0 落地）**：内置模型＝**Admin UI 管理目录**（`accounts.is_admin` + `llm_catalog_models` 表 + `/[locale]/admin` 面板；**凭证永远 env only**——`LLM_BASE_URL`/`LLM_API_KEY`，admin 面板结构上无凭证字段）；BYOK＝**登录用户自由设置**（`user_llm_configs` 一行一账号，apiKey 服务端 AES-256-GCM 加密列，`LLM_ENC_KEY` env；`/account/llm-config` 4 端点 + 工作台 ModelSettings 面板）。请求路由（`apps/api/src/routes/llm-resolve.ts`）：**BYOK 优先 → 内置回落**；都无→polish 规则版 / cover-letter 503。首个 admin＝`ADMIN_ACCOUNT_LOGINS` env 白名单登录自动置位。设计见 [docs/design-llm-model-provisioning-20261003.md](docs/design-llm-model-provisioning-20261003.md)。
 
 > 选型理由、备选方案与待核实项见 [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md)；产品范围以 [docs/PRD.md](docs/PRD.md) 为准；未决策事项见 [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md)，**不得把"建议"当作"已决策"直接实现**。
@@ -90,7 +90,7 @@ node apps/cli/dist/index.js resume batch --profile <id|file> --limit 5 --format 
 # 认证运维：物理清理过期/已撤销 auth_sessions（默认保留 24h）与无有效会话的未认领闲置 accounts（默认保留 30d），不触碰 profiles/evidence；生产 cron 调度随部署
 node apps/cli/dist/index.js auth cleanup [--retain-hours 24] [--account-retain-hours 720]
 # 在线生成等价端点：POST /resumes/build {profileId, jobId, local?, locale?, format?}（不入库，见 docs/API.md §3.4）；报告页深链 <locale>/report/<profileId>?resumeJob=<jobId>
-# L3 语义信号（不 clone，默认 5 仓）：node apps/cli/dist/index.js semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown]
+# L3 语义信号（不 clone，默认 5 仓）：node apps/cli/dist/index.js semantic analyze <user> [--repos N] [--out <file>] [--format json|markdown] [--llm]；主画像并入（L3-C）：node apps/cli/dist/index.js analyze <user> --semantic [--llm]
 docker compose up -d             # Docker 运行时 smoke（SQLite；--profile with-pg 加 PG；需 GITHUB_TOKEN 给 worker）
 ```
 
