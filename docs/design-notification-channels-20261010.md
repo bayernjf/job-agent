@@ -14,10 +14,16 @@
 
 - **决策 #25：触达通道双落地**——邮件 digest 与 Web Push 都做，同一批落地。
 - **决策 #25-1：邮件 digest 第一期只发用户本人**（当前产品只有本人一个真实用户）。
-  走 Cloudflare Email Service Workers binding（`send_email`），发信域名 `job-agent.bayjf.com`
-  已在 Cloudflare 账号内；Free 计划发送免费、只发已验证目的地址。
-  **未来开放给其他登录用户时**，需升级 Workers Paid（$5/月，含 3,000 封/月），
-  触发条件与升级动作已记入 docs/deferred-items.md，届时再议，不在本期范围。
+  发信域名 `job-agent.bayjf.com`。**双通道实现（2026-10-11）**：① Cloudflare Email
+  Service Workers binding（`send_email`，EMAil）——但实测 **Workers Free 计划不支持
+  Email Sending**（dashboard 官方提示 "only available with the Workers Paid plan"，
+  binding 可配置但 Free 计划下运行时 EMAIL 不可用、`wrangler email sending enable`
+  返回 2036）；② **Resend HTTP API 免费档**（约 100 封/天，digest 每天 1–3 封绰绰有余）
+  ——cron-worker 用 `RESEND_API_KEY` secret，`POST https://api.resend.com/emails`。
+  index.ts 发送时 **EMAIL binding 优先、无则 Resend 回落**，两个通道保留可随时切换
+  （将来升级 Workers Paid 或换其他服务商只需改 secret/绑定，不改代码）。
+  **未来开放给其他登录用户时**，可评估升级 Workers Paid（$5/月，含 3,000 封/月）或
+  Resend 付费档（50,000 封/月 $20），触发条件已记入 docs/deferred-items.md，届时再议。
 - **决策 #25-2：推送是登录态 opt-in、可随时关闭**——默认不开；工作台通知设置里显式开启；
   关闭即删订阅行，绝不留"沉默订阅"。
 
@@ -31,7 +37,7 @@ agent-tick（*/5）扫出新候选 → submit_intents 落 pending
         ├─ Web Push（近实时）：agent-tick 当轮内对该 account 的启用订阅发推送
         │
         └─ 邮件 digest（每日一档）：cron-worker 每日 cron → /internal/cron/digest-tick
-             → 聚合各账户"距上次 digest 后新增的 pending 候选" → Email Service 发出
+             → 聚合各账户"距上次 digest 后新增的 pending 候选" → EMAIL binding（Paid）或 Resend API 发出
 ```
 
 分期：
@@ -90,10 +96,13 @@ Web Push 触发点：agent-tick 一轮内某 run 从非 awaiting 进入 `awaitin
 
 ## 7. 邮件 digest 技术选型
 
-- 发送：cron-worker 加 `send_email` binding（`EMAIL`），`wrangler email sending enable job-agent.bayjf.com`
-  完成域名 onboarding + DKIM（一次性人工/CLI 步骤，记 handoff）。
+- 发送（**双通道，2026-10-11**）：cron-worker 的 `sendViaResend` 走
+  `POST https://api.resend.com/emails`（`RESEND_API_KEY` secret，免费档约 100 封/天）；
+  原 Cloudflare `send_email` binding（EMAIL）**保留**（需 Workers Paid 计划才可用）。
+  index.ts 发送时 EMAIL 优先、无则 Resend 回落——升级计划或换服务商无需改代码。
 - 频次：每日一档（cron-worker 加第三条 cron，如 `0 1 * * *` UTC = 09:00 CST）。
-- 成本硬约束：只发已验证目的地址；第一期收件人＝用户本人（决策 #25-1）。
+- 成本硬约束：Resend 免费档约 100 封/天，digest 每天 1–3 封；只在登录态订阅存在且
+  有新候选时才发信，零候选不产信（API 侧不推进窗口）。
 - 文案本期统一中英并列一段（账户无语言列，沿落地页惯例）。
 
 ## 8. 前端（工作台）

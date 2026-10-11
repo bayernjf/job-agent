@@ -111,20 +111,79 @@ const REJECT_MATCH = '**/agent/runs/*/reject';
 interface WorkbenchMocks {
   /** 待投清单条目（默认一条 pending 票据） */
   pendingItems?: unknown[];
+  /** 任务视图的事件流（默认一条 generated；折叠用例传长流） */
+  timelineEvents?: unknown[];
+  /**
+   * 事件流全集（升序）。给了它就按真实游标语义响应 `GET /agent/runs/:id/events`，
+   * 并让 run 视图只带最新 `eventWindow` 条 + `eventsHasMore`——分页用例用这条。
+   */
+  eventStream?: unknown[];
+  /** `/events` 每页条数（默认 3） */
+  eventPageSize?: number;
+  /** run 视图带的事件条数（默认＝eventStream 全量，即不截断） */
+  eventWindow?: number;
   /** 非 pending 端点的统一失败状态码（500 → role=alert） */
   failStatus?: number;
-  /** 请求记录（确认/拒绝的 body 断言用） */
-  requests?: { approve: unknown[]; reject: unknown[] };
+  /** 请求记录（确认/拒绝的 body 断言用；events 记 /events 的游标序列） */
+  requests?: { approve: unknown[]; reject: unknown[]; events: string[] };
+}
+
+/** 事件 id（run 视图与 /events 都用同一个字段当游标）。 */
+function eventId(event: unknown): string {
+  return (event as { eventId: string }).eventId;
 }
 
 /** 把 /agent/* 全部 mock 掉：人机闸两条动作单独记录 body，其余按端点回固定夹具。 */
 async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> {
-  const { pendingItems = [INTENT], failStatus, requests } = mocks;
+  const {
+    pendingItems = [INTENT],
+    timelineEvents = [EVENT],
+    eventStream,
+    eventPageSize = 3,
+    eventWindow,
+    failStatus,
+    requests,
+  } = mocks;
+  // run 视图带的那一页（默认全量＝不截断，与旧用例兼容）
+  const viewEvents = eventStream
+    ? eventStream.slice(Math.max(0, eventStream.length - (eventWindow ?? eventStream.length)))
+    : timelineEvents;
 
   await page.route('**/agent/**', async (route: Route) => {
     const request = route.request();
-    const pathname = new URL(request.url()).pathname;
+    const url = new URL(request.url());
+    const pathname = url.pathname;
     const method = request.method();
+
+    // 往前翻：游标是事件 id，取它之前最近的 size 条（与仓储同语义）
+    if (method === 'GET' && pathname.endsWith('/events')) {
+      if (!eventStream) {
+        return route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'no stream mocked', code: 'AGENT_EVENT_CURSOR_INVALID' }),
+        });
+      }
+      const before = url.searchParams.get('before');
+      requests?.events.push(before ?? '<latest>');
+      const upto = before === null ? eventStream.length : eventStream.findIndex((e) => eventId(e) === before);
+      if (upto < 0) {
+        return route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'bad cursor', code: 'AGENT_EVENT_CURSOR_INVALID' }),
+        });
+      }
+      const from = Math.max(0, upto - eventPageSize);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          events: eventStream.slice(from, upto),
+          hasMore: from > 0,
+        }),
+      });
+    }
 
     if (method === 'POST' && pathname.endsWith('/approve')) {
       requests?.approve.push(request.postDataJSON());
@@ -191,7 +250,10 @@ async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> 
         contentType: 'application/json',
         body: JSON.stringify({
           run: RUN,
-          events: [EVENT],
+          events: viewEvents,
+          eventsHasMore: eventStream
+            ? eventStream.length > viewEvents.length
+            : (timelineEvents as unknown[]).length > (eventWindow ?? Infinity),
           intents: pendingItems,
         }),
       });
@@ -357,5 +419,73 @@ test.describe('job workbench — signed in', () => {
     await expect(event).not.toContainText('awaiting_approval');
     await expect(event).toContainText('Actor: Agent');
     await expect(event.locator('time')).toHaveAttribute('datetime', EVENT.createdAt);
+  });
+
+  test('folds repeated self-transitions without hiding the newest events', async ({ page }) => {
+    // 回归 2026-10-10 的两处叠加：仓储 asc + limit 只给**最旧** 200 条，界面又把每条
+    // `watching --rescan--> watching` 平铺成一行——一个每 5 分钟自迁移的 run 跑满上限后
+    // 事件流冻住（系统在跑，审计流不再更新），且满屏是同一条重复。
+    const base = Date.parse('2026-10-10T00:00:00.000Z');
+    const rescan = (i: number) => ({
+      eventId: `evt-rescan-${i}`,
+      runId: RUN_ID,
+      event: 'rescan',
+      fromStatus: 'watching',
+      toStatus: 'watching',
+      actor: 'agent',
+      payload: {},
+      createdAt: new Date(base + i * 300_000).toISOString(),
+    });
+    await mockAgent(page, {
+      timelineEvents: [EVENT, ...Array.from({ length: 200 }, (_, i) => rescan(i))],
+    });
+    await page.goto(WORKBENCH_PATH);
+
+    // 201 条折叠成 2 行：真实推进一行 + 重复自迁移一行带次数徽标
+    const rows = page.getByTestId('agent-event');
+    await expect(rows).toHaveCount(2);
+    const folded = rows.nth(1);
+    await expect(folded.getByTestId('agent-event-count')).toHaveText('×200');
+    // 最新一条必须可见（旧语义里它被截在最旧 200 条之外）
+    await expect(folded.locator('time')).toHaveAttribute('datetime', rescan(199).createdAt);
+
+    // 折叠只在显示层：展开仍能看到完整流水（可回放审计的完整性）
+    await page.getByTestId('agent-timeline-toggle').click();
+    await expect(page.getByTestId('agent-event')).toHaveCount(201);
+  });
+
+  test('pages the event stream backwards and says when it reaches the oldest', async ({ page }) => {
+    // 服务端只给最新一页（eventsHasMore=true），更早的靠 GET /agent/runs/:id/events 逐页取。
+    // 7 条同刻同形状的自迁移会被折成一行，所以断言读的是次数徽标——分页与折叠必须能叠加。
+    const stream = Array.from({ length: 7 }, (_, i) => ({
+      eventId: `evt-p${i}`,
+      runId: RUN_ID,
+      event: 'rescan',
+      fromStatus: 'watching',
+      toStatus: 'watching',
+      actor: 'agent',
+      payload: {},
+      createdAt: `2026-10-0${i + 1}T08:00:00.000Z`,
+    }));
+    const requests = { approve: [], reject: [], events: [] as string[] };
+    await mockAgent(page, { eventStream: stream, eventPageSize: 3, eventWindow: 3, requests });
+    await page.goto(WORKBENCH_PATH);
+
+    const badge = page.getByTestId('agent-event-count');
+    const older = page.getByTestId('agent-timeline-older');
+    await expect(badge).toHaveText('×3');
+    await expect(older).toBeVisible();
+
+    await older.click();
+    await expect(badge).toHaveText('×6');
+
+    await older.click();
+    // 最后一页只有 1 条（7 - 3 - 3），翻到底就如实说"到底了"，按钮消失
+    await expect(badge).toHaveText('×7');
+    await expect(older).toHaveCount(0);
+    await expect(page.getByTestId('agent-timeline-oldest')).toBeVisible();
+
+    // 游标是上一页最早那条的 id，不是时间戳（首屏不发请求，所以只有两次翻页）
+    expect(requests.events).toEqual(['evt-p4', 'evt-p1']);
   });
 });

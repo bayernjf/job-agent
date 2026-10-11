@@ -16,6 +16,7 @@ import {
   JobRunCreateSchema,
   JobRunRejectSchema,
   ResumeLocaleSchema,
+  RunEventsQuerySchema,
   type JobSource,
   type SupportedPlatform,
 } from '@jobagent/shared';
@@ -36,6 +37,7 @@ import {
   runAgentTickOnce,
 } from '../agent-runner.js';
 import {
+  toEventView,
   toIntentView,
   toPreferenceView,
   toRunView,
@@ -248,6 +250,32 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     const run = await requireOwnedRun(c, c.req.param('id') ?? '');
     if (run instanceof Response) return run;
     return c.json(toRunViewData(await loadRunView(repos, run)));
+  });
+
+  // GET /agent/runs/:id/events：事件流往前翻一页（工作台「加载更早」）。
+  // run 视图只带最新一页，更早的历史靠这里取。游标是上一页最早那条的**事件 id**：
+  // 同一次 tick 落的多条迁移共用同一个 created_at，换成时间戳游标会把它们从中间切断。
+  // 游标不是本 run 的真实事件就显式 400——不能让它看起来像"已经没有更早的了"。
+  app.get('/agent/runs/:id/events', async (c) => {
+    const run = await requireOwnedRun(c, c.req.param('id') ?? '');
+    if (run instanceof Response) return run;
+    const parsed = RunEventsQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+      return c.json(
+        { error: 'invalid events query', code: AGENT_ERROR_CODES.eventCursorInvalid },
+        400,
+      );
+    }
+    const page = parsed.data.before
+      ? await repos.jobRunEvents.listOlderPage(run.id, parsed.data.before, parsed.data.limit)
+      : await repos.jobRunEvents.listLatestPage(run.id, parsed.data.limit);
+    if (!page) {
+      return c.json(
+        { error: 'event cursor is not part of this run', code: AGENT_ERROR_CODES.eventCursorInvalid },
+        400,
+      );
+    }
+    return c.json({ events: page.events.map(toEventView), hasMore: page.hasMore });
   });
 
   // POST /agent/runs/:id/view：拥有者查看后清未读（只写 last_viewed_at，不推进状态）

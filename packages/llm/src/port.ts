@@ -38,11 +38,24 @@ export interface LlmClient {
   generateJson<T = unknown>(request: LlmJsonRequest): Promise<T>;
 }
 
+/** 失败性质：让日志与降级判断不必回头解析 message 文本。 */
+export type LlmFailureKind = 'timeout' | 'http' | 'network' | 'parse';
+
+export interface LlmFailureDetail {
+  kind: LlmFailureKind;
+  /** 上游 HTTP 状态码（kind='http'） */
+  status?: number;
+  /** 本次请求的超时预算（kind='timeout'） */
+  timeoutMs?: number;
+}
+
 /** LLM 响应不可用：网络/HTTP 错误、超时、或输出不是合法 JSON 对象。 */
 export class LlmResponseError extends Error {
   constructor(
     message: string,
     readonly cause?: unknown,
+    /** 结构化失败信息。服务端日志靠它区分"上游 401"与"60s 超时"，不再猜。 */
+    readonly detail?: LlmFailureDetail,
   ) {
     super(message);
     this.name = 'LlmResponseError';

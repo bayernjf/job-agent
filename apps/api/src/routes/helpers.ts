@@ -246,11 +246,14 @@ export function formatProfileForViewer(profile: StoredProfile, viewer: Principal
  * only an empty 500 with no stack, which makes production failures impossible
  * to diagnose. Stacks are truncated to keep log lines bounded.
  */
-export function describeError(err: unknown, depth = 0): unknown {
+export function describeError(err: unknown, depth = 0): Record<string, unknown> {
   if (!(err instanceof Error)) return { value: String(err) };
-  const e = err as Error & { code?: string; cause?: unknown };
+  const e = err as Error & { code?: string; cause?: unknown; detail?: unknown };
   const out: Record<string, unknown> = { name: e.name, message: e.message };
   if (e.code) out.code = e.code;
+  // LlmResponseError 把 kind／上游状态／超时预算挂在这里。不带上它，日志就只剩一句
+  // 自由文本，"上游 401"和"60s 没返回"看起来一模一样。
+  if (e.detail !== undefined) out.detail = e.detail;
   if (e.stack) out.stack = e.stack.split('\n').slice(0, 14).join('\n');
   if (e.cause && depth < 4) out.cause = describeError(e.cause, depth + 1);
   return out;

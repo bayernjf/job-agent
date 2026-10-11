@@ -39,6 +39,7 @@ import type {
   LocalResumeFields,
   MatchReport,
   MatchScoreTier,
+  RunEventsPage,
   SubmitIntent,
   OutcomeFeedback,
   SubmitIntentStatus,
@@ -91,6 +92,8 @@ export interface Labels {
     loading: string;
     empty: string;
     add: string;
+    /** 空态 CTA 专用文案：不能与头部 add 同名，否则屏幕阅读器与严格选择器都歧义 */
+    addFirst: string;
     create: string;
     cancel: string;
     delete: string;
@@ -129,6 +132,15 @@ export interface Labels {
     scanResult: string;
     timeline: string;
     timelineEmpty: string;
+    /** 折叠行的时间范围模板（`{from}` / `{to}`） */
+    eventRange: string;
+    /** 折叠行的重复次数模板（`{count}`） */
+    eventRepeat: string;
+    expandStream: string;
+    collapseStream: string;
+    loadOlder: string;
+    loadingOlder: string;
+    oldestReached: string;
     newCandidates: string;
     from: string;
     actorLabel: string;
@@ -277,6 +289,54 @@ export function formatEventTime(iso: string, locale: string): string {
   }
 }
 
+/** 事件流折叠行：连续同质的迁移（同事件码 + 同 from→to + 同动作方）合成一行。 */
+export interface EventGroup {
+  key: string;
+  event: JobRunEventKind;
+  fromStatus: JobRunStatus | null;
+  toStatus: JobRunStatus;
+  actor: JobRunEvent['actor'];
+  count: number;
+  firstAt: string;
+  lastAt: string;
+}
+
+/**
+ * 纯 helper：把正序事件流里**相邻**的同质迁移折叠成一行。
+ *
+ * 一个 watching 的 run 每 5 分钟落一条 `watching --rescan--> watching`，不折叠就是几十行
+ * 重复噪音、把真正的状态变化挤出视野。只折相邻、不做全量聚合，所以穿插在中间的其它迁移
+ * 仍各自成行；折叠纯粹是显示层，审计流本身一条不少（展开可看完整流水）。
+ */
+export function groupRunEvents(events: JobRunEvent[]): EventGroup[] {
+  const groups: EventGroup[] = [];
+  for (const event of events) {
+    const prev = groups[groups.length - 1];
+    if (
+      prev &&
+      prev.event === event.event &&
+      prev.fromStatus === event.fromStatus &&
+      prev.toStatus === event.toStatus &&
+      prev.actor === event.actor
+    ) {
+      prev.count += 1;
+      prev.lastAt = event.createdAt;
+    } else {
+      groups.push({
+        key: event.eventId,
+        event: event.event,
+        fromStatus: event.fromStatus,
+        toStatus: event.toStatus,
+        actor: event.actor,
+        count: 1,
+        firstAt: event.createdAt,
+        lastAt: event.createdAt,
+      });
+    }
+  }
+  return groups;
+}
+
 /** 纯 helper：模板占位替换（`{skill}` / `{points}` / `{tag}` 等）。 */
 export function fillTemplate(
   template: string,
@@ -376,6 +436,23 @@ function downloadText(text: string, fileName: string): void {
  * 服务端把票据视图与关联投递的结果字段一起返回；`applicationId`/`outcome*` 不在
  * shared 的 SubmitIntent 契约里（那是票据视图的透传字段），所以在这里显式补齐。
  */
+/**
+ * 任务视图响应体：`GET /agent/runs/:id`，approve/scan/cancel/reject 的回包同形。
+ * `eventsHasMore` 缺省（旧服务端）时按"没有更早的"处理——宁可不给按钮，也不给一个空页。
+ */
+interface RunViewData {
+  run: JobRun;
+  events: JobRunEvent[];
+  eventsHasMore?: boolean;
+  intents: SubmitIntent[];
+}
+
+/** 一屏之外的更早事件（升序，不含当前窗口那一页）。 */
+interface OlderEventPages {
+  events: JobRunEvent[];
+  hasMore: boolean;
+}
+
 type SubmissionRow = SubmitIntent & {
   applicationId: string | null;
   outcomeFeedback: OutcomeFeedback | null;
@@ -389,11 +466,11 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const [preferences, setPreferences] = useState<JobPreferences[]>([]);
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [runView, setRunView] = useState<{
-    run: JobRun;
-    events: JobRunEvent[];
-    intents: SubmitIntent[];
-  } | null>(null);
+  const [runView, setRunView] = useState<RunViewData | null>(null);
+  /** 「加载更早」翻出来的页（升序，不含当前窗口）。视图一刷新就清空——窗口前移后
+   *  两段之间会有缺口，宁可让用户重新往下翻，也不平铺一段看着完整的假历史。 */
+  const [olderEvents, setOlderEvents] = useState<OlderEventPages | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [pending, setPending] = useState<SubmitIntent[] | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
 
@@ -417,6 +494,8 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const [scanning, setScanning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [scanNote, setScanNote] = useState<string | null>(null);
+  /** 事件流是否摊开完整流水（默认把相邻同质迁移折叠成一行） */
+  const [showFullTimeline, setShowFullTimeline] = useState(false);
   const [busyIntentId, setBusyIntentId] = useState<string | null>(null);
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
   const [approvedNote, setApprovedNote] = useState<string | null>(null);
@@ -462,12 +541,29 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
 
   /** 拉取单个 run 的视图（状态 + 事件流 + 全部票据）。 */
   const fetchRunView = useCallback(
-    async (runId: string): Promise<{ run: JobRun; events: JobRunEvent[]; intents: SubmitIntent[] }> => {
+    async (runId: string): Promise<RunViewData> => {
       const res = await fetch(`${apiBase}/agent/runs/${encodeURIComponent(runId)}`, {
         credentials: 'include',
       });
       if (!res.ok) throw await failure(res);
-      return (await res.json()) as { run: JobRun; events: JobRunEvent[]; intents: SubmitIntent[] };
+      return (await res.json()) as RunViewData;
+    },
+    [apiBase],
+  );
+
+  /**
+   * 往前翻事件流的一页（游标＝当前已加载里最早那条的事件 id）。
+   * 不走 `mutate`：那是"改完东西重拉视图"的通道，翻页什么都没改，重拉会把窗口往前推、
+   * 反而在已加载的更早页和它之间留下缺口。
+   */
+  const fetchOlderEvents = useCallback(
+    async (runId: string, before: string): Promise<RunEventsPage> => {
+      const res = await fetch(
+        `${apiBase}/agent/runs/${encodeURIComponent(runId)}/events?before=${encodeURIComponent(before)}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) throw await failure(res);
+      return (await res.json()) as RunEventsPage;
     },
     [apiBase],
   );
@@ -557,6 +653,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   useEffect(() => {
     if (!selectedRunId) {
       setRunView(null);
+      setOlderEvents(null);
       setPending(null);
       setRunsLoading(false);
       return;
@@ -577,8 +674,11 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
 
       if (viewResult.status === 'fulfilled') {
         setRunView(viewResult.value);
+        // 换了窗口就丢掉更早的页（含同一 run 重新选中、以及 mutate 后的重拉）
+        setOlderEvents(null);
       } else {
         setRunView(null);
+        setOlderEvents(null);
         setRunsError(errorText(viewResult.reason, labels.errors.runs, labels.errors.code));
       }
       setRunsLoading(false);
@@ -629,7 +729,10 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
             fetchSubmissions(selectedRunId),
           ]);
           if (seq !== seqRef.current) return null;
-          if (viewResult.status === 'fulfilled') setRunView(viewResult.value);
+          if (viewResult.status === 'fulfilled') {
+            setRunView(viewResult.value);
+            setOlderEvents(null);
+          }
           if (pendingResult.status === 'fulfilled') setPending(pendingResult.value);
           if (submissionsResult.status === 'fulfilled') setSubmissions(submissionsResult.value);
         }
@@ -793,6 +896,26 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
 
   // ── 人机闸：确认 / 拒绝 / 标记已投 / 下载材料 ────────────────────────────
 
+  /** 「加载更早的事件」：把游标之前的一页拼到已加载列表前面。 */
+  const loadOlderEvents = async (): Promise<void> => {
+    if (!selectedRunId || !olderCursor) return;
+    const seq = ++seqRef.current;
+    setLoadingOlder(true);
+    try {
+      const page = await fetchOlderEvents(selectedRunId, olderCursor);
+      if (seq !== seqRef.current) return; // 期间换过 run / 做过别的动作，丢弃过期响应
+      setOlderEvents((prev) => ({
+        events: [...page.events, ...(prev?.events ?? [])],
+        hasMore: page.hasMore,
+      }));
+    } catch (err) {
+      if (seq !== seqRef.current) return;
+      setRunsError(errorText(err, labels.errors.runs, labels.errors.code));
+    } finally {
+      if (seq === seqRef.current) setLoadingOlder(false);
+    }
+  };
+
   const approveIntent = async (intentId: string): Promise<void> => {
     if (!selectedRunId) return;
     setBusyIntentId(intentId);
@@ -914,6 +1037,34 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   );
 
   const activeRun = runView?.run ?? runs.find((r) => r.runId === selectedRunId) ?? null;
+  /** 已加载的事件：更早的页在前，服务端返回的那一页（最新窗口）在后，整体仍是升序。 */
+  const loadedEvents = useMemo(
+    () => [...(olderEvents?.events ?? []), ...(runView?.events ?? [])],
+    [olderEvents, runView],
+  );
+  /** 还能不能往前翻：翻过页就以最后一次读数为准，没翻过则看服务端首屏带的 eventsHasMore。 */
+  const hasMoreOlder = olderEvents ? olderEvents.hasMore : (runView?.eventsHasMore ?? false);
+  /** 游标＝当前已加载里最早那条的 id（服务端按写入序翻页，不重也不漏）。 */
+  const olderCursor = olderEvents?.events[0]?.eventId ?? runView?.events[0]?.eventId ?? null;
+
+  /**
+   * 事件流显示行：默认把相邻同质迁移折叠成一行，`showFullTimeline` 时逐条摊开。
+   * 折叠只发生在这里，`loadedEvents` 本身一条不少（可回放审计流的完整性不受展示层影响）。
+   */
+  const timelineRows = useMemo<EventGroup[]>(() => {
+    if (!showFullTimeline) return groupRunEvents(loadedEvents);
+    return loadedEvents.map((event) => ({
+      key: event.eventId,
+      event: event.event,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+      actor: event.actor,
+      count: 1,
+      firstAt: event.createdAt,
+      lastAt: event.createdAt,
+    }));
+  }, [loadedEvents, showFullTimeline]);
+
   const pendingItems = pending ?? [];
   const loading = prefsLoading || runsLoading || pendingLoading;
   const workbenchError = prefsError ?? runsError ?? pendingError;
@@ -1288,7 +1439,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
           <EmptyState
             icon="briefcase"
             title={labels.preferences.empty}
-            ctaLabel={labels.preferences.add}
+            ctaLabel={labels.preferences.addFirst}
             onCta={() => {
               setShowPrefForm(true);
               setFormError(null);
@@ -1495,30 +1646,68 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
             )}
 
             <h3>{labels.runs.timeline}</h3>
-            {runView && runView.events.length === 0 && (
+            {loadedEvents.length === 0 && (
               <p className="ja-muted">{labels.runs.timelineEmpty}</p>
             )}
-            {runView && runView.events.length > 0 && (
+            {/* 升序列表里"更早"在上方，所以按钮放在列表之前：新翻出来的一页正落在它下面 */}
+            {hasMoreOlder && olderCursor && (
+              <button
+                type="button"
+                className="ja-btn ja-btn--ghost agent-timeline-more"
+                data-testid="agent-timeline-older"
+                onClick={() => void loadOlderEvents()}
+                disabled={loadingOlder}
+              >
+                {loadingOlder ? labels.runs.loadingOlder : labels.runs.loadOlder}
+              </button>
+            )}
+            {olderEvents && !olderEvents.hasMore && (
+              <p className="ja-muted" data-testid="agent-timeline-oldest">
+                {labels.runs.oldestReached}
+              </p>
+            )}
+            {timelineRows.length > 0 && (
               <ol className="agent-timeline" data-testid="agent-timeline">
-                {runView.events.map((event) => (
-                  <li className="agent-event" key={event.eventId} data-testid="agent-event">
+                {timelineRows.map((row) => (
+                  <li className="agent-event" key={row.key} data-testid="agent-event">
                     <span className="agent-event-kind">
-                      {eventKindLabel(event.event, labels.eventKinds)}
+                      {eventKindLabel(row.event, labels.eventKinds)}
                     </span>
                     <span className="agent-event-transition ja-muted">
-                      {event.fromStatus
-                        ? `${labels.runs.from} ${labels.statuses[event.fromStatus]} → ${labels.statuses[event.toStatus]}`
-                        : labels.statuses[event.toStatus]}
+                      {row.fromStatus
+                        ? `${labels.runs.from} ${labels.statuses[row.fromStatus]} → ${labels.statuses[row.toStatus]}`
+                        : labels.statuses[row.toStatus]}
                     </span>
+                    {row.count > 1 && (
+                      <span className="agent-event-count" data-testid="agent-event-count">
+                        {fillTemplate(labels.runs.eventRepeat, { count: row.count })}
+                      </span>
+                    )}
                     <span className="ja-muted">
-                      {labels.runs.actorLabel}: {labels.actors[event.actor]}
+                      {labels.runs.actorLabel}: {labels.actors[row.actor]}
                     </span>
-                    <time className="ja-muted" dateTime={event.createdAt}>
-                      {formatEventTime(event.createdAt, locale)}
+                    <time className="ja-muted" dateTime={row.lastAt}>
+                      {row.count > 1
+                        ? fillTemplate(labels.runs.eventRange, {
+                            from: formatEventTime(row.firstAt, locale),
+                            to: formatEventTime(row.lastAt, locale),
+                          })
+                        : formatEventTime(row.lastAt, locale)}
                     </time>
                   </li>
                 ))}
               </ol>
+            )}
+            {loadedEvents.length > timelineRows.length && (
+              <button
+                type="button"
+                className="ja-btn ja-btn--ghost agent-timeline-toggle"
+                data-testid="agent-timeline-toggle"
+                aria-expanded={showFullTimeline}
+                onClick={() => setShowFullTimeline((open) => !open)}
+              >
+                {showFullTimeline ? labels.runs.collapseStream : labels.runs.expandStream}
+              </button>
             )}
           </div>
         )}

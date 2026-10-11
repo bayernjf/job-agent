@@ -24,6 +24,7 @@ import {
 } from '@jobagent/resume-core';
 import type { RouteDeps } from './context.js';
 import { resolveTextLlm } from './llm-resolve.js';
+import { describeError } from './helpers.js';
 import { CoverLetterRequestSchema, ResumeBuildRequestSchema } from './schemas.js';
 import type { HonoEnv } from './types.js';
 
@@ -232,6 +233,20 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
         },
       });
     } catch (err) {
+      // 失败只回传 reason、服务端一行日志都不落，等于让线上超时只能靠猜（2026-10-10 的
+      // 两次 502 就是这样定性的）。这里把结构化诊断落到日志：跑的是哪个 provider/model、
+      // 超时预算多少、上游回了什么状态。key、prompt、请求体一律不落。
+      console.error(
+        '[llm] cover letter failed:',
+        JSON.stringify({
+          provider: coverLetterProvider.provider,
+          model: coverLetterProvider.model,
+          profileId: req.profileId,
+          jobId: req.jobId,
+          locale,
+          ...describeError(err),
+        }),
+      );
       return c.json(
         {
           error: 'cover letter generation failed',

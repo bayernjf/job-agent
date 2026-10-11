@@ -54,11 +54,13 @@ export function toIntentView(intent: StoredSubmitIntent): SubmitIntent {
 export function toRunViewData(view: AgentRunViewData): {
   run: JobRun;
   events: JobRunEvent[];
+  eventsHasMore: boolean;
   intents: SubmitIntent[];
 } {
   return {
     run: toRunView(view.run),
     events: view.events.map(toEventView),
+    eventsHasMore: view.eventsHasMore,
     intents: view.intents.map(toIntentView),
   };
 }

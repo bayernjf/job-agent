@@ -222,6 +222,71 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     );
   });
 
+  // 事件流的窗口语义在**真实 PG** 上钉一次：两方言各有一份 repo 代码，
+  // "跑满上限后界面冻住"是取回侧（asc + limit 给最旧 N 条）的错，sqlite 用例不能替 Postgres 背书。
+  pgIt('returns the newest events in replay order when the stream exceeds the limit', async (s) => {
+    const runId = `run-${randomUUID()}`;
+    const base = Date.parse('2026-10-10T00:00:00.000Z');
+    for (let i = 0; i < 12; i += 1) {
+      await s.jobRunEvents.insert({
+        id: `evt-${randomUUID()}`,
+        runId,
+        event: 'rescan',
+        fromStatus: 'watching',
+        toStatus: 'watching',
+        actor: 'agent',
+        createdAt: new Date(base + i * 60_000).toISOString(),
+      });
+    }
+
+    const page = await s.jobRunEvents.listLatestPage(runId, 5);
+    expect(page.events).toHaveLength(5);
+    expect(page.hasMore).toBe(true);
+    // 截掉的是最旧 7 条，最新 5 条必须都在，且返回顺序仍是正序（回放顺序）
+    expect(page.events.map((e) => e.createdAt)).toEqual(
+      [7, 8, 9, 10, 11].map((i) => new Date(base + i * 60_000).toISOString()),
+    );
+
+    // 往前翻：游标是**事件 id**，不是时间戳（时间戳游标会把同刻那组从中间切断）
+    const older = await s.jobRunEvents.listOlderPage(runId, page.events[0]!.id, 5);
+    expect(older!.events.map((e) => e.createdAt)).toEqual(
+      [2, 3, 4, 5, 6].map((i) => new Date(base + i * 60_000).toISOString()),
+    );
+    expect(older!.hasMore).toBe(true);
+    expect(await s.jobRunEvents.listOlderPage(runId, 'evt-nope', 5)).toBeUndefined();
+
+    // 同一时刻多条迁移（一次 tick 推进一步以上）靠 ctid 保回放顺序：主键是 evt-<uuid>，
+    // 拿它当次级排序键会把 validate/start/candidates_ready/generated 排成乱序。
+    const tiedRunId = `run-${randomUUID()}`;
+    const tiedAt = '2026-10-10T06:00:00.000Z';
+    // 套件里有用固定主键的先例会在同一库连跑两遍时假红，这里按 run 加随机后缀；
+    // z/m/a 前缀保持"id 字典序与写入顺序相反"这一针对性
+    const tag = randomUUID().slice(0, 8);
+    const tiedIds = [`zz-${tag}`, `mm-${tag}`, `aa-${tag}`];
+    for (const id of tiedIds) {
+      await s.jobRunEvents.insert({
+        id,
+        runId: tiedRunId,
+        event: 'rescan',
+        fromStatus: 'watching',
+        toStatus: 'watching',
+        actor: 'agent',
+        createdAt: tiedAt,
+      });
+    }
+    expect((await s.jobRunEvents.listLatestPage(tiedRunId)).events.map((e) => e.id)).toEqual(
+      tiedIds,
+    );
+    expect((await s.jobRunEvents.listLatestPage(tiedRunId, 2)).events.map((e) => e.id)).toEqual([
+      tiedIds[1],
+      tiedIds[2],
+    ]);
+    // 同刻组按 ctid 逐个跳过：翻到第二条之前只剩最早那条，不多不少
+    const tiedOlder = await s.jobRunEvents.listOlderPage(tiedRunId, tiedIds[1]!, 2);
+    expect(tiedOlder!.events.map((e) => e.id)).toEqual([tiedIds[0]]);
+    expect(tiedOlder!.hasMore).toBe(false);
+  });
+
   // 真实竞态：多个并发请求同时走条件 UPDATE ... RETURNING 扣减配额，
   // 行锁必须串行化更新——放行数恰好等于配额，绝不超发。
   pgIt('never over-issues analyze slots under concurrent requests', async (s) => {

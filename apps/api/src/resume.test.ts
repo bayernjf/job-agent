@@ -6,12 +6,12 @@
  * - 404（画像/岗位）、400（请求体校验）、零命中 low_match 降级
  * 全部用内存 SQLite + 仓储注入，不启动服务器、不打网络、不调 LLM。
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AbilityProfile, JobPosting, ResumeDraft, SkillTag } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
 import type { CoverLetterProvider } from '@jobagent/llm';
-import { FakeLlmClient, LlmCoverLetterProvider, LlmResumePolishProvider } from '@jobagent/llm';
+import { FakeLlmClient, LlmCoverLetterProvider, LlmResponseError, LlmResumePolishProvider } from '@jobagent/llm';
 import { AUTH_SESSION_COOKIE } from '@jobagent/shared';
 import { createApp } from './index.js';
 
@@ -488,6 +488,35 @@ describe('POST /resumes/cover-letter (A)', () => {
     const { status, body } = await cover(app, jobId, {}, cookie);
     expect(status).toBe(502);
     expect(body.code).toBe('LLM_FAILED');
+  });
+
+  it('logs the LLM failure server-side with kind/status/model and never the key', async () => {
+    // 2026-10-10 生产两次 502 只能靠猜，就是因为这条日志不存在
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failing: CoverLetterProvider = {
+      provider: 'openai-compatible',
+      model: 'agnes-2.5-flash',
+      promptVersion: 'cover-letter-0.1',
+      generate: async () => {
+        throw new LlmResponseError('LLM endpoint returned HTTP 429', undefined, {
+          kind: 'http',
+          status: 429,
+        });
+      },
+    };
+    const { app, repos, jobId } = await harness({ coverLetter: failing });
+    const cookie = await loginCookie(repos);
+    const { status } = await cover(app, jobId, {}, cookie);
+    expect(status).toBe(502);
+
+    const call = spy.mock.calls.find((c) => String(c[0]).includes('[llm] cover letter failed'));
+    expect(call, '服务端必须落一行可读诊断日志').toBeTruthy();
+    const payload = JSON.parse(String(call![1])) as Record<string, unknown>;
+    expect(payload.model).toBe('agnes-2.5-flash');
+    expect(payload.profileId).toBe('p-resume');
+    expect(payload.jobId).toBe(jobId);
+    expect(payload.detail).toEqual({ kind: 'http', status: 429 });
+    spy.mockRestore();
   });
 
   it('404s on a missing profile', async () => {

@@ -10,6 +10,7 @@ export const llmPortVersion = '0.2' as const;
 
 export type { LlmClient, LlmChatMessage, LlmJsonRequest } from './port.js';
 export { LlmResponseError } from './port.js';
+export type { LlmFailureDetail, LlmFailureKind } from './port.js';
 export { FakeLlmClient } from './fake-client.js';
 export { LlmResumePolishProvider, RESUME_POLISH_PROMPT_VERSION } from './resume-polish.js';
 export {
