@@ -18,7 +18,7 @@ import {
   collectEvidence,
   skillTagMap,
 } from '../match-explain.js';
-import { requireProfileOwner } from './helpers.js';
+import { isProfileOwner } from './helpers.js';
 import { JobMatchRequestSchema, JobSearchQuerySchema } from './schemas.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
@@ -134,7 +134,7 @@ export function registerJobPostings(app: Hono<HonoEnv>, d: RouteDeps): void {
       const matchPrincipal = c.get('principal');
       if (matchPrincipal.kind === 'user') {
         const profileForExclude = await repos.profiles.getById(m.profileId);
-        if (profileForExclude && !requireProfileOwner(c, profileForExclude)) {
+        if (profileForExclude && isProfileOwner(c, profileForExclude)) {
           const apps = await repos.applications.listByProfile(m.profileId);
           const ids = new Set<string>();
           for (const a of apps) if (a.jobId) ids.add(a.jobId);

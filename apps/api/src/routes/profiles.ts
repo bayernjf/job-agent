@@ -23,7 +23,7 @@ import {
   collectEvidence,
   skillTagMap,
 } from '../match-explain.js';
-import { formatProfileForViewer, requireProfileOwner } from './helpers.js';
+import { formatProfileForViewer, isProfileOwner } from './helpers.js';
 import {
   ProfileIdParamSchema,
   RemovalRequestBodySchema,
@@ -425,18 +425,16 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
       sources,
       keyword,
     });
-    // T20：剔除已保存/已投（仅画像属主登录时能读投递；匿名无本人上下文不剔除），
+    // T20：剔除已保存/已投（仅画像属主登录时剔除本人投递；匿名、未认领画像或非属主
+    // 均不剔除——属主专属口径不能因观察者身份改变公开推荐结果），
     // 跨源同岗位合并（同 company+title 只留 score 最高者）。
     const principal = c.get('principal');
     let excludeJobIds: Set<string> | undefined;
-    if (principal.kind === 'user') {
-      const owner = requireProfileOwner(c, profile);
-      if (!owner) {
-        const apps = await repos.applications.listByProfile(parsed.data.id);
-        const ids = new Set<string>();
-        for (const a of apps) if (a.jobId) ids.add(a.jobId);
-        if (ids.size > 0) excludeJobIds = ids;
-      }
+    if (principal.kind === 'user' && isProfileOwner(c, profile)) {
+      const apps = await repos.applications.listByProfile(parsed.data.id);
+      const ids = new Set<string>();
+      for (const a of apps) if (a.jobId) ids.add(a.jobId);
+      if (ids.size > 0) excludeJobIds = ids;
     }
     const deduped = excludeAndMergeMatches(matches, { excludeJobIds });
     const page = deduped.items.slice(offset, offset + limit);
