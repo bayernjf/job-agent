@@ -262,11 +262,11 @@ JobAgent 当前状态，截至 2026-10-12。
 > 剩余推进项均卡外部条件 / 真人参与（生产上线收尾 J1–J8 人工 smoke、CWS 开发者账号上架、Workday 直渲染租户端到端验证、扩展真人试用、生产 `LLM_*` 与 LLM 厂商配置），详见「已知限制 / 待核实」与 [docs/deferred-items.md](docs/deferred-items.md)。
 
 ## 最近变更
+- 2026-10-12（**PR #163 CI 跟随修复：旧 E2E 断言对齐增量展开语义**，`64f2556`；另空提交 `ca1d3c1` 重试 Vercel 平台瞬时故障）：push 后自动化 PR #163 的 E2E 红在 `e2e/workbench.spec.ts` 折叠自迁移旧用例——它仍假设点一次「展开」平铺全部 201 条，而 `c532128` 增量展开（每步 50）后首点只 52 行（`429f82f` 新增的 5→53→60 用例漏改了这条旧断言）；改为逐步点「展开更多」断言 52→102→152→201→201 并出现「已全部展开」标志，本套件 9/9 过，CI 两次全绿，PR #163 已自动合 main（`aa2b7b9`），生产 `/health?deep=1` 正常。其间一次 Vercel preview 失败为平台侧 `Git information retrieval failed`（构建机未分配），与代码无关，空提交重试后转绿。
 - 2026-10-12（**求职 Agent 阶段 3 · C1：LLM 读 JD 结构化提取 → MatchReport 增强，默认关闭、fail-closed**，item153 ✅，提交链 `3233fcb`→`b076a6e`→`45161c7`→`2af047a`→`7a046e2`→`19be05d`）：LLM 只提取岗位侧事实（职责/必备技能/资历），**绝不打分/评价候选人/造画像事实**；纯函数 `enhanceMatchReportWithJd` 只从 requiredSkills 补语义缺口（新 gap code `jd_requirement_not_in_profile`），score/tier/reasons 逐字节不变；开关 `AGENT_JD_LLM_ENABLED=false`，异常静默回落纯规则，后台 cron 只走内置 env LLM；无新迁移。三层测试齐备。**生产启用需在 Vercel 置 `AGENT_JD_LLM_ENABLED=true`（待用户）。**
 - 2026-10-12（**测试补强与核查批次**，#142/#143/#145 补测试、#146/#147 核查判定已满足）：#142 事件流增量展开真全栈 E2E（`429f82f`，60 事件断言 5→53→60→收起 5）；#143 Admin LLM 目录加载占位 jsdom 单测（`175f5f9`，5 例）；#145 BYOK 保存后自动对刚保存的加密配置空体 validate（`5294c86`，5 例）；#146 `/recruit` 翻页 IP 滑窗、#147 关键词搜索+候选人 CSV 导出经实查**早已满足、无新代码**（路线图 L2 已写核查结论）。
 - 2026-10-12（**工作台事件流增量摊开修复**，item152 ✅，功能 `c532128` + E2E `429f82f`）：展开不再一次性平铺整窗（生产实测 12252px、收起按钮失效），改每次 +50 增量、展开态常驻「收起」；后端分页 PAGE_LIMIT=200 与审计流一条不少。
 - 2026-10-12（**Admin 面板「加载目录失败」误报复修 + 例行生产分段备份**）：初始水合占位误用 loadFailed 文案改 loading（`7b57119`，#143 已补单测）；`job_postings` 长至 14696 行/82MB 整表 pg_dump 必断，改主 dump（exclude job_postings，508KB）+ 16 段 CSV 分段（各 919 行），恢复验证 count=14696 无重复，产物落 gitignored `backups/`。
-- 2026-10-11（**B1 生产内置模型确认 agnes-3.0-flash**）：生产 `llm_catalog_models` 持久一行 agnes/agnes-3.0-flash（默认✓），保存目录/刷新缓存通道正常；凭证仍 env only、内置 LLM 对外部用户 owner-only。
 
 ## 已知限制 / 待核实
 
