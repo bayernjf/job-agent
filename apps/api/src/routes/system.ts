@@ -49,6 +49,29 @@ export const WATCHDOG_STALE_THRESHOLDS: Record<string, number> = {
 const WATCHDOG_UNHEALTHY_WINDOW_MS = 30 * 60_000;
 
 /**
+ * 公开探活的对外固定文案：/health 无鉴权，原始驱动错误（可能含主机/连接串/内部
+ * 任务细节）与 watchdog.lastError（内含各消费方原始 err.message）一律不回显；
+ * 完整错误只进服务端日志或 CRON_SECRET 保护的 /internal/cron/*。
+ */
+const PUBLIC_HEALTH_ERROR = 'deep health check failed';
+const PUBLIC_WATCHDOG_ERROR = 'one or more cron consumers are stale';
+
+/** 公开心跳投影：保留状态可观测字段，剥离 lastError（错误明细不对匿名方公开）。 */
+function toPublicHeartbeat(hb: {
+  consumer: string;
+  lastSuccessAt: string | null;
+  lastResult: string | null;
+  updatedAt: string;
+}) {
+  return {
+    consumer: hb.consumer,
+    lastSuccessAt: hb.lastSuccessAt,
+    lastResult: hb.lastResult,
+    updatedAt: hb.updatedAt,
+  };
+}
+
+/**
  * 心跳告警推送（deferred「Cron Worker 的失败信号没有任何读者」闭环，2026-10-10）：
  * 复用决策 #25-2 的 Web Push 通道，模式与 agent-tick 的候选推送一致——gone 删行、
  * ok 记 markSent、失败只 console.error 绝不抛（watchdog 本体照常记录失败心跳）。
@@ -132,7 +155,9 @@ export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
             ...base,
             db: 'ok',
             dbLatencyMs: Date.now() - started,
-            watchdog: { status: 'error', message: watchdog.lastError, checkedAt: watchdog.updatedAt },
+            // 对外只给固定状态串；stale 明细与原始 lastError 走鉴权内部端点
+            watchdog: { status: 'error', message: PUBLIC_WATCHDOG_ERROR, checkedAt: watchdog.updatedAt },
+            cronHeartbeat: heartbeats.map(toPublicHeartbeat),
           },
           503,
         );
@@ -141,16 +166,18 @@ export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
         ...base,
         db: 'ok',
         dbLatencyMs: Date.now() - started,
-        cronHeartbeat: heartbeats,
+        cronHeartbeat: heartbeats.map(toPublicHeartbeat),
       });
     } catch (err) {
+      // 完整错误（code/cause/stack/连接细节）只进服务端日志，不对匿名探活方回显
+      console.error('[health] deep probe failed:', JSON.stringify(describeError(err)));
       return c.json(
         {
           status: 'error',
           service: 'jobagent-api',
           time: new Date().toISOString(),
           db: 'unreachable',
-          error: (err as Error).message,
+          error: PUBLIC_HEALTH_ERROR,
         },
         503,
       );

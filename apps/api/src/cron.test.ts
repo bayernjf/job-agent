@@ -268,14 +268,18 @@ describe('GET /health?deep=1 (cron heartbeat readout)', () => {
     const body = (await res.json()) as {
       status: string;
       db: string;
-      cronHeartbeat: Array<{ consumer: string; lastError: string | null }>;
+      cronHeartbeat: Array<{ consumer: string; lastSuccessAt: string | null }>;
     };
     expect(body.status).toBe('ok');
     expect(body.db).toBe('ok');
     expect(body.cronHeartbeat).toMatchObject([
-      { consumer: 'agent-tick', lastError: 'boom' },
-      { consumer: 'process-job', lastError: null },
+      { consumer: 'agent-tick' },
+      { consumer: 'process-job' },
     ]);
+    // 公开探活投影剥离 lastError：原始错误明细不对匿名方回显
+    for (const hb of body.cronHeartbeat) {
+      expect(hb).not.toHaveProperty('lastError');
+    }
   });
 
   it('keeps the shallow probe free of the heartbeat readout', async () => {
@@ -401,7 +405,8 @@ describe('GET /internal/cron/watch-heartbeat (liveness watchdog)', () => {
     expect(deepRes.status).toBe(503);
     const body = (await deepRes.json()) as { watchdog: { status: string; message: string } };
     expect(body.watchdog.status).toBe('error');
-    expect(body.watchdog.message).toContain('agent-tick');
+    // 对外固定状态串：stale 明细（含原始 lastError）只在鉴权内部端点可见
+    expect(body.watchdog.message).toBe('one or more cron consumers are stale');
   });
 
   it('deep health recovers to 200 once the watchdog succeeds again', async () => {

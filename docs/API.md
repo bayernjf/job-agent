@@ -1663,11 +1663,15 @@ token 90 天滑动续期、可撤销。
 { "status": "ok", "service": "jobagent-api", "time": "2026-09-24T08:00:00.000Z", "db": "ok", "dbLatencyMs": 2 }
 ```
 
+深检查 200/503 均可带 `cronHeartbeat` 行（字段 `consumer` / `lastSuccessAt` / `lastResult` / `updatedAt`）。**该端点无鉴权，投影一律剥离 `lastError`**——原始驱动错误与消费方失败明细可能含内部细节，不对匿名探活方公开；明细只进服务端日志或经 `CRON_SECRET` 保护的 `/internal/cron/*` 读取。
+
 - `503`（DB 不可达）：
 
 ```json
-{ "status": "error", "service": "jobagent-api", "time": "2026-09-24T08:00:00.000Z", "db": "unreachable", "error": "..." }
+{ "status": "error", "service": "jobagent-api", "time": "2026-09-24T08:00:00.000Z", "db": "unreachable", "error": "deep health check failed" }
 ```
+
+`error` 是不含内部细节的固定串（完整错误只写服务端日志）。
 
 `tools/smoke-deploy.sh` 同时断言浅检查 `200 {"status":"ok"}` 与深检查 `200 {"db":"ok"}`。
 
@@ -1713,7 +1717,7 @@ token 90 天滑动续期、可撤销。
 
 `503`：`{ "status": "error", "stale": ["agent-tick lastOk=2026-10-08T03:00:00.000Z lastError=none"] }`
 
-`/health?deep=1` 联动：watchdog 最近一次失败（`last_error` 非空、30 分钟内）时 deep 探活 503 并返回 `watchdog: { status: "error", message }`——让"消费通道断了"成为可探知失败；watchdog 下一轮成功后恢复 200。未知 consumer 一律忽略，不误报；空表（尚无任何心跳）不算 stale。
+`/health?deep=1` 联动：watchdog 最近一次失败（`last_error` 非空、30 分钟内）时 deep 探活 503 并返回 `watchdog: { status: "error", message, checkedAt }`——让"消费通道断了"成为可探知失败；watchdog 下一轮成功后恢复 200。`message` 是不含明细的固定串（`one or more cron consumers are stale`），stale 明细只在鉴权内部端点可见。未知 consumer 一律忽略，不误报；空表（尚无任何心跳）不算 stale。
 
 ### `GET /internal/cron/cleanup?task=demo|auth|all`
 
