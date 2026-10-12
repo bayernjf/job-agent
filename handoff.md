@@ -1,6 +1,6 @@
 # Handoff
 
-JobAgent 当前状态，截至 2026-10-12。
+JobAgent 当前状态，截至 2026-10-13。
 
 > 本文件只保留「项目当前状态 + 活跃任务 + 最近变更 + 文档索引」，是接手（人或 AI agent）的第一入口；**只写状态与结论，明细一律放进对应文档并在此给链接，不在本文件展开**。
 > 设计/结论全文放 [docs/](docs/)；缓做事项放 [docs/deferred-items.md](docs/deferred-items.md)；场景化导航见 [docs/README.md](docs/README.md)。
@@ -207,6 +207,16 @@ JobAgent 当前状态，截至 2026-10-12。
 
 > **决策 #4 修订为"海内外同步"**：双语、双区域部署、合规双线与 Gitee 节奏的影响见 [待拍板决策清单 #4](docs/待拍板决策清单-20260910.md) 与 [PRD NFR-8](docs/PRD.md)。
 
+154. ✅ **C1 代码审查问题修复批次（6 条，2026-10-13，提交链 `c6506dc`→`011db30`→`f438cdd`→`8eedfe8`→`955bcbf`）**。另一会话审查「dev 未推送 2 提交 + C1 链」后逐条复验：审查的 P1「LLM 循环把 JobRun 永久卡死在 recommending」**诊断不成立**——循环（agent-runner.ts JD 提取段）在 `watching→recommending` CAS 占位**之前**，被杀只留在 watching、下轮重扫；但该方向有两个真实小问题，连同 P2/P3/Nit 全部修掉：
+    1. **LLM 只花在过闸候选上**：增强循环从 `planIntents` 后移到质量闸 `ready` 之后（enhance 只碰 gaps/suggestedBoost/jdInsight，质量闸只读 score/reasons，移动零行为差异）；
+    2. **增强整体墙钟预算** `AGENT_JD_LLM_BUDGET_MS`（默认 20000，1..50000）：每条候选调用前查预算，到点后剩余候选保留纯规则、票据照常写出——治「cron-worker 调用超时 60s 杀掉扫描 → watching 每轮重付 LLM 费用却永不产出」（单次在途调用仍受 `LLM_TIMEOUT_MS` 30s 上限，最坏超支一次）；
+    3. **tick 补 recommending 滞留回收**：`AGENT_RECOMMEND_STALE_MINUTES`（默认 15，1..1440），超阈值走状态机既有 `recommending --rescan--> watching` 出边（actor=system、可审计，lastError `recommend_stale_recovered`），回收后同一 tick 立即重扫；
+    4. **isProfileOwner 纯谓词**（helpers，未认领画像恒 false）替换 job-postings.ts/profiles.ts 两处把 `requireProfileOwner` 当布尔用且丢弃拒绝 Response 的写法；顺带修真实口径 bug——此前任意登录用户看**未认领**画像都被当属主、推荐结果被「剔除已投」过滤；
+    5. `enhanceMatchReportWithJd` 出口对 jdInsight 三数组按 normalize 去重（trim/大小写/空白折叠，保留首条原文），防重复展示与 React duplicate key；
+    6. storage 边界测试改钉 **5000 不截断 / 5001 截断**（原测试只钉 501）；工作台 `renderMatchReport` IIFE 抽 `JdRequirements` 子组件并修正整段缩进。
+
+    无新迁移；env 已同步 `.env.example` + docs/API.md（部署执行单 E3 不加，均有默认值）。验证（Node 24.0.0，fnm）：`pnpm -r typecheck` 21 包全绿；agent-core 43/43、storage job-postings 10/10（含 5001 行边界）、api **359/359**（新增预算/滞留回收 2 集成测试，env 文档守护在内）、report 212/212；`pnpm -r build` 全过；`check-migrations.sh` 0 warning；`pnpm e2e:agent` **12/12**；`git diff --check` 干净。
+
 153. ✅ **求职 Agent 阶段 3 · C1「LLM 读 JD 结构化提取 → MatchReport 增强」落地（默认关闭、fail-closed）**（2026-10-12，提交链 `3233fcb`→`b076a6e`→`45161c7`→`2af047a`→`7a046e2`→`19be05d`）。LLM 只提取岗位侧事实（职责/必备技能/资历，`JdInsightSchema` + `LlmJdExtractionProvider jd-extract-0.1`），**绝不打分/评价候选人/造画像事实**；纯函数 `enhanceMatchReportWithJd` 只从 requiredSkills 补语义缺口（新 gap code `jd_requirement_not_in_profile`，名额 maxGaps−规则缺口数，与画像技能/已有缺口归一去重），score/tier/reasons/fieldScores/matchedSkills/ruleVersion 逐字节不变；开关 `AGENT_JD_LLM_ENABLED=false`（`.env.example`/docs/API.md 已登记，部署执行单 E3 不加），LLM 异常 try/catch 静默回落纯规则，后台 cron 只走内置 env LLM 不走 BYOK；`jdInsight` 为 MatchReport 可选字段、**无新迁移**。三层测试：llm 8 + agent-core 21（含 C1 describe 5）+ api 22（含 C1 describe 2）。同批：#142 事件流展开真全栈 E2E（`429f82f`）、#143 Admin 加载占位单测（`175f5f9`）、#145 BYOK 保存即测（`5294c86`）；#146 /recruit 节流、#147 关键词搜索+CSV 导出经实查判定**早已满足、无新代码**（路线图 L2 已写核查结论）。明细见 [handoff-archive-2026-10-12](docs/handoff-archive-2026-10-12.md) §1 item153。**生产已于 2026-10-12 启用（Vercel Production `AGENT_JD_LLM_ENABLED=true` + redeploy，`/health?deep=1` 正常）；jdInsight 职责/技能/资历「岗位要求」独立渲染板块同日落地（`71fa54d`，PR #166）。**
 
 152. ✅ **工作台事件流「展开完整事件流」增量摊开**（2026-10-12，功能 `c532128` + 真全栈 E2E `429f82f`）。展示层改增量摊开（折叠最近 5 → 每次 +EVENT_EXPAND_STEP=50 → 「已全部展开」→ 展开态无条件渲染「收起」），后端分页 PAGE_LIMIT=200 与审计流一条不少；i18n + 组件单测 + agent E2E（造 60 事件断言 5→53→60→收起 5）齐备。明细见归档 §1 item152。
@@ -262,11 +272,11 @@ JobAgent 当前状态，截至 2026-10-12。
 > 剩余推进项均卡外部条件 / 真人参与（生产上线收尾 J1–J8 人工 smoke、CWS 开发者账号上架、Workday 直渲染租户端到端验证、扩展真人试用、生产 `LLM_*` 与 LLM 厂商配置），详见「已知限制 / 待核实」与 [docs/deferred-items.md](docs/deferred-items.md)。
 
 ## 最近变更
+- 2026-10-13（**C1 代码审查 6 条修复已提交未 push**，item154 ✅，提交链 `c6506dc`→`011db30`→`f438cdd`→`8eedfe8`→`955bcbf`）：逐条复验另一会话的审查后修掉真实问题——增强循环移到质量闸后只 enrich ready、新增 `AGENT_JD_LLM_BUDGET_MS`（默认 20s）整体预算保证票据写出、tick 用 `AGENT_RECOMMEND_STALE_MINUTES`（默认 15）补 recommending 滞留回收（rescan→watching）、`isProfileOwner` 谓词替换两处守卫误用并修未认领画像被当属主的口径 bug、jdInsight 三数组出口去重、5000/5001 边界测试、IIFE 抽子组件。审查 P1「卡死 recommending」经复验**不成立**（循环在 CAS 占位之前）。typecheck/359 api/43 agent-core/212 report 单测/e2e:agent 12 全绿，无新迁移。
 - 2026-10-12（**C1 收尾增量：工作台渲染「岗位要求（JD 解读）」独立板块**，`71fa54d`，PR #166 已自动合 main `0166d26`、生产 Ready）：`renderMatchReport` 在匹配报告内新增板块，按 `jdInsight` 渲染职责（列表）/必备技能（tag）/资历（列表）三组，仅在 `jdInsight` 存在且对应组非空时显示；新增 4 个 zh/en i18n key（`workbench.match.jd*`）+ `.agent-jd-group*` 样式，空态条件纳入 jdGroups；score/tier 仍逐字节走纯规则、板块纯展示。E2E +2（有 jdInsight 三组渲染且分仍 `9 · Strong match` ／ 无 jdInsight 不显示），workbench 套件 11/11、i18n 22/22。至此 C1 提取→增强→展示全链闭环。
 - 2026-10-12（**求职 Agent 阶段 3 C1 生产启用**）：Vercel Production 新增 `AGENT_JD_LLM_ENABLED=true` 并对最新生产版本 redeploy（env 只对新部署生效——14:01 的合并部署早于配置，故手动 redeploy；新实例 Ready 并 alias 到 `app.job-agent.bayjf.com`，`/health?deep=1` 四消费者心跳正常）。内置 `LLM_*` 此前已配齐，后台 agent-tick 起对带 JD 的候选真正走 LLM 岗位事实提取，失败仍静默回落纯规则；代码默认值保持 false。
 - 2026-10-12（**PR #163 CI 跟随修复：旧 E2E 断言对齐增量展开语义**，`64f2556`；另空提交 `ca1d3c1` 重试 Vercel 平台瞬时故障）：push 后自动化 PR #163 的 E2E 红在 `e2e/workbench.spec.ts` 折叠自迁移旧用例——它仍假设点一次「展开」平铺全部 201 条，而 `c532128` 增量展开（每步 50）后首点只 52 行（`429f82f` 新增的 5→53→60 用例漏改了这条旧断言）；改为逐步点「展开更多」断言 52→102→152→201→201 并出现「已全部展开」标志，本套件 9/9 过，CI 两次全绿，PR #163 已自动合 main（`aa2b7b9`），生产 `/health?deep=1` 正常。其间一次 Vercel preview 失败为平台侧 `Git information retrieval failed`（构建机未分配），与代码无关，空提交重试后转绿。
 - 2026-10-12（**求职 Agent 阶段 3 · C1：LLM 读 JD 结构化提取 → MatchReport 增强，默认关闭、fail-closed**，item153 ✅，提交链 `3233fcb`→`b076a6e`→`45161c7`→`2af047a`→`7a046e2`→`19be05d`）：LLM 只提取岗位侧事实（职责/必备技能/资历），**绝不打分/评价候选人/造画像事实**；纯函数 `enhanceMatchReportWithJd` 只从 requiredSkills 补语义缺口（新 gap code `jd_requirement_not_in_profile`），score/tier/reasons 逐字节不变；开关 `AGENT_JD_LLM_ENABLED=false`，异常静默回落纯规则，后台 cron 只走内置 env LLM；无新迁移。三层测试齐备。**生产已于 2026-10-12 启用（Vercel Production env + redeploy）。**
-- 2026-10-12（**测试补强与核查批次**，#142/#143/#145 补测试、#146/#147 核查判定已满足）：#142 事件流增量展开真全栈 E2E（`429f82f`，60 事件断言 5→53→60→收起 5）；#143 Admin LLM 目录加载占位 jsdom 单测（`175f5f9`，5 例）；#145 BYOK 保存后自动对刚保存的加密配置空体 validate（`5294c86`，5 例）；#146 `/recruit` 翻页 IP 滑窗、#147 关键词搜索+候选人 CSV 导出经实查**早已满足、无新代码**（路线图 L2 已写核查结论）。
 
 ## 已知限制 / 待核实
 
