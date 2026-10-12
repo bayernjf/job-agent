@@ -156,6 +156,16 @@ describe('SqliteJobPostingsRepository', () => {
     expect(inactive).toHaveLength(1);
   });
 
+  it('search limit up to 5000 is not clamped (agent scanPoolLimit depends on it)', async () => {
+    const repo = freshRepo();
+    const batch: NewJobPosting[] = [];
+    for (let i = 0; i < 501; i += 1) {
+      batch.push(samplePosting({ sourceUrl: `https://example.com/jobs/bulk-${i}`, jobId: `job-bulk-${i}` }));
+    }
+    await repo.upsertBatch(batch, '2026-09-10T00:00:00.000Z');
+    expect(await repo.search({ limit: 501 })).toHaveLength(501);
+  });
+
   it('counts by source', async () => {
     const repo = freshRepo();
     await repo.upsertBatch(

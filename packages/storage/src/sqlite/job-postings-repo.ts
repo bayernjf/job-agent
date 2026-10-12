@@ -17,7 +17,7 @@ import type {
 import { jobPostings as t } from './schema.js';
 
 const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
+const MAX_LIMIT = 5000;
 
 function clampLimit(n: number | undefined): number {
   if (n === undefined) return DEFAULT_LIMIT;
