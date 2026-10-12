@@ -405,6 +405,46 @@ test.describe('job workbench — signed in', () => {
     await expect(intent.locator('.agent-match-list').first()).not.toContainText('title_match');
   });
 
+  test('renders JD-extracted job requirements from match report jdInsight', async ({ page }) => {
+    const jdIntent = {
+      ...INTENT,
+      intentId: 'intent-e2e-jd',
+      report: {
+        ...INTENT.report,
+        jdInsight: {
+          responsibilities: ['Design and build the backend API', 'Own service reliability'],
+          requiredSkills: ['TypeScript', 'PostgreSQL'],
+          qualifications: ['5+ years backend experience', 'CS degree preferred'],
+        },
+      },
+    };
+    await mockAgent(page, { pendingItems: [jdIntent] });
+    await page.goto(WORKBENCH_PATH);
+
+    const intent = page.getByTestId('agent-intent');
+    await intent.locator('.agent-match summary').click();
+    const requirements = intent.getByTestId('agent-jd-requirements');
+    await expect(requirements).toBeVisible();
+    await expect(intent.getByTestId('agent-jd-responsibilities')).toContainText(
+      'Design and build the backend API',
+    );
+    await expect(intent.getByTestId('agent-jd-skills')).toContainText('PostgreSQL');
+    await expect(intent.getByTestId('agent-jd-qualifications')).toContainText(
+      '5+ years backend experience',
+    );
+    // JD insight 不改匹配分：仍是规则分 9 · Strong match
+    await expect(intent.locator('.agent-match')).toContainText('9 · Strong match');
+  });
+
+  test('hides the JD requirements block when the report has no jdInsight', async ({ page }) => {
+    await mockAgent(page);
+    await page.goto(WORKBENCH_PATH);
+
+    const intent = page.getByTestId('agent-intent');
+    await intent.locator('.agent-match summary').click();
+    await expect(intent.getByTestId('agent-jd-requirements')).toHaveCount(0);
+  });
+
   test('exposes the run event timeline so a run can be replayed', async ({ page }) => {
     await mockAgent(page);
     await page.goto(WORKBENCH_PATH);

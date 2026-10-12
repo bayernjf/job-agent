@@ -184,6 +184,10 @@ export interface Labels {
     boosts: string;
     none: string;
     points: string;
+    jdRequirementsTitle: string;
+    jdResponsibilities: string;
+    jdRequiredSkills: string;
+    jdQualifications: string;
     reason: Record<'title_match' | 'tag_match' | 'description_match', string>;
     gap: Record<'tag_not_in_profile' | 'jd_requirement_not_in_profile', string>;
     boost: Record<'add_evidence_for_tag', string>;
@@ -1088,9 +1092,34 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const workbenchError = prefsError ?? runsError ?? pendingError;
 
   const renderMatchReport = (report: MatchReport) => (
-    <details className="agent-match" data-testid="agent-match">
-      <summary>{labels.match.title}</summary>
-      <div className="agent-match-body">
+    (() => {
+      const insight = report.jdInsight;
+      const jdGroups: { label: string; items: string[]; asTags: boolean; testid: string }[] = insight
+        ? [
+            {
+              label: labels.match.jdResponsibilities,
+              items: insight.responsibilities,
+              asTags: false,
+              testid: 'agent-jd-responsibilities',
+            },
+            {
+              label: labels.match.jdRequiredSkills,
+              items: insight.requiredSkills,
+              asTags: true,
+              testid: 'agent-jd-skills',
+            },
+            {
+              label: labels.match.jdQualifications,
+              items: insight.qualifications,
+              asTags: false,
+              testid: 'agent-jd-qualifications',
+            },
+          ].filter((group) => group.items.length > 0)
+        : [];
+      return (
+        <details className="agent-match" data-testid="agent-match">
+        <summary>{labels.match.title}</summary>
+        <div className="agent-match-body">
         <div className="agent-match-score">
           <span className="ja-muted">{labels.fields.run}</span>
           <span className="agent-score-value">
@@ -1108,6 +1137,35 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
                 </span>
               ))}
             </span>
+          </div>
+        )}
+
+        {jdGroups.length > 0 && (
+          <div className="agent-match-row" data-testid="agent-jd-requirements">
+            <span className="ja-muted agent-match-label">{labels.match.jdRequirementsTitle}</span>
+            {jdGroups.map((group) =>
+              group.asTags ? (
+                <div key={group.testid} className="agent-jd-group" data-testid={group.testid}>
+                  <span className="agent-jd-group-label">{group.label}</span>
+                  <span className="tag-list">
+                    {group.items.map((item) => (
+                      <span key={item} className="skill-tag">
+                        {item}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              ) : (
+                <div key={group.testid} className="agent-jd-group" data-testid={group.testid}>
+                  <span className="agent-jd-group-label">{group.label}</span>
+                  <ul className="agent-match-list">
+                    {group.items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+            )}
           </div>
         )}
 
@@ -1157,11 +1215,14 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
 
         {report.reasons.length === 0 &&
           report.gaps.length === 0 &&
-          report.suggestedBoost.length === 0 && (
+          report.suggestedBoost.length === 0 &&
+          jdGroups.length === 0 && (
             <p className="ja-muted">{labels.match.none}</p>
           )}
       </div>
     </details>
+      );
+    })()
   );
 
   const renderIntent = (intent: SubmitIntent) => {
