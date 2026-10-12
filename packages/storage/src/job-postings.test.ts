@@ -156,14 +156,17 @@ describe('SqliteJobPostingsRepository', () => {
     expect(inactive).toHaveLength(1);
   });
 
-  it('search limit up to 5000 is not clamped (agent scanPoolLimit depends on it)', async () => {
+  it('search limit boundary: 5000 passes through and 5001 is clamped to 5000', async () => {
     const repo = freshRepo();
     const batch: NewJobPosting[] = [];
-    for (let i = 0; i < 501; i += 1) {
+    for (let i = 0; i < 5001; i += 1) {
       batch.push(samplePosting({ sourceUrl: `https://example.com/jobs/bulk-${i}`, jobId: `job-bulk-${i}` }));
     }
     await repo.upsertBatch(batch, '2026-09-10T00:00:00.000Z');
-    expect(await repo.search({ limit: 501 })).toHaveLength(501);
+    // agent scanPoolLimit 真实上限：5000 不得被仓储静默截断（默认 2000、env 上限 5000）
+    expect(await repo.search({ limit: 5000 })).toHaveLength(5000);
+    // 越过 MAX_LIMIT：钳到 5000，而不是放行任意值
+    expect(await repo.search({ limit: 5001 })).toHaveLength(5000);
   });
 
   it('counts by source', async () => {
