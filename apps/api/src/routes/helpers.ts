@@ -128,6 +128,22 @@ export function requireProfileOwner(c: Context, profile: StoredProfile): Respons
 }
 
 /**
+ * 属主判定纯谓词（与 {@link requireProfileOwner} 的拒绝路径同口径）：当前登录主体是
+ * 画像本人才为 true。**未认领画像恒为 false**——它没有可授权的主体，属主专属口径
+ * （如推荐结果「剔除本人已投岗位」）不能落到任意登录用户身上，否则同一未认领画像
+ * 会因观察者身份返回不同结果。守卫函数负责「拒绝即返回 Response」，条件分支用本谓词。
+ */
+export function isProfileOwner(c: Context, profile: StoredProfile): boolean {
+  if (!profile.subjectClaimed) return false;
+  const principal = c.get('principal');
+  return (
+    principal.kind === 'user' &&
+    principal.platform === profile.subjectPlatform &&
+    principal.login === profile.subjectLogin
+  );
+}
+
+/**
  * 投递**创建**的主体闸（2026-10-08 决策变更，走查 #8）：此前「认领即隐私开关」口径下
  * 未认领画像放行任何匿名/登录写入，等于任何人都能向他人画像注入投递记录
  * （design-demo-mode §1.2 早已列为可打穿的故障面）。现收紧为**写者必须为画像主体本人**

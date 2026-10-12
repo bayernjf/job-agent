@@ -30,6 +30,7 @@ import {
   sanitizeLocalProfile,
 } from '@jobagent/shared';
 import type {
+  JdInsight,
   JobPreferences,
   JobRun,
   JobRunEvent,
@@ -469,6 +470,59 @@ type SubmissionRow = SubmitIntent & {
   outcomeFeedback: OutcomeFeedback | null;
   outcomeFeedbackAt: string | null;
 };
+
+/** C1「岗位要求」区块：LLM 提取的三类短语，技能以标签渲染、职责/资历以列表渲染；全空不占位。 */
+function JdRequirements({ insight, labels }: { insight: JdInsight; labels: Labels }) {
+  const groups: { label: string; items: string[]; asTags: boolean; testid: string }[] = [
+    {
+      label: labels.match.jdResponsibilities,
+      items: insight.responsibilities,
+      asTags: false,
+      testid: 'agent-jd-responsibilities',
+    },
+    {
+      label: labels.match.jdRequiredSkills,
+      items: insight.requiredSkills,
+      asTags: true,
+      testid: 'agent-jd-skills',
+    },
+    {
+      label: labels.match.jdQualifications,
+      items: insight.qualifications,
+      asTags: false,
+      testid: 'agent-jd-qualifications',
+    },
+  ].filter((group) => group.items.length > 0);
+  if (groups.length === 0) return null;
+  return (
+    <div className="agent-match-row" data-testid="agent-jd-requirements">
+      <span className="ja-muted agent-match-label">{labels.match.jdRequirementsTitle}</span>
+      {groups.map((group) =>
+        group.asTags ? (
+          <div key={group.testid} className="agent-jd-group" data-testid={group.testid}>
+            <span className="agent-jd-group-label">{group.label}</span>
+            <span className="tag-list">
+              {group.items.map((item) => (
+                <span key={item} className="skill-tag">
+                  {item}
+                </span>
+              ))}
+            </span>
+          </div>
+        ) : (
+          <div key={group.testid} className="agent-jd-group" data-testid={group.testid}>
+            <span className="agent-jd-group-label">{group.label}</span>
+            <ul className="agent-match-list">
+              {group.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ),
+      )}
+    </div>
+  );
+}
 
 export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const { apiBase, locale, initialProfiles, claimedProfileId, profileHintHref, labels } =
@@ -1091,139 +1145,92 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const loading = prefsLoading || runsLoading || pendingLoading;
   const workbenchError = prefsError ?? runsError ?? pendingError;
 
-  const renderMatchReport = (report: MatchReport) => (
-    (() => {
-      const insight = report.jdInsight;
-      const jdGroups: { label: string; items: string[]; asTags: boolean; testid: string }[] = insight
-        ? [
-            {
-              label: labels.match.jdResponsibilities,
-              items: insight.responsibilities,
-              asTags: false,
-              testid: 'agent-jd-responsibilities',
-            },
-            {
-              label: labels.match.jdRequiredSkills,
-              items: insight.requiredSkills,
-              asTags: true,
-              testid: 'agent-jd-skills',
-            },
-            {
-              label: labels.match.jdQualifications,
-              items: insight.qualifications,
-              asTags: false,
-              testid: 'agent-jd-qualifications',
-            },
-          ].filter((group) => group.items.length > 0)
-        : [];
-      return (
-        <details className="agent-match" data-testid="agent-match">
+  const renderMatchReport = (report: MatchReport) => {
+    const insight = report.jdInsight;
+    const hasJdRequirements = Boolean(
+      insight &&
+        (insight.responsibilities.length > 0 ||
+          insight.requiredSkills.length > 0 ||
+          insight.qualifications.length > 0),
+    );
+    return (
+      <details className="agent-match" data-testid="agent-match">
         <summary>{labels.match.title}</summary>
         <div className="agent-match-body">
-        <div className="agent-match-score">
-          <span className="ja-muted">{labels.fields.run}</span>
-          <span className="agent-score-value">
-            {report.score} · {labels.tiers[report.tier]}
-          </span>
-        </div>
-
-        {report.matchedSkills.length > 0 && (
-          <div className="agent-match-row">
-            <span className="ja-muted agent-match-label">{labels.match.matchedSkills}</span>
-            <span className="tag-list">
-              {report.matchedSkills.map((skill) => (
-                <span key={skill} className="skill-tag skill-tag--proficient">
-                  {skill}
-                </span>
-              ))}
+          <div className="agent-match-score">
+            <span className="ja-muted">{labels.fields.run}</span>
+            <span className="agent-score-value">
+              {report.score} · {labels.tiers[report.tier]}
             </span>
           </div>
-        )}
 
-        {jdGroups.length > 0 && (
-          <div className="agent-match-row" data-testid="agent-jd-requirements">
-            <span className="ja-muted agent-match-label">{labels.match.jdRequirementsTitle}</span>
-            {jdGroups.map((group) =>
-              group.asTags ? (
-                <div key={group.testid} className="agent-jd-group" data-testid={group.testid}>
-                  <span className="agent-jd-group-label">{group.label}</span>
-                  <span className="tag-list">
-                    {group.items.map((item) => (
-                      <span key={item} className="skill-tag">
-                        {item}
-                      </span>
-                    ))}
+          {report.matchedSkills.length > 0 && (
+            <div className="agent-match-row">
+              <span className="ja-muted agent-match-label">{labels.match.matchedSkills}</span>
+              <span className="tag-list">
+                {report.matchedSkills.map((skill) => (
+                  <span key={skill} className="skill-tag skill-tag--proficient">
+                    {skill}
                   </span>
-                </div>
-              ) : (
-                <div key={group.testid} className="agent-jd-group" data-testid={group.testid}>
-                  <span className="agent-jd-group-label">{group.label}</span>
-                  <ul className="agent-match-list">
-                    {group.items.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              ),
-            )}
-          </div>
-        )}
-
-        {report.reasons.length > 0 && (
-          <div className="agent-match-row">
-            <span className="ja-muted agent-match-label">{labels.match.reasons}</span>
-            <ul className="agent-match-list">
-              {report.reasons.map((reason, i) => (
-                <li key={`${reason.code}-${reason.skill}-${i}`}>
-                  {fillTemplate(labels.match.reason[reason.code], {
-                    skill: reason.skill,
-                    points: fillTemplate(labels.match.points, { points: reason.points }),
-                  })}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {report.gaps.length > 0 && (
-          <div className="agent-match-row">
-            <span className="ja-muted agent-match-label">{labels.match.gaps}</span>
-            <ul className="agent-match-list">
-              {report.gaps.map((gap, i) => (
-                <li key={`${gap.code}-${gap.tag}-${i}`}>
-                  {fillTemplate(labels.match.gap[gap.code], { tag: gap.tag })}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {report.suggestedBoost.length > 0 && (
-          <div className="agent-match-row">
-            <span className="ja-muted agent-match-label">{labels.match.boosts}</span>
-            <ul className="agent-match-list">
-              {report.suggestedBoost.map((boost, i) => (
-                <li key={`${boost.code}-${boost.skill}-${i}`}>
-                  {fillTemplate(labels.match.boost[boost.code], {
-                    skill: boost.skill,
-                  })}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {report.reasons.length === 0 &&
-          report.gaps.length === 0 &&
-          report.suggestedBoost.length === 0 &&
-          jdGroups.length === 0 && (
-            <p className="ja-muted">{labels.match.none}</p>
+                ))}
+              </span>
+            </div>
           )}
-      </div>
-    </details>
-      );
-    })()
-  );
+
+          {insight && <JdRequirements insight={insight} labels={labels} />}
+
+          {report.reasons.length > 0 && (
+            <div className="agent-match-row">
+              <span className="ja-muted agent-match-label">{labels.match.reasons}</span>
+              <ul className="agent-match-list">
+                {report.reasons.map((reason, i) => (
+                  <li key={`${reason.code}-${reason.skill}-${i}`}>
+                    {fillTemplate(labels.match.reason[reason.code], {
+                      skill: reason.skill,
+                      points: fillTemplate(labels.match.points, { points: reason.points }),
+                    })}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {report.gaps.length > 0 && (
+            <div className="agent-match-row">
+              <span className="ja-muted agent-match-label">{labels.match.gaps}</span>
+              <ul className="agent-match-list">
+                {report.gaps.map((gap, i) => (
+                  <li key={`${gap.code}-${gap.tag}-${i}`}>
+                    {fillTemplate(labels.match.gap[gap.code], { tag: gap.tag })}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {report.suggestedBoost.length > 0 && (
+            <div className="agent-match-row">
+              <span className="ja-muted agent-match-label">{labels.match.boosts}</span>
+              <ul className="agent-match-list">
+                {report.suggestedBoost.map((boost, i) => (
+                  <li key={`${boost.code}-${boost.skill}-${i}`}>
+                    {fillTemplate(labels.match.boost[boost.code], {
+                      skill: boost.skill,
+                    })}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {report.reasons.length === 0 &&
+            report.gaps.length === 0 &&
+            report.suggestedBoost.length === 0 &&
+            !hasJdRequirements && <p className="ja-muted">{labels.match.none}</p>}
+        </div>
+      </details>
+    );
+  };
 
   const renderIntent = (intent: SubmitIntent) => {
     const { job } = intent;

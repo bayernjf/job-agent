@@ -154,6 +154,31 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     border-radius: var(--ja-radius-md);
   }
 
+  /* 移动端：头区换两行（logo / 导航），导航项保持自然宽度并换行，
+     防止 CJK 链接被逐字竖压、登录按钮撑出横向滚动（2026-10-12 生产 360px 走查修复）。 */
+  @media (max-width: 640px) {
+    .header-inner {
+      flex-wrap: wrap;
+      gap: var(--ja-space-2);
+      padding: var(--ja-space-2) var(--ja-space-3);
+    }
+
+    .nav {
+      flex-basis: 100%;
+      flex-wrap: wrap;
+      gap: var(--ja-space-2) var(--ja-space-3);
+    }
+
+    .nav a {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .lang-switch {
+      padding: var(--ja-space-1) var(--ja-space-2);
+    }
+  }
+
   .main {
     min-height: calc(100vh - 120px);
   }

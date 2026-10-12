@@ -336,6 +336,8 @@ export async function advanceRunOnce(
     scanPoolLimit: AGENT_DEFAULTS.scanPoolLimit,
     tickMaxRuns: AGENT_DEFAULTS.tickMaxRuns,
     submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
+    recommendStaleMinutes: AGENT_DEFAULTS.recommendStaleMinutes,
+    jdLlmBudgetMs: AGENT_DEFAULTS.jdLlmBudgetMs,
   };
   const nowIso = deps.now();
 
@@ -424,28 +426,6 @@ async function scanOnce(
 
   const planned = planIntents(selected, { profileSkills });
 
-  // C1 语义增强（阶段 3，设计 §3.2/§10 C1）：仅当运行时注入了 jdExtractor（env
-  // AGENT_JD_LLM_ENABLED 且 LLM 可用）时，对每条候选用 LLM 从 JD 正文提取岗位侧要求，
-  // 再由纯函数合并进报告。LLM 不打分、不造画像事实；任何失败/返回 null 都 fail-closed
-  // 保留纯规则报告，绝不阻塞推荐（无 description 的岗位直接跳过）。
-  if (cfg.jdExtractor) {
-    for (const item of planned) {
-      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting as
-        | StoredJobPosting
-        | undefined;
-      const description = posting?.description;
-      if (!description) continue;
-      try {
-        const insight = await cfg.jdExtractor(item.job.title, description);
-        if (insight) {
-          item.report = enhanceMatchReportWithJd(item.report, insight, profileSkills);
-        }
-      } catch {
-        // LLM 超时/HTTP/校验失败：保持纯规则报告，不影响 generated 闸与票据写入。
-      }
-    }
-  }
-
   const evidence = toEvidenceItems(await repos.evidence.listByProfile(run.profileId));
 
   // 「generated」闸：真的把工件装配一遍（no-fabrication / Schema.parse 出口校验都在里面），
@@ -462,6 +442,31 @@ async function scanOnce(
       ready.push(item);
     } catch {
       skipped += 1;
+    }
+  }
+
+  // C1 语义增强（阶段 3，设计 §3.2/§10 C1）：只对**已过质量闸、工件可装配**的 ready
+  // 候选做——被闸掉的候选不花 LLM。LLM 从 JD 正文提取岗位侧要求，再由纯函数合并进报告，
+  // 不打分、不造画像事实；任何失败/返回 null 都 fail-closed 保留纯规则报告。
+  // 整体受 jdLlmBudgetMs 墙钟预算约束：每条调用前检查，预算耗尽后剩余候选保持纯规则、
+  // 票据照常写出（单次在途调用另有 LLM_TIMEOUT_MS 上限，最坏超支 ≤ 一次调用）。
+  if (cfg.jdExtractor) {
+    const enrichStartedAt = Date.now();
+    for (const item of ready) {
+      if (Date.now() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
+      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting as
+        | StoredJobPosting
+        | undefined;
+      const description = posting?.description;
+      if (!description) continue;
+      try {
+        const insight = await cfg.jdExtractor(item.job.title, description);
+        if (insight) {
+          item.report = enhanceMatchReportWithJd(item.report, insight, profileSkills);
+        }
+      } catch {
+        // LLM 超时/HTTP/校验失败：保持纯规则报告，不影响票据写入。
+      }
     }
   }
 
@@ -533,12 +538,14 @@ export async function runAgentTickOnce(deps: {
     scanPoolLimit: AGENT_DEFAULTS.scanPoolLimit,
     tickMaxRuns: AGENT_DEFAULTS.tickMaxRuns,
     submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
+    recommendStaleMinutes: AGENT_DEFAULTS.recommendStaleMinutes,
+    jdLlmBudgetMs: AGENT_DEFAULTS.jdLlmBudgetMs,
   };
   // 超时回收：submitting 超过 submitStaleHours 无回执 → fail（显式原因 submit_timeout，
   // 不静默悬空；用户要重试就新建任务）。取 200 条足够覆盖正常规模，无需新仓储方法。
-  const submitting = await deps.repos.jobRuns.listByStatuses(['submitting'], 200);
-  let recycled = 0;
   const nowIso = deps.now();
+  let recycled = 0;
+  const submitting = await deps.repos.jobRuns.listByStatuses(['submitting'], 200);
   for (const run of submitting) {
     const ageHours = (Date.parse(nowIso) - Date.parse(run.updatedAt)) / 3_600_000;
     if (ageHours >= cfg.submitStaleHours) {
@@ -546,6 +553,20 @@ export async function runAgentTickOnce(deps: {
         lastError: 'submit_timeout',
       });
       if (failed) recycled += 1;
+    }
+  }
+  // 滞留回收：recommending 占位（写票据前的状态）超过 recommendStaleMinutes 仍未推进
+  // ——占位进程在 generated 之前被杀（如 serverless 超时）。走状态机既有的
+  // recommending --rescan--> watching 出边回到扫描态，下一轮即可重新产出；
+  // 阈值远大于单轮扫描耗时，不会回收正在进行中的扫描。
+  const recommending = await deps.repos.jobRuns.listByStatuses(['recommending'], 200);
+  for (const run of recommending) {
+    const ageMinutes = (Date.parse(nowIso) - Date.parse(run.updatedAt)) / 60_000;
+    if (ageMinutes >= cfg.recommendStaleMinutes) {
+      const recovered = await applyRunEvent(deps.repos, run, 'rescan', 'system', nowIso, {
+        lastError: 'recommend_stale_recovered',
+      });
+      if (recovered) recycled += 1;
     }
   }
   const runs = await deps.repos.jobRuns.listByStatuses(
