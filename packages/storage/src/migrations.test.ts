@@ -453,6 +453,22 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 035（applications.submit_intent_id 部分唯一索引，mark-submitted 幂等）
+    const idxBefore35 = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_applications_submit_intent_unique'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(idxBefore35.map((i) => i.name)).toContain('idx_applications_submit_intent_unique');
+    const result35 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result35.version).toBe('035');
+    const idxAfter35 = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_applications_submit_intent_unique'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(idxAfter35.map((i) => i.name)).not.toContain('idx_applications_submit_intent_unique');
+
     // 回滚 034（notification_subscriptions 整表，触达通道订阅，决策 #25）
     const nsTablesBefore34 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
