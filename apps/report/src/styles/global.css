@@ -307,6 +307,23 @@ h4 { font-size: var(--ja-text-lg); }
   cursor: default;
 }
 
+/* 移动端导航适配（AccountMenu 是客户端 island，Layout 的 scoped 样式选择不到，
+   故其换行规则必须放全局；2026-10-12 生产 360px 走查修复）。 */
+@media (max-width: 640px) {
+  .nav .account-menu {
+    flex-basis: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: var(--ja-space-2);
+  }
+
+  .nav .account-menu a,
+  .nav .account-menu button,
+  .nav .account-menu__identity span {
+    white-space: nowrap;
+  }
+}
+
 .claim-profile {
   display: inline-flex;
   align-items: center;
