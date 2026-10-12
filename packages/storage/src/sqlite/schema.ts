@@ -307,6 +307,10 @@ export const applications = sqliteTable(
     index('idx_applications_profile_status').on(table.profileId, table.status),
     index('idx_applications_profile_applied').on(table.profileId, table.appliedAt),
     index('idx_applications_outcome').on(table.outcomeFeedback),
+    // 035：一张票据至多一条 agent 投递记录；手动/报告/扩展写入为 NULL，不受约束
+    uniqueIndex('idx_applications_submit_intent_unique')
+      .on(table.submitIntentId)
+      .where(sql`submit_intent_id IS NOT NULL`),
   ],
 );
 

@@ -140,7 +140,9 @@ describe('GET /health', () => {
     const body = await res.json() as any;
     expect(body.status).toBe('error');
     expect(body.db).toBe('unreachable');
-    expect(body.error).toContain('connection refused');
+    // 公开探活不回显原始驱动错误（可能含连接串/主机），对外只给固定串
+    expect(body.error).toBe('deep health check failed');
+    expect(JSON.stringify(body)).not.toContain('connection refused');
   });
 });
 

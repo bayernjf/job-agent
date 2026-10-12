@@ -8,6 +8,7 @@ import { SqliteSubmitIntentsRepository } from './sqlite/submit-intents-repo.js';
 import {
   toStoredSubmitIntent,
   type MatchReport,
+  type NewApplication,
   type NewSubmitIntent,
   type RawSubmitIntentRow,
   type SubmitIntentJob,
@@ -59,9 +60,27 @@ const REPORT: MatchReport = {
   suggestedBoost: [],
 };
 
+const T0 = '2026-10-03T00:00:00.000Z';
 const T1 = '2026-10-03T01:00:00.000Z';
 const T2 = '2026-10-03T02:00:00.000Z';
 const T3 = '2026-10-03T03:00:00.000Z';
+
+function application(id: string, overrides: Partial<NewApplication> = {}): NewApplication {
+  return {
+    id,
+    profileId: 'prof-1',
+    jobId: 'job-1',
+    source: 'remoteok',
+    targetTitle: 'Senior Backend Engineer',
+    targetCompany: 'Acme',
+    targetUrl: 'https://remoteok.com/remote-jobs/1/apply',
+    origin: 'agent',
+    appliedAt: T3,
+    createdByAccountId: 'acc-1',
+    submitIntentId: 'intent-1',
+    ...overrides,
+  };
+}
 
 function intent(
   overrides: Partial<NewSubmitIntent> & Pick<NewSubmitIntent, 'id' | 'createdAt'>,
@@ -302,6 +321,203 @@ describe('SqliteSubmitIntentsRepository', () => {
     expect(linked.origin).toBe('agent');
     expect(linked.submitIntentId).toBe('intent-1');
     expect((await applications.getById('app-2'))!.submitIntentId).toBeNull();
+    close();
+  });
+
+  it('markSubmittedWithApplication commits the ticket CAS and the application row together', async () => {
+    const { repo, applications, close } = freshRepo();
+    await repo.insert(intent({ id: 'intent-1', createdAt: T1 }));
+
+    const result = await repo.markSubmittedWithApplication('intent-1', application('app-1'), T3);
+    expect(result.outcome).toBe('submitted');
+    if (result.outcome !== 'submitted') throw new Error('expected submitted outcome');
+    expect(result.intent.status).toBe('submitted');
+    expect(result.intent.submittedAt).toBe(T3);
+    expect(result.intent.applicationId).toBe('app-1');
+    // application 行反向链回票据，origin 保留调用方给的 agent
+    expect(result.application.submitIntentId).toBe('intent-1');
+    expect(result.application.origin).toBe('agent');
+    expect(await applications.listByProfile('prof-1')).toHaveLength(1);
+
+    // 重复标记（即便带了另一个 application id）：幂等返回既有行，绝不插第二条
+    const again = await repo.markSubmittedWithApplication(
+      'intent-1',
+      application('app-2'),
+      T3,
+    );
+    expect(again.outcome).toBe('already');
+    if (again.outcome !== 'already') throw new Error('expected already outcome');
+    expect(again.intent.status).toBe('submitted');
+    expect(again.intent.applicationId).toBe('app-1');
+    expect(again.application!.id).toBe('app-1');
+    expect(await applications.listByProfile('prof-1')).toHaveLength(1);
+    close();
+  });
+
+  it('markSubmittedWithApplication reconciles a pre-035 orphan application without a duplicate', async () => {
+    const { repo, applications, close } = freshRepo();
+    // 035 之前的历史数据：application 已存在并回链，但票据还停在 pending
+    await repo.insert(intent({ id: 'intent-orphan', createdAt: T1 }));
+    await applications.insert(
+      application('app-orphan', { submitIntentId: 'intent-orphan' }),
+    );
+
+    const result = await repo.markSubmittedWithApplication(
+      'intent-orphan',
+      application('app-new', { submitIntentId: 'intent-orphan' }),
+      T3,
+    );
+    expect(result.outcome).toBe('already');
+    if (result.outcome !== 'already') throw new Error('expected already outcome');
+    // 票据被补齐为 submitted，既有 application 原样返回，不重插
+    expect(result.intent.status).toBe('submitted');
+    expect(result.intent.submittedAt).toBe(T3);
+    expect(result.application!.id).toBe('app-orphan');
+    const rows = await applications.listByProfile('prof-1');
+    expect(rows.map((r) => r.id)).toEqual(['app-orphan']);
+    close();
+  });
+
+  it('markSubmittedWithApplication rejects rejected and unknown tickets without writing an application', async () => {
+    const { repo, applications, close } = freshRepo();
+    await repo.insertMany([
+      intent({ id: 'intent-rejected', createdAt: T1, status: 'rejected', rejectedAt: T2 }),
+    ]);
+
+    const fromRejected = await repo.markSubmittedWithApplication(
+      'intent-rejected',
+      application('app-1', { submitIntentId: 'intent-rejected' }),
+      T3,
+    );
+    expect(fromRejected.outcome).toBe('invalid');
+    expect((await repo.getById('intent-rejected'))!.status).toBe('rejected');
+
+    const fromUnknown = await repo.markSubmittedWithApplication(
+      'intent-missing',
+      application('app-2', { submitIntentId: 'intent-missing' }),
+      T3,
+    );
+    expect(fromUnknown.outcome).toBe('invalid');
+    expect(await applications.listByProfile('prof-1')).toHaveLength(0);
+    close();
+  });
+
+  it('approveManyWithQuota approves a whole batch when every source is within the limit', async () => {
+    const { repo, close } = freshRepo();
+    await repo.insertMany([
+      intent({ id: 'intent-a', createdAt: T1 }),
+      intent({ id: 'intent-b', createdAt: T2 }),
+    ]);
+
+    const result = await repo.approveManyWithQuota('run-1', 'acc-1', ['intent-a', 'intent-b'], 5, T0, T3);
+    expect(result).toEqual({ outcome: 'approved', approved: 2 });
+    for (const id of ['intent-a', 'intent-b']) {
+      const stored = (await repo.getById(id))!;
+      expect(stored.status).toBe('approved');
+      expect(stored.approvedAt).toBe(T3);
+    }
+
+    // 空批是一次零成本 no-op
+    expect(await repo.approveManyWithQuota('run-1', 'acc-1', [], 5, T0, T3)).toEqual({
+      outcome: 'approved',
+      approved: 0,
+    });
+    close();
+  });
+
+  it('approveManyWithQuota rolls back the whole batch when a source exceeds the limit', async () => {
+    const { repo, close } = freshRepo();
+    await repo.insertMany([
+      // 窗口内已有一笔 remoteok 已确认：committed = 1
+      intent({ id: 'intent-done', createdAt: T1, status: 'approved', approvedAt: T1 }),
+      intent({ id: 'intent-a', createdAt: T2 }),
+      intent({ id: 'intent-b', createdAt: T3 }),
+    ]);
+
+    const result = await repo.approveManyWithQuota(
+      'run-1',
+      'acc-1',
+      ['intent-a', 'intent-b'],
+      2,
+      T0,
+      T3,
+    );
+    // 1 + 2 > 2：整单失败，逐字段报额，绝不部分确认
+    expect(result).toEqual({
+      outcome: 'quota_exceeded',
+      source: 'remoteok',
+      committed: 1,
+      remaining: 1,
+      requested: 2,
+    });
+    for (const id of ['intent-a', 'intent-b']) {
+      expect((await repo.getById(id))!.status).toBe('pending');
+    }
+    close();
+  });
+
+  it('approveManyWithQuota excludes already-processed tickets from the requested count', async () => {
+    const { repo, close } = freshRepo();
+    await repo.insertMany([
+      intent({ id: 'intent-a', createdAt: T1 }),
+      intent({ id: 'intent-b', createdAt: T2 }),
+      // 已被拒绝：不在 pending 分组里，不占额度也不复活
+      intent({ id: 'intent-rejected', createdAt: T3, status: 'rejected', rejectedAt: T3 }),
+    ]);
+
+    // limit=2：若把 rejected 算进请求数会是 3 > 2；实际 requested 只有 2，整批通过
+    const result = await repo.approveManyWithQuota(
+      'run-1',
+      'acc-1',
+      ['intent-a', 'intent-b', 'intent-rejected'],
+      2,
+      T0,
+      T3,
+    );
+    expect(result).toEqual({ outcome: 'approved', approved: 2 });
+    expect((await repo.getById('intent-rejected'))!.status).toBe('rejected');
+    close();
+  });
+
+  it('approveManyWithQuota accounts for committed usage independently per source', async () => {
+    const { repo, close } = freshRepo();
+    await repo.insertMany([
+      // greenhouse 窗口内已有一笔已确认
+      intent({
+        id: 'intent-gh-done',
+        createdAt: T1,
+        status: 'approved',
+        approvedAt: T1,
+        jobSource: 'greenhouse',
+        job: { ...JOB, source: 'greenhouse' },
+      }),
+      intent({
+        id: 'intent-gh-1',
+        createdAt: T1,
+        jobSource: 'greenhouse',
+        job: { ...JOB, source: 'greenhouse' },
+      }),
+      intent({ id: 'intent-ro-1', createdAt: T2 }),
+      intent({ id: 'intent-ro-2', createdAt: T3 }),
+    ]);
+    const ids = ['intent-gh-1', 'intent-ro-1', 'intent-ro-2'];
+
+    // limit=1：greenhouse committed 1 + requested 1 > 1 → 整批回滚（含本可通过的 remoteok）
+    const blocked = await repo.approveManyWithQuota('run-1', 'acc-1', ids, 1, T0, T3);
+    expect(blocked).toEqual({
+      outcome: 'quota_exceeded',
+      source: 'greenhouse',
+      committed: 1,
+      remaining: 0,
+      requested: 1,
+    });
+    for (const id of ids) {
+      expect((await repo.getById(id))!.status).toBe('pending');
+    }
+
+    // 同批票据、limit=3：greenhouse 2 ≤ 3、remoteok 2 ≤ 3，逐源通过
+    const passed = await repo.approveManyWithQuota('run-1', 'acc-1', ids, 3, T0, T3);
+    expect(passed).toEqual({ outcome: 'approved', approved: 3 });
     close();
   });
 

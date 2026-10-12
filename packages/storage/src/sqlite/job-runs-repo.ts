@@ -5,10 +5,27 @@ import {
   type JobRunStatus,
   type JobRunStatusPatch,
   type NewJobRun,
+  type NewJobRunEvent,
+  type NewSubmitIntent,
   type StoredJobRun,
 } from '../entities/index.js';
 import type { IJobRunsRepository } from '../repositories/job-runs.js';
-import { jobRuns as t, type JobRunInsert } from './schema.js';
+import { jobRunEvents as evtT, jobRuns as t, submitIntents as intentT, type JobRunInsert } from './schema.js';
+import { toInsertValues as toIntentInsertValues } from './submit-intents-repo.js';
+
+/** 审计事件入库 → drizzle values（与 job-run-events 仓储的 insert 逐字段一致） */
+function toEventInsertValues(event: NewJobRunEvent) {
+  return {
+    id: event.id,
+    runId: event.runId,
+    event: event.event,
+    fromStatus: event.fromStatus ?? null,
+    toStatus: event.toStatus,
+    actor: event.actor,
+    payload: JSON.stringify(event.payload ?? {}),
+    createdAt: event.createdAt,
+  };
+}
 
 /** 状态补丁 → drizzle set 对象：只写显式提供的字段（null 是合法值） */
 function patchToSet(patch: JobRunStatusPatch): Partial<JobRunInsert> & { updatedAt: string } {
@@ -72,6 +89,54 @@ export class SqliteJobRunsRepository implements IJobRunsRepository {
       .run();
     if ((result.changes ?? 0) === 0) return undefined;
     return this.getById(id);
+  }
+
+  async compareAndSetStatusWithEvent(
+    id: string,
+    expectStatus: JobRunStatus,
+    patch: JobRunStatusPatch,
+    event: NewJobRunEvent,
+  ): Promise<StoredJobRun | undefined> {
+    // CAS 与审计事件必须同事务：消除"状态已推进、事件丢失"的窗口（崩溃后事件流不可回放）
+    return this.db.transaction((tx): StoredJobRun | undefined => {
+      const result = tx
+        .update(t)
+        .set(patchToSet(patch))
+        .where(and(eq(t.id, id), eq(t.status, expectStatus)))
+        .run();
+      // CAS 输家：零事件写入
+      if ((result.changes ?? 0) === 0) return undefined;
+      tx.insert(evtT).values(toEventInsertValues(event)).run();
+      const row = tx.select().from(t).where(eq(t.id, id)).get();
+      return row ? toStoredJobRun(row) : undefined;
+    });
+  }
+
+  async publishGeneratedIntents(
+    runId: string,
+    expectStatus: JobRunStatus,
+    patch: JobRunStatusPatch,
+    event: NewJobRunEvent,
+    intents: readonly NewSubmitIntent[],
+  ): Promise<StoredJobRun | undefined> {
+    // scanOnce 尾部三表原子操作：CAS 闸（recommending → awaiting_approval）+ 票据批量 + generated 事件
+    return this.db.transaction((tx): StoredJobRun | undefined => {
+      const result = tx
+        .update(t)
+        .set(patchToSet(patch))
+        .where(and(eq(t.id, runId), eq(t.status, expectStatus)))
+        .run();
+      // CAS 输家：零票据、零事件
+      if ((result.changes ?? 0) === 0) return undefined;
+      if (intents.length > 0) {
+        tx.insert(intentT)
+          .values(intents.map(toIntentInsertValues))
+          .run();
+      }
+      tx.insert(evtT).values(toEventInsertValues(event)).run();
+      const row = tx.select().from(t).where(eq(t.id, runId)).get();
+      return row ? toStoredJobRun(row) : undefined;
+    });
   }
 
   async setStatus(

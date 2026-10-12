@@ -67,6 +67,16 @@ export interface AgentRepos {
   applications: IApplicationsRepository;
 }
 
+/**
+ * cron tick 的共享执行上下文（手动「立即扫描」不传，不受 tick 墙钟限制）：
+ *   - deadlineAt：整轮 tick 的墙钟截止时刻（epoch ms），每接一个新 run、每次 LLM 调用前检查；
+ *   - pool：本 tick 只查一次的岗位池快照，跨 run 复用（避免每 run 各打一次相同查询）。
+ */
+export interface TickContext {
+  deadlineAt?: number;
+  pool?: StoredJobPosting[];
+}
+
 export interface AgentScanStats {
   poolSize: number;
   /** 通过偏好硬过滤 + 匹配（score>0）的候选数 */
@@ -118,24 +128,26 @@ export async function applyRunEvent(
 ): Promise<StoredJobRun | undefined> {
   const plan = planTransition(run.status, event);
   if (!plan.ok) return undefined;
-  // 先占位再写事件：CAS 失败说明别人已经推进过，此时不落事件（审计日志不出现幻影迁移）
-  const updated = await repos.jobRuns.compareAndSetStatus(run.id, run.status, {
-    status: plan.to,
-    ...patch,
-    updatedAt: nowIso,
-  });
-  if (!updated) return undefined;
-  await repos.jobRunEvents.insert({
-    id: `evt-${randomUUID()}`,
-    runId: run.id,
-    event: plan.event,
-    fromStatus: plan.from,
-    toStatus: plan.to,
-    actor,
-    payload: eventPayload(patch),
-    createdAt: nowIso,
-  });
-  return updated;
+  // CAS 与事件落库同事务：CAS 输家（别人已推进）零事件，赢家状态与审计永远一致
+  return repos.jobRuns.compareAndSetStatusWithEvent(
+    run.id,
+    run.status,
+    {
+      status: plan.to,
+      ...patch,
+      updatedAt: nowIso,
+    },
+    {
+      id: `evt-${randomUUID()}`,
+      runId: run.id,
+      event: plan.event,
+      fromStatus: plan.from,
+      toStatus: plan.to,
+      actor,
+      payload: eventPayload(patch),
+      createdAt: nowIso,
+    },
+  );
 }
 
 function eventPayload(
@@ -326,7 +338,7 @@ export async function appliedJobIds(
  *   无合格项：watching --rescan--> watching（记 lastScanAt，不是失败）
  */
 export async function advanceRunOnce(
-  deps: { repos: AgentRepos; now: () => string; config?: AgentConfig },
+  deps: { repos: AgentRepos; now: () => string; config?: AgentConfig; tick?: TickContext },
   runId: string,
   actor: 'user' | 'agent',
 ): Promise<AdvanceOutcome> {
@@ -338,6 +350,7 @@ export async function advanceRunOnce(
     submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
     recommendStaleMinutes: AGENT_DEFAULTS.recommendStaleMinutes,
     jdLlmBudgetMs: AGENT_DEFAULTS.jdLlmBudgetMs,
+    tickDeadlineMs: AGENT_DEFAULTS.tickDeadlineMs,
   };
   const nowIso = deps.now();
 
@@ -386,7 +399,7 @@ export async function advanceRunOnce(
     };
   }
 
-  return scanOnce(repos, cfg, run, preference, profile, nowIso);
+  return scanOnce(repos, cfg, run, preference, profile, nowIso, deps.tick);
 }
 
 async function scanOnce(
@@ -396,15 +409,19 @@ async function scanOnce(
   preference: StoredJobPreference,
   profile: AbilityProfile,
   nowIso: string,
+  tick?: TickContext,
 ): Promise<AdvanceOutcome> {
   const profileSkills = profile.skillTags.map((tag) => tag.name);
 
-  // 岗位池：只取 active，按发布时间倒序；偏好过滤是硬过滤（宁可少推，不推错的）
-  const pool = await repos.jobPostings.search({
-    status: 'active',
-    limit: cfg.scanPoolLimit,
-    orderBy: 'posted_desc',
-  });
+  // 岗位池：只取 active，按发布时间倒序；偏好过滤是硬过滤（宁可少推，不推错的）。
+  // tick 路径整轮只查一次、跨 run 复用同一快照；手动路径（无 tick）照常自查。
+  const pool =
+    tick?.pool ??
+    (await repos.jobPostings.search({
+      status: 'active',
+      limit: cfg.scanPoolLimit,
+      orderBy: 'posted_desc',
+    }));
   const filtered = filterPostingsForPreference(pool as StoredJobPosting[], preference);
   const criteria = preferenceToMatchCriteria(preference, profileSkills);
   const matches: Array<JobMatch<StoredJobPosting>> = matchJobs(filtered, criteria);
@@ -445,31 +462,6 @@ async function scanOnce(
     }
   }
 
-  // C1 语义增强（阶段 3，设计 §3.2/§10 C1）：只对**已过质量闸、工件可装配**的 ready
-  // 候选做——被闸掉的候选不花 LLM。LLM 从 JD 正文提取岗位侧要求，再由纯函数合并进报告，
-  // 不打分、不造画像事实；任何失败/返回 null 都 fail-closed 保留纯规则报告。
-  // 整体受 jdLlmBudgetMs 墙钟预算约束：每条调用前检查，预算耗尽后剩余候选保持纯规则、
-  // 票据照常写出（单次在途调用另有 LLM_TIMEOUT_MS 上限，最坏超支 ≤ 一次调用）。
-  if (cfg.jdExtractor) {
-    const enrichStartedAt = Date.now();
-    for (const item of ready) {
-      if (Date.now() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
-      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting as
-        | StoredJobPosting
-        | undefined;
-      const description = posting?.description;
-      if (!description) continue;
-      try {
-        const insight = await cfg.jdExtractor(item.job.title, description);
-        if (insight) {
-          item.report = enhanceMatchReportWithJd(item.report, insight, profileSkills);
-        }
-      } catch {
-        // LLM 超时/HTTP/校验失败：保持纯规则报告，不影响票据写入。
-      }
-    }
-  }
-
   const stats: AgentScanStats = {
     poolSize: pool.length,
     matchedCount: matches.length,
@@ -497,27 +489,77 @@ async function scanOnce(
     return { ok: true, view, scan: stats };
   }
 
-  const createdAt = nowIso;
-  await repos.submitIntents.insertMany(
-    ready.map((item) => ({
-      id: `intent-${randomUUID()}`,
-      runId: run.id,
-      accountId: run.accountId,
-      profileId: run.profileId,
-      jobId: item.job.jobId,
-      jobSource: item.job.source,
-      job: item.job,
-      matchScore: item.matchScore,
-      matchTier: item.matchTier,
-      report: item.report,
-      status: 'pending' as const,
-      createdAt,
-      updatedAt: createdAt,
-    })),
-  );
+  // C1 语义增强（阶段 3，设计 §3.2/§10 C1）放在 CAS 占位成功**之后**：只有抢到
+  // watching → recommending 的那个 run 才花 LLM，输家直接返回、零 LLM 花费。
+  // LLM 从 JD 正文提取岗位侧要求，再由纯函数合并进报告，不打分、不造画像事实；
+  // 任何失败/返回 null 都 fail-closed 保留纯规则报告。双预算约束：本阶段墙钟
+  // jdLlmBudgetMs 与整轮 tick 共享截止时刻，每条调用前都检查，预算耗尽后剩余候选
+  // 保持纯规则、票据照常写出（单次在途调用另有 LLM_TIMEOUT_MS，最坏超支 ≤ 一次调用）。
+  if (cfg.jdExtractor) {
+    const enrichStartedAt = Date.now();
+    for (const item of ready) {
+      if (Date.now() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
+      if (tick?.deadlineAt !== undefined && Date.now() >= tick.deadlineAt) break;
+      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting as
+        | StoredJobPosting
+        | undefined;
+      const description = posting?.description;
+      if (!description) continue;
+      try {
+        const insight = await cfg.jdExtractor(item.job.title, description);
+        if (insight) {
+          item.report = enhanceMatchReportWithJd(item.report, insight, profileSkills);
+        }
+      } catch {
+        // LLM 超时/HTTP/校验失败：保持纯规则报告，不影响票据写入。
+      }
+    }
+  }
 
-  const gated =
-    (await applyRunEvent(repos, recommending, 'generated', 'agent', nowIso)) ?? recommending;
+  // 三表原子收尾：recommending → awaiting_approval 的 CAS 闸 + 票据批量 + generated 事件
+  // 同一事务提交。CAS 输家（如滞留已被 tick 回收回 watching）零票据、零事件，
+  // 不会留下「run 已回 watching、孤儿票据却永不再生成」的中间态。
+  const createdAt = nowIso;
+  const intents = ready.map((item) => ({
+    id: `intent-${randomUUID()}`,
+    runId: run.id,
+    accountId: run.accountId,
+    profileId: run.profileId,
+    jobId: item.job.jobId,
+    jobSource: item.job.source,
+    job: item.job,
+    matchScore: item.matchScore,
+    matchTier: item.matchTier,
+    report: item.report,
+    status: 'pending' as const,
+    createdAt,
+    updatedAt: createdAt,
+  }));
+  const plan = planTransition(recommending.status, 'generated');
+  // plan 在状态机上必然成立（recommending 刚由 candidates_ready 迁来），不成立则按输家回落
+  const gated = plan.ok
+    ? await repos.jobRuns.publishGeneratedIntents(
+        recommending.id,
+        recommending.status,
+        { status: plan.to, updatedAt: nowIso },
+        {
+          id: `evt-${randomUUID()}`,
+          runId: recommending.id,
+          event: plan.event,
+          fromStatus: plan.from,
+          toStatus: plan.to,
+          actor: 'agent',
+          payload: {},
+          createdAt: nowIso,
+        },
+        intents,
+      )
+    : undefined;
+  if (!gated) {
+    const current = (await repos.jobRuns.getById(run.id)) ?? recommending;
+    const view = await loadRunView(repos, current);
+    return { ok: true, view, scan: stats };
+  }
   const view = await loadRunView(repos, gated);
   return { ok: true, view, scan: stats };
 }
@@ -540,7 +582,11 @@ export async function runAgentTickOnce(deps: {
     submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
     recommendStaleMinutes: AGENT_DEFAULTS.recommendStaleMinutes,
     jdLlmBudgetMs: AGENT_DEFAULTS.jdLlmBudgetMs,
+    tickDeadlineMs: AGENT_DEFAULTS.tickDeadlineMs,
   };
+  // 整轮 tick 共享墙钟截止时刻：串行推进多个 run 时，每接一个新 run 前检查，
+  // 超时即停止接新 run（已在跑的 run 不打断）；必须小于 cron-worker 60s fetch 超时。
+  const deadlineAt = Date.now() + cfg.tickDeadlineMs;
   // 超时回收：submitting 超过 submitStaleHours 无回执 → fail（显式原因 submit_timeout，
   // 不静默悬空；用户要重试就新建任务）。取 200 条足够覆盖正常规模，无需新仓储方法。
   const nowIso = deps.now();
@@ -573,9 +619,22 @@ export async function runAgentTickOnce(deps: {
     ['created', 'configured', 'watching', 'recommending'],
     cfg.tickMaxRuns,
   );
+  // 岗位池整轮只查一次：同一 tick 内所有 run 复用同一快照（active 池在 5 分钟
+  // tick 尺度内近似不变；每个 run 仍各自做偏好过滤/匹配/排重）。无待推进 run 时不查。
+  const pool =
+    runs.length > 0
+      ? await deps.repos.jobPostings.search({
+          status: 'active',
+          limit: cfg.scanPoolLimit,
+          orderBy: 'posted_desc',
+        })
+      : [];
+  const tick: TickContext = { deadlineAt, pool };
   const results: Array<{ runId: string; status: string; intents: number }> = [];
   for (const run of runs) {
-    const outcome = await advanceRunOnce({ ...deps, config: cfg }, run.id, 'agent');
+    // 到达整轮截止时刻即停止接新 run；已经在跑的 run 不打断（下一个 tick 会回收/续推）
+    if (Date.now() >= deadlineAt) break;
+    const outcome = await advanceRunOnce({ ...deps, config: cfg, tick }, run.id, 'agent');
     if (outcome.ok) {
       results.push({
         runId: outcome.view.run.id,

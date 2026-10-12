@@ -17,7 +17,6 @@ import {
   JobRunRejectSchema,
   ResumeLocaleSchema,
   RunEventsQuerySchema,
-  type JobSource,
   type SupportedPlatform,
 } from '@jobagent/shared';
 import type { StoredJobRun, StoredSubmitIntent } from '@jobagent/storage';
@@ -25,7 +24,6 @@ import {
   DEFAULT_DAILY_SUBMIT_LIMIT,
   canCancel,
   isTerminalStatus,
-  remainingDailyQuota,
 } from '@jobagent/agent-core';
 import {
   advanceRunOnce,
@@ -380,41 +378,35 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       );
     }
 
-    // 限频闸（设计 §3.4）：按来源统计 24h 内「已确认 + 已投递」，额度不足则整批拒绝、绝不部分确认
+    // 限频闸 + 批量确认在仓储同一事务内原子完成（设计 §3.4 F1）：事务内重新核对本次可
+    // 移动的 pending 票据与 24h「已确认 + 已投递」计数，任一来源超额整批回滚、绝不部分确认，
+    // 也消除了「判额通过后、UPDATE 前被并发确认插队」的窗口。
     const preference = await repos.jobPreferences.getById(run.preferenceId);
     const limit = preference?.dailySubmitLimit ?? DEFAULT_DAILY_SUBMIT_LIMIT;
     const since = new Date(Date.parse(now()) - 24 * 60 * 60 * 1000).toISOString();
-    const perSource = new Map<JobSource, number>();
-    for (const intent of requested) {
-      perSource.set(intent.jobSource, (perSource.get(intent.jobSource) ?? 0) + 1);
-    }
-    for (const [source, count] of perSource) {
-      const committed = await repos.submitIntents.countCommittedBySourceSince(
-        run.accountId,
-        source,
-        since,
-      );
-      if (remainingDailyQuota(committed, limit) < count) {
-        return c.json(
-          {
-            error: 'daily submit limit reached for this source',
-            code: AGENT_ERROR_CODES.dailyLimitReached,
-            source,
-            limit,
-            committed,
-            remaining: remainingDailyQuota(committed, limit),
-          },
-          429,
-        );
-      }
-    }
-
     const approvedAt = now();
-    const approved = await repos.submitIntents.approveMany(
+    const quotaResult = await repos.submitIntents.approveManyWithQuota(
       run.id,
+      run.accountId,
       requested.map((intent) => intent.id),
+      limit,
+      since,
       approvedAt,
     );
+    if (quotaResult.outcome === 'quota_exceeded') {
+      return c.json(
+        {
+          error: 'daily submit limit reached for this source',
+          code: AGENT_ERROR_CODES.dailyLimitReached,
+          source: quotaResult.source,
+          limit,
+          committed: quotaResult.committed,
+          remaining: quotaResult.remaining,
+        },
+        429,
+      );
+    }
+    const approved = quotaResult.approved;
     const updatedRun = (await applyRunEvent(repos, run, 'approve', 'user', approvedAt)) ?? run;
     return c.json({ ...toRunViewData(await loadRunView(repos, updatedRun)), approved });
   });
@@ -452,46 +444,44 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     return c.json(toRunViewData(await loadRunView(repos, nextRun)));
   });
 
-  // POST /agent/intents/:id/mark-submitted：用户投完回来回填「已投」→ 写一条投递记录（origin=agent）并进入跟踪
+  // POST /agent/intents/:id/mark-submitted：用户投完回来回填「已投」→ 写一条投递记录（origin=agent）并进入跟踪。
+  // 票据 CAS（pending/approved → submitted）与 application 插入在仓储同一事务内完成（035 部分唯一索引）：
+  // 先 CAS 后插，CAS 败不留孤儿行；重复/并发标记按 already 幂等返回，不 500、不产生重复投递记录。
   app.post('/agent/intents/:id/mark-submitted', async (c) => {
     const intent = await requireOwnedIntent(c, c.req.param('id') ?? '');
     if (intent instanceof Response) return intent;
-    if (intent.status === 'submitted') {
-      // 幂等：重复标记不重复写投递记录
-      const run = await repos.jobRuns.getById(intent.runId);
-      return c.json({
-        intent: toIntentView(intent),
-        applicationId: intent.applicationId,
-        run: run ? toRunView(run) : null,
-      });
-    }
-    if (intent.status !== 'pending' && intent.status !== 'approved') {
+    const submittedAt = now();
+    const result = await repos.submitIntents.markSubmittedWithApplication(
+      intent.id,
+      {
+        id: `app-${randomUUID()}`,
+        profileId: intent.profileId,
+        jobId: intent.jobId,
+        source: intent.jobSource,
+        targetTitle: intent.job.title,
+        targetCompany: intent.job.company,
+        targetUrl: intent.job.applyUrl ?? intent.job.sourceUrl,
+        status: 'applied',
+        note: null,
+        origin: 'agent',
+        appliedAt: submittedAt,
+        createdByAccountId: intent.accountId,
+        submitIntentId: intent.id,
+      },
+      submittedAt,
+    );
+    if (result.outcome === 'invalid') {
+      // requireOwnedIntent 已挡不存在/越权；这里只可能是 rejected/withdrawn/failed 等不可复活状态
       return c.json(
         { error: 'submit intent cannot be marked submitted', code: AGENT_ERROR_CODES.invalidTransition },
         409,
       );
     }
-    const submittedAt = now();
-    const applicationId = `app-${randomUUID()}`;
-    await repos.applications.insert({
-      id: applicationId,
-      profileId: intent.profileId,
-      jobId: intent.jobId,
-      source: intent.jobSource,
-      targetTitle: intent.job.title,
-      targetCompany: intent.job.company,
-      targetUrl: intent.job.applyUrl ?? intent.job.sourceUrl,
-      status: 'applied',
-      note: null,
-      origin: 'agent',
-      appliedAt: submittedAt,
-      createdByAccountId: intent.accountId,
-      submitIntentId: intent.id,
-    });
-    const updated = await repos.submitIntents.markSubmitted(intent.id, submittedAt, applicationId);
-    const runBefore = await repos.jobRuns.getById(intent.runId);
-    let run = runBefore;
-    if (runBefore) {
+
+    let run = await repos.jobRuns.getById(result.intent.runId);
+    // run 状态推进只在「本请求真的完成了标记」时做；幂等重放（already）不重复落事件
+    if (result.outcome === 'submitted' && run) {
+      const runBefore = run;
       const all = await repos.submitIntents.listByRun(runBefore.id, 200);
       const open = all.filter((item) => item.status === 'pending' || item.status === 'approved');
       if (open.length === 0) {
@@ -508,8 +498,8 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       }
     }
     return c.json({
-      intent: toIntentView(updated ?? intent),
-      applicationId,
+      intent: toIntentView(result.intent),
+      applicationId: result.application?.id ?? result.intent.applicationId,
       run: run ? toRunView(run) : null,
     });
   });

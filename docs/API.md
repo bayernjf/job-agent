@@ -81,6 +81,7 @@
 | `AGENT_TICK_MAX_RUNS` | `10` | 一次 `/internal/cron/agent-tick` 最多推进多少个求职任务（≥1 且 ≤100） |
 | `AGENT_JD_LLM_ENABLED` | `false` | 阶段 3（C1）开关：`true`/`1` 时用内置 LLM 从 JD 正文提取职责/技能/资历事实并增强匹配报告。仅在已配 `LLM_*` 时生效；LLM 不打分、不评价候选人，分/档位/理由永远走纯规则；任何 LLM 失败 fail-closed 回落纯规则 |
 | `AGENT_JD_LLM_BUDGET_MS` | `20000` | 单轮扫描内 JD 增强的整体墙钟预算（1..50000）：每条候选调用前检查，到点后剩余候选保留纯规则报告、票据照常写出，避免串行 LLM 拖过 cron-worker 60s 调用超时 |
+| `AGENT_TICK_DEADLINE_MS` | `50000` | 一次 `/internal/cron/agent-tick` 的整轮墙钟预算（1..55000）：串行推进多个任务时，每接一个新任务、每次 JD LLM 调用前检查共享截止时刻，到点即停止接新任务（已在跑的不打断）；必须小于 cron-worker 60s fetch 超时。手动「立即扫描」不受此限；同一 tick 的岗位池只查一次并跨任务复用 |
 | `AGENT_RECOMMEND_STALE_MINUTES` | `15` | `recommending` 占位（写票据前）滞留超过该分钟数 → cron 走 `rescan` 回收回 `watching` 重扫（1..1440；须大于单轮扫描耗时与 5 分钟 tick 间隔） |
 | `TAVILY_API_KEY` | 空 | 指令式搜岗搜索通道 key（主通道 Tavily）；未配时 `/internal/cron/search-tick` 503 并记失败心跳。免费层 1000 credits/月 |
 | `SEARCH_DAILY_LIMIT` | `10` | 搜岗每日次数上限（UTC 日界、按账号、含失败 run）；`0`＝关闭；超限 429 `search_daily_limit`。搜岗 run 仅用户主动发起 |
@@ -1662,11 +1663,15 @@ token 90 天滑动续期、可撤销。
 { "status": "ok", "service": "jobagent-api", "time": "2026-09-24T08:00:00.000Z", "db": "ok", "dbLatencyMs": 2 }
 ```
 
+深检查 200/503 均可带 `cronHeartbeat` 行（字段 `consumer` / `lastSuccessAt` / `lastResult` / `updatedAt`）。**该端点无鉴权，投影一律剥离 `lastError`**——原始驱动错误与消费方失败明细可能含内部细节，不对匿名探活方公开；明细只进服务端日志或经 `CRON_SECRET` 保护的 `/internal/cron/*` 读取。
+
 - `503`（DB 不可达）：
 
 ```json
-{ "status": "error", "service": "jobagent-api", "time": "2026-09-24T08:00:00.000Z", "db": "unreachable", "error": "..." }
+{ "status": "error", "service": "jobagent-api", "time": "2026-09-24T08:00:00.000Z", "db": "unreachable", "error": "deep health check failed" }
 ```
+
+`error` 是不含内部细节的固定串（完整错误只写服务端日志）。
 
 `tools/smoke-deploy.sh` 同时断言浅检查 `200 {"status":"ok"}` 与深检查 `200 {"db":"ok"}`。
 
@@ -1712,7 +1717,7 @@ token 90 天滑动续期、可撤销。
 
 `503`：`{ "status": "error", "stale": ["agent-tick lastOk=2026-10-08T03:00:00.000Z lastError=none"] }`
 
-`/health?deep=1` 联动：watchdog 最近一次失败（`last_error` 非空、30 分钟内）时 deep 探活 503 并返回 `watchdog: { status: "error", message }`——让"消费通道断了"成为可探知失败；watchdog 下一轮成功后恢复 200。未知 consumer 一律忽略，不误报；空表（尚无任何心跳）不算 stale。
+`/health?deep=1` 联动：watchdog 最近一次失败（`last_error` 非空、30 分钟内）时 deep 探活 503 并返回 `watchdog: { status: "error", message, checkedAt }`——让"消费通道断了"成为可探知失败；watchdog 下一轮成功后恢复 200。`message` 是不含明细的固定串（`one or more cron consumers are stale`），stale 明细只在鉴权内部端点可见。未知 consumer 一律忽略，不误报；空表（尚无任何心跳）不算 stale。
 
 ### `GET /internal/cron/cleanup?task=demo|auth|all`
 

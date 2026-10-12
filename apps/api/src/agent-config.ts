@@ -1,8 +1,9 @@
 /**
  * 求职 Agent 工作台的运行配置（阶段 1/2，设计 docs/设计-求职Agent-20261002.md）。
  *
- * 四个旋钮都有内置默认值：本次作业的候选上限、单轮扫描从岗位池取多少条、
- * 一次 cron tick 最多推进多少个任务、submitting 状态多久未回执视为超时。
+ * 旋钮都有内置默认值：本次作业的候选上限、单轮扫描从岗位池取多少条、
+ * 一次 cron tick 最多推进多少个任务、submitting 状态多久未回执视为超时、
+ * 整轮 tick 的墙钟截止时间。
  * 全部只在服务端读，不下发前端。
  * 非法值直接抛错（不让配置错误静默降级成别的行为）。
  */
@@ -38,6 +39,13 @@ export interface AgentConfig {
    * LLM_TIMEOUT_MS 上限，故最坏超支 ≤ 一次在途调用）。
    */
   jdLlmBudgetMs: number;
+  /**
+   * 一次 agent-tick 的整轮墙钟预算（毫秒，从 tick 开始推进任务前起算）：
+   * 串行推进多个 run 时，每接一个新 run、每次 JD LLM 调用前都检查共享截止时刻，
+   * 超时即停止接新 run（已在跑的 run 不打断）。必须显著小于 cron-worker 的 60s
+   * fetch 超时，给回收/池查询/响应与在途调用留余量；手动「立即扫描」不走该预算。
+   */
+  tickDeadlineMs: number;
 }
 
 export const AGENT_DEFAULTS = {
@@ -52,6 +60,8 @@ export const AGENT_DEFAULTS = {
   recommendStaleMinutes: 15,
   // cron-worker 调用超时 60s，预算 20s 给增强阶段留出池子拉取/匹配与多任务余量
   jdLlmBudgetMs: 20_000,
+  // 整轮 tick 预算 50s：小于 cron-worker 60s fetch 超时，留 10s 给回收/池查询/响应
+  tickDeadlineMs: 50_000,
 } as const;
 
 function positiveInt(raw: string | undefined, fallback: number, name: string, max: number): number {
@@ -87,6 +97,13 @@ export function loadAgentConfig(env: NodeJS.ProcessEnv = process.env): AgentConf
       'AGENT_JD_LLM_BUDGET_MS',
       // 上限留出在途调用与 tick 内其余工作的余量，配置错误不能把预算放到 60s 超时之外
       50_000,
+    ),
+    tickDeadlineMs: positiveInt(
+      env.AGENT_TICK_DEADLINE_MS,
+      AGENT_DEFAULTS.tickDeadlineMs,
+      'AGENT_TICK_DEADLINE_MS',
+      // 硬上限 55s：必须小于 cron-worker 60s fetch 超时，至少留 5s 响应余量
+      55_000,
     ),
   };
 }

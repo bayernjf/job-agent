@@ -108,11 +108,8 @@ for c in needed:
     last = parse_instant(heartbeats[c].get("lastSuccessAt"))
     if last is None or last <= since:
         stale.append(c)
-errors = [
-    f"{c} ({heartbeats[c]['lastError']})"
-    for c in needed
-    if c in heartbeats and heartbeats[c].get("lastError")
-]
+# The public health projection deliberately strips per-consumer lastError;
+# lastResult (ok/error) stays visible, full error text is server-log only.
 for c in needed:
     hb = heartbeats.get(c)
     if hb is None:
@@ -122,8 +119,6 @@ for c in needed:
 
 if not missing and not stale:
     print("OK: every consumer heartbeat is newer than " + os.environ["SINCE"])
-    if errors:
-        print("note: recorded errors: " + "; ".join(errors))
     raise SystemExit(0)
 print("WAIT: missing=" + ",".join(missing) + " stale=" + ",".join(stale))
 raise SystemExit(3)

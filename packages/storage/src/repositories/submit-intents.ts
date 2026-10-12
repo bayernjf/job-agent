@@ -1,9 +1,39 @@
 import type {
   JobSource,
+  NewApplication,
+  StoredApplication,
   NewSubmitIntent,
   StoredSubmitIntent,
   SubmitIntentStatus,
 } from '../entities/index.js';
+
+/**
+ * 「标记已投 + 写投递记录」一体化原子操作的结果（mark-submitted 端点专用）：
+ * - submitted：本事务完成票据 CAS（pending/approved → submitted）并插入了 application；
+ * - already：票据已是 submitted（重复/并发标记），返回既有票据与其 application（可能查不到）；
+ * - invalid：票据不存在或处于 rejected/withdrawn/failed 等不可复活状态（调用方回 409/404）。
+ */
+export type MarkSubmittedWithApplicationResult =
+  | { outcome: 'submitted'; intent: StoredSubmitIntent; application: StoredApplication }
+  | { outcome: 'already'; intent: StoredSubmitIntent; application: StoredApplication | undefined }
+  | { outcome: 'invalid' };
+
+/**
+ * 「限频闸 + 批量确认」一体化原子操作的结果（approve 端点专用）：
+ * - approved：事务内重新核对后整批置 approved，approved 为真正移动的行数（可能为 0，
+ *   即候选在本事务执行前已被并发处理完）；
+ * - quota_exceeded：某来源 24h 已确认/已投 + 本次待确认超过 dailyLimit，整事务回滚、
+ *   绝不部分确认，返回超限来源与计数供调用方拼 429。
+ */
+export type ApproveManyWithQuotaResult =
+  | { outcome: 'approved'; approved: number }
+  | {
+      outcome: 'quota_exceeded';
+      source: JobSource;
+      committed: number;
+      remaining: number;
+      requested: number;
+    };
 
 /**
  * submit_intents 仓储契约（求职 Agent 阶段 1，迁移 021，设计 §4.3）。
@@ -42,6 +72,22 @@ export interface ISubmitIntentsRepository {
    */
   approveMany(runId: string, ids: readonly string[], approvedAt: string): Promise<number>;
   /**
+   * 「24h 每源限频闸 + 批量确认」一体化原子操作（approve 端点专用，决策 §3.4 F1）：
+   * 在**同一事务**内 ① 重新核对本次真正能移动的 pending 票据（该 run 内、id 命中、
+   * 当前仍为 pending）并按来源分组；② 对每个来源叠加 `countCommittedBySourceSince`
+   * 的 24h 已确认/已投计数；③ 任一来源超限则整事务回滚、返回 quota_exceeded，
+   * **绝不部分确认**；④ 全部通过才执行条件 UPDATE，返回真正移动的行数。
+   * `ids` 中已非 pending（被并发处理）的票据自动剔除，因此 requested 可能小于入参数。
+   */
+  approveManyWithQuota(
+    runId: string,
+    accountId: string,
+    ids: readonly string[],
+    dailyLimit: number,
+    since: string,
+    approvedAt: string,
+  ): Promise<ApproveManyWithQuotaResult>;
+  /**
    * 拒绝一张票：仅当当前状态为 'pending'。guard 不满足或 id 不存在时返回 undefined。
    * `reason` 为 null 表示用户没填原因。
    */
@@ -59,6 +105,18 @@ export interface ISubmitIntentsRepository {
     submittedAt: string,
     applicationId: string | null,
   ): Promise<StoredSubmitIntent | undefined>;
+  /**
+   * 「标记已投 + 写投递记录」一体化原子操作（mark-submitted 端点专用，迁移 035）：
+   * 在**同一事务**内先做票据 CAS（pending/approved → submitted），成功后才插入 application，
+   * 因此 CAS 失败绝不会留下孤儿投递记录；application 与票据靠 submit_intent_id 部分唯一索引
+   * （035）绑定，并发重复标记在唯一约束上撞车时按 `already` 幂等返回，不抛 500、不产生重复行。
+   * 三结果判别见 {@link MarkSubmittedWithApplicationResult}。
+   */
+  markSubmittedWithApplication(
+    intentId: string,
+    application: NewApplication,
+    submittedAt: string,
+  ): Promise<MarkSubmittedWithApplicationResult>;
   /**
    * 每源每日限频计数：统计该账号该来源下 `status IN ('approved','submitted')` 且
    * `submitted_at >= since` 或 `approved_at >= since` 的票据数。
