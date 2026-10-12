@@ -28,6 +28,7 @@ export interface AdminLlmCatalogLabels {
   saveSuccess: string;
   saveFailed: string;
   loadFailed: string;
+  loading: string;
   unauthorized: string;
   emptyHint: string;
 }
@@ -177,7 +178,7 @@ export default function AdminLlmCatalog({ apiBase, labels }: AdminLlmCatalogProp
   if (granted === null && !view) {
     return (
       <section className="admin-catalog ja-card" data-testid="admin-catalog">
-        <p className="ja-muted">{labels.loadFailed}</p>
+        <p className="ja-muted">{labels.loading}</p>
       </section>
     );
   }

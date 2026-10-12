@@ -36,6 +36,7 @@ export {
 export {
   MATCH_FIELD_POINTS,
   buildMatchReport,
+  enhanceMatchReportWithJd,
   matchGaps,
   matchReasons,
   passesTitleOrTagGuard,
@@ -43,6 +44,7 @@ export {
   selectCandidatesForPreference,
   type BuildMatchReportInput,
   type CandidateLike,
+  type JdExtractor,
   type MatchFieldLike,
   type MatchLike,
   type SelectCandidatesOptions,

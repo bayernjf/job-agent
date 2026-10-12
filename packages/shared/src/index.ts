@@ -1694,8 +1694,13 @@ export const MATCH_REASON_CODES = [
 export const MatchReasonCodeSchema = z.enum(MATCH_REASON_CODES);
 export type MatchReasonCode = z.infer<typeof MatchReasonCodeSchema>;
 
-/** 缺口：岗位标签在画像技能里找不到（事实陈述，不推断"你不行"）。 */
-export const MATCH_GAP_CODES = ['tag_not_in_profile'] as const;
+/**
+ * 缺口码：
+ * - tag_not_in_profile：岗位**标签**在画像技能里找不到（纯规则，阶段 1）。
+ * - jd_requirement_not_in_profile：LLM 从**职位描述正文**结构化提取的技能/资历要求，
+ *   画像技能标签里找不到对应（C1 语义增强，阶段 3；事实来源是 JD，不是对候选人的评判）。
+ */
+export const MATCH_GAP_CODES = ['tag_not_in_profile', 'jd_requirement_not_in_profile'] as const;
 export const MatchGapCodeSchema = z.enum(MATCH_GAP_CODES);
 export type MatchGapCode = z.infer<typeof MatchGapCodeSchema>;
 
@@ -1723,6 +1728,22 @@ export const MatchBoostSchema = z.object({
 });
 export type MatchBoost = z.infer<typeof MatchBoostSchema>;
 
+/**
+ * LLM 从职位描述正文结构化提取的**岗位侧事实**（C1，设计 §3.2）。
+ *
+ * 边界：只描述「岗位要求什么」，绝不包含对候选人的评价、匹配判断或画像侧事实；
+ * 打分（score/tier）永远走纯规则，LLM 不参与。全部为去重后的短语，空数组表示该类未提及，
+ * 由 provider 侧强约束 prompt + Zod 校验保证，校验失败 fail-closed 回落纯规则报告。
+ */
+export const JdInsightSchema = z
+  .object({
+    responsibilities: z.array(z.string().trim().min(1).max(120)).max(10), // 岗位职责
+    requiredSkills: z.array(z.string().trim().min(1).max(80)).max(15), // 技能/技术要求
+    qualifications: z.array(z.string().trim().min(1).max(120)).max(10), // 资历/经验/学历要求
+  })
+  .strip();
+export type JdInsight = z.infer<typeof JdInsightSchema>;
+
 export const MatchReportSchema = z.object({
   /** 产出该报告的求职 Agent 规则版本（AGENT_RULE_VERSION）；报告可复现、可追溯 */
   ruleVersion: z.string().min(1),
@@ -1737,6 +1758,12 @@ export const MatchReportSchema = z.object({
   reasons: z.array(MatchReasonSchema),
   gaps: z.array(MatchGapSchema),
   suggestedBoost: z.array(MatchBoostSchema),
+  /**
+   * C1 语义增强（可选，默认缺省＝纯规则报告）：LLM 从 JD 正文提取的岗位侧事实。
+   * 存在仅表示本次跑了语义提取；score/tier 不因此改变，新增缺口用
+   * code=jd_requirement_not_in_profile 与规则缺口区分。
+   */
+  jdInsight: JdInsightSchema.optional(),
 });
 export type MatchReport = z.infer<typeof MatchReportSchema>;
 

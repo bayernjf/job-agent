@@ -7,6 +7,8 @@
  * 非法值直接抛错（不让配置错误静默降级成别的行为）。
  */
 
+import type { JdExtractor } from '@jobagent/agent-core';
+
 export interface AgentConfig {
   /** 一轮扫描最多产出多少条待投票据 */
   candidateLimit: number;
@@ -16,6 +18,13 @@ export interface AgentConfig {
   tickMaxRuns: number;
   /** 阶段 2：submitting 状态超过该小时数无回执 → cron 回收为 failed（显式原因 submit_timeout） */
   submitStaleHours: number;
+  /**
+   * C1 语义增强端口（可选，默认 undefined＝关闭，纯规则 MatchReport）。
+   * 运行时由 apps/api 装配（env AGENT_JD_LLM_ENABLED 且 LLM 可用时注入），
+   * 不进 loadAgentConfig 的 env 数值解析；agent-core 只定义端口、不发请求。
+   * 返回 null 或抛错都按 fail-closed 处理（保留纯规则报告，不阻塞推荐）。
+   */
+  jdExtractor?: JdExtractor;
 }
 
 export const AGENT_DEFAULTS = {

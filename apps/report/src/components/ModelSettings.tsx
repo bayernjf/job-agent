@@ -115,6 +115,39 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
     void load();
   }, [load]);
 
+  /**
+   * 发一次最小真实校验请求并回显结果。`body` 为 `{}` 时服务端回落已保存的加密配置；
+   * 抽出共享核心是为了让「保存后自动测」与「手动点测试连接」走同一条结果回显路径。
+   */
+  const runValidationRequest = async (body: {
+    baseUrl?: string;
+    model?: string;
+    apiKey?: string;
+  }): Promise<void> => {
+    setMessage(null);
+    setStatus({ kind: 'testing' });
+    try {
+      const res = await fetch(`${apiBase}/account/llm-config/validate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const respBody = (await res.json().catch(() => null)) as { error?: string } | null;
+        setStatus({ kind: 'idle' });
+        setMessage(labels.testFailed.replace('{reason}', respBody?.error ?? String(res.status)));
+        return;
+      }
+      const data = (await res.json()) as { model: string };
+      setStatus({ kind: 'idle' });
+      setMessage(labels.testOk.replace('{model}', data.model));
+    } catch {
+      setStatus({ kind: 'idle' });
+      setMessage(labels.testFailed.replace('{reason}', 'network'));
+    }
+  };
+
   const handleSave = async () => {
     if (status.kind === 'saving' || status.kind === 'testing') return;
     setMessage(null);
@@ -141,7 +174,9 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
       }
       setApiKey('');
       await load();
-      setMessage(labels.saveSuccess);
+      // 保存成功后自动测一次连接（空体＝服务端用刚保存的那一组，见 validate 端点的
+      // 已保存配置回落）。用户不用再手动点「测试连接」；失败也如实回显，保存本身已成功。
+      await runValidationRequest({});
     } catch {
       setStatus({ kind: 'error', message: labels.saveFailed });
     }
@@ -158,28 +193,7 @@ export default function ModelSettings({ apiBase, labels }: ModelSettingsProps) {
       setMessage(labels.testNeedsKey);
       return;
     }
-    setMessage(null);
-    setStatus({ kind: 'testing' });
-    try {
-      const res = await fetch(`${apiBase}/account/llm-config/validate`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(typedKey ? { baseUrl, model, apiKey: typedKey } : {}),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        setStatus({ kind: 'idle' });
-        setMessage(labels.testFailed.replace('{reason}', body?.error ?? String(res.status)));
-        return;
-      }
-      const data = (await res.json()) as { model: string };
-      setStatus({ kind: 'idle' });
-      setMessage(labels.testOk.replace('{model}', data.model));
-    } catch {
-      setStatus({ kind: 'idle' });
-      setMessage(labels.testFailed.replace('{reason}', 'network'));
-    }
+    await runValidationRequest(typedKey ? { baseUrl, model, apiKey: typedKey } : {});
   };
 
   const handleRemove = async () => {

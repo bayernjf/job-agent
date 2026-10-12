@@ -15,6 +15,7 @@ import { LlmResponseError } from './port.js';
 import { LlmCoverLetterProvider, type CoverLetterProvider } from './cover-letter.js';
 import { LlmResumePolishProvider } from './resume-polish.js';
 import { LlmSemanticProvider, type SemanticProvider } from './semantic.js';
+import { LlmJdExtractionProvider, type JdExtractionProvider } from './jd-extraction.js';
 
 /** 可注入的最小响应形状（不依赖 DOM lib 的 Response 类型）。 */
 export interface LlmFetchResponse {
@@ -336,4 +337,42 @@ export function createSemanticProviderFromEnv(
     fetchImpl: options.fetchImpl,
   });
   return new LlmSemanticProvider(client);
+}
+
+/**
+ * 仅从**服务端**环境变量构造求职 Agent C1「LLM 读 JD」provider（2026-10-12）。
+ * 与其它 provider 同款默认关闭策略：无 LLM_API_KEY → null（编排壳走纯规则 MatchReport，
+ * 零费用、零数据外发）；有 key 缺 LLM_MODEL → 抛错。是否在推荐链路实际调用还由
+ * AgentConfig 的 jdExtractor 注入决定（默认不注入＝该增强整体关闭）。
+ */
+export function createJdExtractionProviderFromEnv(
+  env: LlmEnv = process.env,
+  options: CreateProviderOptions = {},
+): JdExtractionProvider | null {
+  const apiKey = env.LLM_API_KEY?.trim() ?? '';
+  if (!apiKey) return null;
+
+  const model = env.LLM_MODEL?.trim() ?? '';
+  if (!model) {
+    throw new Error(
+      'LLM_API_KEY is set but LLM_MODEL is missing; set an OpenAI-compatible model id',
+    );
+  }
+
+  const baseUrl = stripTrailingSlash(env.LLM_BASE_URL?.trim() || 'https://api.openai.com/v1');
+  const parsedTimeout = Number(env.LLM_TIMEOUT_MS);
+  const timeoutMs =
+    env.LLM_TIMEOUT_MS && Number.isFinite(parsedTimeout) && parsedTimeout > 0
+      ? parsedTimeout
+      : undefined;
+
+  const client = new OpenAICompatibleClient({
+    baseUrl,
+    apiKey,
+    model,
+    provider: env.LLM_PROVIDER?.trim() || undefined,
+    timeoutMs,
+    fetchImpl: options.fetchImpl,
+  });
+  return new LlmJdExtractionProvider(client);
 }

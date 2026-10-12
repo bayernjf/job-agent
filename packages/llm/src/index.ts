@@ -26,10 +26,17 @@ export {
   type SemanticProvider,
 } from './semantic.js';
 export {
+  LlmJdExtractionProvider,
+  JD_EXTRACTION_PROMPT_VERSION,
+  JD_DESCRIPTION_CHAR_LIMIT,
+  type JdExtractionProvider,
+} from './jd-extraction.js';
+export {
   OpenAICompatibleClient,
   createResumePolishProviderFromEnv,
   createCoverLetterProviderFromEnv,
   createSemanticProviderFromEnv,
+  createJdExtractionProviderFromEnv,
   providerFromBaseUrl,
   parseJsonObject,
 } from './openai-compatible-client.js';

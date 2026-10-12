@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { matchJobs, type JobMatch } from '@jobagent/job-source';
 import {
+  enhanceMatchReportWithJd,
   filterPostingsForPreference,
   planIntents,
   planTransition,
@@ -422,6 +423,29 @@ async function scanOnce(
   );
 
   const planned = planIntents(selected, { profileSkills });
+
+  // C1 语义增强（阶段 3，设计 §3.2/§10 C1）：仅当运行时注入了 jdExtractor（env
+  // AGENT_JD_LLM_ENABLED 且 LLM 可用）时，对每条候选用 LLM 从 JD 正文提取岗位侧要求，
+  // 再由纯函数合并进报告。LLM 不打分、不造画像事实；任何失败/返回 null 都 fail-closed
+  // 保留纯规则报告，绝不阻塞推荐（无 description 的岗位直接跳过）。
+  if (cfg.jdExtractor) {
+    for (const item of planned) {
+      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting as
+        | StoredJobPosting
+        | undefined;
+      const description = posting?.description;
+      if (!description) continue;
+      try {
+        const insight = await cfg.jdExtractor(item.job.title, description);
+        if (insight) {
+          item.report = enhanceMatchReportWithJd(item.report, insight, profileSkills);
+        }
+      } catch {
+        // LLM 超时/HTTP/校验失败：保持纯规则报告，不影响 generated 闸与票据写入。
+      }
+    }
+  }
+
   const evidence = toEvidenceItems(await repos.evidence.listByProfile(run.profileId));
 
   // 「generated」闸：真的把工件装配一遍（no-fabrication / Schema.parse 出口校验都在里面），
