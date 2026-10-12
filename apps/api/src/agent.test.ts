@@ -835,6 +835,48 @@ describe('agent workbench — cron tick', () => {
       toStatus: 'failed',
     });
   });
+
+  it('recovers a run stuck in recommending past the stale threshold via system rescan on tick', async () => {
+    const { repos, app, json } = await harness();
+    await insertProfile(repos, 'p-1', ALICE.login);
+    await json('/profiles/p-1/claim', { method: 'POST' });
+    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-1' }),
+    });
+    const run = (await runRes.json()) as { run: { runId: string } };
+
+    // 模拟占位进程在写票据前被杀：拨到 recommending 并把 updatedAt 退回 20 分钟前
+    const stale = new Date(Date.now() - 20 * 60_000).toISOString();
+    await repos.jobRuns.setStatus(run.run.runId, { status: 'recommending', updatedAt: stale });
+
+    const tick = await app.request('/internal/cron/agent-tick', {
+      headers: { authorization: `Bearer ${CRON_SECRET}` },
+    });
+    expect(tick.status).toBe(200);
+    const body = (await tick.json()) as { ok: boolean; outcome: { recycled: number } };
+    expect(body.ok).toBe(true);
+    expect(body.outcome.recycled).toBe(1);
+
+    const view = (await (await json(`/agent/runs/${run.run.runId}`)).json()) as {
+      run: { status: string };
+      events: Array<{ event: string; actor: string; fromStatus: string; toStatus: string }>;
+    };
+    // 回收走状态机既有的 recommending --rescan--> watching 出边（system 动作、可审计）
+    expect(view.events).toContainEqual(
+      expect.objectContaining({
+        event: 'rescan',
+        actor: 'system',
+        fromStatus: 'recommending',
+        toStatus: 'watching',
+      }),
+    );
+    // 回收后同一 tick 立即重扫：唯一条岗位已有票据被排除，本轮无新候选，留在 watching
+    expect(view.run.status).toBe('watching');
+  });
 });
 
 describe('agent stage 2 — extension pending-fills, outcome write-back, LLM polish fallback', () => {
@@ -1071,14 +1113,17 @@ describe('agent workbench — event stream paging', () => {
 
 describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
   /** 起内存库 + 已登录 Alice，并注入带 jdExtractor 的 AgentConfig。 */
-  async function harnessWithJd(jdExtractor: JdExtractor) {
+  async function harnessWithJd(
+    jdExtractor: JdExtractor,
+    configOverride: Partial<ReturnType<typeof loadAgentConfig>> = {},
+  ) {
     const repos = await createStorage({ sqlitePath: ':memory:' });
     const { Cookie } = await loginUser(repos, ALICE);
     const app = await createApp({
       repos,
       authConfig: loadAuthConfig({}),
       githubAuthProvider: new FakeAuthProvider(ALICE),
-      agentConfig: { ...loadAgentConfig(), jdExtractor },
+      agentConfig: { ...loadAgentConfig(), ...configOverride, jdExtractor },
     });
     const json = (path: string, init: RequestInit = {}) =>
       app.request(path, {
@@ -1162,5 +1207,50 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
     expect(report.gaps.map((g) => g.tag)).toEqual(['node', 'Rust']);
     // 档位仍由规则决定
     expect(report.tier).toBe('high');
+  });
+
+  it('spends at most the JD LLM wall-clock budget and still writes intents for all ready candidates', async () => {
+    const seen: string[] = [];
+    // 每条调用耗时 60ms；预算 100ms ⇒ 第 1、2 条调用（t≈0/60）放行，第 3 条在 t≈120
+    // 被预算挡住。3 条候选都必须写出票据，只是最后一条没有 jdInsight。
+    const extractor: JdExtractor = async (title) => {
+      seen.push(title);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return { responsibilities: [], requiredSkills: ['Rust'], qualifications: [] };
+    };
+    const { repos, json } = await harnessWithJd(extractor, { jdLlmBudgetMs: 100 });
+    await insertProfile(repos, 'p-c1', ALICE.login);
+    expect((await json('/profiles/p-c1/claim', { method: 'POST' })).status).toBe(200);
+    await repos.jobPostings.upsertBatch(
+      [
+        posting(),
+        posting({
+          sourceUrl: 'https://boards.example.com/acme/jobs/2',
+          normalizedKey: 'acme-senior-typescript-engineer-2',
+        }),
+        posting({
+          sourceUrl: 'https://boards.example.com/acme/jobs/3',
+          normalizedKey: 'acme-senior-typescript-engineer-3',
+        }),
+      ],
+      '2026-10-02T00:00:00.000Z',
+    );
+    const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-c1' }),
+    });
+    expect(runRes.status).toBe(201);
+    const body = (await runRes.json()) as {
+      run: { status: string };
+      intents: Array<{ report: { jdInsight?: unknown } }>;
+    };
+
+    expect(body.run.status).toBe('awaiting_approval');
+    expect(body.intents).toHaveLength(3);
+    expect(seen).toHaveLength(2);
+    expect(body.intents.filter((i) => i.report.jdInsight)).toHaveLength(2);
+    expect(body.intents.filter((i) => !i.report.jdInsight)).toHaveLength(1);
   });
 });

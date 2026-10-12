@@ -80,6 +80,8 @@
 | `AGENT_SCAN_POOL_LIMIT` | `2000` | 单轮扫描从岗位池取多少条候选（按发布时间倒序，≥1 且 ≤5000；默认 2000 约覆盖生产池最近 20%） |
 | `AGENT_TICK_MAX_RUNS` | `10` | 一次 `/internal/cron/agent-tick` 最多推进多少个求职任务（≥1 且 ≤100） |
 | `AGENT_JD_LLM_ENABLED` | `false` | 阶段 3（C1）开关：`true`/`1` 时用内置 LLM 从 JD 正文提取职责/技能/资历事实并增强匹配报告。仅在已配 `LLM_*` 时生效；LLM 不打分、不评价候选人，分/档位/理由永远走纯规则；任何 LLM 失败 fail-closed 回落纯规则 |
+| `AGENT_JD_LLM_BUDGET_MS` | `20000` | 单轮扫描内 JD 增强的整体墙钟预算（1..50000）：每条候选调用前检查，到点后剩余候选保留纯规则报告、票据照常写出，避免串行 LLM 拖过 cron-worker 60s 调用超时 |
+| `AGENT_RECOMMEND_STALE_MINUTES` | `15` | `recommending` 占位（写票据前）滞留超过该分钟数 → cron 走 `rescan` 回收回 `watching` 重扫（1..1440；须大于单轮扫描耗时与 5 分钟 tick 间隔） |
 | `TAVILY_API_KEY` | 空 | 指令式搜岗搜索通道 key（主通道 Tavily）；未配时 `/internal/cron/search-tick` 503 并记失败心跳。免费层 1000 credits/月 |
 | `SEARCH_DAILY_LIMIT` | `10` | 搜岗每日次数上限（UTC 日界、按账号、含失败 run）；`0`＝关闭；超限 429 `search_daily_limit`。搜岗 run 仅用户主动发起 |
 | `SCHEMA_CHECK_STRICT` | `0` | 常驻进程启动 schema 自检缺列时是否退出（`1`＝fail fast）；默认仅告警。serverless 不经此路径 |
