@@ -448,6 +448,33 @@ describe('agent workbench — stage 1 loop', () => {
     ]);
   });
 
+  it('refuses to mark a rejected intent submitted (409) and never writes an application', async () => {
+    const { repos, json } = await harness();
+    await insertProfile(repos, 'p-1', ALICE.login);
+    await json('/profiles/p-1/claim', { method: 'POST' });
+    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-1' }),
+    });
+    const run = (await runRes.json()) as { run: { runId: string }; intents: Array<{ intentId: string }> };
+
+    const rejectRes = await json(`/agent/runs/${run.run.runId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ intentId: run.intents[0]!.intentId, reason: '公司不合适' }),
+    });
+    expect(rejectRes.status).toBe(200);
+
+    // rejected 票据不可复活为 submitted：路由 invalid 分支 409，且不留投递记录
+    const res = await json(`/agent/intents/${run.intents[0]!.intentId}/mark-submitted`, { method: 'POST' });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe('AGENT_INVALID_TRANSITION');
+    expect(await repos.applications.listByProfile('p-1')).toHaveLength(0);
+    expect((await repos.submitIntents.getById(run.intents[0]!.intentId))!.status).toBe('rejected');
+  });
+
   it('rejects an intent, returns to watching, and never re-recommends the same job', async () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
