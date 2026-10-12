@@ -17,7 +17,6 @@ import {
   JobRunRejectSchema,
   ResumeLocaleSchema,
   RunEventsQuerySchema,
-  type JobSource,
   type SupportedPlatform,
 } from '@jobagent/shared';
 import type { StoredJobRun, StoredSubmitIntent } from '@jobagent/storage';
@@ -25,7 +24,6 @@ import {
   DEFAULT_DAILY_SUBMIT_LIMIT,
   canCancel,
   isTerminalStatus,
-  remainingDailyQuota,
 } from '@jobagent/agent-core';
 import {
   advanceRunOnce,
@@ -380,41 +378,35 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       );
     }
 
-    // 限频闸（设计 §3.4）：按来源统计 24h 内「已确认 + 已投递」，额度不足则整批拒绝、绝不部分确认
+    // 限频闸 + 批量确认在仓储同一事务内原子完成（设计 §3.4 F1）：事务内重新核对本次可
+    // 移动的 pending 票据与 24h「已确认 + 已投递」计数，任一来源超额整批回滚、绝不部分确认，
+    // 也消除了「判额通过后、UPDATE 前被并发确认插队」的窗口。
     const preference = await repos.jobPreferences.getById(run.preferenceId);
     const limit = preference?.dailySubmitLimit ?? DEFAULT_DAILY_SUBMIT_LIMIT;
     const since = new Date(Date.parse(now()) - 24 * 60 * 60 * 1000).toISOString();
-    const perSource = new Map<JobSource, number>();
-    for (const intent of requested) {
-      perSource.set(intent.jobSource, (perSource.get(intent.jobSource) ?? 0) + 1);
-    }
-    for (const [source, count] of perSource) {
-      const committed = await repos.submitIntents.countCommittedBySourceSince(
-        run.accountId,
-        source,
-        since,
-      );
-      if (remainingDailyQuota(committed, limit) < count) {
-        return c.json(
-          {
-            error: 'daily submit limit reached for this source',
-            code: AGENT_ERROR_CODES.dailyLimitReached,
-            source,
-            limit,
-            committed,
-            remaining: remainingDailyQuota(committed, limit),
-          },
-          429,
-        );
-      }
-    }
-
     const approvedAt = now();
-    const approved = await repos.submitIntents.approveMany(
+    const quotaResult = await repos.submitIntents.approveManyWithQuota(
       run.id,
+      run.accountId,
       requested.map((intent) => intent.id),
+      limit,
+      since,
       approvedAt,
     );
+    if (quotaResult.outcome === 'quota_exceeded') {
+      return c.json(
+        {
+          error: 'daily submit limit reached for this source',
+          code: AGENT_ERROR_CODES.dailyLimitReached,
+          source: quotaResult.source,
+          limit,
+          committed: quotaResult.committed,
+          remaining: quotaResult.remaining,
+        },
+        429,
+      );
+    }
+    const approved = quotaResult.approved;
     const updatedRun = (await applyRunEvent(repos, run, 'approve', 'user', approvedAt)) ?? run;
     return c.json({ ...toRunViewData(await loadRunView(repos, updatedRun)), approved });
   });
