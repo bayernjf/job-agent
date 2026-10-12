@@ -128,24 +128,26 @@ export async function applyRunEvent(
 ): Promise<StoredJobRun | undefined> {
   const plan = planTransition(run.status, event);
   if (!plan.ok) return undefined;
-  // 先占位再写事件：CAS 失败说明别人已经推进过，此时不落事件（审计日志不出现幻影迁移）
-  const updated = await repos.jobRuns.compareAndSetStatus(run.id, run.status, {
-    status: plan.to,
-    ...patch,
-    updatedAt: nowIso,
-  });
-  if (!updated) return undefined;
-  await repos.jobRunEvents.insert({
-    id: `evt-${randomUUID()}`,
-    runId: run.id,
-    event: plan.event,
-    fromStatus: plan.from,
-    toStatus: plan.to,
-    actor,
-    payload: eventPayload(patch),
-    createdAt: nowIso,
-  });
-  return updated;
+  // CAS 与事件落库同事务：CAS 输家（别人已推进）零事件，赢家状态与审计永远一致
+  return repos.jobRuns.compareAndSetStatusWithEvent(
+    run.id,
+    run.status,
+    {
+      status: plan.to,
+      ...patch,
+      updatedAt: nowIso,
+    },
+    {
+      id: `evt-${randomUUID()}`,
+      runId: run.id,
+      event: plan.event,
+      fromStatus: plan.from,
+      toStatus: plan.to,
+      actor,
+      payload: eventPayload(patch),
+      createdAt: nowIso,
+    },
+  );
 }
 
 function eventPayload(
@@ -514,28 +516,50 @@ async function scanOnce(
     }
   }
 
-  // 占位成功后写票据，再由 applyRunEvent 落 recommending → awaiting_approval 的 generated 迁移
+  // 三表原子收尾：recommending → awaiting_approval 的 CAS 闸 + 票据批量 + generated 事件
+  // 同一事务提交。CAS 输家（如滞留已被 tick 回收回 watching）零票据、零事件，
+  // 不会留下「run 已回 watching、孤儿票据却永不再生成」的中间态。
   const createdAt = nowIso;
-  await repos.submitIntents.insertMany(
-    ready.map((item) => ({
-      id: `intent-${randomUUID()}`,
-      runId: run.id,
-      accountId: run.accountId,
-      profileId: run.profileId,
-      jobId: item.job.jobId,
-      jobSource: item.job.source,
-      job: item.job,
-      matchScore: item.matchScore,
-      matchTier: item.matchTier,
-      report: item.report,
-      status: 'pending' as const,
-      createdAt,
-      updatedAt: createdAt,
-    })),
-  );
-
-  const gated =
-    (await applyRunEvent(repos, recommending, 'generated', 'agent', nowIso)) ?? recommending;
+  const intents = ready.map((item) => ({
+    id: `intent-${randomUUID()}`,
+    runId: run.id,
+    accountId: run.accountId,
+    profileId: run.profileId,
+    jobId: item.job.jobId,
+    jobSource: item.job.source,
+    job: item.job,
+    matchScore: item.matchScore,
+    matchTier: item.matchTier,
+    report: item.report,
+    status: 'pending' as const,
+    createdAt,
+    updatedAt: createdAt,
+  }));
+  const plan = planTransition(recommending.status, 'generated');
+  // plan 在状态机上必然成立（recommending 刚由 candidates_ready 迁来），不成立则按输家回落
+  const gated = plan.ok
+    ? await repos.jobRuns.publishGeneratedIntents(
+        recommending.id,
+        recommending.status,
+        { status: plan.to, updatedAt: nowIso },
+        {
+          id: `evt-${randomUUID()}`,
+          runId: recommending.id,
+          event: plan.event,
+          fromStatus: plan.from,
+          toStatus: plan.to,
+          actor: 'agent',
+          payload: {},
+          createdAt: nowIso,
+        },
+        intents,
+      )
+    : undefined;
+  if (!gated) {
+    const current = (await repos.jobRuns.getById(run.id)) ?? recommending;
+    const view = await loadRunView(repos, current);
+    return { ok: true, view, scan: stats };
+  }
   const view = await loadRunView(repos, gated);
   return { ok: true, view, scan: stats };
 }
