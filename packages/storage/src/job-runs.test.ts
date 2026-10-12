@@ -4,17 +4,77 @@ import { describe, expect, it } from 'vitest';
 import { runMigrations } from './sqlite/migrator.js';
 import { openSqlite } from './sqlite/connection.js';
 import { SqliteJobRunsRepository } from './sqlite/job-runs-repo.js';
-import { toStoredJobRun, type NewJobRun, type RawJobRunRow } from './entities/index.js';
+import { SqliteJobRunEventsRepository } from './sqlite/job-run-events-repo.js';
+import { SqliteSubmitIntentsRepository } from './sqlite/submit-intents-repo.js';
+import {
+  toStoredJobRun,
+  type MatchReport,
+  type NewJobRun,
+  type NewJobRunEvent,
+  type NewSubmitIntent,
+  type RawJobRunRow,
+  type SubmitIntentJob,
+} from './entities/index.js';
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../db/migrations/sqlite',
 );
 
-function freshRepo(): { repo: SqliteJobRunsRepository; close: () => void } {
+function freshRepo(): {
+  repo: SqliteJobRunsRepository;
+  events: SqliteJobRunEventsRepository;
+  intents: SqliteSubmitIntentsRepository;
+  close: () => void;
+} {
   const { client, db } = openSqlite(':memory:');
   runMigrations(client, MIGRATIONS_DIR);
-  return { repo: new SqliteJobRunsRepository(db), close: () => client.close() };
+  return {
+    repo: new SqliteJobRunsRepository(db),
+    events: new SqliteJobRunEventsRepository(db),
+    intents: new SqliteSubmitIntentsRepository(db),
+    close: () => client.close(),
+  };
+}
+
+const JOB: SubmitIntentJob = {
+  jobId: 'job-1',
+  source: 'remoteok',
+  sourceUrl: 'https://remoteok.com/remote-jobs/1',
+  title: 'Senior Backend Engineer',
+  company: 'Acme',
+  location: 'Remote',
+  remote: true,
+  tags: ['go'],
+  postedAt: '2026-10-01T00:00:00.000Z',
+};
+
+const REPORT: MatchReport = {
+  ruleVersion: '0.1',
+  score: 6,
+  tier: 'high',
+  fieldScores: { title: 3, tags: 2, description: 1 },
+  matchedSkills: ['go'],
+  reasons: [{ code: 'title_match', skill: 'go', points: 3 }],
+  gaps: [],
+  suggestedBoost: [],
+};
+
+function generatedIntent(id: string, createdAt: string, runId = 'run-1'): NewSubmitIntent {
+  return {
+    id,
+    runId,
+    accountId: 'acc-1',
+    profileId: 'prof-1',
+    jobId: `job-${id}`,
+    jobSource: 'remoteok',
+    job: { ...JOB, jobId: `job-${id}`, sourceUrl: `https://remoteok.com/remote-jobs/${id}` },
+    matchScore: 6,
+    matchTier: 'high',
+    report: REPORT,
+    createdAt,
+    updatedAt: createdAt,
+  };
 }
 
 function run(
@@ -80,6 +140,121 @@ describe('SqliteJobRunsRepository', () => {
         updatedAt: T2,
       }),
     ).toBeUndefined();
+    close();
+  });
+
+  it('compareAndSetStatusWithEvent commits the audit event with the CAS', async () => {
+    const { repo, events, close } = freshRepo();
+    await repo.insert(run({ id: 'run-1', accountId: 'acc-1' }));
+
+    const event: NewJobRunEvent = {
+      id: 'evt-1',
+      runId: 'run-1',
+      event: 'start',
+      fromStatus: 'created',
+      toStatus: 'watching',
+      actor: 'system',
+      createdAt: T1,
+    };
+    const moved = await repo.compareAndSetStatusWithEvent('run-1', 'created', {
+      status: 'watching',
+      updatedAt: T1,
+    }, event);
+    expect(moved).toBeDefined();
+    expect(moved!.status).toBe('watching');
+
+    // 赢家：事件与状态在同一事务落库，事件流可回放
+    const page = await events.listLatestPage('run-1');
+    expect(page.hasMore).toBe(false);
+    expect(page.events).toHaveLength(1);
+    expect(page.events[0]!).toMatchObject({
+      id: 'evt-1',
+      runId: 'run-1',
+      event: 'start',
+      fromStatus: 'created',
+      toStatus: 'watching',
+      actor: 'system',
+    });
+
+    // 输家（陈旧期望）：拿不到行，也不得留下审计事件
+    const stale = await repo.compareAndSetStatusWithEvent(
+      'run-1',
+      'created',
+      { status: 'recommending', updatedAt: T2 },
+      { ...event, id: 'evt-2', event: 'candidates_ready', toStatus: 'recommending', createdAt: T2 },
+    );
+    expect(stale).toBeUndefined();
+    expect((await events.listLatestPage('run-1')).events).toHaveLength(1);
+
+    // 未知 id 同样零事件
+    expect(
+      await repo.compareAndSetStatusWithEvent(
+        'run-missing',
+        'created',
+        { status: 'watching', updatedAt: T2 },
+        { ...event, id: 'evt-3', runId: 'run-missing' },
+      ),
+    ).toBeUndefined();
+    expect((await events.listLatestPage('run-missing')).events).toHaveLength(0);
+    close();
+  });
+
+  it('publishGeneratedIntents commits run, tickets and the generated event atomically', async () => {
+    const { repo, events, intents, close } = freshRepo();
+    await repo.insert(run({ id: 'run-1', accountId: 'acc-1' }));
+    await repo.insert(run({ id: 'run-2', accountId: 'acc-1' }));
+    // run-1 已到 recommending；run-2 还停在 watching（持陈旧期望的那一方）
+    await repo.compareAndSetStatus('run-1', 'created', { status: 'recommending', updatedAt: T1 });
+    await repo.compareAndSetStatus('run-2', 'created', { status: 'watching', updatedAt: T1 });
+
+    const winner = await repo.publishGeneratedIntents(
+      'run-1',
+      'recommending',
+      { status: 'awaiting_approval', updatedAt: T2 },
+      {
+        id: 'evt-gen-1',
+        runId: 'run-1',
+        event: 'generated',
+        fromStatus: 'recommending',
+        toStatus: 'awaiting_approval',
+        actor: 'agent',
+        createdAt: T2,
+        payload: { candidates: 2 },
+      },
+      [generatedIntent('intent-a', T2), generatedIntent('intent-b', T2)],
+    );
+    expect(winner).toBeDefined();
+    expect(winner!.status).toBe('awaiting_approval');
+
+    // 三表一致：run 推进、票据齐了、generated 事件恰好一条
+    const tickets = await intents.listByRun('run-1');
+    expect(tickets.map((x) => x.id).sort()).toEqual(['intent-a', 'intent-b']);
+    expect(tickets.every((x) => x.status === 'pending')).toBe(true);
+    const page = await events.listLatestPage('run-1');
+    expect(page.events).toHaveLength(1);
+    expect(page.events[0]!.event).toBe('generated');
+    expect(page.events[0]!.payload).toEqual({ candidates: 2 });
+
+    // 输家：CAS 0 行 → undefined，且零票据、零事件（不得留孤儿）
+    const loser = await repo.publishGeneratedIntents(
+      'run-2',
+      'recommending',
+      { status: 'awaiting_approval', updatedAt: T2 },
+      {
+        id: 'evt-gen-2',
+        runId: 'run-2',
+        event: 'generated',
+        fromStatus: 'recommending',
+        toStatus: 'awaiting_approval',
+        actor: 'agent',
+        createdAt: T2,
+      },
+      [generatedIntent('intent-c', T2, 'run-2')],
+    );
+    expect(loser).toBeUndefined();
+    expect((await repo.getById('run-2'))!.status).toBe('watching');
+    expect(await intents.listByRun('run-2')).toHaveLength(0);
+    expect((await events.listLatestPage('run-2')).events).toHaveLength(0);
     close();
   });
 

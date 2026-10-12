@@ -2,6 +2,8 @@ import type {
   JobRunStatus,
   JobRunStatusPatch,
   NewJobRun,
+  NewJobRunEvent,
+  NewSubmitIntent,
   StoredJobRun,
 } from '../entities/index.js';
 
@@ -28,6 +30,33 @@ export interface IJobRunsRepository {
     id: string,
     expectStatus: JobRunStatus,
     patch: JobRunStatusPatch,
+  ): Promise<StoredJobRun | undefined>;
+  /**
+   * 「CAS 推进 + 落审计事件」一体化原子操作（求职 Agent 硬约束②，agent-runner 的
+   * applyRunEvent 专用）：同一事务内先做条件 UPDATE，影响 0 行（并发输家/状态已变）
+   * → **不**插事件、返回 undefined；成功才在同一事务插入 job_run_events。
+   * 杜绝「状态推进了但事件丢失」或「事件落了但 CAS 失败」的中间态——崩溃恢复后
+   * 状态与可回放事件流永远一致。`event.runId` 必须等于 `id`（调用方按 planTransition 装配）。
+   */
+  compareAndSetStatusWithEvent(
+    id: string,
+    expectStatus: JobRunStatus,
+    patch: JobRunStatusPatch,
+    event: NewJobRunEvent,
+  ): Promise<StoredJobRun | undefined>;
+  /**
+   * scanOnce 尾部专用三表原子操作（recommending → awaiting_approval 闸）：
+   * 同一事务内 ① 条件 UPDATE job_runs（CAS 闸）；② CAS 成功才批量插入 submit_intents；
+   * ③ 落 generated 事件。CAS 影响 0 行（并发输家/滞留已被回收）→ **零票据、零事件**、
+   * 返回 undefined，绝不留下「recommending 已回到 watching、孤儿票据永不再生成」的行。
+   * `event.runId` 必须等于 `runId`；`intents` 不允许为空（无候选时调用方走 rescan 分支）。
+   */
+  publishGeneratedIntents(
+    runId: string,
+    expectStatus: JobRunStatus,
+    patch: JobRunStatusPatch,
+    event: NewJobRunEvent,
+    intents: readonly NewSubmitIntent[],
   ): Promise<StoredJobRun | undefined>;
   /** 无条件推进状态（仅用于不需要并发保护的系统内部动作）；不存在返回 undefined */
   setStatus(id: string, patch: JobRunStatusPatch): Promise<StoredJobRun | undefined>;
