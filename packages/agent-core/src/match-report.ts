@@ -132,6 +132,23 @@ export function buildMatchReport(input: BuildMatchReportInput): MatchReport {
 export type JdExtractor = (title: string, description: string) => Promise<JdInsight | null>;
 
 /**
+ * 三类短语按 normalizeText 后的形态去重（大小写/空白差异视为同一条），保留首次出现的
+ * 原文写法。LLM 不保证返回唯一短语，不去重会在渲染端产生重复条目与 React duplicate key。
+ */
+function dedupeInsightPhrases(items: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of items) {
+    const phrase = raw.trim();
+    const norm = normalizeText(phrase);
+    if (norm.length === 0 || seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(phrase);
+  }
+  return out;
+}
+
+/**
  * 用 LLM 从 JD 正文提取的**岗位侧事实**增强纯规则报告（C1，阶段 3）。
  *
  * 不可变：返回新报告，不改入参。硬边界（设计 §83「确定性分层」）：
@@ -142,7 +159,8 @@ export type JdExtractor = (title: string, description: string) => Promise<JdInsi
  * - `responsibilities` / `qualifications` 只挂到 `jdInsight` 供渲染「岗位要求」，
  *   不产生缺口（资历/学历不是「补一条 GitHub 证据」能解决的，不生成误导性补强建议）；
  * - 规则缺口优先：总缺口数不超过 maxGaps，语义缺口只填规则缺口没用完的名额；
- * - 与画像技能、已有缺口（规则或语义）normalize 后相同的要求去重跳过。
+ * - 与画像技能、已有缺口（规则或语义）normalize 后相同的要求去重跳过；
+ * - insight 三数组在出口统一去重（LLM 不保证唯一，重复短语会污染展示与缺口推导）。
  */
 export function enhanceMatchReportWithJd(
   report: MatchReport,
@@ -150,23 +168,28 @@ export function enhanceMatchReportWithJd(
   profileSkills: readonly string[],
   maxGaps: number = DEFAULT_MAX_GAPS,
 ): MatchReport {
+  // 出口统一去重：缺口推导与 jdInsight 展示都使用去重后的同一份事实。
+  const cleanInsight: JdInsight = {
+    responsibilities: dedupeInsightPhrases(insight.responsibilities),
+    requiredSkills: dedupeInsightPhrases(insight.requiredSkills),
+    qualifications: dedupeInsightPhrases(insight.qualifications),
+  };
   const known = new Set(profileSkills.map((s) => normalizeText(s)).filter((s) => s.length > 0));
   const existingTags = new Set(report.gaps.map((gap) => normalizeText(gap.tag)));
 
   const semanticGaps: MatchGap[] = [];
   const slots = Math.max(0, maxGaps - report.gaps.length);
-  for (const rawSkill of insight.requiredSkills) {
+  for (const skill of cleanInsight.requiredSkills) {
     if (semanticGaps.length >= slots) break;
-    const skill = rawSkill.trim();
     const norm = normalizeText(skill);
-    if (norm.length === 0 || known.has(norm) || existingTags.has(norm)) continue;
+    if (known.has(norm) || existingTags.has(norm)) continue;
     existingTags.add(norm);
     semanticGaps.push({ code: 'jd_requirement_not_in_profile', tag: skill });
   }
 
   if (semanticGaps.length === 0) {
     // 没有新增语义缺口：仍挂上 jdInsight（岗位要求可展示），其余字段原样。
-    return { ...report, jdInsight: insight };
+    return { ...report, jdInsight: cleanInsight };
   }
 
   const gaps: MatchGap[] = [...report.gaps, ...semanticGaps];
@@ -176,7 +199,7 @@ export function enhanceMatchReportWithJd(
     skill: gap.tag,
   }));
 
-  return { ...report, gaps, suggestedBoost, jdInsight: insight };
+  return { ...report, gaps, suggestedBoost, jdInsight: cleanInsight };
 }
 
 export interface CandidateLike {

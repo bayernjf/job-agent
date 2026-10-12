@@ -288,7 +288,28 @@ describe('enhanceMatchReportWithJd (C1 LLM JD extraction)', () => {
       matchedSkills: out.matchedSkills,
       ruleVersion: out.ruleVersion,
     }).toEqual(before);
-    expect(out.jdInsight).toEqual(insight);
+    // requiredSkills 在出口被 trim（' react ' → 'react'），其余保持原文与顺序
+    expect(out.jdInsight).toEqual({
+      responsibilities: insight.responsibilities,
+      requiredSkills: ['Kubernetes', 'react', 'Rust', 'Go', 'TypeScript'],
+      qualifications: insight.qualifications,
+    });
+  });
+
+  it('dedupes repeated phrases in all three jdInsight arrays, keeping the first original wording', () => {
+    const duplicate: JdInsight = {
+      responsibilities: ['Build services', ' build services ', 'BUILD SERVICES', 'Lead reviews'],
+      requiredSkills: ['Rust', 'rust', ' Rust ', 'Go'],
+      qualifications: ['5+ years', '5+  years', 'BS degree'],
+    };
+    const out = enhanceMatchReportWithJd(ruleReport(), duplicate, ['TypeScript']);
+    expect(out.jdInsight).toEqual({
+      responsibilities: ['Build services', 'Lead reviews'],
+      // 去重发生在缺口推导之前：重复的 Rust 只产生一个语义缺口
+      requiredSkills: ['Rust', 'Go'],
+      qualifications: ['5+ years', 'BS degree'],
+    });
+    expect(out.gaps.filter((g) => g.tag === 'Rust')).toHaveLength(1);
   });
 
   it('adds only missing requiredSkills as jd_requirement_not_in_profile, deduping against profile and rule gaps', () => {
