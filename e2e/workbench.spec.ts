@@ -449,9 +449,22 @@ test.describe('job workbench — signed in', () => {
     // 最新一条必须可见（旧语义里它被截在最旧 200 条之外）
     await expect(folded.locator('time')).toHaveAttribute('datetime', rescan(199).createdAt);
 
-    // 折叠只在显示层：展开仍能看到完整流水（可回放审计的完整性）
+    // 折叠只在显示层：展开仍能看到完整流水（可回放审计的完整性）。
+    // 摊开按每步 50 条增量进行（c532128）：首次展开＝1 条真实事件 + 50 条自迁移 +
+    // 剩余 150 条仍折成 1 行＝52 行；逐次「展开更多」直到 201 条全部摊开。
     await page.getByTestId('agent-timeline-toggle').click();
+    await expect(page.getByTestId('agent-event')).toHaveCount(52);
+    const expandMore = page.getByTestId('agent-timeline-expand-more');
+    await expect(expandMore).toBeVisible();
+    await expandMore.click();
+    await expect(page.getByTestId('agent-event')).toHaveCount(102);
+    await expandMore.click();
+    await expect(page.getByTestId('agent-event')).toHaveCount(152);
+    await expandMore.click();
     await expect(page.getByTestId('agent-event')).toHaveCount(201);
+    await expandMore.click();
+    await expect(page.getByTestId('agent-event')).toHaveCount(201);
+    await expect(page.getByTestId('agent-timeline-expanded-all')).toBeVisible();
   });
 
   test('pages the event stream backwards and says when it reaches the oldest', async ({ page }) => {
