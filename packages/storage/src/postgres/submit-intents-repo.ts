@@ -2,20 +2,35 @@ import { and, asc, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { tsGte } from './time-text.js';
 import {
+  toStoredApplication,
   toStoredSubmitIntent,
   type JobSource,
+  type NewApplication,
   type NewSubmitIntent,
+  type StoredApplication,
   type StoredSubmitIntent,
   type SubmitIntentStatus,
 } from '../entities/index.js';
-import type { ISubmitIntentsRepository } from '../repositories/submit-intents.js';
-import { submitIntents as t } from './schema.js';
+import type {
+  ApproveManyWithQuotaResult,
+  ISubmitIntentsRepository,
+  MarkSubmittedWithApplicationResult,
+} from '../repositories/submit-intents.js';
+import { applications as appT, submitIntents as t } from './schema.js';
 
 /** 计入每源每日限频的票据状态：只有"已确认/已投出"占用额度 */
 const COMMITTED_STATUSES: readonly SubmitIntentStatus[] = ['approved', 'submitted'];
 
-/** 入库输入 → drizzle values（与 SQLite 实现逐字段一致） */
-function toInsertValues(intent: NewSubmitIntent) {
+/** approve 判额事务的 advisory lock 命名空间（int4，两参形式，配合 hashtext(accountId)） */
+const APPROVE_QUOTA_LOCK_NAMESPACE = 0x4a51;
+
+/** Postgres 唯一约束违反（含部分唯一索引）的 SQLSTATE */
+function isPgUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === '23505';
+}
+
+/** 入库输入 → drizzle values（与 SQLite 实现逐字段一致；job-runs 仓储的跨表事务同样复用） */
+export function toInsertValues(intent: NewSubmitIntent) {
   return {
     id: intent.id,
     runId: intent.runId,
@@ -115,6 +130,70 @@ export class PgSubmitIntentsRepository implements ISubmitIntentsRepository {
     return rows.length;
   }
 
+  async approveManyWithQuota(
+    runId: string,
+    accountId: string,
+    ids: readonly string[],
+    dailyLimit: number,
+    since: string,
+    approvedAt: string,
+  ): Promise<ApproveManyWithQuotaResult> {
+    if (ids.length === 0) return { outcome: 'approved', approved: 0 };
+    return await this.db.transaction(async (tx) => {
+      // 账号级事务咨询锁：READ COMMITTED 下两批不同 id 的 approve 不会锁同一批行，
+      // 仅靠条件 UPDATE 挡不住"各判各的额度后双双通过"；同账号判额事务在此串行。
+      // 锁随事务提交/回滚自动释放。
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${APPROVE_QUOTA_LOCK_NAMESPACE}, hashtext(${accountId}))`,
+      );
+
+      // ① 本次真正能移动的 pending 票据按来源分组（已被并发处理的自动剔除）
+      const pendingRows = await tx
+        .select({
+          source: sql<JobSource>`${t.jobSource}`,
+          count: sql<string>`count(*)`,
+        })
+        .from(t)
+        .where(and(eq(t.runId, runId), inArray(t.id, [...ids]), eq(t.status, 'pending')))
+        .groupBy(t.jobSource);
+
+      // ②③ 逐来源叠加 24h 已确认/已投计数；任一超限直接返回（事务回滚，尚无写入）
+      for (const row of pendingRows) {
+        const requested = Number(row.count ?? 0);
+        const committedRows = await tx
+          .select({ count: sql<string>`count(*)` })
+          .from(t)
+          .where(
+            and(
+              eq(t.accountId, accountId),
+              eq(t.jobSource, row.source),
+              inArray(t.status, [...COMMITTED_STATUSES]),
+              // TEXT 列比较参数走 ::text 定型，防事务池化下 42883（同 countCommitted）
+              or(tsGte(t.submittedAt, since), tsGte(t.approvedAt, since)),
+            ),
+          );
+        const committed = Number(committedRows[0]?.count ?? 0);
+        if (committed + requested > dailyLimit) {
+          return {
+            outcome: 'quota_exceeded',
+            source: row.source,
+            committed,
+            remaining: Math.max(0, dailyLimit - committed),
+            requested,
+          } satisfies ApproveManyWithQuotaResult;
+        }
+      }
+
+      // ④ 全部通过：条件 UPDATE，只移动仍为 pending 的票据
+      const updated = await tx
+        .update(t)
+        .set({ status: 'approved', approvedAt, updatedAt: approvedAt })
+        .where(and(eq(t.runId, runId), inArray(t.id, [...ids]), eq(t.status, 'pending')))
+        .returning({ id: t.id });
+      return { outcome: 'approved', approved: updated.length } satisfies ApproveManyWithQuotaResult;
+    });
+  }
+
   async reject(
     id: string,
     reason: string | null,
@@ -153,6 +232,116 @@ export class PgSubmitIntentsRepository implements ISubmitIntentsRepository {
       .returning({ id: t.id });
     if (rows.length === 0) return undefined;
     return this.getById(id);
+  }
+
+  async markSubmittedWithApplication(
+    intentId: string,
+    application: NewApplication,
+    submittedAt: string,
+  ): Promise<MarkSubmittedWithApplicationResult> {
+    return await this.db.transaction(async (tx) => {
+      // 行锁串行化同票据的并发标记：后来者在本行阻塞，待前一个事务提交后读到 submitted
+      const currentRows = await tx
+        .select()
+        .from(t)
+        .where(eq(t.id, intentId))
+        .for('update')
+        .limit(1);
+      const current = currentRows[0];
+      if (!current) return { outcome: 'invalid' } satisfies MarkSubmittedWithApplicationResult;
+
+      const appRows = await tx
+        .select()
+        .from(appT)
+        .where(eq(appT.submitIntentId, intentId))
+        .limit(1);
+      const existing: StoredApplication | undefined = appRows[0]
+        ? toStoredApplication(appRows[0])
+        : undefined;
+
+      if (current.status === 'submitted') {
+        return {
+          outcome: 'already',
+          intent: toStoredSubmitIntent(current),
+          application: existing,
+        } satisfies MarkSubmittedWithApplicationResult;
+      }
+      if (current.status !== 'pending' && current.status !== 'approved') {
+        return { outcome: 'invalid' } satisfies MarkSubmittedWithApplicationResult;
+      }
+
+      const updated = await tx
+        .update(t)
+        .set({
+          status: 'submitted',
+          submittedAt,
+          applicationId: application.id,
+          updatedAt: submittedAt,
+        })
+        .where(and(eq(t.id, intentId), inArray(t.status, ['pending', 'approved'])))
+        .returning({ id: t.id });
+      if (updated.length === 0) {
+        return { outcome: 'invalid' } satisfies MarkSubmittedWithApplicationResult;
+      }
+
+      // 035 之前的历史孤儿行（票据仍 pending/approved 但 application 已存在）：
+      // 不重复插入，按幂等返回既有行，CAS 已把票据补齐为 submitted
+      if (existing) {
+        const refreshedRows = await tx.select().from(t).where(eq(t.id, intentId)).limit(1);
+        return {
+          outcome: 'already',
+          intent: toStoredSubmitIntent(refreshedRows[0]!),
+          application: existing,
+        } satisfies MarkSubmittedWithApplicationResult;
+      }
+
+      // SAVEPOINT 包住 INSERT：23505 后整个事务会进入 aborted 态，必须先回滚到保存点
+      // 才能继续读既有行，对外仍按幂等成功返回
+      try {
+        await tx.transaction(async (sp) => {
+          await sp.insert(appT).values({
+            id: application.id,
+            profileId: application.profileId,
+            jobId: application.jobId ?? null,
+            source: application.source ?? null,
+            targetTitle: application.targetTitle,
+            targetCompany: application.targetCompany,
+            targetUrl: application.targetUrl ?? null,
+            status: application.status ?? 'applied',
+            note: application.note ?? null,
+            origin: application.origin ?? 'manual',
+            appliedAt: application.appliedAt,
+            createdByAccountId: application.createdByAccountId ?? null,
+            submitIntentId: application.submitIntentId ?? intentId,
+          });
+        });
+      } catch (err) {
+        if (!isPgUniqueViolation(err)) throw err;
+        const winnerRows = await tx
+          .select()
+          .from(appT)
+          .where(eq(appT.submitIntentId, intentId))
+          .limit(1);
+        const latestRows = await tx.select().from(t).where(eq(t.id, intentId)).limit(1);
+        return {
+          outcome: 'already',
+          intent: toStoredSubmitIntent(latestRows[0]!),
+          application: winnerRows[0] ? toStoredApplication(winnerRows[0]) : undefined,
+        } satisfies MarkSubmittedWithApplicationResult;
+      }
+
+      const intentRows = await tx.select().from(t).where(eq(t.id, intentId)).limit(1);
+      const storedRows = await tx
+        .select()
+        .from(appT)
+        .where(eq(appT.id, application.id))
+        .limit(1);
+      return {
+        outcome: 'submitted',
+        intent: toStoredSubmitIntent(intentRows[0]!),
+        application: toStoredApplication(storedRows[0]!),
+      } satisfies MarkSubmittedWithApplicationResult;
+    });
   }
 
   async countCommittedBySourceSince(

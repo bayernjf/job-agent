@@ -7,6 +7,7 @@ import type { AbilityProfile } from '@jobagent/shared';
 import EmbeddedPostgres from 'embedded-postgres';
 import { createStorage } from './storage.js';
 import type { StorageContext } from './types.js';
+import type { NewApplication, NewJobRunEvent, NewSubmitIntent } from './entities/index.js';
 import { openPostgres } from './postgres/connection.js';
 import { listMigrationFiles } from './migrations-fs.js';
 
@@ -78,6 +79,10 @@ function minimalSnapshot(login: string): AbilityProfile {
 }
 
 const T_NOW = '2026-09-22T00:00:00.000Z';
+// 求职 Agent 事务用例的相对时刻：T_NOW 同时作限频窗口起点（since）
+const T_P1 = '2026-09-22T01:00:00.000Z';
+const T_P2 = '2026-09-22T02:00:00.000Z';
+const T_P3 = '2026-09-22T03:00:00.000Z';
 
 describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
   let storage: StorageContext | undefined;
@@ -563,6 +568,474 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(
       await s.submitIntents.countCommittedBySourceSince(`acc_other_${suffix}`, 'greenhouse', T_NOW),
     ).toBe(0);
+  });
+
+  // CAS 状态迁移与审计事件必须在**同一事务**落库：赢家有事件，输家（陈旧期望）与
+  // 未知 id 零事件。两方言各一份 repo 代码，真 PG 上再钉一次（镜像 sqlite job-runs 用例）。
+  pgIt('commits the CAS and its audit event atomically', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const runId = `run_evt_${suffix}`;
+    const accountId = `acc_evt_${suffix}`;
+    const profileId = `prof_evt_${suffix}`;
+    const preferenceId = `pref_evt_${suffix}`;
+    await s.jobRuns.insert({ id: runId, accountId, profileId, preferenceId, createdAt: T_NOW });
+
+    const winner = await s.jobRuns.compareAndSetStatusWithEvent(
+      runId,
+      'created',
+      { status: 'watching', updatedAt: T_P1 },
+      {
+        id: `evt_${randomUUID()}`,
+        runId,
+        event: 'start',
+        fromStatus: 'created',
+        toStatus: 'watching',
+        actor: 'system',
+        createdAt: T_P1,
+      },
+    );
+    expect(winner?.status).toBe('watching');
+    const page = await s.jobRunEvents.listLatestPage(runId);
+    expect(page.hasMore).toBe(false);
+    expect(page.events).toHaveLength(1);
+    expect(page.events[0]!).toMatchObject({
+      runId,
+      event: 'start',
+      fromStatus: 'created',
+      toStatus: 'watching',
+      actor: 'system',
+    });
+
+    // 输家（陈旧期望）拿不到行，也不得留下审计事件
+    const stale = await s.jobRuns.compareAndSetStatusWithEvent(
+      runId,
+      'created',
+      { status: 'recommending', updatedAt: T_P2 },
+      {
+        id: `evt_${randomUUID()}`,
+        runId,
+        event: 'candidates_ready',
+        fromStatus: 'created',
+        toStatus: 'recommending',
+        actor: 'system',
+        createdAt: T_P2,
+      },
+    );
+    expect(stale).toBeUndefined();
+    expect((await s.jobRunEvents.listLatestPage(runId)).events).toHaveLength(1);
+
+    // 未知 id 同样零事件
+    const missingRunId = `run_evt_missing_${suffix}`;
+    expect(
+      await s.jobRuns.compareAndSetStatusWithEvent(
+        missingRunId,
+        'created',
+        { status: 'watching', updatedAt: T_P2 },
+        {
+          id: `evt_${randomUUID()}`,
+          runId: missingRunId,
+          event: 'start',
+          fromStatus: 'created',
+          toStatus: 'watching',
+          actor: 'system',
+          createdAt: T_P2,
+        },
+      ),
+    ).toBeUndefined();
+    expect((await s.jobRunEvents.listLatestPage(missingRunId)).events).toHaveLength(0);
+  });
+
+  // generated 发布是 run + 票据 + 事件的三表事务：赢家三表齐落，输家零票据零事件不留孤儿。
+  pgIt('publishes run, tickets and the generated event in one transaction', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const accountId = `acc_pub_${suffix}`;
+    const profileId = `prof_pub_${suffix}`;
+    const preferenceId = `pref_pub_${suffix}`;
+    const run1 = `run_pub1_${suffix}`;
+    const run2 = `run_pub2_${suffix}`;
+    await s.jobRuns.insert({ id: run1, accountId, profileId, preferenceId, createdAt: T_NOW });
+    await s.jobRuns.insert({ id: run2, accountId, profileId, preferenceId, createdAt: T_NOW });
+    // run1 已到 recommending；run2 还停在 watching（持陈旧期望的那一方）
+    await s.jobRuns.compareAndSetStatus(run1, 'created', { status: 'recommending', updatedAt: T_P1 });
+    await s.jobRuns.compareAndSetStatus(run2, 'created', { status: 'watching', updatedAt: T_P1 });
+
+    const report = {
+      ruleVersion: '0.1',
+      score: 6,
+      tier: 'high' as const,
+      fieldScores: { title: 3, tags: 2, description: 1 },
+      matchedSkills: ['go'],
+      reasons: [{ code: 'title_match' as const, skill: 'go', points: 3 }],
+      gaps: [],
+      suggestedBoost: [],
+    };
+    const ticket = (id: string, runId: string): NewSubmitIntent => ({
+      id,
+      runId,
+      accountId,
+      profileId,
+      jobId: `job_${id}`,
+      jobSource: 'remoteok' as const,
+      job: {
+        jobId: `job_${id}`,
+        source: 'remoteok' as const,
+        sourceUrl: `https://example.com/${id}/job`,
+        title: 'Senior Backend Engineer',
+        company: `PG Co ${suffix}`,
+        location: 'Remote',
+        remote: true,
+        salaryMin: null,
+        salaryMax: null,
+        salaryCurrency: null,
+        tags: ['go'],
+        postedAt: T_NOW,
+      },
+      matchScore: 6,
+      matchTier: 'high' as const,
+      report,
+      createdAt: T_P2,
+      updatedAt: T_P2,
+    });
+    const generatedEvent = (id: string, runId: string): NewJobRunEvent => ({
+      id,
+      runId,
+      event: 'generated' as const,
+      fromStatus: 'recommending',
+      toStatus: 'awaiting_approval',
+      actor: 'agent' as const,
+      createdAt: T_P2,
+      payload: { candidates: 2 },
+    });
+
+    const intentA = `intent_pub_a_${suffix}`;
+    const intentB = `intent_pub_b_${suffix}`;
+    const winner = await s.jobRuns.publishGeneratedIntents(
+      run1,
+      'recommending',
+      { status: 'awaiting_approval', updatedAt: T_P2 },
+      generatedEvent(`evt_${randomUUID()}`, run1),
+      [ticket(intentA, run1), ticket(intentB, run1)],
+    );
+    expect(winner?.status).toBe('awaiting_approval');
+    const tickets = await s.submitIntents.listByRun(run1);
+    expect(tickets.map((x) => x.id).sort()).toEqual([intentA, intentB]);
+    expect(tickets.every((x) => x.status === 'pending')).toBe(true);
+    const page = await s.jobRunEvents.listLatestPage(run1);
+    expect(page.events).toHaveLength(1);
+    expect(page.events[0]!.event).toBe('generated');
+    expect(page.events[0]!.payload).toEqual({ candidates: 2 });
+
+    // 输家：CAS 0 行 → undefined，零票据、零事件
+    const loser = await s.jobRuns.publishGeneratedIntents(
+      run2,
+      'recommending',
+      { status: 'awaiting_approval', updatedAt: T_P2 },
+      generatedEvent(`evt_${randomUUID()}`, run2),
+      [ticket(`intent_pub_c_${suffix}`, run2)],
+    );
+    expect(loser).toBeUndefined();
+    expect((await s.jobRuns.getById(run2))!.status).toBe('watching');
+    expect(await s.submitIntents.listByRun(run2)).toHaveLength(0);
+    expect((await s.jobRunEvents.listLatestPage(run2)).events).toHaveLength(0);
+  });
+
+  // markSubmittedWithApplication：票据 CAS 与 application 行同事务；重复幂等不重插；
+  // 035 之前的孤儿 application 被补齐回链而不是再插一条；rejected/未知票据一律 invalid。
+  pgIt('marks submitted with an application row atomically and reconciles orphans', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const report = {
+      ruleVersion: '0.1',
+      score: 6,
+      tier: 'high' as const,
+      fieldScores: { title: 3, tags: 2, description: 1 },
+      matchedSkills: ['go'],
+      reasons: [{ code: 'title_match' as const, skill: 'go', points: 3 }],
+      gaps: [],
+      suggestedBoost: [],
+    };
+    const ticket = (
+      id: string,
+      runId: string,
+      accountId: string,
+      profileId: string,
+      extra: Partial<NewSubmitIntent> = {},
+    ): NewSubmitIntent => ({
+      id,
+      runId,
+      accountId,
+      profileId,
+      jobId: `job_${id}`,
+      jobSource: 'remoteok' as const,
+      job: {
+        jobId: `job_${id}`,
+        source: 'remoteok' as const,
+        sourceUrl: `https://example.com/${id}/job`,
+        applyUrl: `https://example.com/${id}/apply`,
+        title: 'Senior Backend Engineer',
+        company: `PG Co ${suffix}`,
+        location: 'Remote',
+        remote: true,
+        salaryMin: null,
+        salaryMax: null,
+        salaryCurrency: null,
+        tags: ['go'],
+        postedAt: T_NOW,
+      },
+      matchScore: 6,
+      matchTier: 'high' as const,
+      report,
+      createdAt: T_P1,
+      updatedAt: T_P1,
+      ...extra,
+    });
+    const application = (
+      id: string,
+      profileId: string,
+      intentId: string,
+      accountId: string,
+    ): NewApplication => ({
+      id,
+      profileId,
+      jobId: `job_${intentId}`,
+      source: 'remoteok' as const,
+      targetTitle: 'Senior Backend Engineer',
+      targetCompany: `PG Co ${suffix}`,
+      targetUrl: `https://example.com/${intentId}/apply`,
+      origin: 'agent' as const,
+      appliedAt: T_P3,
+      createdByAccountId: accountId,
+      submitIntentId: intentId,
+    });
+
+    // 场景 A：pending → submitted，票据与 application 同事务；重复调用幂等不重插
+    const aSuffix = `mwa_${suffix}`;
+    const intentA = `intent_${aSuffix}`;
+    await s.submitIntents.insertMany([ticket(intentA, `run_${aSuffix}`, `acc_${aSuffix}`, `prof_${aSuffix}`)]);
+    const appA = `app_${randomUUID()}`;
+    const result = await s.submitIntents.markSubmittedWithApplication(
+      intentA,
+      application(appA, `prof_${aSuffix}`, intentA, `acc_${aSuffix}`),
+      T_P3,
+    );
+    expect(result.outcome).toBe('submitted');
+    if (result.outcome !== 'submitted') throw new Error('expected submitted outcome');
+    expect(result.intent.status).toBe('submitted');
+    expect(result.intent.submittedAt).toBe(T_P3);
+    expect(result.intent.applicationId).toBe(appA);
+    expect(result.application.submitIntentId).toBe(intentA);
+    expect(result.application.origin).toBe('agent');
+    expect(await s.applications.listByProfile(`prof_${aSuffix}`)).toHaveLength(1);
+
+    const again = await s.submitIntents.markSubmittedWithApplication(
+      intentA,
+      application(`app_${randomUUID()}`, `prof_${aSuffix}`, intentA, `acc_${aSuffix}`),
+      T_P3,
+    );
+    expect(again.outcome).toBe('already');
+    if (again.outcome !== 'already') throw new Error('expected already outcome');
+    expect(again.intent.status).toBe('submitted');
+    expect(again.intent.applicationId).toBe(appA);
+    expect(again.application!.id).toBe(appA);
+    expect(await s.applications.listByProfile(`prof_${aSuffix}`)).toHaveLength(1);
+
+    // 场景 B：035 之前的孤儿 application（已回链、票据仍 pending）→ 补齐票据，不重插
+    const bSuffix = `orp_${suffix}`;
+    const intentOrphan = `intent_${bSuffix}`;
+    const appOrphan = `app_${randomUUID()}`;
+    await s.submitIntents.insertMany([
+      ticket(intentOrphan, `run_${bSuffix}`, `acc_${bSuffix}`, `prof_${bSuffix}`),
+    ]);
+    await s.applications.insert(
+      application(appOrphan, `prof_${bSuffix}`, intentOrphan, `acc_${bSuffix}`),
+    );
+    const reconciled = await s.submitIntents.markSubmittedWithApplication(
+      intentOrphan,
+      application(`app_${randomUUID()}`, `prof_${bSuffix}`, intentOrphan, `acc_${bSuffix}`),
+      T_P3,
+    );
+    expect(reconciled.outcome).toBe('already');
+    if (reconciled.outcome !== 'already') throw new Error('expected already outcome');
+    expect(reconciled.intent.status).toBe('submitted');
+    expect(reconciled.intent.submittedAt).toBe(T_P3);
+    expect(reconciled.application!.id).toBe(appOrphan);
+    expect((await s.applications.listByProfile(`prof_${bSuffix}`)).map((r) => r.id)).toEqual([
+      appOrphan,
+    ]);
+
+    // 场景 C：rejected / 未知票据 → invalid，零 application
+    const cSuffix = `inv_${suffix}`;
+    const intentRejected = `intent_${cSuffix}`;
+    await s.submitIntents.insertMany([
+      ticket(intentRejected, `run_${cSuffix}`, `acc_${cSuffix}`, `prof_${cSuffix}`, {
+        status: 'rejected',
+        rejectedAt: T_P2,
+        updatedAt: T_P2,
+      }),
+    ]);
+    const fromRejected = await s.submitIntents.markSubmittedWithApplication(
+      intentRejected,
+      application(`app_${randomUUID()}`, `prof_${cSuffix}`, intentRejected, `acc_${cSuffix}`),
+      T_P3,
+    );
+    expect(fromRejected.outcome).toBe('invalid');
+    expect((await s.submitIntents.getById(intentRejected))!.status).toBe('rejected');
+    const fromUnknown = await s.submitIntents.markSubmittedWithApplication(
+      `intent_missing_${suffix}`,
+      application(`app_${randomUUID()}`, `prof_${cSuffix}`, `intent_missing_${suffix}`, `acc_${cSuffix}`),
+      T_P3,
+    );
+    expect(fromUnknown.outcome).toBe('invalid');
+    expect(await s.applications.listByProfile(`prof_${cSuffix}`)).toHaveLength(0);
+  });
+
+  // approveManyWithQuota：账号级咨询锁 + 逐源判额；整批通过/空批 no-op；超限整批回滚逐字段报额；
+  // 已处理票据不占请求数；逐源独立计额（一个源超限连本可通过的另一个源一起回滚）。
+  pgIt('approves a batch atomically per source quota and rolls back over the limit', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const baseReport = {
+      ruleVersion: '0.1',
+      score: 6,
+      tier: 'high' as const,
+      fieldScores: { title: 3, tags: 2, description: 1 },
+      matchedSkills: ['go'],
+      reasons: [{ code: 'title_match' as const, skill: 'go', points: 3 }],
+      gaps: [],
+      suggestedBoost: [],
+    };
+    const ticket = (
+      id: string,
+      runId: string,
+      accountId: string,
+      source: 'remoteok' | 'greenhouse',
+      createdAt: string,
+      extra: Partial<NewSubmitIntent> = {},
+    ): NewSubmitIntent => ({
+      id,
+      runId,
+      accountId,
+      profileId: `prof_q_${suffix}`,
+      jobId: `job_${id}`,
+      jobSource: source,
+      job: {
+        jobId: `job_${id}`,
+        source,
+        sourceUrl: `https://example.com/${id}/job`,
+        title: 'Senior Backend Engineer',
+        company: `PG Co ${suffix}`,
+        location: 'Remote',
+        remote: true,
+        salaryMin: null,
+        salaryMax: null,
+        salaryCurrency: null,
+        tags: ['go'],
+        postedAt: T_NOW,
+      },
+      matchScore: 6,
+      matchTier: 'high' as const,
+      report: baseReport,
+      createdAt,
+      updatedAt: createdAt,
+      ...extra,
+    });
+
+    // ① 整批通过 + 空批 no-op
+    const okAccount = `acc_qok_${suffix}`;
+    const okRun = `run_qok_${suffix}`;
+    await s.submitIntents.insertMany([
+      ticket(`intent_qok_a_${suffix}`, okRun, okAccount, 'remoteok', T_P1),
+      ticket(`intent_qok_b_${suffix}`, okRun, okAccount, 'remoteok', T_P2),
+    ]);
+    const okIds = [`intent_qok_a_${suffix}`, `intent_qok_b_${suffix}`];
+    expect(
+      await s.submitIntents.approveManyWithQuota(okRun, okAccount, okIds, 5, T_NOW, T_P3),
+    ).toEqual({ outcome: 'approved', approved: 2 });
+    for (const id of okIds) {
+      const stored = (await s.submitIntents.getById(id))!;
+      expect(stored.status).toBe('approved');
+      expect(stored.approvedAt).toBe(T_P3);
+    }
+    expect(
+      await s.submitIntents.approveManyWithQuota(okRun, okAccount, [], 5, T_NOW, T_P3),
+    ).toEqual({ outcome: 'approved', approved: 0 });
+
+    // ② 窗口内已确认 1 笔 + 本次请求 2 笔 > limit 2：整单回滚，逐字段报额
+    const xAccount = `acc_qx_${suffix}`;
+    const xRun = `run_qx_${suffix}`;
+    await s.submitIntents.insertMany([
+      ticket(`intent_qx_done_${suffix}`, xRun, xAccount, 'remoteok', T_P1, {
+        status: 'approved',
+        approvedAt: T_P1,
+      }),
+      ticket(`intent_qx_a_${suffix}`, xRun, xAccount, 'remoteok', T_P2),
+      ticket(`intent_qx_b_${suffix}`, xRun, xAccount, 'remoteok', T_P3),
+    ]);
+    const xIds = [`intent_qx_a_${suffix}`, `intent_qx_b_${suffix}`];
+    expect(
+      await s.submitIntents.approveManyWithQuota(xRun, xAccount, xIds, 2, T_NOW, T_P3),
+    ).toEqual({
+      outcome: 'quota_exceeded',
+      source: 'remoteok',
+      committed: 1,
+      remaining: 1,
+      requested: 2,
+    });
+    for (const id of xIds) {
+      expect((await s.submitIntents.getById(id))!.status).toBe('pending');
+    }
+
+    // ③ rejected 票据不在 pending 分组：limit 2 下请求数只有 2，整批通过且 rejected 不复活
+    const pAccount = `acc_qp_${suffix}`;
+    const pRun = `run_qp_${suffix}`;
+    await s.submitIntents.insertMany([
+      ticket(`intent_qp_a_${suffix}`, pRun, pAccount, 'remoteok', T_P1),
+      ticket(`intent_qp_b_${suffix}`, pRun, pAccount, 'remoteok', T_P2),
+      ticket(`intent_qp_r_${suffix}`, pRun, pAccount, 'remoteok', T_P3, {
+        status: 'rejected',
+        rejectedAt: T_P3,
+        updatedAt: T_P3,
+      }),
+    ]);
+    expect(
+      await s.submitIntents.approveManyWithQuota(
+        pRun,
+        pAccount,
+        [`intent_qp_a_${suffix}`, `intent_qp_b_${suffix}`, `intent_qp_r_${suffix}`],
+        2,
+        T_NOW,
+        T_P3,
+      ),
+    ).toEqual({ outcome: 'approved', approved: 2 });
+    expect((await s.submitIntents.getById(`intent_qp_r_${suffix}`))!.status).toBe('rejected');
+
+    // ④ 逐源独立计额：greenhouse 已确认 1 笔，本次 gh 1 + remoteok 1，limit 1 下
+    //    只有 greenhouse 超限（构造上保证结果唯一，不依赖 GROUP BY 返回顺序）；
+    //    本可通过的 remoteok 随整批一起回滚。放大 limit 后同批票据逐源通过。
+    const sAccount = `acc_qs_${suffix}`;
+    const sRun = `run_qs_${suffix}`;
+    await s.submitIntents.insertMany([
+      ticket(`intent_qs_done_${suffix}`, sRun, sAccount, 'greenhouse', T_P1, {
+        status: 'approved',
+        approvedAt: T_P1,
+      }),
+      ticket(`intent_qs_gh_${suffix}`, sRun, sAccount, 'greenhouse', T_P1),
+      ticket(`intent_qs_ro_${suffix}`, sRun, sAccount, 'remoteok', T_P2),
+    ]);
+    const sIds = [`intent_qs_gh_${suffix}`, `intent_qs_ro_${suffix}`];
+    expect(
+      await s.submitIntents.approveManyWithQuota(sRun, sAccount, sIds, 1, T_NOW, T_P3),
+    ).toEqual({
+      outcome: 'quota_exceeded',
+      source: 'greenhouse',
+      committed: 1,
+      remaining: 0,
+      requested: 1,
+    });
+    for (const id of sIds) {
+      expect((await s.submitIntents.getById(id))!.status).toBe('pending');
+    }
+    expect(
+      await s.submitIntents.approveManyWithQuota(sRun, sAccount, sIds, 3, T_NOW, T_P3),
+    ).toEqual({ outcome: 'approved', approved: 2 });
   });
 
   pgIt('inserts and reads back a profile with boolean and JSON round-trip', async (s) => {

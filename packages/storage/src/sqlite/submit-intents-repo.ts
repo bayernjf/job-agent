@@ -1,20 +1,38 @@
 import { and, asc, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
+  toStoredApplication,
   toStoredSubmitIntent,
   type JobSource,
+  type NewApplication,
   type NewSubmitIntent,
+  type StoredApplication,
   type StoredSubmitIntent,
   type SubmitIntentStatus,
 } from '../entities/index.js';
-import type { ISubmitIntentsRepository } from '../repositories/submit-intents.js';
-import { submitIntents as t } from './schema.js';
+import type {
+  ApproveManyWithQuotaResult,
+  ISubmitIntentsRepository,
+  MarkSubmittedWithApplicationResult,
+} from '../repositories/submit-intents.js';
+import { applications as appT, submitIntents as t } from './schema.js';
 
 /** 计入每源每日限频的票据状态：只有"已确认/已投出"占用额度 */
 const COMMITTED_STATUSES: readonly SubmitIntentStatus[] = ['approved', 'submitted'];
 
-/** 入库输入 → drizzle values（两方言共用同一字段映射） */
-function toInsertValues(intent: NewSubmitIntent) {
+/** better-sqlite3 的唯一约束错误（新版本 code 精确到 UNIQUE，旧版本靠消息兜底） */
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  return (
+    e?.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+    (e?.code === 'SQLITE_CONSTRAINT' &&
+      typeof e.message === 'string' &&
+      e.message.startsWith('UNIQUE constraint failed'))
+  );
+}
+
+/** 入库输入 → drizzle values（两方言共用同一字段映射；job-runs 仓储的跨表事务同样复用） */
+export function toInsertValues(intent: NewSubmitIntent) {
   return {
     id: intent.id,
     runId: intent.runId,
@@ -121,6 +139,65 @@ export class SqliteSubmitIntentsRepository implements ISubmitIntentsRepository {
     return result.changes ?? 0;
   }
 
+  async approveManyWithQuota(
+    runId: string,
+    accountId: string,
+    ids: readonly string[],
+    dailyLimit: number,
+    since: string,
+    approvedAt: string,
+  ): Promise<ApproveManyWithQuotaResult> {
+    if (ids.length === 0) return { outcome: 'approved', approved: 0 };
+    // 判额与 UPDATE 在同一事务：SQLite 单写者串行，读之间不可能插入并发确认
+    return this.db.transaction((tx): ApproveManyWithQuotaResult => {
+      // ① 本次真正能移动的 pending 票据按来源分组（已被并发处理的自动剔除）
+      const pendingRows = tx
+        .select({
+          source: sql<JobSource>`${t.jobSource}`,
+          count: sql<number>`count(*)`,
+        })
+        .from(t)
+        .where(and(eq(t.runId, runId), inArray(t.id, [...ids]), eq(t.status, 'pending')))
+        .groupBy(t.jobSource)
+        .all();
+
+      // ②③ 逐来源叠加 24h 已确认/已投计数；任一超限整事务回滚（此时尚无写入）
+      for (const row of pendingRows) {
+        const requested = Number(row.count ?? 0);
+        const committedRow = tx
+          .select({ count: sql<number>`count(*)` })
+          .from(t)
+          .where(
+            and(
+              eq(t.accountId, accountId),
+              eq(t.jobSource, row.source),
+              inArray(t.status, [...COMMITTED_STATUSES]),
+              or(gte(t.submittedAt, since), gte(t.approvedAt, since)),
+            ),
+          )
+          .get();
+        const committed = Number(committedRow?.count ?? 0);
+        if (committed + requested > dailyLimit) {
+          return {
+            outcome: 'quota_exceeded',
+            source: row.source,
+            committed,
+            remaining: Math.max(0, dailyLimit - committed),
+            requested,
+          };
+        }
+      }
+
+      // ④ 全部通过：条件 UPDATE，只移动仍为 pending 的票据
+      const result = tx
+        .update(t)
+        .set({ status: 'approved', approvedAt, updatedAt: approvedAt })
+        .where(and(eq(t.runId, runId), inArray(t.id, [...ids]), eq(t.status, 'pending')))
+        .run();
+      return { outcome: 'approved', approved: result.changes ?? 0 };
+    });
+  }
+
   async reject(
     id: string,
     reason: string | null,
@@ -159,6 +236,100 @@ export class SqliteSubmitIntentsRepository implements ISubmitIntentsRepository {
       .run();
     if ((result.changes ?? 0) === 0) return undefined;
     return this.getById(id);
+  }
+
+  async markSubmittedWithApplication(
+    intentId: string,
+    application: NewApplication,
+    submittedAt: string,
+  ): Promise<MarkSubmittedWithApplicationResult> {
+    // better-sqlite3 事务在回调抛错时自动回滚；SQLite 单写者，事务内 SELECT→CAS→INSERT 串行原子
+    return this.db.transaction((tx): MarkSubmittedWithApplicationResult => {
+      const current = tx.select().from(t).where(eq(t.id, intentId)).get();
+      if (!current) return { outcome: 'invalid' };
+
+      const existingRow = tx
+        .select()
+        .from(appT)
+        .where(eq(appT.submitIntentId, intentId))
+        .get();
+      const existing: StoredApplication | undefined = existingRow
+        ? toStoredApplication(existingRow)
+        : undefined;
+
+      // 已投票据：重复/并发标记幂等返回，不再 CAS、不再插第二条
+      if (current.status === 'submitted') {
+        return { outcome: 'already', intent: toStoredSubmitIntent(current), application: existing };
+      }
+      if (current.status !== 'pending' && current.status !== 'approved') {
+        return { outcome: 'invalid' };
+      }
+
+      const result = tx
+        .update(t)
+        .set({
+          status: 'submitted',
+          submittedAt,
+          applicationId: application.id,
+          updatedAt: submittedAt,
+        })
+        .where(and(eq(t.id, intentId), inArray(t.status, ['pending', 'approved'])))
+        .run();
+      if ((result.changes ?? 0) === 0) return { outcome: 'invalid' };
+
+      // 035 之前的历史孤儿行（票据仍 pending/approved 但 application 已存在）：
+      // 不重复插入，按幂等返回既有行，CAS 已把票据补齐为 submitted
+      if (existing) {
+        const refreshed = tx.select().from(t).where(eq(t.id, intentId)).get()!;
+        return {
+          outcome: 'already',
+          intent: toStoredSubmitIntent(refreshed),
+          application: existing,
+        };
+      }
+
+      try {
+        tx.insert(appT)
+          .values({
+            id: application.id,
+            profileId: application.profileId,
+            jobId: application.jobId ?? null,
+            source: application.source ?? null,
+            targetTitle: application.targetTitle,
+            targetCompany: application.targetCompany,
+            targetUrl: application.targetUrl ?? null,
+            status: application.status ?? 'applied',
+            note: application.note ?? null,
+            origin: application.origin ?? 'manual',
+            appliedAt: application.appliedAt,
+            createdByAccountId: application.createdByAccountId ?? null,
+            submitIntentId: application.submitIntentId ?? intentId,
+          })
+          .run();
+      } catch (err) {
+        // 唯一约束撞车：SQLite 下仅语句级回滚，事务仍提交（CAS 保留），按幂等读既有行
+        if (!isUniqueViolation(err)) throw err;
+        const winner = tx
+          .select()
+          .from(appT)
+          .where(eq(appT.submitIntentId, intentId))
+          .get();
+        const latest = tx.select().from(t).where(eq(t.id, intentId)).get()!;
+        return {
+          outcome: 'already',
+          intent: toStoredSubmitIntent(latest),
+          application: winner ? toStoredApplication(winner) : undefined,
+        };
+      }
+
+      const intent = tx.select().from(t).where(eq(t.id, intentId)).get()!;
+      const stored = tx.select().from(appT).where(eq(appT.id, application.id)).get()!;
+      return {
+        outcome: 'submitted',
+        intent: toStoredSubmitIntent(intent),
+        application: toStoredApplication(stored),
+      };
+    });
   }
 
   async countCommittedBySourceSince(
