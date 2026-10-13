@@ -826,6 +826,16 @@ h4 { font-size: var(--ja-text-lg); }
   font-size: var(--ja-text-xs);
 }
 
+/* 再上架/ghost job 观察：琥珀色描边标记，比 .rec-badge 更醒目但只陈述事实（tooltip 给判据） */
+.rec-repost {
+  padding: 0.1rem var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  color: var(--ja-color-warning);
+  font-size: var(--ja-text-xs);
+  cursor: help;
+}
+
 .rec-skills {
   display: flex;
   flex-wrap: wrap;

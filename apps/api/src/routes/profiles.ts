@@ -21,6 +21,7 @@ import { oneHourAgo } from '../demo-config.js';
 import {
   buildSkillReasons,
   collectEvidence,
+  repostObservations,
   skillTagMap,
 } from '../match-explain.js';
 import { formatProfileForViewer, isProfileOwner } from './helpers.js';
@@ -441,8 +442,20 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
     }
     const deduped = excludeAndMergeMatches(matches, { excludeJobIds });
     const page = deduped.items.slice(offset, offset + limit);
+    // 再上架/ghost job 弱信号：整页一次批量查询（走 idx_job_postings_normalized），
+    // 判据只在"同一文本此前已下架 ≥3 天后又出现"时成立，见 match-explain.repostObservations。
+    const pageRows = page.map(({ match: x }) => ({
+      id: x.posting.id,
+      normalizedKey: x.posting.normalizedKey,
+      firstSeenAt: x.posting.firstSeenAt,
+    }));
+    const sightings = await repos.jobPostings.listSightingsByNormalizedKeys([
+      ...new Set(pageRows.map((r) => r.normalizedKey).filter((key) => key.length > 0)),
+    ]);
+    const reposted = repostObservations(pageRows, sightings);
     const serialized = page.map(({ match: x, alternateSources }) => {
       const skillReasons = buildSkillReasons(x, tags);
+      const repost = reposted[x.posting.id];
       const base = {
         score: x.score,
         matchedSkills: x.matchedSkills,
@@ -450,6 +463,7 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
         skillHits: x.skillHits,
         posting: x.posting,
         alternateSources,
+        ...(repost ? { repost } : {}),
       };
       return skillReasons ? { ...base, skillReasons } : base;
     });

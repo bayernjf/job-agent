@@ -70,6 +70,7 @@ export type {
 } from './entities/waitlist.js';
 export type {
   JobPostingStatus,
+  JobPostingSighting,
   NewJobPosting,
   StoredJobPosting,
 } from './entities/job-posting.js';

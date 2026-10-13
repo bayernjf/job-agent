@@ -616,7 +616,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
           "evidenceRefs": ["ev-001"]
         }
       ],
-      "posting": { "jobId": "...", "source": "remoteok", "title": "...", "company": "...", "sourceUrl": "..." }
+      "posting": { "jobId": "...", "source": "remoteok", "title": "...", "company": "...", "sourceUrl": "..." },
+      "repost": { "priorListings": 2, "earliestFirstSeenAt": "2026-08-14T00:00:00.000Z" }
     }
   ],
   "evidence": {
@@ -635,6 +636,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
   - `skillReasons`：仅 profileId 匹配时返回，在 `skillHits` 基础上挂画像技能元数据（`kind`/`depth`/`confidence`）与证据指针 `evidenceRefs`。
   - `evidence`：**响应顶层**的去重证据字典，key = `evidenceRef`，供前端回溯证据原链；旧后端可能缺，前端应健壮降级。
 - `candidatePool`：过滤后、打分前的候选岗位数，便于解释「为什么只推荐这么少」。
+- **`repost`（重复上架 / ghost job 弱信号，可选字段）**：判据是**同一 `normalized_key` 的另一条岗位行，最后一次被源站列出（`last_seen_at`）早于本行 `first_seen_at` 至少 3 天**（`apps/api/src/match-explain.ts` 的 `REPOST_MIN_DARK_DAYS`）——即"这个文本消失过一阵，又回来了"。用 `last_seen_at` 而不是 `first_seen_at` 是刻意的：后者只反映我们的采集进度，同一在招岗位隔天被第二个源抓到会被伪装成"很久以前出现过"。计数不含本行；`normalized_key` 为空（招聘方自建 JD）或时间戳解析不出时**不产该字段**（宁可少一个提示，也不给一个错日期）。整页一次批量查询，无新表、无迁移。措辞由渲染侧按 locale 现拼，响应只给计数与时间戳。
 - 画像 `skillTags` 为空时返回 200，`matches` 为空数组（不报错）。
 
 #### 错误

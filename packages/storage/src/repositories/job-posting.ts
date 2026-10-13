@@ -1,5 +1,6 @@
 import type { JobSource } from '@jobagent/shared';
 import type {
+  JobPostingSighting,
   JobPostingStatus,
   NewJobPosting,
   RecruiterPostingDraft,
@@ -67,6 +68,12 @@ export interface IJobPostingsRepository {
   getById(id: string): Promise<StoredJobPosting | undefined>;
   /** 按搜岗 run 列出本次入库的岗位（source=websearch，run 关联列） */
   listBySearchRun(runId: string, limit?: number): Promise<StoredJobPosting[]>;
+  /**
+   * 按 `normalized_key` 批量取"同一岗位文本的观测记录"（重复上架/ghost job 弱信号）。
+   * 空输入必须短路（`IN ()` 在两方言行为不同）；只取公开池行，招聘方自建 JD 的
+   * `normalized_key` 本就是 NULL，不会混进来。
+   */
+  listSightingsByNormalizedKeys(keys: readonly string[]): Promise<JobPostingSighting[]>;
   /**
    * 招聘方发布一条自建 JD（决策 #25，B3-a 最小一刀）。身份三件套（`jobId`、
    * `source='recruiter'`、`sourceUrl='https://recruiter.invalid/<account>/<jobId>'`）

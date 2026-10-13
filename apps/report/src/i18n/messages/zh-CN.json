@@ -450,6 +450,8 @@
   "interviews.noProfileAction": "生成画像",
   "report.recommendations.loadMore": "加载更多",
   "report.recommendations.alternateSources": "也可在该来源查看",
+  "report.recommendations.repost": "重复上架：此前 {count} 次（最早 {date}）",
+  "report.recommendations.repostHint": "同一岗位文本此前曾下架、之后又重新出现，反复挂同一岗位常意味着岗位长期未填（ghost job）。这是可复核的观察，不是结论。",
   "my.delete": "删除画像",
   "my.deleteConfirmTitle": "删除这份能力画像？",
   "my.deleteConfirmBody": "将同时删除其全部证据、投递记录与面试计划，分享链接立即失效。此操作不可撤销。",

@@ -450,6 +450,8 @@
   "interviews.noProfileAction": "Generate profile",
   "report.recommendations.loadMore": "Load more",
   "report.recommendations.alternateSources": "Also on",
+  "report.recommendations.repost": "Reposted: {count} earlier sighting(s), first on {date}",
+  "report.recommendations.repostHint": "This exact job text went dark before and has reappeared. Roles that keep re-listing are often never filled (a ghost job). It is a checkable observation, not a verdict.",
   "my.delete": "Delete profile",
   "my.deleteConfirmTitle": "Delete this ability profile?",
   "my.deleteConfirmBody": "This permanently deletes its evidence, applications and interviews; share links stop working immediately. This cannot be undone.",

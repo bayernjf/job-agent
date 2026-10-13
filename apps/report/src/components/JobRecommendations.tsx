@@ -40,6 +40,11 @@ interface JobMatchItem {
   skillReasons?: SkillReason[];
   /** T20 跨源同岗位副本（不同来源的可跳转入口） */
   alternateSources?: Array<{ source: string; sourceUrl: string }>;
+  /**
+   * 再上架/ghost job 弱信号（服务端按 normalized_key 统计，只在成立时出现）：
+   * 同一岗位文本此前已下架若干天、这次又重新出现。缺字段＝旧响应，不显示观察。
+   */
+  repost?: { priorListings: number; earliestFirstSeenAt: string };
   posting: {
     id?: string;
     title: string;
@@ -82,6 +87,9 @@ interface JobRecommendationsProps {
   generateResumeLabel: string;
   loadMoreLabel: string;
   alternateSourcesLabel: string;
+  /** 再上架观察文案模板（含 `{count}` / `{date}` 占位）与解释性 tooltip */
+  repostTemplate: string;
+  repostHint: string;
 }
 
 const MAX_DISPLAY = 10;
@@ -107,6 +115,11 @@ function scoreClass(score: number, matchedSkillCount: number): string {
 /** 运行时填充 {count} 占位（模板来自服务端 i18n，组件不持有文案）。 */
 function fillCount(template: string, count: number): string {
   return template.replace(/\{count\}/g, String(count));
+}
+
+/** 再上架文案要同时填 `{count}` 与 `{date}`；日期已在服务端按 locale 格式化好传进来。 */
+function fillRepost(template: string, count: number, date: string): string {
+  return fillCount(template, count).split('{date}').join(date);
 }
 
 /** 收集一条匹配命中技能引用到的、且在证据字典中存在的证据（按引用顺序去重）。 */
@@ -152,6 +165,8 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
     generateResumeLabel,
     loadMoreLabel,
     alternateSourcesLabel,
+    repostTemplate,
+    repostHint,
   } = props;
 
   const [data, setData] = useState<JobRecommendationsResponse | null>(null);
@@ -282,6 +297,15 @@ export default function JobRecommendations(props: JobRecommendationsProps) {
                   {m.posting.location && <span className="ja-muted">{m.posting.location}</span>}
                   {m.posting.postedAt && (
                     <span className="ja-muted">{formatDate(m.posting.postedAt, locale)}</span>
+                  )}
+                  {m.repost && (
+                    <span className="rec-repost" data-testid="rec-repost" title={repostHint}>
+                      {fillRepost(
+                        repostTemplate,
+                        m.repost.priorListings,
+                        formatDate(m.repost.earliestFirstSeenAt, locale),
+                      )}
+                    </span>
                   )}
                 </div>
 

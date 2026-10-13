@@ -29,6 +29,7 @@ export { WAITLIST_STATUSES, toStoredWaitlist } from './waitlist.js';
 
 export type {
   JobPostingStatus,
+  JobPostingSighting,
   NewJobPosting,
   RecruiterPostingDraft,
   StoredJobPosting,
@@ -40,6 +41,7 @@ export {
   makeJobPostingId,
   dedupePostingsById,
   jobPostingSignature,
+  toJobPostingSighting,
   toStoredJobPosting,
 } from './job-posting.js';
 

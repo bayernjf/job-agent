@@ -103,6 +103,43 @@ const EXPLAINED_MATCH = {
   },
 };
 
+const REPOST_MATCH = {
+  profileId: FIXTURE_PROFILE_ID,
+  profileSkills: ['TypeScript'],
+  total: 2,
+  candidatePool: 20,
+  matches: [
+    {
+      score: 7,
+      matchedSkills: ['TypeScript'],
+      // 服务端只在"同一文本此前已下架 ≥3 天后又出现"时带这个字段
+      repost: { priorListings: 2, earliestFirstSeenAt: '2026-08-14T00:00:00.000Z' },
+      posting: {
+        jobId: 'job-7',
+        source: 'greenhouse',
+        sourceUrl: 'https://example.test/job-7',
+        title: 'TypeScript Platform Engineer',
+        company: 'Acme Corp',
+        remote: true,
+        postedAt: '2026-10-12T00:00:00.000Z',
+      },
+    },
+    {
+      score: 5,
+      matchedSkills: ['TypeScript'],
+      posting: {
+        jobId: 'job-8',
+        source: 'remoteok',
+        sourceUrl: 'https://example.test/job-8',
+        title: 'TypeScript Engineer',
+        company: 'Beta Ltd',
+        remote: true,
+        postedAt: '2026-10-10T00:00:00.000Z',
+      },
+    },
+  ],
+};
+
 test.describe('job recommendations island', () => {
   test('renders matched jobs with score, company and matched skills', async ({ page }) => {
     await mockRecommendations(page, TWO_MATCHES);
@@ -194,5 +231,29 @@ test.describe('job recommendations island', () => {
     await expect(evidenceLink).toHaveText('Authored a TypeScript pull request');
     await expect(evidenceLink).toHaveAttribute('href', 'https://github.com/u/r/pull/1');
     await expect(evidenceLink).toHaveAttribute('target', '_blank');
+  });
+
+  test('marks a reposted job with the ghost-job observation, and only that one', async ({ page }) => {
+    await mockRecommendations(page, REPOST_MATCH);
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+
+    const items = page.locator('.job-recs .rec-item');
+    await expect(items).toHaveCount(2);
+
+    const flag = items.first().locator('.rec-repost');
+    await expect(flag).toBeVisible();
+    await expect(flag).toContainText('Reposted:');
+    await expect(flag).toContainText('2 earlier sighting');
+    // 日期由服务端按 locale 传文案、组件按 locale 格式化（不是原始 ISO 串）
+    await expect(flag).toContainText('Aug 14, 2026');
+    await expect(flag).toHaveAttribute('title', /ghost job/);
+
+    // 没有 repost 字段的岗位不显示观察（弱信号只在成立时出现）
+    await expect(items.nth(1).locator('.rec-repost')).toHaveCount(0);
+
+    await page.goto(`/zh-CN/report/${FIXTURE_PROFILE_ID}`);
+    await expect(page.locator('.job-recs .rec-item').first().locator('.rec-repost')).toContainText(
+      '重复上架：此前 2 次',
+    );
   });
 });

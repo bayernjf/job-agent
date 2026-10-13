@@ -5,8 +5,10 @@ import {
   dedupePostingsById,
   jobPostingSignature,
   makeJobPostingId,
+  toJobPostingSighting,
   toStoredJobPosting,
   RECRUITER_POSTING_SOURCE,
+  type JobPostingSighting,
   type JobPostingStatus,
   type NewJobPosting,
   type RecruiterPostingDraft,
@@ -296,6 +298,24 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
       .limit(limit)
       .all();
     return rows.map(toStoredJobPosting);
+  }
+
+  async listSightingsByNormalizedKeys(keys: readonly string[]): Promise<JobPostingSighting[]> {
+    // 空输入必须短路：SQLite 的 `IN ()` 是语法错误，PG 返回零行，两方言不一致。
+    if (keys.length === 0) return [];
+    const rows = this.db
+      .select({
+        id: t.id,
+        normalizedKey: t.normalizedKey,
+        source: t.source,
+        firstSeenAt: t.firstSeenAt,
+        lastSeenAt: t.lastSeenAt,
+      })
+      .from(t)
+      .where(and(inArray(t.normalizedKey, [...keys]), isNull(t.createdByAccountId)))
+      .orderBy(asc(t.firstSeenAt))
+      .all();
+    return rows.map(toJobPostingSighting);
   }
 
   async getById(id: string): Promise<StoredJobPosting | undefined> {
