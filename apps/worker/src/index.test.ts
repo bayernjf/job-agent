@@ -10,12 +10,12 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalyzerInput } from '@jobagent/analyzer-core';
-import type { AbilityProfile, EvidenceItem } from '@jobagent/shared';
+import type { AbilityProfile, EvidenceItem, RecordUsageInput } from '@jobagent/shared';
 import type { GitHubCollectedData } from '@jobagent/github-source';
 import type { GiteeCollectedData } from '@jobagent/gitee-source';
-import { createStorage, type StorageContext } from '@jobagent/storage';
+import { createStorage, type StorageContext, type UsageRecorder } from '@jobagent/storage';
 import {
   claimAndProcessOne,
   handleJobFailure,
@@ -943,5 +943,194 @@ describe('claimAndProcessOne (serverless cron entry)', () => {
     expect(outcome.kind).toBe('failed');
     if (outcome.kind === 'failed') expect(outcome.permanent).toBe(true);
     expect((await repos.jobs.getById(jobId))!.status).toBe('failed');
+  });
+});
+
+/** 计量埋点测试用（决策 #25 ④ Wave C）：收集 record 入参的假 UsageRecorder。 */
+function fakeUsageRecorder(): { calls: RecordUsageInput[]; recorder: UsageRecorder } {
+  const calls: RecordUsageInput[] = [];
+  return {
+    calls,
+    recorder: {
+      record: async (input) => {
+        calls.push(input);
+      },
+    },
+  };
+}
+
+describe('analysis_job 用量计量（决策 #25 ④ Wave C）', () => {
+  beforeEach(() => {
+    // 钉死融合权重默认值 2，防本机环境中的 DEMO_FUSION_QUOTA_COST 泄进测试
+    vi.stubEnv('DEMO_FUSION_QUOTA_COST', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('单源 github 成功：记一条 quantity=1、provider=github，accountId/token/model 恒 null', async () => {
+    const repos = await freshRepos();
+    await createQueuedJob(repos);
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+    const meter = fakeUsageRecorder();
+
+    await processJob(job, repos, asSources(makeFakeSource()), console, meter.recorder);
+
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toEqual({
+      accountId: null,
+      category: 'analysis',
+      feature: 'analysis_job',
+      billingSource: 'platform',
+      provider: 'github',
+      model: null,
+      promptTokens: null,
+      completionTokens: null,
+      quantity: 1,
+    });
+  });
+
+  it('platform=all 双源融合：provider=all、quantity=2（默认融合权重）', async () => {
+    const repos = await freshRepos();
+    await repos.jobs.create({
+      id: `job-${randomUUID().slice(0, 8)}`,
+      subjectPlatform: 'all',
+      subjectLogin: 'dual-user',
+    });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+    const meter = fakeUsageRecorder();
+
+    await processJob(
+      job,
+      repos,
+      {
+        github: makeFakeSource(fakeCollectedData('dual-user')),
+        gitee: makeFakeGiteeSource(fakeGiteeData('dual-user')),
+      },
+      console,
+      meter.recorder,
+    );
+
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toMatchObject({ provider: 'all', quantity: 2 });
+  });
+
+  it('platform=all 降级纯 GitHub（Gitee 404）：provider=github，quantity 仍按请求平台计 2', async () => {
+    const repos = await freshRepos();
+    await repos.jobs.create({
+      id: `job-${randomUUID().slice(0, 8)}`,
+      subjectPlatform: 'all',
+      subjectLogin: 'gh-only',
+    });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+    const meter = fakeUsageRecorder();
+    const giteeSource = makeFakeGiteeSource(fakeGiteeData('gh-only'), {
+      code: 'not_found',
+      message: 'Gitee resource not found: /users/gh-only',
+    });
+
+    const result = await processJob(
+      job,
+      repos,
+      { github: makeFakeSource(fakeCollectedData('gh-only')), gitee: giteeSource },
+      console,
+      meter.recorder,
+    );
+
+    expect(result.secondaryAvailable).toBe(false); // 确认真走了降级路径
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toMatchObject({ provider: 'github', quantity: 2 });
+  });
+
+  it('重试循环：中间重试不记，重试耗尽的终态 failed 记一条（provider=请求平台）', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos, 'user-2');
+    const meter = fakeUsageRecorder();
+
+    let job = (await repos.jobs.claimNext('test-worker'))!; // attempts 1
+    await handleJobFailure(job, repos, new Error('e1'), 3, console, meter.recorder); // -> queued
+    job = (await repos.jobs.claimNext('test-worker'))!; // attempts 2
+    await handleJobFailure(job, repos, new Error('e2'), 3, console, meter.recorder); // -> queued
+    expect(meter.calls).toHaveLength(0); // 中间重试一律不记
+
+    job = (await repos.jobs.claimNext('test-worker'))!; // attempts 3，running
+    await handleJobFailure(job, repos, new Error('permanent error'), 3, console, meter.recorder);
+
+    expect((await repos.jobs.getById(jobId))!.status).toBe('failed');
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toMatchObject({
+      feature: 'analysis_job',
+      provider: 'github',
+      quantity: 1,
+    });
+  });
+
+  it('not_found 经 claimAndProcessOne 终态 failed：恰好记一条（装配透传验证）', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos, 'ghost');
+    const notFoundSource = {
+      collect: vi.fn(async () => {
+        throw Object.assign(new Error('GitHub user not found'), { code: 'not_found' });
+      }),
+    };
+    const meter = fakeUsageRecorder();
+
+    const outcome = await claimAndProcessOne({
+      repos,
+      sources: asSources(notFoundSource),
+      workerId: 'cron',
+      maxRetries: 3,
+      usageRecorder: meter.recorder,
+    });
+
+    expect(outcome.kind).toBe('failed');
+    if (outcome.kind === 'failed') expect(outcome.permanent).toBe(true);
+    expect((await repos.jobs.getById(jobId))!.status).toBe('failed');
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toMatchObject({ provider: 'github', quantity: 1 });
+  });
+
+  it('瞬时错误经 claimAndProcessOne 重排 queued：一条不记（非终态）', async () => {
+    const repos = await freshRepos();
+    await createQueuedJob(repos, 'flaky');
+    const meter = fakeUsageRecorder();
+
+    const outcome = await claimAndProcessOne({
+      repos,
+      sources: asSources(makeFakeSource(undefined, true)),
+      workerId: 'cron',
+      maxRetries: 3,
+      usageRecorder: meter.recorder,
+    });
+
+    expect(outcome.kind).toBe('failed');
+    if (outcome.kind === 'failed') expect(outcome.permanent).toBe(false);
+    expect(meter.calls).toHaveLength(0);
+  });
+
+  it('DEMO_FUSION_QUOTA_COST=3 时 all 融合作业记 quantity=3（与 demo 配额同口径）', async () => {
+    vi.stubEnv('DEMO_FUSION_QUOTA_COST', '3');
+    const repos = await freshRepos();
+    await repos.jobs.create({
+      id: `job-${randomUUID().slice(0, 8)}`,
+      subjectPlatform: 'all',
+      subjectLogin: 'dual-user',
+    });
+    const job = (await repos.jobs.claimNext('test-worker'))!;
+    const meter = fakeUsageRecorder();
+
+    await processJob(
+      job,
+      repos,
+      {
+        github: makeFakeSource(fakeCollectedData('dual-user')),
+        gitee: makeFakeGiteeSource(fakeGiteeData('dual-user')),
+      },
+      console,
+      meter.recorder,
+    );
+
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toMatchObject({ provider: 'all', quantity: 3 });
   });
 });
