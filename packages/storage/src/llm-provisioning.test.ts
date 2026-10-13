@@ -44,7 +44,7 @@ describe('llm_catalog_models 仓储（迁移 024）', () => {
     try {
       const now = '2026-10-03T00:00:00.000Z';
       await catalog.replaceAll([
-        { id: 'm1', provider: 'agnes', model: 'agnes-2.5-flash', enabled: true, isDefault: true, sortOrder: 0, modalities: [TEXT], createdAt: now, updatedAt: now },
+        { id: 'm1', provider: 'agnes', model: 'agnes-3.0-flash', enabled: true, isDefault: true, sortOrder: 0, modalities: [TEXT], createdAt: now, updatedAt: now },
         { id: 'm2', provider: 'agnes', model: 'agnes-2.5-pro', enabled: true, isDefault: false, sortOrder: 1, modalities: [TEXT], createdAt: now, updatedAt: now },
       ]);
       let all = await catalog.listAll();
@@ -68,7 +68,7 @@ describe('llm_catalog_models 仓储（迁移 024）', () => {
       expect(await catalog.listAll()).toEqual([]);
       const now = '2026-10-03T00:00:00.000Z';
       await catalog.replaceAll([
-        { id: 'm1', provider: 'agnes', model: 'agnes-2.5-flash', enabled: true, isDefault: true, sortOrder: 0, modalities: [TEXT], createdAt: now, updatedAt: now },
+        { id: 'm1', provider: 'agnes', model: 'agnes-3.0-flash', enabled: true, isDefault: true, sortOrder: 0, modalities: [TEXT], createdAt: now, updatedAt: now },
       ]);
       const [row] = await catalog.listAll();
       expect(row!.modalities).toEqual([TEXT]);
@@ -84,7 +84,7 @@ describe('llm_catalog_models 仓储（迁移 024）', () => {
     try {
       const now = '2026-10-03T00:00:00.000Z';
       await catalog.replaceAll([
-        { id: 'keep', provider: 'agnes', model: 'agnes-2.5-flash', enabled: true, isDefault: true, sortOrder: 0, modalities: [TEXT], createdAt: now, updatedAt: now },
+        { id: 'keep', provider: 'agnes', model: 'agnes-3.0-flash', enabled: true, isDefault: true, sortOrder: 0, modalities: [TEXT], createdAt: now, updatedAt: now },
       ]);
       await expect(
         catalog.replaceAll([
@@ -109,7 +109,7 @@ describe('user_llm_configs 仓储（迁移 025）', () => {
         accountId: 'acc-1',
         provider: 'custom',
         baseUrl: 'https://apihub.agnes-ai.com/v1',
-        model: 'agnes-2.5-flash',
+        model: 'agnes-3.0-flash',
         apiKeyEncrypted: 'ciphertext-v1',
         createdAt: now,
         updatedAt: now,

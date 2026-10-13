@@ -495,7 +495,7 @@ describe('POST /resumes/cover-letter (A)', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const failing: CoverLetterProvider = {
       provider: 'openai-compatible',
-      model: 'agnes-2.5-flash',
+      model: 'agnes-3.0-flash',
       promptVersion: 'cover-letter-0.1',
       generate: async () => {
         throw new LlmResponseError('LLM endpoint returned HTTP 429', undefined, {
@@ -512,7 +512,7 @@ describe('POST /resumes/cover-letter (A)', () => {
     const call = spy.mock.calls.find((c) => String(c[0]).includes('[llm] cover letter failed'));
     expect(call, '服务端必须落一行可读诊断日志').toBeTruthy();
     const payload = JSON.parse(String(call![1])) as Record<string, unknown>;
-    expect(payload.model).toBe('agnes-2.5-flash');
+    expect(payload.model).toBe('agnes-3.0-flash');
     expect(payload.profileId).toBe('p-resume');
     expect(payload.jobId).toBe(jobId);
     expect(payload.detail).toEqual({ kind: 'http', status: 429 });
