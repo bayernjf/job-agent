@@ -780,3 +780,35 @@ export const notificationSubscriptions = pgTable(
 
 export type NotificationSubscriptionInsert = typeof notificationSubscriptions.$inferInsert;
 export type NotificationSubscriptionSelect = typeof notificationSubscriptions.$inferSelect;
+
+/**
+ * usage_events（迁移 038，决策 #25 ④ Wave A）：成本回采/用量计量事件日志。
+ * JS 字段名/物理列名与 sqlite/schema.ts 逐一对齐（schema-parity 测试守护）；
+ * 时间戳刻意保持 TEXT，不用 TIMESTAMPTZ（见本文件头约定）。
+ */
+export const usageEvents = pgTable(
+  'usage_events',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id'),
+    category: text('category').notNull(),
+    feature: text('feature').notNull(),
+    billingSource: text('billing_source').notNull(),
+    provider: text('provider'),
+    model: text('model'),
+    promptTokens: integer('prompt_tokens'),
+    completionTokens: integer('completion_tokens'),
+    quantity: integer('quantity'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_usage_events_created').on(table.createdAt),
+    index('idx_usage_events_account_created').on(table.accountId, table.createdAt),
+    index('idx_usage_events_category_created').on(table.category, table.createdAt),
+  ],
+);
+
+export type UsageEventInsert = typeof usageEvents.$inferInsert;
+export type UsageEventSelect = typeof usageEvents.$inferSelect;

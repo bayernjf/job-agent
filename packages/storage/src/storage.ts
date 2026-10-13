@@ -26,6 +26,7 @@ import { SqliteExtensionAuthCodesRepository } from './sqlite/extension-auth-code
 import { SqliteApiTokensRepository } from './sqlite/api-tokens-repo.js';
 import { SqliteCronHeartbeatRepository } from './sqlite/cron-heartbeat-repo.js';
 import { SqliteNotificationSubscriptionsRepository } from './sqlite/notification-subscriptions-repo.js';
+import { SqliteUsageEventsRepository } from './sqlite/usage-events-repo.js';
 import { SqliteUserLlmConfigsRepository } from './sqlite/user-llm-configs-repo.js';
 import { sqliteVerifyRequiredColumns } from './sqlite/verify-required-columns.js';
 import { openPostgres } from './postgres/connection.js';
@@ -53,6 +54,7 @@ import { PgExtensionAuthCodesRepository } from './postgres/extension-auth-codes-
 import { PgApiTokensRepository } from './postgres/api-tokens-repo.js';
 import { PgCronHeartbeatRepository } from './postgres/cron-heartbeat-repo.js';
 import { PgNotificationSubscriptionsRepository } from './postgres/notification-subscriptions-repo.js';
+import { PgUsageEventsRepository } from './postgres/usage-events-repo.js';
 import { PgUserLlmConfigsRepository } from './postgres/user-llm-configs-repo.js';
 import { pgVerifyRequiredColumns } from './postgres/verify-required-columns.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
@@ -158,6 +160,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       apiTokens: new PgApiTokensRepository(db),
       cronHeartbeat: new PgCronHeartbeatRepository(db),
       notificationSubscriptions: new PgNotificationSubscriptionsRepository(db),
+      usageEvents: new PgUsageEventsRepository(db),
       searchPresets: new PgSearchPresetsRepository(db),
       searchRuns: new PgSearchRunsRepository(db),
       migrate: async () => runPgMigrations(client, resolveExistingMigrationsDir(migrationsDir, 'postgres')),
@@ -203,6 +206,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     apiTokens: new SqliteApiTokensRepository(db),
     cronHeartbeat: new SqliteCronHeartbeatRepository(db),
     notificationSubscriptions: new SqliteNotificationSubscriptionsRepository(db),
+    usageEvents: new SqliteUsageEventsRepository(db),
     searchPresets: new SqliteSearchPresetsRepository(db),
     searchRuns: new SqliteSearchRunsRepository(db),
     migrate: async () => runMigrations(client, resolveExistingMigrationsDir(migrationsDir, 'sqlite')),

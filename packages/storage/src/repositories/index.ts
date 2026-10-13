@@ -29,3 +29,4 @@ export type {
   INotificationSubscriptionsRepository,
   NewNotificationSubscription,
 } from './notification-subscriptions.js';
+export type { IUsageEventsRepository } from './usage-events.js';

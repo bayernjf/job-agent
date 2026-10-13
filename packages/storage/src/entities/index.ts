@@ -220,3 +220,6 @@ export type {
   RawNotificationSubscriptionRow,
 } from './notification-subscription.js';
 export { toStoredNotificationSubscription } from './notification-subscription.js';
+
+export type { UsageEventRecord, RawUsageEventRow } from './usage-event.js';
+export { toUsageEventRecord } from './usage-event.js';
