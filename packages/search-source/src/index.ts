@@ -1,4 +1,4 @@
-export type { SearchResultItem, SearchClient } from './types.js';
+export type { SearchResultItem, SearchClient, SearchQueryObserver } from './types.js';
 export type { SearchConditions } from './types.js';
 export {
   TavilySearchClient,

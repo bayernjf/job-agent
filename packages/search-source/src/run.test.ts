@@ -3,6 +3,8 @@
  * 仓储与搜索客户端全为内存 fake，验证状态机与计数，不打网络。
  */
 import { describe, expect, it } from 'vitest';
+import type { RecordUsageInput } from '@jobagent/shared';
+import type { UsageRecorder } from '@jobagent/storage';
 import type { SearchConditions } from './types.js';
 import { executeSearchRun, runSearchTick } from './run.js';
 import type { RunSearchDeps } from './run.js';
@@ -164,5 +166,148 @@ describe('runSearchTick', () => {
     expect(outcome.advanced).toBe(2);
     expect(outcome.failed).toBe(0);
     expect(repos.searchRuns._rows.every((r: RunRow) => r.status === 'done')).toBe(true);
+  });
+});
+
+/** 计量测试用（决策 #25 ④ Wave C）：收集 record 入参的假 UsageRecorder。 */
+function fakeUsageRecorder(): { calls: RecordUsageInput[]; recorder: UsageRecorder } {
+  const calls: RecordUsageInput[] = [];
+  return {
+    calls,
+    recorder: {
+      record: async (input) => {
+        calls.push(input);
+      },
+    },
+  };
+}
+
+describe('websearch 用量计量（决策 #25 ④ Wave C）', () => {
+  const JUNK: SearchResultItem = {
+    title: 'no company here',
+    url: 'https://junk.example/x',
+    content: 'spam spam spam',
+    score: 0.1,
+  };
+
+  /** 模拟真实 SearchClient 的 onQuery 契约：成功返回才回调一次，抛错绝不回调。 */
+  function observingClient(behavior: (q: string) => SearchResultItem[]): {
+    client: SearchClient;
+    calls: string[];
+  } {
+    const calls: string[] = [];
+    return {
+      calls,
+      client: {
+        provider: 'tavily',
+        search: async (q, opts) => {
+          calls.push(q);
+          const items = behavior(q);
+          opts?.onQuery?.();
+          return items;
+        },
+      },
+    };
+  }
+
+  it('两 query 成功 + ATS 召回：记一条 quantity=3（2 通用 + 1 ATS），accountId/provider 正确', async () => {
+    const repos = makeRepos([
+      {
+        runId: 'r1',
+        accountId: 'a1',
+        query: 'x',
+        conditions: { ...COND, queries: ['q1', 'q2'] },
+        status: 'queued',
+        executedQueries: [],
+        resultsCount: 0,
+        newCount: 0,
+        error: null,
+      },
+    ]);
+    const meter = fakeUsageRecorder();
+    const { client } = observingClient(() => [JUNK]);
+    const deps: RunSearchDeps = {
+      searchRuns: repos.searchRuns,
+      jobPostings: repos.jobPostings,
+      searchClient: client,
+      usage: meter.recorder,
+    };
+    const run = (await repos.searchRuns.claimNextQueued()) as RunRow;
+    await executeSearchRun(deps, run as unknown as Parameters<typeof executeSearchRun>[1]);
+
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toEqual({
+      accountId: 'a1',
+      category: 'search',
+      feature: 'websearch',
+      billingSource: 'platform',
+      provider: 'tavily',
+      model: null,
+      promptTokens: null,
+      completionTokens: null,
+      quantity: 3,
+    });
+  });
+
+  it('queries 为空（回落规则未产查询）：一条不记，client 一次未被调', async () => {
+    const repos = makeRepos([
+      {
+        runId: 'r1',
+        accountId: 'a1',
+        query: 'x',
+        conditions: { ...COND, queries: [] },
+        status: 'queued',
+        executedQueries: [],
+        resultsCount: 0,
+        newCount: 0,
+        error: null,
+      },
+    ]);
+    const meter = fakeUsageRecorder();
+    const { client, calls } = observingClient(() => [JUNK]);
+    const deps: RunSearchDeps = {
+      searchRuns: repos.searchRuns,
+      jobPostings: repos.jobPostings,
+      searchClient: client,
+      usage: meter.recorder,
+    };
+    const run = (await repos.searchRuns.claimNextQueued()) as RunRow;
+    await executeSearchRun(deps, run as unknown as Parameters<typeof executeSearchRun>[1]);
+
+    expect(calls).toHaveLength(0);
+    expect(meter.calls).toHaveLength(0);
+  });
+
+  it('任务失败但 Tavily 已受理的查询仍计入：q1 成功 + q2 抛错 + ATS 成功 → failed 且 quantity=2', async () => {
+    const repos = makeRepos([
+      {
+        runId: 'r1',
+        accountId: 'a1',
+        query: 'x',
+        conditions: { ...COND, queries: ['q1', 'q2'] },
+        status: 'queued',
+        executedQueries: [],
+        resultsCount: 0,
+        newCount: 0,
+        error: null,
+      },
+    ]);
+    const meter = fakeUsageRecorder();
+    const { client } = observingClient((q) => {
+      if (q === 'q2') throw new Error('tavily boom');
+      return [JUNK]; // junk 抽不出 JD → 不入库，配合 q2 失败使终态 failed
+    });
+    const deps: RunSearchDeps = {
+      searchRuns: repos.searchRuns,
+      jobPostings: repos.jobPostings,
+      searchClient: client,
+      usage: meter.recorder,
+    };
+    const run = (await repos.searchRuns.claimNextQueued()) as RunRow;
+    const finished = await executeSearchRun(deps, run as unknown as Parameters<typeof executeSearchRun>[1]);
+
+    expect(finished.status).toBe('failed');
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toMatchObject({ accountId: 'a1', provider: 'tavily', quantity: 2 });
   });
 });

@@ -19,6 +19,13 @@ export interface SearchResultItem {
   publishedDate?: string | null;
 }
 
+/**
+ * 查询用量观察回调（决策 #25 ④ Wave C）：一次搜索请求被通道实际受理并成功返回时
+ * 恰好回调一次；请求失败（网络错误/非 2xx）绝不回调。语义对齐
+ * packages/llm 的 LlmJsonRequest.onUsage，供计量埋点统计真实发出的查询数。
+ */
+export type SearchQueryObserver = () => void;
+
 /** 搜索通道最小抽象（Tavily 为主实现；SerpAPI Google Jobs 为 P1 备选实现）。 */
 export interface SearchClient {
   readonly provider: string;
@@ -28,6 +35,8 @@ export interface SearchClient {
       maxResults?: number;
       /** 限定结果域名（Tavily include_domains）；用于 ATS 域混合召回 */
       includeDomains?: string[];
+      /** 可选的查询用量观察回调（计量埋点用）；成功路径恰好回调一次 */
+      onQuery?: SearchQueryObserver;
     },
   ): Promise<SearchResultItem[]>;
 }

@@ -7,7 +7,7 @@
  *   响应 { query, results: [{ title, url, content, score, published_date?, ... }], usage: { credits } }
  * - basic/fast 每请求 1 credit；advanced 2 credits。P0 默认 basic。
  */
-import type { SearchClient, SearchResultItem } from './types.js';
+import type { SearchClient, SearchQueryObserver, SearchResultItem } from './types.js';
 
 export interface TavilySearchOptions {
   /** 服务端 env TAVILY_API_KEY（凭证只经此注入，绝不入库/入 Git） */
@@ -48,7 +48,11 @@ export class TavilySearchClient implements SearchClient {
 
   async search(
     query: string,
-    opts?: { maxResults?: number; includeDomains?: string[] },
+    opts?: {
+      maxResults?: number;
+      includeDomains?: string[];
+      onQuery?: SearchQueryObserver;
+    },
   ): Promise<SearchResultItem[]> {
     const maxResults = Math.min(Math.max(opts?.maxResults ?? 5, 1), 10);
     const controller = new AbortController();
@@ -93,6 +97,9 @@ export class TavilySearchClient implements SearchClient {
         score: typeof r.score === 'number' ? r.score : 0,
         publishedDate: r.published_date ?? null,
       }));
+    // 计量回调（决策 #25 ④ Wave C）：请求被 Tavily 受理并成功解析后才回调，恰好一次；
+    // 上面的网络错误与非 2xx 分支均已 throw，绝不会走到这里。
+    opts?.onQuery?.();
     return items;
   }
 }

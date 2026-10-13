@@ -63,4 +63,33 @@ describe('TavilySearchClient', () => {
     });
     await expect(client.search('q', {})).rejects.toThrow(/429/);
   });
+
+  it('fires onQuery exactly once on the success path (计量回调，决策 #25 ④ Wave C)', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ results: [] }));
+    const client = new TavilySearchClient({ apiKey: 'tvly-test', fetchImpl });
+    const onQuery = vi.fn();
+
+    await client.search('q', { onQuery });
+
+    expect(onQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('never fires onQuery on failure paths (非 2xx / 网络错误)', async () => {
+    const onQuery = vi.fn();
+    const nonOk = new TavilySearchClient({
+      apiKey: 'tvly-test',
+      fetchImpl: async () => jsonResponse({ error: 'rate limited' }, 429),
+    });
+    await expect(nonOk.search('q', { onQuery })).rejects.toThrow(/429/);
+
+    const networkDown = new TavilySearchClient({
+      apiKey: 'tvly-test',
+      fetchImpl: async () => {
+        throw new Error('socket hang up');
+      },
+    });
+    await expect(networkDown.search('q', { onQuery })).rejects.toThrow(/socket hang up/);
+
+    expect(onQuery).not.toHaveBeenCalled();
+  });
 });

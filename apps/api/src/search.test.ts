@@ -5,8 +5,9 @@
  * 筛选条件预设 CRUD 与归属隔离、search-tick 未配 key 的 503 + 心跳失败记录。
  * 全部内存 SQLite + FakeAuthProvider（不打网络），Hono app.request。
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createStorage, type StorageContext } from '@jobagent/storage';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { RecordUsageInput } from '@jobagent/shared';
+import { createStorage, type StorageContext, type UsageRecorder } from '@jobagent/storage';
 import { buildPosting, makeNormalizedKey } from '@jobagent/job-source';
 import { createApp, type ApiDeps } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
@@ -297,6 +298,78 @@ describe('GET /internal/cron/search-tick', () => {
     expect(res.status).toBe(503);
     const body = (await res.json()) as { ok: boolean; error: string };
     expect(body.error).toContain('TAVILY_API_KEY');
+  });
+
+  it('records one websearch usage event with the real Tavily query count (决策 #25 ④ Wave C 装配)', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const calls: RecordUsageInput[] = [];
+    const usageRecorder: UsageRecorder = {
+      record: async (input) => {
+        calls.push(input);
+      },
+    };
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+      usageRecorder,
+    };
+    const app = await createApp(deps);
+    const loginRes = await app.request('/auth/github/login');
+    const state = extractCookies(loginRes).jobagent_oauth_state;
+    const cb = await app.request(
+      `/auth/github/callback?state=${encodeURIComponent(state!)}&code=fake-code`,
+      { headers: { Cookie: `jobagent_oauth_state=${state!}` } },
+    );
+    expect(cb.status).toBe(302);
+    const Cookie = `jobagent_session=${extractCookies(cb).jobagent_session!}`;
+
+    // 'Berlin backend engineer' 规则回落只产 1 条 query（base 已含 Berlin）→ 通用 1 + ATS 1
+    const createRes = await app.request('/agent/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie },
+      body: JSON.stringify({ query: 'Berlin backend engineer' }),
+    });
+    expect(createRes.status).toBe(201);
+    const { runId } = (await createRes.json()) as { runId: string };
+    const accountId = (await repos.searchRuns.getById(runId))!.accountId;
+
+    process.env.TAVILY_API_KEY = 'tvly-test';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          ({
+            ok: true,
+            status: 200,
+            json: async () => ({ results: [] }),
+            text: async () => '{}',
+          }) as unknown as Response,
+      ),
+    );
+    try {
+      const res = await app.request('/internal/cron/search-tick', {
+        headers: { Authorization: `Bearer ${CRON_SECRET}` },
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      delete process.env.TAVILY_API_KEY;
+      vi.unstubAllGlobals();
+    }
+
+    // 真实执行链恰好记一条：quantity=2（1 通用 + 1 ATS），accountId=任务创建账号
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({
+      accountId,
+      category: 'search',
+      feature: 'websearch',
+      billingSource: 'platform',
+      provider: 'tavily',
+      model: null,
+      promptTokens: null,
+      completionTokens: null,
+      quantity: 2,
+    });
   });
 });
 

@@ -305,6 +305,7 @@ export function registerSearch(app: Hono<HonoEnv>, d: RouteDeps): void {
         jobPostings: repos.jobPostings,
         searchClient: new TavilySearchClient({ apiKey }),
         now,
+        usage: d.usageRecorder,
       });
       await repos.cronHeartbeat.recordSuccess(
         'search-tick',
