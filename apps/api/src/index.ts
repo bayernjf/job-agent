@@ -56,6 +56,7 @@ import {
   resolvePrincipal,
 } from './principal.js';
 import { API_TOKEN_TTL_MS } from '@jobagent/shared';
+import { parseStaleDays } from '@jobagent/job-source';
 import { registerSystem, REQUIRED_COLUMNS } from './routes/system.js';
 import { registerDemo } from './routes/demo.js';
 import { registerAuth } from './routes/auth.js';
@@ -229,11 +230,14 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     }
   }
   const llmEncKey = deps.llmEncKey ?? process.env.LLM_ENC_KEY ?? null;
+  // 岗位新鲜窗口（与 /job-postings/stats 同一个 JOB_STALE_DAYS 口径，不新增 env）。
+  const jobStaleDays = parseStaleDays(process.env.JOB_STALE_DAYS);
 
   // 各域 router 共享的依赖包。
   const routeDeps: RouteDeps = {
     repos,
     now,
+    jobStaleDays,
     cfg,
     authCfg,
     githubProvider,

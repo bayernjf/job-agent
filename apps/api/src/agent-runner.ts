@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { matchJobs, type JobMatch } from '@jobagent/job-source';
+import { matchJobs, staleCutoffIso, type JobMatch } from '@jobagent/job-source';
 import {
   enhanceMatchReportWithJd,
   filterPostingsForPreference,
@@ -346,6 +346,7 @@ export async function advanceRunOnce(
   const cfg = deps.config ?? {
     candidateLimit: AGENT_DEFAULTS.candidateLimit,
     scanPoolLimit: AGENT_DEFAULTS.scanPoolLimit,
+    poolStaleDays: AGENT_DEFAULTS.poolStaleDays,
     tickMaxRuns: AGENT_DEFAULTS.tickMaxRuns,
     submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
     recommendStaleMinutes: AGENT_DEFAULTS.recommendStaleMinutes,
@@ -413,12 +414,15 @@ async function scanOnce(
 ): Promise<AdvanceOutcome> {
   const profileSkills = profile.skillTags.map((tag) => tag.name);
 
-  // 岗位池：只取 active，按发布时间倒序；偏好过滤是硬过滤（宁可少推，不推错的）。
+  // 岗位池：只取 active 且**新鲜窗口内还被源站列着**的行，按发布时间倒序；
+  // 偏好过滤是硬过滤（宁可少推，不推错的）。已关闭的岗位不能变成"待投"票据——
+  // 用户照着它写一封求职信却发现岗位早没了，是真实伤害。窗口与 stats 同旋钮（JOB_STALE_DAYS）。
   // tick 路径整轮只查一次、跨 run 复用同一快照；手动路径（无 tick）照常自查。
   const pool =
     tick?.pool ??
     (await repos.jobPostings.search({
       status: 'active',
+      seenAfter: staleCutoffIso(cfg.poolStaleDays, new Date(nowIso)),
       limit: cfg.scanPoolLimit,
       orderBy: 'posted_desc',
     }));
@@ -578,6 +582,7 @@ export async function runAgentTickOnce(deps: {
   const cfg = deps.config ?? {
     candidateLimit: AGENT_DEFAULTS.candidateLimit,
     scanPoolLimit: AGENT_DEFAULTS.scanPoolLimit,
+    poolStaleDays: AGENT_DEFAULTS.poolStaleDays,
     tickMaxRuns: AGENT_DEFAULTS.tickMaxRuns,
     submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
     recommendStaleMinutes: AGENT_DEFAULTS.recommendStaleMinutes,
@@ -625,6 +630,7 @@ export async function runAgentTickOnce(deps: {
     runs.length > 0
       ? await deps.repos.jobPostings.search({
           status: 'active',
+          seenAfter: staleCutoffIso(cfg.poolStaleDays, new Date(nowIso)),
           limit: cfg.scanPoolLimit,
           orderBy: 'posted_desc',
         })

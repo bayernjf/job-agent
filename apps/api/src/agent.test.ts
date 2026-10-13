@@ -133,6 +133,13 @@ async function insertProfile(repos: StorageContext, id: string, login: string): 
   await repos.evidence.importFromProfile(id, EVIDENCE);
 }
 
+/**
+ * 岗位池夹具的"源站仍列着它"时刻。扫描按 `last_seen_at` 的新鲜窗口（`JOB_STALE_DAYS`
+ * 默认 7 天）排除已下架岗位，所以夹具时间**必须相对"现在"生成**——写死日期会在若干天后
+ * 让扫描静默产出零票据，测试看起来像功能坏了。
+ */
+const POOL_SEEN_AT = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
 /** 与生产采集一致：`jobId` 就是 (source, sourceUrl) 的派生 id（岗位池主键）。 */
 function posting(overrides: Partial<NewJobPosting> = {}): NewJobPosting {
   const base = {
@@ -148,7 +155,7 @@ function posting(overrides: Partial<NewJobPosting> = {}): NewJobPosting {
     tags: ['typescript', 'node'],
     description: 'Build TypeScript services.',
     postedAt: '2026-10-01T00:00:00.000Z',
-    fetchedAt: '2026-10-02T00:00:00.000Z',
+    fetchedAt: POOL_SEEN_AT,
     normalizedKey: 'acme-senior-typescript-engineer',
   };
   const merged = { ...base, ...overrides };
@@ -285,7 +292,7 @@ describe('agent workbench — stage 1 loop', () => {
     await insertProfile(repos, 'p-1', ALICE.login);
     const claim = await json('/profiles/p-1/claim', { method: 'POST' });
     expect(claim.status).toBe(200);
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
 
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
@@ -419,7 +426,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -452,7 +459,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -479,7 +486,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -523,7 +530,7 @@ describe('agent workbench — stage 1 loop', () => {
         posting({ sourceUrl: 'https://boards.example.com/acme/jobs/2', title: 'Marketing Manager', tags: ['marketing'], description: 'Own campaigns.' }),
         posting({ sourceUrl: 'https://boards.example.com/acme/jobs/3', title: 'Backend Engineer', tags: ['typescript'], description: 'Rust only.' }),
       ],
-      '2026-10-02T00:00:00.000Z',
+      POOL_SEEN_AT,
     );
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
@@ -550,7 +557,7 @@ describe('agent workbench — stage 1 loop', () => {
         posting({ sourceUrl: 'https://boards.example.com/acme/jobs/1' }),
         posting({ sourceUrl: 'https://boards.example.com/acme/jobs/2', title: 'TypeScript Platform Engineer' }),
       ],
-      '2026-10-02T00:00:00.000Z',
+      POOL_SEEN_AT,
     );
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
@@ -589,7 +596,7 @@ describe('agent workbench — stage 1 loop', () => {
           title: 'TypeScript Backend Engineer',
         }),
       ],
-      '2026-10-02T00:00:00.000Z',
+      POOL_SEEN_AT,
     );
     const run2Res = await json('/agent/runs', {
       method: 'POST',
@@ -617,7 +624,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -715,7 +722,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
       body: JSON.stringify(PREFERENCE),
@@ -764,7 +771,7 @@ describe('agent workbench — cron tick', () => {
     const { repos, app, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     // 先建一套「扫不到东西」的偏好：创建任务后停在 watching（等下一轮），pending 为空
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
@@ -819,7 +826,7 @@ describe('agent workbench — cron tick', () => {
     const { repos, app, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -867,7 +874,7 @@ describe('agent workbench — cron tick', () => {
     const { repos, app, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -912,7 +919,7 @@ describe('agent stage 2 — extension pending-fills, outcome write-back, LLM pol
     const { repos, json } = h;
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -1026,7 +1033,7 @@ describe('agent workbench — event stream paging', () => {
   async function seededRun(repos: Harness['repos'], json: Harness['json']) {
     await insertProfile(repos, 'p-page', ALICE.login);
     expect((await json('/profiles/p-page/claim', { method: 'POST' })).status).toBe(200);
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
       body: JSON.stringify(PREFERENCE),
@@ -1165,7 +1172,7 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
     await insertProfile(repos, 'p-c1', ALICE.login);
     const claim = await json('/profiles/p-c1/claim', { method: 'POST' });
     expect(claim.status).toBe(200);
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -1260,7 +1267,7 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
           normalizedKey: 'acme-senior-typescript-engineer-3',
         }),
       ],
-      '2026-10-02T00:00:00.000Z',
+      POOL_SEEN_AT,
     );
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };

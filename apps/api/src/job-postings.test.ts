@@ -333,6 +333,35 @@ describe('POST /job-postings/match with profileId', () => {
 });
 
 describe('GET /profiles/:id/job-recommendations', () => {
+  it('excludes postings the sources no longer list, while the operator list still shows them', async () => {
+    // 新鲜窗口（JOB_STALE_DAYS 默认 7 天）只约束"要不要推荐他去投"：
+    // 一条 30 天前最后见到、状态仍是 active 的岗位不该进推荐，但仍要在运营面可查。
+    const { app, repos } = await harness([
+      job({ title: 'Senior Python Engineer', tags: ['python'], description: 'python' }),
+    ]);
+    await repos.jobPostings.upsertBatch(
+      [job({ title: 'Ancient Python Engineer', tags: ['python'], description: 'python' })],
+      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    );
+    await insertProfile(repos, 'prof-stale', ['Python']);
+
+    const rec = (await (
+      await app.request('/profiles/prof-stale/job-recommendations?limit=20')
+    ).json()) as { matches: Array<{ posting: { title: string } }>; candidatePool: number };
+    const titles = rec.matches.map((m) => m.posting.title);
+    expect(titles).toContain('Senior Python Engineer');
+    expect(titles).not.toContain('Ancient Python Engineer');
+    expect(rec.candidatePool).toBe(1);
+
+    // 同一套行、同一个仓储，不加窗口就仍在——证明窗口不是全局偷偷少看
+    const pool = (await (await app.request('/job-postings?limit=50')).json()) as {
+      items: Array<{ title: string }>;
+    };
+    const poolTitles = pool.items.map((p) => p.title);
+    expect(poolTitles).toContain('Senior Python Engineer');
+    expect(poolTitles).toContain('Ancient Python Engineer');
+  });
+
   it('returns ranked job recommendations from profile skills', async () => {
     const { app, repos } = await harness([
       job({ title: 'Backend Engineer', description: 'we write python services' }),

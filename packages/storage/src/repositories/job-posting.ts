@@ -22,6 +22,12 @@ export interface JobPostingQuery {
   salaryMinUsd?: number;
   /** posted_at >= 该 ISO 时间 */
   postedAfter?: string;
+  /**
+   * last_seen_at >= 该 ISO 时间＝"源站这一轮还列着它"。推荐给正在投简历的人时必须传
+   * （决策 #25 之后的 C 端体验增量：不把已关闭的岗位当在招推荐）；不传＝ operator 面
+   * （CLI / 列表 / MCP 检索）照旧看到全部 active 行，两种口径的差别是故意的。
+   */
+  seenAfter?: string;
   limit?: number;
   offset?: number;
   orderBy?: 'posted_desc' | 'posted_asc' | 'salary_desc';

@@ -205,6 +205,9 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     if (query.postedAfter) {
       conditions.push(tsGte(t.postedAt, query.postedAfter));
     }
+    if (query.seenAfter) {
+      conditions.push(tsGte(t.lastSeenAt, query.seenAfter));
+    }
     if (query.tags && query.tags.length > 0) {
       const tagMatch = query.tags.map((tag) => ilike(t.tags, `%${tag}%`));
       conditions.push(or(...tagMatch)!);

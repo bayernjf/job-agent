@@ -16,7 +16,7 @@ import {
   type UnclaimResult,
 } from '@jobagent/shared';
 import type { StoredEvidence } from '@jobagent/storage';
-import { excludeAndMergeMatches, matchJobs } from '@jobagent/job-source';
+import { excludeAndMergeMatches, matchJobs, staleCutoffIso } from '@jobagent/job-source';
 import { oneHourAgo } from '../demo-config.js';
 import {
   buildSkillReasons,
@@ -33,7 +33,7 @@ import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
 export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now, cfg, ipHashOf } = d;
+  const { repos, now, cfg, ipHashOf, jobStaleDays } = d;
 
   // GET /profiles/by-subject/:platform/:login：公开只读解析某主体最新 complete 画像。
   // 与 POST /analyze 的缓存命中不同，这里不看 24h TTL、不扣配额、不触发新分析、任何身份放行——
@@ -414,6 +414,9 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
       sources,
       remote,
       salaryMinUsd,
+      // 推荐＝"值得为它写一封求职信"的清单：源站已经不再列出的岗位不能进来
+      // （窗口与 /job-postings/stats 同一个 JOB_STALE_DAYS 口径）
+      seenAfter: staleCutoffIso(jobStaleDays, new Date(now())),
       limit: candidateLimit,
       orderBy: 'posted_desc',
     });

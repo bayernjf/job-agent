@@ -169,6 +169,21 @@ describe('SqliteJobPostingsRepository', () => {
     expect(await repo.search({ limit: 5001 })).toHaveLength(5000);
   });
 
+  it('filters by freshness of last_seen_at only when the caller asks (seenAfter)', async () => {
+    const repo = freshRepo();
+    // 两条都是 active；差别只在"上一次被源站列出"的时间
+    await repo.upsertBatch([samplePosting({ sourceUrl: 'https://e.com/fresh' })], '2026-10-12T00:00:00.000Z');
+    await repo.upsertBatch([samplePosting({ sourceUrl: 'https://e.com/stale' })], '2026-09-01T00:00:00.000Z');
+
+    const windowed = await repo.search({ seenAfter: '2026-10-05T00:00:00.000Z', limit: 500 });
+    expect(windowed.map((p) => p.sourceUrl)).toEqual(['https://e.com/fresh']);
+
+    // 不传＝运营面原样（默认不放窗口，避免每个调用方都被静默少看）
+    expect(await repo.search({ limit: 500 })).toHaveLength(2);
+    // 与 postedAfter 互不干涉：那条筛的是发布时间
+    expect(await repo.search({ postedAfter: '2026-01-01T00:00:00.000Z', limit: 500 })).toHaveLength(2);
+  });
+
   it('counts by source', async () => {
     const repo = freshRepo();
     await repo.upsertBatch(

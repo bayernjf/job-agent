@@ -11,7 +11,7 @@ import {
   type SkillTag,
 } from '@jobagent/shared';
 import type { StoredEvidence } from '@jobagent/storage';
-import { excludeAndMergeMatches, matchJobs } from '@jobagent/job-source';
+import { excludeAndMergeMatches, matchJobs, parseStaleDays, staleCutoffIso } from '@jobagent/job-source';
 import { oneHourAgo } from '../demo-config.js';
 import {
   buildSkillReasons,
@@ -31,7 +31,7 @@ import type { RouteDeps } from './context.js';
 const RECRUITER_MAX_ACTIVE_POSTINGS = 50;
 
 export function registerJobPostings(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now, cfg, ipHashOf } = d;
+  const { repos, now, cfg, ipHashOf, jobStaleDays } = d;
 
   // GET /job-postings：岗位检索（薄封装仓储 search）
   app.get('/job-postings', async (c) => {
@@ -153,8 +153,9 @@ export function registerJobPostings(app: Hono<HonoEnv>, d: RouteDeps): void {
   app.get('/job-postings/stats', async (c) => {
     // T24①：active 只统计 last_seen_at 在新鲜窗口内的岗位（JOB_STALE_DAYS 默认 7），
     // 未跑 markStale 的过期行不再冒充 active——避免"active=2303/inactive=0"的假繁荣。
-    const staleDays = Number(process.env.JOB_STALE_DAYS ?? 7);
-    const cutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000).toISOString();
+    // 窗口算法与推荐口/匹配口共用 job-source 的单一实现，两口径不会再分叉。
+    const staleDays = parseStaleDays(process.env.JOB_STALE_DAYS, jobStaleDays);
+    const cutoff = staleCutoffIso(staleDays, new Date(now()));
     const activeBySource = await repos.jobPostings.countActiveFresh(cutoff);
     // 保持 active 为数字（原契约形状）：只统计新鲜窗口内的 active 行
     const active = Object.values(activeBySource).reduce((sum, n) => sum + n, 0);
@@ -218,6 +219,8 @@ export function registerJobPostings(app: Hono<HonoEnv>, d: RouteDeps): void {
       tags: m.tags,
       salaryMinUsd: m.salaryMinUsd,
       postedAfter: m.postedAfter,
+      // 匹配口服务于"要不要投这一条"，已关闭的岗位不该参与打分
+      seenAfter: staleCutoffIso(jobStaleDays, new Date(now())),
       limit: m.candidateLimit ?? 500,
       orderBy: 'posted_desc',
     });

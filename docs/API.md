@@ -52,6 +52,7 @@
 | `API_MOUNT_PREFIX` | 空 | API 在同源下的挂载前缀，形态 C 设 `/api`；影响 OAuth `redirect_uri` 拼接与 state/return Cookie 的 `Path`（变为 `/api/auth`）。Hono 内部路由本身不带前缀，由转发层剥前缀 |
 | `CRON_SECRET` | 空 | `/internal/cron/*` 鉴权密钥；配置后**只接受** `Authorization: Bearer <值>`（Vercel Cron 平台自动注入，GitHub Actions `cron-poll.yml` 同样发这个头；常量时间比较）。历史形态 `?token=<值>` 已于 2026-10-05 停用——它把共享密钥留在 URL、访问日志与命令行回显里。未配置时仅认 `x-vercel-cron: 1` 头。生产必填，生成：`openssl rand -hex 32` |
 | `PROFILE_CACHE_TTL_MS` | `86400000`（24h） | 完整画像缓存有效期 |
+| `JOB_STALE_DAYS` | `7` | 岗位新鲜窗口（天），单一实现见 `@jobagent/job-source` 的 `freshness.ts`。三处共用同一个值：`GET /job-postings/stats` 的 `active` 计数、**画像岗位推荐与岗位匹配**的候选池、求职 Agent 扫岗的岗位池；非法值/0/负数回落到 7（不承认"0＝不过滤"）。语义是"`last_seen_at` 在近 N 天内还被源站列出"，不是"发布时间在近 N 天内" |
 | `GITHUB_TOKEN` | 空 | 采集凭证（PAT / GitHub App installation token），只在服务端读取；未配置时分析作业会在采集阶段失败 |
 | `GITEE_TOKEN` | 空 | 可选，仅用于提高 Gitee 匿名约 60 次/分的限额；匿名即可读公开数据 |
 | `JOB_HTTP_PROXY` | 空 | 出站 HTTP(S) 代理；API 启动时按此值安装 undici 全局 ProxyAgent（`src/proxy-bootstrap.ts`），用于 OAuth token 交换与拉用户资料。未设时回退标准 `HTTPS_PROXY`/`HTTP_PROXY` |
@@ -587,6 +588,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | `limit` | number | `20` | 返回上限，1–100，越界返回 400 |
 | `candidate_limit` | number | `500` | 候选池大小，1–500，越界返回 400 |
 
+**只推荐"还被源站列着"的岗位**：候选池按 `last_seen_at >= now - JOB_STALE_DAYS` 过滤（默认 7 天，与 `GET /job-postings/stats` 的 `active` 同一口径）。一条早已下架但状态仍是 `active` 的岗位不会出现在这里——候选人照它写一封求职信却发现岗位没了，是真实伤害。运营面 `GET /job-postings` 不受此限制（照旧返回全部 `active` 行），两种口径的差别是故意的。
+
 #### 响应（200）
 
 ```json
@@ -752,6 +755,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | `keyword` / `company` / `tags` / `postedAfter` | — | 否 | 候选池过滤，语义同 GET |
 | `candidateLimit` | number | 否 | 候选池大小，默认 500，上限 500 |
 | `limit` | number | 否 | 返回上限，默认 50，上限 500 |
+
+同画像推荐：候选池额外按新鲜窗口过滤（`last_seen_at >= now - JOB_STALE_DAYS`），报告页与扩展的匹配面板都不会再拿到已下架的岗位。
 
 #### 请求 / 响应
 

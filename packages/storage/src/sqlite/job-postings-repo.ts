@@ -135,6 +135,9 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
     if (query.postedAfter) {
       conditions.push(gte(t.postedAt, query.postedAfter));
     }
+    if (query.seenAfter) {
+      conditions.push(gte(t.lastSeenAt, query.seenAfter));
+    }
     if (query.tags && query.tags.length > 0) {
       const tagMatch = query.tags.map((tag) => like(t.tags, `%${tag}%`));
       conditions.push(or(...tagMatch)!);

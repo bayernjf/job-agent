@@ -244,7 +244,10 @@ export default async function globalSetup(): Promise<void> {
     createdAt: ISO(1),
     lastSeenAt: ISO(1),
   });
-  await repos.jobPostings.upsertBatch(fixturePostings(), ISO(9));
+  // last_seen 必须是"刚刚还见到"：扫描按 JOB_STALE_DAYS 新鲜窗口排除已下架岗位，
+  // 写死日期会让真全栈 E2E 在若干天后静默产出零票据（fixture 的 postedAt 保持稳定，
+  // 排序断言不受影响）。
+  await repos.jobPostings.upsertBatch(fixturePostings(), new Date().toISOString());
 
   // 自校验：夹具必须真的能产出 3 条 mid 以上候选，否则用例会以"没数据"这种含糊方式失败
   const pool = await repos.jobPostings.search({ status: 'active', limit: 100, orderBy: 'posted_desc' });
