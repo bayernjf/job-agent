@@ -194,6 +194,10 @@ export interface Labels {
     /** `{score}` 分与 `{tier}` 档 */
     scoreLabel: string;
     reason: Record<GateExclusionReason, string>;
+    /** 显式放行：越过质量闸，把人机闸与限频闸原样留着 */
+    override: string;
+    overriding: string;
+    overridden: string;
   };
   match: {
     title: string;
@@ -262,6 +266,7 @@ const EVENT_KIND_KEYS: Record<JobRunEventKind, string> = {
   generated: 'generated',
   approve: 'approve',
   reject: 'reject',
+  gate_override: 'gateOverride',
   rescan: 'rescan',
   submitted: 'submitted',
   track: 'track',
@@ -584,6 +589,8 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const [gateOpen, setGateOpen] = useState(false);
   const [gateLoading, setGateLoading] = useState(false);
   const [gateError, setGateError] = useState<string | null>(null);
+  const [gateNote, setGateNote] = useState<string | null>(null);
+  const [overridingPostingId, setOverridingPostingId] = useState<string | null>(null);
 
   const [prefsLoading, setPrefsLoading] = useState(true);
   const [runsLoading, setRunsLoading] = useState(true);
@@ -645,6 +652,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
       setSelectedRunId(runId);
       setScanNote(null);
       setApprovedNote(null);
+      setGateNote(null);
       // 用户主动点开一个带着未读新候选的任务才算「看过」；首屏自动展开不清徽标。
       // 静默、不阻塞详情加载，失败也不影响主流程。
       if (runId && runs.find((r) => r.runId === runId)?.hasUnseenApprovals) {
@@ -1108,6 +1116,24 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
     setBusyIntentId(null);
     if (!body) return;
     setApprovedNote(fillTemplate(labels.pending.approved, { count: body.approved }));
+  };
+
+  /**
+   * 放行一条被质量闸挡下的岗位：它变成一张 `pending` 票据回到待投清单，
+   * 确认与投递仍由人完成。清单会随 run 视图一起重取（挡下的那条当场从列表消失）。
+   */
+  const overrideBlocked = async (postingId: string): Promise<void> => {
+    if (!selectedRunId) return;
+    setOverridingPostingId(postingId);
+    setGateError(null);
+    const body = await mutate<{ overridden?: number }>(
+      `/agent/runs/${encodeURIComponent(selectedRunId)}/gate-override`,
+      { method: 'POST', body: JSON.stringify({ postingId }) },
+      labels.gate.error,
+    );
+    setOverridingPostingId(null);
+    if (!body) return;
+    setGateNote(labels.gate.overridden);
   };
 
   const rejectIntent = async (intentId: string): Promise<void> => {
@@ -1991,6 +2017,12 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
               <p className="ja-muted">{labels.gate.empty}</p>
             )}
 
+            {gateNote && (
+              <p className="ja-muted" role="status" aria-live="polite" data-testid="agent-gate-note">
+                {gateNote}
+              </p>
+            )}
+
             {gateExclusions && gateExclusions.length > 0 && (
               <ul className="agent-gate-list">
                 {gateExclusions.map((row) => (
@@ -2014,6 +2046,18 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
                         tier: labels.tiers[row.tier],
                       })}
                     </span>
+                    {/* 放行只把人机闸的入口打开：票据仍是 pending，确认与投递仍归人 */}
+                    <button
+                      type="button"
+                      className="ja-btn"
+                      data-testid="agent-gate-override"
+                      disabled={overridingPostingId !== null}
+                      onClick={() => void overrideBlocked(row.postingId)}
+                    >
+                      {overridingPostingId === row.postingId
+                        ? labels.gate.overriding
+                        : labels.gate.override}
+                    </button>
                   </li>
                 ))}
               </ul>

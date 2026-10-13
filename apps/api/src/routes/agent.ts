@@ -14,6 +14,7 @@ import {
   IntentOutcomeRequestSchema,
   JobRunApproveSchema,
   JobRunCreateSchema,
+  JobRunGateOverrideSchema,
   JobRunRejectSchema,
   ResumeLocaleSchema,
   RunEventsQuerySchema,
@@ -32,6 +33,7 @@ import {
   buildIntentArtifacts,
   deriveRunCandidates,
   loadRunView,
+  overrideGateCandidate,
   renderIntentCoverLetter,
   renderIntentResume,
   runAgentTickOnce,
@@ -492,6 +494,28 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
         ? ((await applyRunEvent(repos, run, 'reject', 'user', rejectedAt)) ?? run)
         : run;
     return c.json(toRunViewData(await loadRunView(repos, nextRun)));
+  });
+
+  // POST /agent/runs/:id/gate-override：用户点名把一条被质量闸挡下的岗位拉进待投清单。
+  // 越的是质量闸，**不是**人机闸也不是限频闸：票据仍停在 pending，确认与每日额度照旧。
+  // 审计落一条 actor='user' 的 gate_override 事件（含 postingId/分数/档位/挡下原因），
+  // 所以"谁越了闸、越的是哪一条、当初为什么被挡"在可回放的事件流里永远查得到。
+  app.post('/agent/runs/:id/gate-override', async (c) => {
+    const run = await requireOwnedRun(c, c.req.param('id') ?? '');
+    if (run instanceof Response) return run;
+    const parsed = JobRunGateOverrideSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid gate override request', details: parsed.error.flatten() }, 400);
+    }
+    const outcome = await overrideGateCandidate(
+      { repos: agentRepos, now, config: agentConfig },
+      run.id,
+      parsed.data.postingId,
+    );
+    if (!outcome.ok) {
+      return c.json({ error: outcome.message, code: outcome.code }, outcome.status);
+    }
+    return c.json({ ...toRunViewData(outcome.view), overridden: 1 });
   });
 
   // POST /agent/intents/:id/mark-submitted：用户投完回来回填「已投」→ 写一条投递记录（origin=agent）并进入跟踪。

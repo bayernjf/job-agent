@@ -233,6 +233,42 @@ test.describe('agent workbench — full stack', () => {
     expect(consoleErrors).toEqual([]);
   });
 
+  test('overriding the quality gate puts a pending ticket on the list and logs the user action', async ({
+    page,
+  }) => {
+    await login(page);
+    await openWorkbenchHydrated(page);
+    await createPreferenceAndRun(page);
+
+    const intents = page.getByTestId('agent-intent');
+    await expect(intents).toHaveCount(3);
+
+    const gate = page.getByTestId('agent-gate');
+    await gate.locator('summary').click();
+    const blocked = gate.getByTestId('agent-gate-row');
+    await expect(blocked).toHaveCount(1);
+    await expect(blocked).toContainText('Site Reliability Engineer');
+
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/gate-override') && r.request().method() === 'POST',
+      ),
+      blocked.getByTestId('agent-gate-override').click(),
+    ]);
+    expect(response.status()).toBe(200);
+
+    // 越过的只有质量闸：那条岗位变成第 4 张**待确认**票据，不是"已确认"
+    await expect(intents).toHaveCount(4);
+    const statuses = await page.locator('.agent-intent-status').allInnerTexts();
+    expect(statuses).toEqual(['Pending', 'Pending', 'Pending', 'Pending']);
+    // 它也不再出现在被挡清单里（清单随 run 视图一起重取）
+    await expect(gate.getByTestId('agent-gate-row')).toHaveCount(0);
+    // 审计流必须留得下这条用户动作，且是本地化文案而不是内部码
+    const timelineText = await page.getByTestId('agent-timeline').innerText();
+    expect(timelineText).toContain('User overrode the quality gate for one blocked job');
+    expect(timelineText).not.toContain('gate_override');
+  });
+
   test('stage-2 extension contract: pending-fills → tailored cover letter (with AI disclosure) → submitted receipt → outcome write-back', async ({
     page,
   }) => {

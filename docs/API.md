@@ -1209,6 +1209,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 - 全部端点要求登录 `user`（匿名、demo 一律 `401 AUTH_REQUIRED`）；偏好、任务、票据都是账号私有数据，非本人资源与不存在的资源同形返回 `404`（不泄露存在性）。扩展 Bearer `tkn-` 与会话 Cookie 均解析为 `user` 态。
 - 新建任务（`POST /agent/runs`）要求画像**已由本人认领**（`profiles.subject_claimed` 且 platform/login 与登录账号一致），否则 `403 AGENT_PROFILE_NOT_OWNED`。
 - 状态机：`created → configured → watching → recommending → awaiting_approval → submitting → submitted → tracking`（阶段 2 扩展回执启用 `submitting/submitted` 两个审计时刻；阶段 1 兼容路径在最后一条票据标记已投时由 `awaiting_approval` 一步到 `tracking`；另有 `cancelled`/`failed` 终态）。每次迁移写入一条 `job_run_events`，`GET /agent/runs/:id` 可回放。
+- 唯一的例外迁移：`gate_override`（`watching`/`recommending` → `awaiting_approval`，在 `awaiting_approval` 上是自环）。它是**用户动作**（`actor='user'`），语义是"人点名把一条被质量闸挡下的岗位拉进待投清单"，不推进流水线：写出来的票据停在 `pending`，确认、投递、当日限频一道都不能少。一旦任务离开人机闸（`submitting`/`submitted`/`tracking`）该迁移即被拒绝（`409 AGENT_INVALID_TRANSITION`）——放行绝不能变成绕过人机闸的后门。
 - 工件不落库：定向简历与求职信在请求时由不可变的画像快照 + 票据内岗位精简快照重新装配（同一份事实 → 同一份交付物），因此现有「简历不持久化」决策不被推翻。
 
 ### `GET /agent/preferences` / `POST /agent/preferences`
@@ -1341,6 +1342,24 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 - `items` 与推荐清单用**同一把尺**排序（白名单公司 → 分数降序 → 发布时间降序），所以展示出来就是"差多少"的顺序。
 - `postingId` 是岗位池行主键（`job_postings.id`），`jobId` 是来源侧外部 id——不同源可以携带同一个外部 `jobId`，因此放行类动作按 `postingId` 认身份。
 - 终态任务 `409 AGENT_RUN_NOT_ACTIVE`；偏好或画像快照已缺失 `409 AGENT_PREFERENCE_NOT_FOUND`（**不返回空列表伪装"确实没有"**）；未登录 `401`，非本人任务 `404 AGENT_RUN_NOT_FOUND`。
+
+### `POST /agent/runs/:id/gate-override`
+
+`{ "postingId": "<job_postings.id>" }`（严格对象，多键或缺键 `400`）。**人显式放行**一条被质量闸挡下的岗位：服务端用与 `GET /agent/runs/:id/gate-exclusions` 同一次推导（`deriveRunCandidates`）确认这条岗位*当下确实被闸挡着*，然后写一张 `pending` 票据 + 一条 `gate_override` 审计事件，两者与状态 CAS 在同一事务里落（`publishGeneratedIntents`）。
+
+按 `postingId`（岗位池行主键）认身份，不按来源侧 `jobId`：不同源可以携带同一个外部 `jobId`，按它放行会放错行。
+
+三道闸里它只越得过第一道：
+
+| 闸 | 放行之后的行为 |
+| --- | --- |
+| 质量闸 | 越过（这正是它的用途），并把"当初为什么被挡"写进事件 payload：`blockedBy`（原因码）、`minTier`、`matchTier`、`matchScore`、`intentId`、`actor='user'` |
+| 人机闸 | **不变**：新票据停在 `pending`，必须由用户 `approve`，投递仍由用户本人完成 |
+| 限频闸 | **不变**：额度在 `approve` 时才核对，所以放行不能用来绕过每来源每日上限（超额照样整批 `429 AGENT_DAILY_SUBMIT_LIMIT_REACHED`） |
+
+装配不出简历/求职信的岗位仍然拒绝写入（与扫描的「generated」闸同一道校验），返回 `409 AGENT_ARTIFACTS_UNAVAILABLE`——放行不该产出用户点开就失败的票据。
+
+`200`：任务视图 + `overridden` 计数。错误：`409 AGENT_GATE_EXCLUSION_NOT_FOUND`（该岗位不在本轮被挡清单里：已出票据、被偏好硬过滤挡掉、或池行已下架——**不当作"没找到"偷偷新建**）；`409 AGENT_INVALID_TRANSITION`（任务已离开人机闸，或 tick 抢先推进了状态）；`409 AGENT_PREFERENCE_NOT_FOUND`（偏好或画像快照已缺失）；`404 AGENT_RUN_NOT_FOUND`（非本人）；`401`（未登录）。
 
 ### `POST /agent/runs/:id/approve` / `POST /agent/runs/:id/reject`
 

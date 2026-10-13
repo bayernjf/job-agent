@@ -1328,6 +1328,7 @@ describe('agent workbench — gate exclusions are visible', () => {
   async function harness(
     rows: NewJobPosting[],
     configOverride: Partial<ReturnType<typeof loadAgentConfig>> = {},
+    preferenceOverride: Record<string, unknown> = {},
   ) {
     const repos = await createStorage({ sqlitePath: ':memory:' });
     const { Cookie } = await loginUser(repos, ALICE);
@@ -1347,7 +1348,7 @@ describe('agent workbench — gate exclusions are visible', () => {
     if (rows.length > 0) await repos.jobPostings.upsertBatch(rows, POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
-      body: JSON.stringify({ ...PREFERENCE, targetTitles: ['engineer'] }),
+      body: JSON.stringify({ ...PREFERENCE, targetTitles: ['engineer'], ...preferenceOverride }),
     });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const preferenceId = preference.preferenceId;
@@ -1437,6 +1438,149 @@ describe('agent workbench — gate exclusions are visible', () => {
     const body = await exclusions();
     expect(created.intents).toHaveLength(3);
     expect(created.intents.length + body.items.length).toBe(body.matchedCount);
+  });
+
+  describe('POST /agent/runs/:id/gate-override', () => {
+    type OverrideBody = {
+      run: { status: string };
+      overridden: number;
+      intents: Array<{ intentId: string; jobId: string; status: string; matchTier: string }>;
+      events: Array<{ event: string; actor: string; payload: Record<string, unknown> }>;
+    };
+
+    it('forces one blocked job into the to-apply list and logs who and why in the audit stream', async () => {
+      const { json, created, exclusions } = await harness([CHOSEN, BELOW_TIER, DESCRIPTION_ONLY]);
+      const blocked = (await exclusions()).items;
+      const target = blocked.find((i) => i.jobId === BELOW_TIER.jobId)!;
+
+      const res = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: target.postingId }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as OverrideBody;
+
+      expect(body.overridden).toBe(1);
+      const forced = body.intents.find((i) => i.jobId === BELOW_TIER.jobId);
+      // 越过的是质量闸，人机闸一步没省：新写的必须是 pending 票据，由用户自己确认
+      expect(forced).toMatchObject({ status: 'pending', matchTier: 'low' });
+
+      // 审计：actor 必须是 user（与 agent/tick 的迁移分得开），且留得住"当初为什么被挡"
+      const event = body.events.find((e) => e.event === 'gate_override');
+      expect(event).toBeDefined();
+      expect(event!.actor).toBe('user');
+      expect(event!.payload).toMatchObject({
+        postingId: target.postingId,
+        jobId: BELOW_TIER.jobId,
+        blockedBy: 'below_min_tier',
+        minTier: 'mid',
+        matchTier: 'low',
+        intentId: forced!.intentId,
+      });
+
+      // 它现在属于清单，不再是"被挡"
+      const after = await exclusions();
+      expect(after.items.map((i) => i.jobId)).toEqual([DESCRIPTION_ONLY.jobId]);
+    });
+
+    it('cannot use an override to slip past the daily submit limit', async () => {
+      // 每日上限 1：两条放行的票据一起确认，仍按同一口径整批拒绝——放行不产生额度豁免
+      const { json, created, exclusions } = await harness(
+        [CHOSEN, BELOW_TIER, DESCRIPTION_ONLY],
+        {},
+        { dailySubmitLimit: 1 },
+      );
+      const forcedIds: string[] = [];
+      for (const row of (await exclusions()).items) {
+        const res = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+          method: 'POST',
+          body: JSON.stringify({ postingId: row.postingId }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as OverrideBody;
+        forcedIds.push(
+          body.intents.find((i) => i.jobId === row.jobId)!.intentId,
+        );
+      }
+
+      const approve = await json(`/agent/runs/${created.run.runId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ intentIds: forcedIds }),
+      });
+      expect(approve.status).toBe(429);
+      expect(((await approve.json()) as { code: string }).code).toBe(
+        'AGENT_DAILY_SUBMIT_LIMIT_REACHED',
+      );
+      const pending = (await (
+        await json(`/agent/runs/${created.run.runId}/pending-approvals`)
+      ).json()) as { items: Array<{ status: string }> };
+      expect(pending.items.every((i) => i.status === 'pending')).toBe(true);
+    });
+
+    it('refuses anything the gate did not block, and malformed bodies', async () => {
+      const { json, created, exclusions } = await harness([CHOSEN, BELOW_TIER]);
+      // CHOSEN 已是票据，不在挡下清单里
+      const notBlocked = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: CHOSEN.jobId }),
+      });
+      expect(notBlocked.status).toBe(409);
+      expect(((await notBlocked.json()) as { code: string }).code).toBe(
+        'AGENT_GATE_EXCLUSION_NOT_FOUND',
+      );
+
+      const unknown = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: 'nonexistent-row-id' }),
+      });
+      expect(unknown.status).toBe(409);
+
+      // .strict()：多一个键就是 400，不接受"顺手带个 intentId"
+      const extra = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: BELOW_TIER.jobId, force: true }),
+      });
+      expect(extra.status).toBe(400);
+      const missing = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      expect(missing.status).toBe(400);
+
+      // 拒绝之后清单没变（前面的失败一个都没写进去）
+      expect((await exclusions()).items.map((i) => i.jobId)).toEqual([BELOW_TIER.jobId]);
+    });
+
+    it('stops at the same auth and ownership gates as every other agent surface', async () => {
+      const { app, repos, json, created } = await harness([CHOSEN, BELOW_TIER]);
+      const anonymous = await app.request(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postingId: BELOW_TIER.jobId }),
+      });
+      expect(anonymous.status).toBe(401);
+
+      const bob = await loginUser(repos, BOB);
+      const foreign = await app.request(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: bob.Cookie },
+        body: JSON.stringify({ postingId: BELOW_TIER.jobId }),
+      });
+      expect(foreign.status).toBe(404);
+    });
+
+    it('will not override on a run that has left the human gate', async () => {
+      const { json, created } = await harness([CHOSEN, BELOW_TIER]);
+      const cancel = await json(`/agent/runs/${created.run.runId}/cancel`, { method: 'POST' });
+      expect(cancel.status).toBe(200);
+
+      const res = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: BELOW_TIER.jobId }),
+      });
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { code: string }).code).toBe('AGENT_INVALID_TRANSITION');
+    });
   });
 
   it('fails loudly instead of pretending the pool was empty', async () => {

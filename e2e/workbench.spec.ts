@@ -143,6 +143,19 @@ const GATE_ITEMS = [
   },
 ];
 
+/**
+ * 放行之后服务端回包视图里多出来的那张票据：状态仍是 `pending`——
+ * 越过质量闸不等于人已确认，这一条由用例钉住。
+ */
+const FORCED_INTENT = {
+  ...INTENT,
+  intentId: 'intent-forced',
+  jobId: 'job-blocked-2',
+  matchScore: 2,
+  matchTier: 'low',
+  job: { ...INTENT.job, jobId: 'job-blocked-2', postingId: 'pool-row-2', title: 'Data Engineer' },
+};
+
 interface WorkbenchMocks {
   /** 待投清单条目（默认一条 pending 票据） */
   pendingItems?: unknown[];
@@ -161,8 +174,8 @@ interface WorkbenchMocks {
   failStatus?: number;
   /** 质量闸挡下的清单（默认两条：分档不足 + 仅描述命中） */
   gateItems?: unknown[];
-  /** 请求记录（确认/拒绝的 body 断言用；events 记 /events 的游标序列） */
-  requests?: { approve: unknown[]; reject: unknown[]; events: string[] };
+  /** 请求记录（确认/拒绝/放行的 body 断言用；events 记 /events 的游标序列） */
+  requests?: { approve: unknown[]; reject: unknown[]; events: string[]; override?: unknown[] };
 }
 
 /** 事件 id（run 视图与 /events 都用同一个字段当游标）。 */
@@ -246,6 +259,20 @@ async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> 
           run: { ...RUN, status: 'watching' },
           events: [EVENT],
           intents: [{ ...INTENT, status: 'rejected' }],
+        }),
+      });
+    }
+
+    if (method === 'POST' && pathname.endsWith('/gate-override')) {
+      requests?.override?.push(request.postDataJSON());
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run: { ...RUN, updatedAt: '2026-10-02T09:00:00.000Z' },
+          events: [EVENT],
+          intents: [...pendingItems, FORCED_INTENT],
+          overridden: 1,
         }),
       });
     }
@@ -450,6 +477,27 @@ test.describe('job workbench — signed in', () => {
     await expect(rows.first()).toContainText('2 pts');
     // 展开后标题带上条数，用户不必点开也知道被挡了多少
     await expect(gate.locator('summary')).toContainText('2 jobs blocked by the quality gate');
+  });
+
+  test('the override button posts exactly the blocked pool row and confirms in place', async ({
+    page,
+  }) => {
+    const requests = { approve: [] as unknown[], reject: [] as unknown[], events: [] as string[], override: [] as unknown[] };
+    await mockAgent(page, { requests });
+    await page.goto(WORKBENCH_PATH);
+
+    const gate = page.getByTestId('agent-gate');
+    await gate.locator('summary').click();
+    await expect(gate.getByTestId('agent-gate-row')).toHaveCount(2);
+
+    await gate.getByTestId('agent-gate-override').first().click();
+
+    // body 严格等式：放行只认岗位池行主键，多带一个"force"之类的键就该被服务端 400 拒掉
+    expect(requests.override).toHaveLength(1);
+    expect(requests.override[0]).toEqual({ postingId: 'pool-row-2' });
+    await expect(page.getByTestId('agent-gate-note')).toContainText(
+      'This overrides the quality gate only',
+    );
   });
 
   test('says so when nothing was blocked, instead of showing an empty panel', async ({ page }) => {

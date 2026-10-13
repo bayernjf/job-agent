@@ -1642,6 +1642,12 @@ export const JOB_RUN_EVENTS = [
   'generated', // recommending → awaiting_approval（产出成功）
   'approve', // awaiting_approval → （阶段 1）awaiting_approval 内票据置 approved
   'reject', // awaiting_approval → watching（本轮无合格项，等下一轮）
+  /**
+   * 用户显式放行一条被质量闸挡下的岗位。它是**唯一一条不推进流水线的迁移**：目标仍是
+   * `awaiting_approval`（自环），因为"越闸"绝不等于"人已确认"——票据照样停在 `pending`，
+   * 确认、投递、限频三道闸一道都不能少，所以这条边不给 `approve` 让路。
+   */
+  'gate_override', // watching/recommending/awaiting_approval → awaiting_approval
   'rescan', // watching/recommending → watching（本轮无合格项）
   'submitted', // submitting → submitted（阶段 2 扩展回执）；阶段 1 由 awaiting_approval → tracking
   'track', // submitted → tracking
@@ -1890,6 +1896,16 @@ export const JobRunRejectSchema = z
   .strict();
 export type JobRunRejectInput = z.infer<typeof JobRunRejectSchema>;
 
+/**
+ * POST /agent/runs/:id/gate-override 请求体：用户点名要把哪一条**被质量闸挡下**的岗位
+ * 拉进待投清单。按岗位池行主键（`job_postings.id`）认身份，而不是来源侧 `jobId`——
+ * 不同源可以携带同一个外部 jobId，按它放行会放错行。
+ */
+export const JobRunGateOverrideSchema = z
+  .object({ postingId: z.string().min(1).max(64) })
+  .strict();
+export type JobRunGateOverrideInput = z.infer<typeof JobRunGateOverrideSchema>;
+
 /** GET /agent/runs/:id 响应体：任务状态 + 事件流（可回放）+ 全部票据。 */
 export const AgentRunViewSchema = z.object({
   run: JobRunSchema,
@@ -1942,6 +1958,7 @@ export const AGENT_ERROR_CODES = {
   dailyLimitReached: 'AGENT_DAILY_SUBMIT_LIMIT_REACHED', // 429：该来源当日投递已达上限（限频闸）
   artifactsUnavailable: 'AGENT_ARTIFACTS_UNAVAILABLE', // 409：简历/求职信生成失败（画像或岗位不足以装配）
   eventCursorInvalid: 'AGENT_EVENT_CURSOR_INVALID', // 400：事件流游标不是该任务的真实事件 id
+  gateExclusionNotFound: 'AGENT_GATE_EXCLUSION_NOT_FOUND', // 409：该岗位不在本轮被质量闸挡下的清单里（已出票/已被硬过滤/池行已变）
 } as const;
 export type AgentErrorCode = (typeof AGENT_ERROR_CODES)[keyof typeof AGENT_ERROR_CODES];
 

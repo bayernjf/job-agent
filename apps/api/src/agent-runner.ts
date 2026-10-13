@@ -489,6 +489,156 @@ export async function deriveRunCandidates(
   };
 }
 
+export type GateOverrideOutcome =
+  | { ok: true; view: AgentRunViewData; intentId: string }
+  | { ok: false; status: 404 | 409; code: string; message: string };
+
+/**
+ * 用户显式放行一条被质量闸挡下的岗位（阶段 2「人机闸」的另一半：闸可以越，人不能省）。
+ *
+ * 越过的**只有质量闸**：
+ *  - 写出来的仍是 `pending` 票据——确认动作（approve）与它背后的当日限频一道都不能少，
+ *    否则"放行"就成了绕过防海投闸的后门；
+ *  - 票据内容与 tick 出的票走同一装配路径（`planIntents` + 工件试装），装配不出
+ *    简历/求职信的岗位照样拒绝——放行不该产出用户点开就失败的票据；
+ *  - 状态迁移与审计同事务（`publishGeneratedIntents` 的 CAS），并发的 tick 与放行
+ *    只有一个赢家，输了的一方零票据、零事件。
+ *
+ * 岗位必须在**本次推导**的挡下清单里（按岗位池行主键 `postingId` 认身份）：
+ * 已出票、已被偏好硬过滤、或池行已下架的岗位都不是"被闸挡下"，一律 409 而不是悄悄新建。
+ */
+export async function overrideGateCandidate(
+  deps: { repos: AgentRepos; now: () => string; config: AgentConfig },
+  runId: string,
+  postingId: string,
+): Promise<GateOverrideOutcome> {
+  const { repos, config: cfg } = deps;
+  const nowIso = deps.now();
+
+  const run = await repos.jobRuns.getById(runId);
+  if (!run) {
+    return { ok: false, status: 404, code: AGENT_ERROR_CODES.runNotFound, message: 'job run not found' };
+  }
+  const plan = planTransition(run.status, 'gate_override');
+  if (!plan.ok) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.invalidTransition,
+      message: `job run in ${run.status} cannot accept a gate override`,
+    };
+  }
+
+  const preference = await repos.jobPreferences.getById(run.preferenceId);
+  if (!preference) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.preferenceNotFound,
+      message: `preference ${run.preferenceId} no longer exists`,
+    };
+  }
+  const profileRow = await repos.profiles.getById(run.profileId);
+  const profile = profileRow?.snapshot as AbilityProfile | undefined;
+  if (!profile) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.profileNotOwned,
+      message: `profile ${run.profileId} has no snapshot`,
+    };
+  }
+
+  const derivation = await deriveRunCandidates(repos, cfg, run, preference, profile, nowIso);
+  const blocked = derivation.excluded.find((entry) => entry.item.posting.id === postingId);
+  if (!blocked) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.gateExclusionNotFound,
+      message: `posting ${postingId} is not on this run's blocked list`,
+    };
+  }
+
+  const planned = planIntents([blocked.item], { profileSkills: derivation.profileSkills })[0];
+  if (!planned) {
+    return { ok: false, status: 409, code: AGENT_ERROR_CODES.artifactsUnavailable, message: 'candidate vanished' };
+  }
+
+  // 与 scanOnce 的「generated」闸同一道校验：真装配一遍，装不出来就不写票据
+  const evidence = toEvidenceItems(await repos.evidence.listByProfile(run.profileId));
+  try {
+    const match = resumeMatchFromReport(planned.report);
+    buildResume({ profile, evidence, posting: blocked.item.posting, match, options: { locale: 'zh-CN' } });
+    buildCoverLetter({ profile, evidence, posting: blocked.item.posting, match, options: { locale: 'zh-CN' } });
+  } catch (err) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.artifactsUnavailable,
+      message: `artifacts cannot be assembled for posting ${postingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+
+  const intentId = `intent-${randomUUID()}`;
+  const gated = await repos.jobRuns.publishGeneratedIntents(
+    run.id,
+    run.status,
+    { status: plan.to, updatedAt: nowIso },
+    {
+      id: `evt-${randomUUID()}`,
+      runId: run.id,
+      event: plan.event,
+      fromStatus: plan.from,
+      toStatus: plan.to,
+      // 放行是人的动作，审计流里必须与 agent/tick 的迁移分得开
+      actor: 'user',
+      payload: {
+        intentId,
+        postingId,
+        jobId: blocked.item.posting.jobId,
+        source: blocked.item.posting.source,
+        matchScore: planned.matchScore,
+        matchTier: planned.matchTier,
+        // 挡下它的两个口径一起留档：事后才能回答"当初为什么没推"
+        minTier: derivation.minTier,
+        blockedBy: blocked.reason,
+      },
+      createdAt: nowIso,
+    },
+    [
+      {
+        id: intentId,
+        runId: run.id,
+        accountId: run.accountId,
+        profileId: run.profileId,
+        jobId: planned.job.jobId,
+        jobSource: planned.job.source,
+        job: planned.job,
+        matchScore: planned.matchScore,
+        matchTier: planned.matchTier,
+        report: planned.report,
+        status: 'pending',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+    ],
+  );
+  if (!gated) {
+    // 并发输家（tick 抢先推进了状态）：不写票据、不写事件，让调用方重读视图再试
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.invalidTransition,
+      message: 'job run changed underneath this override',
+    };
+  }
+
+  return { ok: true, view: await loadRunView(repos, gated), intentId };
+}
+
 async function scanOnce(
   repos: AgentRepos,
   cfg: AgentConfig,
