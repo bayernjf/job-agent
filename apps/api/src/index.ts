@@ -71,6 +71,7 @@ import { registerLlmRoutes } from './routes/llm.js';
 import { registerClaimVerifications } from './routes/claim-verifications.js';
 import { registerNotifications } from './routes/notifications.js';
 import { sendWebPush } from './web-push.js';
+import { sendAlertWebhook } from './alert-webhook.js';
 import { describeError } from './routes/helpers.js';
 import type { RouteDeps } from './routes/context.js';
 import type { ApiDeps, ApiRepos, HonoEnv } from './routes/types.js';
@@ -253,6 +254,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     cronAuthorized,
     deps,
     sendWebPush: deps.sendWebPush ?? sendWebPush,
+    sendAlertWebhook: deps.sendAlertWebhook ?? sendAlertWebhook,
   };
 
   // 按原 index.ts 的注册顺序挂载（顺序对 /profiles/by-subject、/job-postings/stats 等

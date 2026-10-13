@@ -87,6 +87,7 @@
 | `TAVILY_API_KEY` | 空 | 指令式搜岗搜索通道 key（主通道 Tavily）；未配时 `/internal/cron/search-tick` 503 并记失败心跳。免费层 1000 credits/月 |
 | `SEARCH_DAILY_LIMIT` | `10` | 搜岗每日次数上限（UTC 日界、按账号、含失败 run）；`0`＝关闭；超限 429 `search_daily_limit`。搜岗 run 仅用户主动发起 |
 | `SCHEMA_CHECK_STRICT` | `0` | 常驻进程启动 schema 自检缺列时是否退出（`1`＝fail fast）；默认仅告警。serverless 不经此路径 |
+| `ALERT_WEBHOOK_URL` | 空 | 外部平台告警 webhook 地址（企业微信群机器人 / 飞书自定义机器人 / Slack 兼容，按 URL 主机自动识别报文格式）；仅在 `watch-heartbeat` 判 stale 的**翻转边沿** POST 一条告警，与 Web Push、digest 每日邮件互补。URL 内嵌 token 是密钥，只走服务端 env；未配＝静默跳过，发送失败只记日志不影响 cron 端点语义。配了才有一个"必定有人看"的平台读者，不依赖用户开订阅 |
 
 > MCP 接入面（独立 stdio 进程 `apps/mcp`，决策 #19，2026-10-01）另读：`MCP_API_KEY`（默认空＝fail-closed，画像类工具返回 MCP_KEY_REQUIRED 错误码、仅 `search_jobs` 可用；生产缺 key 启动即失败）、`MCP_RATE_WINDOW_MS`（默认 `60000`）、`MCP_RATE_LIMIT_PER_WINDOW`（默认 `60`），IP 哈希复用 `DEMO_IP_SALT`。
 
@@ -1826,6 +1827,8 @@ token 90 天滑动续期、可撤销。
 `503`：`{ "status": "error", "stale": ["agent-tick lastOk=2026-10-08T03:00:00.000Z lastError=none"] }`
 
 `/health?deep=1` 联动：watchdog 最近一次失败（`last_error` 非空、30 分钟内）时 deep 探活 503 并返回 `watchdog: { status: "error", message, checkedAt }`——让"消费通道断了"成为可探知失败；watchdog 下一轮成功后恢复 200。`message` 是不含明细的固定串（`one or more cron consumers are stale`），stale 明细只在鉴权内部端点可见。未知 consumer 一律忽略，不误报；空表（尚无任何心跳）不算 stale。
+
+**stale 翻转边沿的自动告警**（2026-10-10 起；2026-10-14 增外部平台 webhook）：只在"上轮健康 → 本轮 stale"的边沿发一次，持续 stale 不重复打扰（防抖依据 watchdog 行自身 `last_error`），恢复后再 stale 算新事件。三条通道互补：① 向全部启用的 `web_push` 订阅推一条告警（VAPID 未配置时天然跳过）；② 配了 `ALERT_WEBHOOK_URL` 时向该地址 POST 一条告警（企业微信 / 飞书 / Slack 兼容格式按 webhook 主机自动识别；URL 内嵌 token 是密钥，只走服务端 env；发送失败只记服务端日志，不影响本端点语义）；③ `digest-tick` 每日邮件兜底（零候选也发纯告警信）。
 
 ### `GET /internal/cron/cleanup?task=demo|auth|all`
 
