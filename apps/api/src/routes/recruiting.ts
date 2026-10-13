@@ -305,6 +305,16 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
     const profile = await repos.profiles.getById(data.profileId);
     if (!profile) return c.json({ error: 'profile not found' }, 404);
 
+    // 决策 #25 补口（迁移 037）：面试可以挂在招聘方自己发布的岗位下，于是"这条岗位现在有
+    // 几个人"答得出。归属必须在写入前校验——别人的私有岗位与公开池的行一律 404（前者不泄露
+    // 存在性，后者语义不对：聚合岗位不是招聘方的 pipeline 载体）。
+    if (data.postingId) {
+      const posting = await repos.jobPostings.getById(data.postingId);
+      if (!posting || posting.createdByAccountId !== principal.accountId) {
+        return c.json({ error: 'job posting not found' }, 404);
+      }
+    }
+
     if (data.applicationId) {
       const application = await repos.applications.getById(data.applicationId);
       if (!application) return c.json({ error: 'application not found' }, 404);
@@ -330,6 +340,7 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
       id,
       profileId: data.profileId,
       applicationId: data.applicationId ?? null,
+      postingId: data.postingId ?? null,
       targetTitle: data.targetTitle,
       targetCompany: data.targetCompany ?? null,
       scheduledStart: data.scheduledStart,
@@ -356,6 +367,7 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
     }
     const items = await repos.interviews.listByOwner(principal.accountId, {
       ...(parsed.data.profileId ? { profileId: parsed.data.profileId } : {}),
+      ...(parsed.data.postingId ? { postingId: parsed.data.postingId } : {}),
       ...(parsed.data.status ? { status: parsed.data.status } : {}),
     });
     return c.json({ items });
