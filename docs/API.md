@@ -647,6 +647,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 岗位数据由离线采集管道写入（CLI `jobs sync`，见 `docs/design-job-ingestion-20260913.md`），API 只做只读检索与匹配。注意分析任务已占用 `/jobs/:id`，故岗位端点统一用 `/job-postings`。
 
+**公开池 vs 招聘方私有岗位（决策 #25，2026-10-13）**：`job_postings.created_by_account_id`（迁移 036）非 NULL 的行是**招聘方自建的私有 JD**，不属于公开岗位池。排除动作发生在仓储层——`search()`（不传 `ownerAccountId` 时）、`countBySource()`、`countActiveFresh()`、`markStale()` 一律加 `created_by_account_id IS NULL`，所以下列公开读取口（`GET /job-postings`、`GET /job-postings/stats`、`POST /job-postings/match`、`GET /profiles/:id/job-recommendations`）、MCP `search_jobs`、CLI `jobs *` 与 `agent-tick` 的自动扫岗**都自动看不到私有行**，不需要每个调用方自己记得过滤。写入口只有 `POST /job-postings/recruiter`。
+
 ### `GET /job-postings`
 
 岗位检索（薄封装仓储 `search`），默认只返回 `active`。
@@ -692,7 +694,47 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 ### `GET /job-postings/:id`
 
-按内部稳定 id（由 `source + sourceUrl` 派生）取单条岗位；不存在返回 404。
+按内部稳定 id（由 `source + sourceUrl` 派生）取单条岗位；不存在返回 404。**私有 JD 只对本人可读**：`created_by_account_id` 非 NULL 时，非归属者（含匿名与别的招聘方）一律 404，不泄露该 id 是否存在。
+
+### `POST /job-postings/recruiter`
+
+招聘方发布一条自建 JD（决策 #25 的 B3-a 最小子集）。闸与 `/candidates`、`/interviews` 同一条判据：已登录**且**已显式声明招聘方（`PUT /auth/recruiter`），否则 401 `AUTH_REQUIRED` / 403 `RECRUITER_DECLARATION_REQUIRED`。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `title` | string | 是 | 1–200 字符 |
+| `company` | string | 是 | 1–120 字符 |
+| `location` | string | 否 | ≤160 字符，源站原文风格 |
+| `remote` | boolean | 否 | 默认 `false` |
+| `tags` | string[] | 否 | 默认 `[]`，最多 25 条、每条 ≤60 字符；入库前按值去重 |
+| `description` | string | 否 | ≤20000 字符 |
+| `salaryMin` / `salaryMax` | integer | 否 | 非负、≤10000000 |
+| `salaryCurrency` | string | 否 | 恰好 3 字符 |
+
+身份字段**不接受客户端指定**：`jobId`、`source`（固定 `recruiter`）、`sourceUrl`（`https://recruiter.invalid/<account>/<jobId>`，RFC 2606 保留域，永不被当成真外链抓取）、内部 `id` 与 `created_by_account_id`（取登录态账号）全部由服务端生成——请求体里出现同名字段会被 Zod 剥掉。
+
+#### 响应（201）
+
+返回整条 `StoredJobPosting`（`status: "active"`、`source: "recruiter"`、`createdByAccountId` 为本人账号 id）。
+
+#### 错误
+
+| 状态码 | code | 条件 |
+| --- | --- | --- |
+| 400 | — | JSON 非法或字段校验失败 |
+| 401 | `AUTH_REQUIRED` | 未登录 |
+| 403 | `RECRUITER_DECLARATION_REQUIRED` | 已登录但未声明招聘方 |
+| 429 | `TOO_MANY_POSTINGS` | 本人 `active` 岗位已达 50 条（下线一条后可再发） |
+
+### `GET /job-postings/recruiter`
+
+我的岗位列表，**含已下线**（`status` 为 `inactive` 的行照常返回，供招聘方自己核对）。Query：`limit`（1–100，默认 100）、`offset`（≥0）。响应 `{ "items": [...], "limit": 100, "offset": 0 }`，按 `postedAt` 倒序。未登录 401、未声明 403，同上面的闸。
+
+### `DELETE /job-postings/recruiter/:id`
+
+下线自己发布的岗位（软下线为 `inactive`，不物理删除，保留可审计性）。本人成功返回更新后的岗位（200）；**非本人的 id 与不存在的 id 都是 404**（行级归属，不泄露存在性）。
 
 ### `POST /job-postings/match`
 
@@ -1092,13 +1134,14 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | `interviewerName` | string | 否 | 面试官姓名（自由文本，单条） |
 | `interviewerEmail` | string(email) | 否 | 面试官邮箱，可空 |
 | `applicationId` | string | 否 | 关联的投递记录 id；须属于同一 `profileId` |
+| `postingId` | string | 否 | 关联的**自建岗位** id（`job_postings.id`，决策 #25 补口）。**只能是调用者自己发布的行**：不存在、属于别人、或是公开池的行都回 `404`（公开岗位不是招聘方 pipeline 的载体，语义上也不该挂） |
 
 #### 响应
 
 - `201`：返回创建后的完整记录，`id` 形如 `int-<uuid>`，默认 `status=scheduled`，`outcome`/`rating`/`feedbackNote` 为 `null`。
 - `400`：非法 JSON、缺必填字段、`scheduledEnd <= scheduledStart`、邮箱格式非法、`applicationId` 不属于该画像。
 - `401`：未登录（anonymous/demo，`AUTH_REQUIRED`）。`403 RECRUITER_DECLARATION_REQUIRED`：已登录但未做招聘方声明（F10 起面试写侧与 `/candidates` 同批收紧为已声明招聘方）。
-- `404`：画像不存在，或 `applicationId` 指向的投递不存在。
+- `404`：画像不存在，或 `applicationId` 指向的投递不存在，或 `postingId` 指向的岗位不存在/不是本人发布的。
 
 ### `GET /interviews`
 
@@ -1109,6 +1152,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | 参数 | 说明 |
 | --- | --- |
 | `profileId` | 仅返回该候选人的面试 |
+| `postingId` | 仅返回挂在某条自建岗位下的面试（决策 #25 补口；作用域仍强制是本人创建的面试） |
 | `status` | 按状态过滤，取值同 `status` 枚举；非法值 `400` |
 
 #### 响应（200）

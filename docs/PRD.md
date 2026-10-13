@@ -2,7 +2,7 @@
 
 > 文档版本：v0.3
 > 日期：2026-09-10（v0.3 补章：2026-09-25）
-> 状态：**#1–#8 已于 2026-09-10 决策（见《待拍板决策清单》）；#4 当日修订为"海内外同步"**。v0.2 据决策结果与《市场调研-AI求职赛道》回灌，v0.1 的 `【待决策 #n】` 标记统一转为"已决策"。**v0.3 补 B 端角色边界（§3.3 / §4.4 / §5 / F10 / F11）＝决策 #17、C 端优先重排＝#18，两项已于 2026-09-25 决策、均未实施**，设计全文见 [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md)。**v0.4 补 F12 求职工作台（求职 Agent 阶段 1，2026-10-03 落地，handoff item94）**，设计全文见 [设计-求职Agent-20261002.md](设计-求职Agent-20261002.md)；阶段 2/3 的开放问题登记为决策 #20（未决策）。**v0.5 补 F13 LLM 模型供给双轨（2026-10-03 落地，决策 #21，handoff item105）：内置模型＝Admin UI 管理目录（凭证 env only）、BYOK＝用户自由设置（AES-256-GCM 加密列）**，设计全文见 [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md)。
+> 状态：**#1–#8 已于 2026-09-10 决策（见《待拍板决策清单》）；#4 当日修订为"海内外同步"**。v0.2 据决策结果与《市场调研-AI求职赛道》回灌，v0.1 的 `【待决策 #n】` 标记统一转为"已决策"。**v0.3 补 B 端角色边界（§3.3 / §4.4 / §5 / F10 / F11）＝决策 #17、C 端优先重排＝#18，两项已于 2026-09-25 决策、均未实施**，设计全文见 [design-recruiter-roles-20260925.md](design-recruiter-roles-20260925.md)。**v0.4 补 F12 求职工作台（求职 Agent 阶段 1，2026-10-03 落地，handoff item94）**，设计全文见 [设计-求职Agent-20261002.md](设计-求职Agent-20261002.md)；阶段 2/3 的开放问题登记为决策 #20（未决策）。**v0.5 补 F13 LLM 模型供给双轨（2026-10-03 落地，决策 #21，handoff item105）：内置模型＝Admin UI 管理目录（凭证 env only）、BYOK＝用户自由设置（AES-256-GCM 加密列）**，设计全文见 [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md)。**v0.6 补 F14 招聘方自建 JD（2026-10-13 落地，决策 #25 已拍板，handoff item156）：B 端第一刀只切"发布私有 JD → 按它排候选人"，硬不变量＝私有岗位绝不进 C 端公开池（判据是 `job_postings.created_by_account_id`，排除落在仓储层）；B3-b pipeline 事件表与 B3-c 多面试官评价经生产实查（complete 画像 5 条、招聘方账号 0 个）判定缓做**，方案全文见 [design-b-side-full-loop-20261007.md](design-b-side-full-loop-20261007.md)。
 > 关联文档：
 > - 《产品构想-以GitHub为桥梁的招聘系统.md》（定位与市场背景）
 > - 《讨论记录-01-切入口与MVP收敛-20260910.md》（本 PRD 的收敛依据）
@@ -276,6 +276,20 @@ flowchart LR
   4. **请求路由**：登录用户配了 BYOK→请求打到用户端点；否则内置目录；`validate` 用最小请求（max_tokens=1）真实探测配置可用性，失败 502 且错误体脱敏；
   5. **内置默认可用**：目录空表时回退代码内置默认（agnes-3.0-flash），首启/换 env 无需手工录入即可用；默认模型未列出视为下架报错；
   6. **可追溯**：admin 目录变更落结构化日志（`[admin-catalog] ...`），规则版本沿用既有版本化体系。
+
+### F14 招聘方自建 JD 与「按我的岗位找候选人」（v0.6 新增 · 决策 #25 · **已落地 2026-10-13，handoff item156**）
+
+- **描述**：B 端从"翻已有画像库"升级为"按我在招的岗位找证据级候选人"。已声明招聘方在 `/[locale]/recruit` 发布一条**私有 JD**（正文＋技能标签＋远程/地点/薪资，身份字段由服务端生成），并直接按这条 JD 排候选人。实现刻意复用既有零件：写入落 `job_postings`（迁移 036 加 `created_by_account_id` 归属列，`source='recruiter'`），排序复用 `GET /candidates` 的 `skills`/`skillMatch`/`sortBy=skills` 与 `matchedSkills` 高亮，**不新建第二套候选人读取口**。闸沿用 F10（`requireRecruiter`：未登录 401、已登录未声明 403）。
+- **硬边界（本功能的存在前提）**：私有 JD **绝不进 C 端公开岗位池**。排除判据是归属列（不是 `source`），且写在仓储层的每次池读取里（两方言 `search()` 默认、`countBySource`、`countActiveFresh`、`markStale`），因此 `GET /job-postings`、`/job-postings/stats`、`POST /job-postings/match`、`GET /profiles/:id/job-recommendations`、MCP `search_jobs`、CLI `jobs *` 与 `agent-tick` 自动扫岗都自动看不到它；单条读取与下线在路由层做行级归属（越权一律 404，不泄露存在）。`sourceUrl` 用 RFC 2606 保留域 `recruiter.invalid`，永不被当成真外链抓取。
+- **本期不做**：pipeline 状态机事件表、多面试官协作评价、`teams`/席位/计费（决策 #25 与 deferred 的触发条件未满足）；候选人侧不因此收到任何"被某公司查看"的告知（联动 B2-c，默认关）。
+- **补口（同日，迁移 037，handoff item157/item158）**：面试可以挂到招聘方自己发布的岗位下（`interviews.posting_id`，`POST /interviews` 的 `postingId` 入参 + `GET /interviews?postingId=` 读侧过滤），于是"这条岗位现在有哪几个人、排到第几面"答得出。**这不是 pipeline 状态机**——挂的是引用关系，阶段与事件表仍按 #25 缓做；挂别人岗位或公开池的行一律 404。
+- **验收标准**：
+  1. 未登录 401、已登录未声明 403，且**不产生任何写动作**；
+  2. 私有 JD 在上述每个公开读取口都不可见（含按 `limit` 翻页与 `stats` 计数），由 `packages/storage/src/job-postings.test.ts` 与 `postgres-behavior.test.ts` 钉住；**这条守卫已被证伪过一次是真的**——2026-10-13 人工把 SQLite `search()` 的归属过滤摘掉，那两条用例立刻转红（"泄漏到公开池"与"被 markStale 悄悄下线"各一条）；
+  3. 非本人读取/下线该岗位都是 404（响应体与"不存在"同形）；
+  4. 客户端提交的 `source` / `createdByAccountId` / `jobId` 一律不生效，归属只认登录态；
+  5. 采集侧失活清扫（`markStale`）不会把自建 JD 悄悄置 `inactive`；
+  6. 下线后"我的岗位"仍能看到该条（`status=inactive`），公开池依旧看不到。
 
 ---
 
