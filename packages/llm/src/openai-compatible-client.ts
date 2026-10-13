@@ -9,8 +9,9 @@
  * 安全：API key 只放进 Authorization 头、绝不进错误消息 / 日志 / Git / 构建产物 / 前端。
  * 测试一律注入假 fetch（{@link LlmFetch}），不发真实网络请求。
  */
+import { z } from 'zod';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
-import type { LlmClient, LlmJsonRequest } from './port.js';
+import type { LlmClient, LlmJsonRequest, LlmTokenUsage } from './port.js';
 import { LlmResponseError } from './port.js';
 import { LlmCoverLetterProvider, type CoverLetterProvider } from './cover-letter.js';
 import { LlmResumePolishProvider } from './resume-polish.js';
@@ -102,6 +103,30 @@ export function parseJsonObject(content: string): unknown {
 interface OpenAIChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+}
+
+/**
+ * OpenAI 兼容响应里的 usage 形状（决策 #25 ④）：两字段都可缺——不少网关不回
+ * usage、或只回其中一个；Zod 守门只认非负整数，其余形状一律 safeParse 失败。
+ */
+const LlmUsageSchema = z
+  .object({
+    prompt_tokens: z.number().int().nonnegative().optional(),
+    completion_tokens: z.number().int().nonnegative().optional(),
+  })
+  .strip();
+
+/**
+ * 从响应体尽力解析 token 用量：usage 缺失 / 形状非法 / 单字段缺失都容忍，
+ * 缺失字段如实给 null，绝不编数、绝不因此 fail 主调用。
+ */
+export function parseTokenUsage(data: unknown): LlmTokenUsage {
+  const parsed = LlmUsageSchema.safeParse((data as { usage?: unknown } | null)?.usage);
+  if (!parsed.success) return { promptTokens: null, completionTokens: null };
+  return {
+    promptTokens: parsed.data.prompt_tokens ?? null,
+    completionTokens: parsed.data.completion_tokens ?? null,
+  };
 }
 
 export class OpenAICompatibleClient implements LlmClient {
@@ -207,6 +232,8 @@ export class OpenAICompatibleClient implements LlmClient {
     if (parsed === undefined) {
       throw new LlmResponseError('LLM content is not a JSON object', undefined, { kind: 'parse' });
     }
+    // 成功路径恰好回调一次（契约见 LlmUsageObserver）；以上所有失败分支在回调之前抛出。
+    request.onUsage?.(parseTokenUsage(data));
     return parsed as T;
   }
 }

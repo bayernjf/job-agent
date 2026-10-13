@@ -12,7 +12,7 @@
  */
 import { z } from 'zod';
 import type { JobPosting, ResumeDraft, ResumeLocale } from '@jobagent/shared';
-import { LlmResponseError, type LlmClient } from './port.js';
+import { LlmResponseError, type LlmClient, type LlmUsageObserver } from './port.js';
 
 /** prompt 模板版本：任何措辞/结构变更都 bump，随产物回传。 */
 export const COVER_LETTER_PROMPT_VERSION = 'cover-letter-0.1';
@@ -32,6 +32,8 @@ export interface CoverLetterProvider {
     draft: ResumeDraft;
     posting: JobPosting;
     locale: ResumeLocale;
+    /** 可选的用量观察回调（计量埋点用，决策 #25 ④）；成功调用恰好回调一次。 */
+    onUsage?: LlmUsageObserver;
   }): Promise<CoverLetterOutput>;
 }
 
@@ -103,6 +105,7 @@ export class LlmCoverLetterProvider implements CoverLetterProvider {
     draft: ResumeDraft;
     posting: JobPosting;
     locale: ResumeLocale;
+    onUsage?: LlmUsageObserver;
   }): Promise<CoverLetterOutput> {
     const raw = await this.client.generateJson<unknown>({
       messages: [
@@ -110,6 +113,7 @@ export class LlmCoverLetterProvider implements CoverLetterProvider {
         { role: 'user', content: userPrompt(input.draft, input.posting) },
       ],
       temperature: this.options.temperature ?? 0.4,
+      onUsage: input.onUsage,
     });
 
     const parsed = LlmCoverLetterOutputSchema.safeParse(raw);

@@ -18,12 +18,30 @@ export interface LlmChatMessage {
   content: string;
 }
 
+/**
+ * 一次成功调用的 token 用量（决策 #25 ④ 成本回采，2026-10-14）。
+ * 字段可空：部分 OpenAI 兼容网关不回 usage、或只回其中一个——缺失如实给 null，绝不编数。
+ */
+export interface LlmTokenUsage {
+  promptTokens: number | null;
+  completionTokens: number | null;
+}
+
+/**
+ * 用量观察回调：每请求级别透出 token 用量（per-call 通道，client 上不挂可变状态，
+ * 避免跨请求单例并发串号）。契约：**成功路径恰好回调一次；失败路径（HTTP/超时/解析错）
+ * 绝不回调**——失败的调用 token 不可得，计量侧据此只记录真实完成的可计费调用。
+ */
+export type LlmUsageObserver = (usage: LlmTokenUsage) => void;
+
 export interface LlmJsonRequest {
   messages: LlmChatMessage[];
   /** 低温度默认更稳；润色等保守任务建议 0.2–0.4。 */
   temperature?: number;
   /** 调用方可选的请求标识（日志/去重），不参与签名。 */
   requestId?: string;
+  /** 可选的用量观察回调（计量埋点用）；不设置则不观察，不影响主调用。 */
+  onUsage?: LlmUsageObserver;
 }
 
 export interface LlmClient {

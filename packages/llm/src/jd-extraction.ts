@@ -11,7 +11,7 @@
  * 凭证只从服务端 LLM_* env 读；无 LLM_API_KEY → createJdExtractionProviderFromEnv 返回 null。
  */
 import { JdInsightSchema, type JdInsight } from '@jobagent/shared';
-import { LlmResponseError, type LlmClient } from './port.js';
+import { LlmResponseError, type LlmClient, type LlmUsageObserver } from './port.js';
 
 /** prompt 模板版本：任何措辞/结构变更都 bump，便于追溯。 */
 export const JD_EXTRACTION_PROMPT_VERSION = 'jd-extract-0.1';
@@ -23,8 +23,11 @@ export interface JdExtractionProvider {
   readonly provider: string;
   readonly model: string;
   readonly promptVersion: string;
-  /** 从职位标题+正文提取岗位侧要求；正文不足或无法提取时返回三类空数组的合法对象。 */
-  extract(title: string, description: string): Promise<JdInsight>;
+  /**
+   * 从职位标题+正文提取岗位侧要求；正文不足或无法提取时返回三类空数组的合法对象。
+   * 第三参 onUsage 可选（计量埋点用，决策 #25 ④）；成功调用恰好回调一次。
+   */
+  extract(title: string, description: string, onUsage?: LlmUsageObserver): Promise<JdInsight>;
 }
 
 function systemPrompt(): string {
@@ -58,7 +61,7 @@ export class LlmJdExtractionProvider implements JdExtractionProvider {
     this.model = client.model;
   }
 
-  async extract(title: string, description: string): Promise<JdInsight> {
+  async extract(title: string, description: string, onUsage?: LlmUsageObserver): Promise<JdInsight> {
     const limit = this.options.descriptionCharLimit ?? JD_DESCRIPTION_CHAR_LIMIT;
     const userPayload = JSON.stringify({
       title: title.slice(0, 200),
@@ -72,6 +75,7 @@ export class LlmJdExtractionProvider implements JdExtractionProvider {
       ],
       // 提取任务要求稳定、保守，低温度。
       temperature: this.options.temperature ?? 0.1,
+      onUsage,
     });
 
     const parsed = JdInsightSchema.safeParse(raw);

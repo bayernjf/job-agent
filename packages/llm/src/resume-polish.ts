@@ -8,10 +8,32 @@
 import { z } from 'zod';
 import type { JobPosting, ResumeDraft, ResumeLocale } from '@jobagent/shared';
 import type { ResumePolishEdits, ResumePolishProvider } from '@jobagent/resume-core';
-import { LlmResponseError, type LlmClient } from './port.js';
+import { LlmResponseError, type LlmClient, type LlmUsageObserver } from './port.js';
 
 /** prompt 模板版本：任何措辞/结构变更都 bump，写入 provenance.polish.promptVersion。 */
 export const RESUME_POLISH_PROMPT_VERSION = 'resume-polish-0.1';
+
+/**
+ * 可计量的润色输入（决策 #25 ④）：在 resume-core 基础输入上加可选的用量观察回调。
+ * 不改 resume-core 的原因：依赖方向是 llm → resume-core，反向引用会成环；onUsage
+ * 走本包自己的输入类型，经 TS 参数逆变仍与 ResumePolishProvider 接口兼容。
+ */
+export interface ResumePolishInput {
+  draft: ResumeDraft;
+  posting: JobPosting;
+  locale: ResumeLocale;
+  /** 可选的用量观察回调（计量埋点用）；成功调用恰好回调一次。 */
+  onUsage?: LlmUsageObserver;
+}
+
+/**
+ * 可计量的润色 provider：polish 接受 {@link ResumePolishInput}（比基础接口多一个可选
+ * onUsage 字段）。计量调用点把依赖声明为本类型即可传 onUsage；既有的
+ * ResumePolishProvider 实现经参数逆变同样可赋给本类型。
+ */
+export interface MeteredResumePolishProvider extends ResumePolishProvider {
+  polish(input: ResumePolishInput): Promise<ResumePolishEdits>;
+}
 
 /** LLM 必须返回的 JSON 形状（多余字段剥离；非法整体抛错由安全层回退）。 */
 const LlmPolishOutputSchema = z
@@ -56,7 +78,7 @@ function userPrompt(draft: ResumeDraft, posting: JobPosting): string {
   );
 }
 
-export class LlmResumePolishProvider implements ResumePolishProvider {
+export class LlmResumePolishProvider implements MeteredResumePolishProvider {
   readonly provider: string;
   readonly model: string;
   readonly promptVersion = RESUME_POLISH_PROMPT_VERSION;
@@ -69,13 +91,14 @@ export class LlmResumePolishProvider implements ResumePolishProvider {
     this.model = client.model;
   }
 
-  async polish(input: { draft: ResumeDraft; posting: JobPosting; locale: ResumeLocale }): Promise<ResumePolishEdits> {
+  async polish(input: ResumePolishInput): Promise<ResumePolishEdits> {
     const raw = await this.client.generateJson<unknown>({
       messages: [
         { role: 'system', content: systemPrompt(input.locale) },
         { role: 'user', content: userPrompt(input.draft, input.posting) },
       ],
       temperature: this.options.temperature ?? 0.3,
+      onUsage: input.onUsage,
     });
 
     const parsed = LlmPolishOutputSchema.safeParse(raw);

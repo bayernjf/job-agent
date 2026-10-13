@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AbilityProfile, EvidenceItem, JobPosting, SkillTag } from '@jobagent/shared';
 import { buildResume } from '@jobagent/resume-core';
 import { polishResume } from '@jobagent/resume-core';
-import { FakeLlmClient, LlmResumePolishProvider, LlmResponseError, RESUME_POLISH_PROMPT_VERSION } from './index.js';
+import { FakeLlmClient, LlmResumePolishProvider, LlmResponseError, RESUME_POLISH_PROMPT_VERSION, type LlmTokenUsage } from './index.js';
 
 const NOW = '2026-09-16T00:00:00.000Z';
 
@@ -139,5 +139,19 @@ describe('LlmResumePolishProvider', () => {
     const result = await polishResume(draft, posting, new LlmResumePolishProvider(client), { now: NOW });
     expect(result.applied).toBe(true);
     expect(result.draft.summary).toContain('dependable TypeScript');
+  });
+
+  it('forwards onUsage to the underlying client (计量接缝，决策 #25 ④)', async () => {
+    const { draft, posting } = makeDraft();
+    const client = new FakeLlmClient(
+      () => ({ summary: 'Backend engineer who ships dependable TypeScript services.' }),
+      'fake-model-1',
+      { promptTokens: 222, completionTokens: 33 },
+    );
+    const provider = new LlmResumePolishProvider(client);
+    const observed: LlmTokenUsage[] = [];
+    const edits = await provider.polish({ draft, posting, locale: 'en', onUsage: (u) => observed.push(u) });
+    expect(edits.summary).toContain('dependable TypeScript');
+    expect(observed).toEqual([{ promptTokens: 222, completionTokens: 33 }]);
   });
 });
