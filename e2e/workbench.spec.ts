@@ -108,6 +108,54 @@ const INTENT = {
 const APPROVE_MATCH = '**/agent/runs/*/approve';
 const REJECT_MATCH = '**/agent/runs/*/reject';
 
+/**
+ * `GET /agent/runs/:id/gate-exclusions` 的夹具：内核只给原因码，
+ * 界面必须自己按 locale 拼句子——所以断言查的是英文文案，不是码。
+ */
+const GATE_ITEMS = [
+  {
+    postingId: 'pool-row-2',
+    jobId: 'job-blocked-2',
+    source: 'lever',
+    sourceUrl: 'https://example.test/job-blocked-2',
+    title: 'Data Engineer',
+    company: 'Beta Ltd',
+    location: 'Remote',
+    remote: true,
+    score: 2,
+    tier: 'low',
+    reason: 'below_min_tier',
+    matchedSkills: ['TypeScript'],
+  },
+  {
+    postingId: 'pool-row-3',
+    jobId: 'job-blocked-3',
+    source: 'remotive',
+    sourceUrl: 'https://example.test/job-blocked-3',
+    title: 'Backend Engineer',
+    company: 'Gamma Inc',
+    location: null,
+    remote: false,
+    score: 1,
+    tier: 'low',
+    reason: 'no_title_or_tag_hit',
+    matchedSkills: ['TypeScript'],
+  },
+];
+
+/**
+ * 放行之后服务端回包视图里多出来的那张票据：状态仍是 `pending`——
+ * 越过质量闸不等于人已确认，这一条由用例钉住。
+ */
+const FORCED_INTENT = {
+  ...INTENT,
+  intentId: 'intent-forced',
+  jobId: 'job-blocked-2',
+  matchScore: 2,
+  matchTier: 'low',
+  job: { ...INTENT.job, jobId: 'job-blocked-2', postingId: 'pool-row-2', title: 'Data Engineer' },
+};
+
 interface WorkbenchMocks {
   /** 待投清单条目（默认一条 pending 票据） */
   pendingItems?: unknown[];
@@ -124,8 +172,10 @@ interface WorkbenchMocks {
   eventWindow?: number;
   /** 非 pending 端点的统一失败状态码（500 → role=alert） */
   failStatus?: number;
-  /** 请求记录（确认/拒绝的 body 断言用；events 记 /events 的游标序列） */
-  requests?: { approve: unknown[]; reject: unknown[]; events: string[] };
+  /** 质量闸挡下的清单（默认两条：分档不足 + 仅描述命中） */
+  gateItems?: unknown[];
+  /** 请求记录（确认/拒绝/放行的 body 断言用；events 记 /events 的游标序列） */
+  requests?: { approve: unknown[]; reject: unknown[]; events: string[]; override?: unknown[] };
 }
 
 /** 事件 id（run 视图与 /events 都用同一个字段当游标）。 */
@@ -141,6 +191,7 @@ async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> 
     eventStream,
     eventPageSize = 3,
     eventWindow,
+    gateItems,
     failStatus,
     requests,
   } = mocks;
@@ -212,6 +263,20 @@ async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> 
       });
     }
 
+    if (method === 'POST' && pathname.endsWith('/gate-override')) {
+      requests?.override?.push(request.postDataJSON());
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run: { ...RUN, updatedAt: '2026-10-02T09:00:00.000Z' },
+          events: [EVENT],
+          intents: [...pendingItems, FORCED_INTENT],
+          overridden: 1,
+        }),
+      });
+    }
+
     if (failStatus) {
       return route.fulfill({
         status: failStatus,
@@ -225,6 +290,22 @@ async function mockAgent(page: Page, mocks: WorkbenchMocks = {}): Promise<void> 
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ runId: RUN_ID, status: RUN.status, items: pendingItems }),
+      });
+    }
+
+    if (pathname.endsWith('/gate-exclusions')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          runId: RUN_ID,
+          status: RUN.status,
+          minTier: PREFERENCE.minTier,
+          candidateLimit: 10,
+          poolSize: 320,
+          matchedCount: 3,
+          items: gateItems ?? GATE_ITEMS,
+        }),
       });
     }
 
@@ -369,6 +450,64 @@ test.describe('job workbench — signed in', () => {
       intentId: INTENT.intentId,
       reason: 'Not my direction',
     });
+  });
+
+  test('names why the quality gate blocked each job, and only fetches the list when opened', async ({
+    page,
+  }) => {
+    await mockAgent(page);
+    await page.goto(WORKBENCH_PATH);
+
+    const gate = page.getByTestId('agent-gate');
+    // 懒取：折叠时一条都不显示（这个读数每次都要服务端重跑一遍岗位池扫描）
+    await expect(gate.getByTestId('agent-gate-row')).toHaveCount(0);
+
+    await gate.locator('summary').click();
+    const rows = gate.getByTestId('agent-gate-row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText('Data Engineer');
+    await expect(rows.first()).toContainText('Beta Ltd');
+    // 内核只给原因码，界面必须说人话（断言查句子，不查 snake_case 码）
+    await expect(rows.first().getByTestId('agent-gate-reason')).toHaveText(
+      'Below the minimum match tier you set',
+    );
+    await expect(rows.nth(1).getByTestId('agent-gate-reason')).toHaveText(
+      'The skill is mentioned only in the description, not in the title or tags',
+    );
+    await expect(rows.first()).toContainText('2 pts');
+    // 展开后标题带上条数，用户不必点开也知道被挡了多少
+    await expect(gate.locator('summary')).toContainText('2 jobs blocked by the quality gate');
+  });
+
+  test('the override button posts exactly the blocked pool row and confirms in place', async ({
+    page,
+  }) => {
+    const requests = { approve: [] as unknown[], reject: [] as unknown[], events: [] as string[], override: [] as unknown[] };
+    await mockAgent(page, { requests });
+    await page.goto(WORKBENCH_PATH);
+
+    const gate = page.getByTestId('agent-gate');
+    await gate.locator('summary').click();
+    await expect(gate.getByTestId('agent-gate-row')).toHaveCount(2);
+
+    await gate.getByTestId('agent-gate-override').first().click();
+
+    // body 严格等式：放行只认岗位池行主键，多带一个"force"之类的键就该被服务端 400 拒掉
+    expect(requests.override).toHaveLength(1);
+    expect(requests.override[0]).toEqual({ postingId: 'pool-row-2' });
+    await expect(page.getByTestId('agent-gate-note')).toContainText(
+      'This overrides the quality gate only',
+    );
+  });
+
+  test('says so when nothing was blocked, instead of showing an empty panel', async ({ page }) => {
+    await mockAgent(page, { gateItems: [] });
+    await page.goto(WORKBENCH_PATH);
+
+    const gate = page.getByTestId('agent-gate');
+    await gate.locator('summary').click();
+    await expect(gate).toContainText('Nothing was blocked');
+    await expect(gate.getByTestId('agent-gate-row')).toHaveCount(0);
   });
 
   test('shows the empty state when nothing is waiting for approval', async ({ page }) => {

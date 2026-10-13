@@ -33,6 +33,23 @@ describe('planTransition', () => {
     expect(planTransition('awaiting_approval', 'reject')).toMatchObject({ ok: true, to: 'watching' });
   });
 
+  it('lets a gate override open (or stay on) the human gate, but never past it', () => {
+    // 放行一条被挡的岗位 ⇒ 清单里立刻有待确认项，闸口就此打开
+    expect(planTransition('watching', 'gate_override')).toMatchObject({ ok: true, to: 'awaiting_approval' });
+    expect(planTransition('recommending', 'gate_override')).toMatchObject({ ok: true, to: 'awaiting_approval' });
+    // 闸口本来就开着：自环，多加一张票而已
+    expect(planTransition('awaiting_approval', 'gate_override')).toMatchObject({
+      ok: true,
+      from: 'awaiting_approval',
+      to: 'awaiting_approval',
+    });
+    // 关键边界：越过质量闸**不等于**人已确认。任务一旦离开人机闸就不能被拉回来放行，
+    // 否则"放行"会变成绕过 approve/限频的后门。
+    for (const status of ['submitting', 'submitted', 'tracking'] as const) {
+      expect(planTransition(status, 'gate_override')).toMatchObject({ ok: false, reason: 'not_allowed' });
+    }
+  });
+
   it('reserves submitting/submitted for stage 2 without changing their shape', () => {
     expect(planTransition('submitting', 'submitted')).toMatchObject({ ok: true, to: 'submitted' });
     expect(planTransition('submitted', 'track')).toMatchObject({ ok: true, to: 'tracking' });

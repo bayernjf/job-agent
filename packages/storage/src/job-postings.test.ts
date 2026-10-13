@@ -169,6 +169,21 @@ describe('SqliteJobPostingsRepository', () => {
     expect(await repo.search({ limit: 5001 })).toHaveLength(5000);
   });
 
+  it('filters by freshness of last_seen_at only when the caller asks (seenAfter)', async () => {
+    const repo = freshRepo();
+    // 两条都是 active；差别只在"上一次被源站列出"的时间
+    await repo.upsertBatch([samplePosting({ sourceUrl: 'https://e.com/fresh' })], '2026-10-12T00:00:00.000Z');
+    await repo.upsertBatch([samplePosting({ sourceUrl: 'https://e.com/stale' })], '2026-09-01T00:00:00.000Z');
+
+    const windowed = await repo.search({ seenAfter: '2026-10-05T00:00:00.000Z', limit: 500 });
+    expect(windowed.map((p) => p.sourceUrl)).toEqual(['https://e.com/fresh']);
+
+    // 不传＝运营面原样（默认不放窗口，避免每个调用方都被静默少看）
+    expect(await repo.search({ limit: 500 })).toHaveLength(2);
+    // 与 postedAfter 互不干涉：那条筛的是发布时间
+    expect(await repo.search({ postedAfter: '2026-01-01T00:00:00.000Z', limit: 500 })).toHaveLength(2);
+  });
+
   it('counts by source', async () => {
     const repo = freshRepo();
     await repo.upsertBatch(
@@ -298,5 +313,73 @@ describe('recruiter-owned postings never enter the public pool', () => {
     const stillActive = await repo.search({ ownerAccountId: 'acct-recruiter-1' });
     expect(stillActive[0]!.status).toBe('active');
     expect(await repo.retireOwned('nope', 'acct-recruiter-1', '2026-10-14T00:00:00.000Z')).toBeUndefined();
+  });
+});
+
+describe('listSightingsByNormalizedKeys (repost observation reads)', () => {
+  it('returns every pool row sharing a key, oldest first, inactive included', async () => {
+    const repo = freshRepo();
+    // 同一岗位文本被两个源分别列过：两次入库 → 两条观测
+    await repo.upsertBatch(
+      [samplePosting({ normalizedKey: 'same-text', source: 'remoteok' })],
+      '2026-06-01T00:00:00.000Z',
+    );
+    await repo.upsertBatch(
+      [
+        samplePosting({
+          normalizedKey: 'same-text',
+          source: 'remotive',
+          sourceUrl: 'https://example.com/jobs/other',
+        }),
+      ],
+      '2026-09-05T00:00:00.000Z',
+    );
+    await repo.upsertBatch(
+      [samplePosting({ normalizedKey: 'other-text' })],
+      '2026-09-06T00:00:00.000Z',
+    );
+
+    const sightings = await repo.listSightingsByNormalizedKeys(['same-text']);
+    expect(sightings).toHaveLength(2);
+    expect(sightings.map((s) => s.source)).toEqual(['remoteok', 'remotive']);
+    expect(sightings.map((s) => s.firstSeenAt)).toEqual([
+      '2026-06-01T00:00:00.000Z',
+      '2026-09-05T00:00:00.000Z',
+    ]);
+
+    // 失活只改 status、不刷 last_seen_at ⇒ 已下架的历史观测仍是再上架判据的输入
+    await repo.markStale('2026-09-06T00:00:00.000Z');
+    const afterStale = await repo.listSightingsByNormalizedKeys(['same-text']);
+    expect(afterStale).toHaveLength(2);
+    expect(afterStale.map((s) => s.lastSeenAt)).toEqual([
+      '2026-06-01T00:00:00.000Z',
+      '2026-09-05T00:00:00.000Z',
+    ]);
+  });
+
+  it('short-circuits an empty key list instead of emitting IN ()', async () => {
+    const repo = freshRepo();
+    await repo.upsertBatch([samplePosting()], '2026-09-10T00:00:00.000Z');
+    expect(await repo.listSightingsByNormalizedKeys([])).toEqual([]);
+  });
+
+  it('never surfaces a row whose normalized_key is absent (recruiter JD, empty-string probe)', async () => {
+    const repo = freshRepo();
+    await repo.insertOwned(
+      {
+        title: 'Staff Agent Engineer',
+        company: 'In-house Team',
+        location: 'Shanghai',
+        remote: false,
+        tags: ['typescript'],
+        description: 'Own our internal agent platform.',
+        postedAt: '2026-10-13T00:00:00.000Z',
+        fetchedAt: '2026-10-13T00:00:00.000Z',
+        createdByAccountId: 'acct-recruiter-1',
+      },
+      '2026-10-13T00:00:00.000Z',
+    );
+    // SQL 的 `NULL IN ('')` 永不为真：调用方误传空串也拿不到任何私有行
+    expect(await repo.listSightingsByNormalizedKeys([''])).toEqual([]);
   });
 });

@@ -22,6 +22,7 @@ const SECRET = 'cron-secret-test';
 
 afterEach(() => {
   delete process.env.CRON_SECRET;
+  delete process.env.ALERT_WEBHOOK_URL;
 });
 
 describe('GET /internal/cron/process-job', () => {
@@ -554,5 +555,101 @@ describe('GET /internal/cron/watch-heartbeat (liveness watchdog)', () => {
     const res = await app.request('/internal/cron/watch-heartbeat', auth);
     expect(res.status).toBe(503);
     expect(sendWebPush).not.toHaveBeenCalled();
+  });
+
+  // 外部平台告警 webhook（2026-10-14，ALERT_WEBHOOK_URL；deferred「失败信号无读者」
+  // 剩余缺口②＝没有必定有人看的平台对接）：同一翻转边沿再发一条平台告警，
+  // 未配静默、持续 stale 不重发、发送失败不影响 watchdog 本体语义。
+  it('posts the alert to the external webhook on the fresh→stale edge when ALERT_WEBHOOK_URL is set', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    process.env.ALERT_WEBHOOK_URL = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test';
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'old',
+    );
+    const sendWebPush = vi.fn(
+      async (..._args: Parameters<typeof import('./web-push.js').sendWebPush>) => [],
+    );
+    const sendAlertWebhook = vi.fn(
+      async (
+        ..._args: Parameters<typeof import('./alert-webhook.js').sendAlertWebhook>
+      ) => ({ ok: true, status: 200 }),
+    );
+    const app = await createApp({ repos, sendWebPush, sendAlertWebhook });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(503);
+    expect(sendAlertWebhook).toHaveBeenCalledOnce();
+    const [url, message] = sendAlertWebhook.mock.calls[0] as unknown as [string, string];
+    expect(url).toBe('https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test');
+    expect(message).toContain('agent-tick');
+    expect(message).toContain('health?deep=1');
+  });
+
+  it('skips the webhook while ALERT_WEBHOOK_URL is unset', async () => {
+    delete process.env.ALERT_WEBHOOK_URL;
+    process.env.CRON_SECRET = 'watch-secret';
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'old',
+    );
+    const sendAlertWebhook = vi.fn(
+      async (
+        ..._args: Parameters<typeof import('./alert-webhook.js').sendAlertWebhook>
+      ) => ({ ok: true, status: 200 }),
+    );
+    const app = await createApp({ repos, sendAlertWebhook });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(503);
+    expect(sendAlertWebhook).not.toHaveBeenCalled();
+  });
+
+  it('does not re-post the webhook while the same stale persists', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    process.env.ALERT_WEBHOOK_URL = 'https://open.feishu.cn/open-apis/bot/v2/hook/test';
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'old',
+    );
+    const sendAlertWebhook = vi.fn(
+      async (
+        ..._args: Parameters<typeof import('./alert-webhook.js').sendAlertWebhook>
+      ) => ({ ok: true, status: 200 }),
+    );
+    const app = await createApp({ repos, sendAlertWebhook });
+
+    expect((await app.request('/internal/cron/watch-heartbeat', auth)).status).toBe(503);
+    expect((await app.request('/internal/cron/watch-heartbeat', auth)).status).toBe(503);
+    expect(sendAlertWebhook).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the 503 watchdog verdict when the webhook POST fails (fail-open)', async () => {
+    process.env.CRON_SECRET = 'watch-secret';
+    process.env.ALERT_WEBHOOK_URL = 'https://example.com/alert';
+    const repos = await freshRepos();
+    await repos.cronHeartbeat.recordSuccess(
+      'agent-tick',
+      new Date(Date.now() - 16 * 60_000).toISOString(),
+      'old',
+    );
+    const sendAlertWebhook = vi.fn(
+      async (
+        ..._args: Parameters<typeof import('./alert-webhook.js').sendAlertWebhook>
+      ) => ({ ok: false, status: 400, error: 'HTTP 400' }),
+    );
+    const app = await createApp({ repos, sendAlertWebhook });
+
+    const res = await app.request('/internal/cron/watch-heartbeat', auth);
+    expect(res.status).toBe(503);
+    // watchdog 失败心跳照常落库：告警通道坏掉不能把守望本体带崩
+    const watchdog = (await repos.cronHeartbeat.listAll()).find((hb) => hb.consumer === 'watchdog');
+    expect(watchdog?.lastError).toContain('agent-tick');
   });
 });

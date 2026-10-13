@@ -51,6 +51,20 @@ export interface StoredJobPosting extends NewJobPosting {
   updatedAt: string;
 }
 
+/**
+ * 岗位"出现过"的精简观测行（重复上架 / ghost job 弱信号用）。
+ * 刻意只带时间戳与来源：调用方要的是"同一岗位文本此前何时入过池、最后一次还被列着"，
+ * 不是正文。`lastSeenAt` 是判据核心——失活只改 status、不刷这个字段，
+ * 所以它就是"源站最后一次列出该岗位"的时刻。
+ */
+export interface JobPostingSighting {
+  id: string;
+  normalizedKey: string;
+  source: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
 /** Drizzle 查询返回的原始行（camelCase JS key；tags 为 JSON 文本），两方言结构一致。 */
 export interface RawJobPostingRow {
   id: string;
@@ -152,6 +166,25 @@ function parseTags(raw: string): string[] {
 
 function toStatus(raw: string): JobPostingStatus {
   return raw === 'inactive' ? 'inactive' : 'active';
+}
+
+/**
+ * 观测行 → `JobPostingSighting`（纯函数，双方言共用）：`normalizedKey` 在库里可空
+ * （自建 JD 就是 NULL），读取侧统一收口成空串，调用方不必再判 null。
+ */
+export function toJobPostingSighting(
+  row: Pick<
+    RawJobPostingRow,
+    'id' | 'normalizedKey' | 'source' | 'firstSeenAt' | 'lastSeenAt'
+  >,
+): JobPostingSighting {
+  return {
+    id: row.id,
+    normalizedKey: row.normalizedKey ?? '',
+    source: row.source,
+    firstSeenAt: row.firstSeenAt,
+    lastSeenAt: row.lastSeenAt,
+  };
 }
 
 /** Drizzle 行 → 领域对象（纯函数，双方言共用）。 */

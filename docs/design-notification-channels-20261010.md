@@ -137,5 +137,4 @@ Web Push 触发点：agent-tick 一轮内某 run 从非 awaiting 进入 `awaitin
 - **注入面**：`ApiDeps.sendWebPush?: typeof import('../web-push.js').sendWebPush`（不传默认用真实现；
   VAPID 未配置返回 [] 天然降级）；`RouteDeps` 必填 `sendWebPush`；`index.ts` 装配。
 - **无新表、零迁移**（复用 `cron_heartbeat` 与 `notification_subscriptions`）。
-- **边界**：告警依赖真实订阅开启（当前唯一真实用户＝owner，已开 email_digest）；平台对接类自动告警
-  （企业微信/飞书机器人）不在本期，见 deferred 该条。
+- **边界**：① 告警依赖真实订阅开启（当前唯一真实用户＝owner，已开 email_digest）；② 平台对接类自动告警（企业微信/飞书/Slack 兼容 webhook）已于 **2026-10-14 落地**（`apps/api/src/alert-webhook.ts`，env `ALERT_WEBHOOK_URL`，与 Web Push 同一翻转边沿、fail-open），剩余仅＝用户提供一个机器人 webhook 地址并配进生产 env。

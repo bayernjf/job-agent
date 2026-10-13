@@ -133,6 +133,13 @@ async function insertProfile(repos: StorageContext, id: string, login: string): 
   await repos.evidence.importFromProfile(id, EVIDENCE);
 }
 
+/**
+ * 岗位池夹具的"源站仍列着它"时刻。扫描按 `last_seen_at` 的新鲜窗口（`JOB_STALE_DAYS`
+ * 默认 7 天）排除已下架岗位，所以夹具时间**必须相对"现在"生成**——写死日期会在若干天后
+ * 让扫描静默产出零票据，测试看起来像功能坏了。
+ */
+const POOL_SEEN_AT = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
 /** 与生产采集一致：`jobId` 就是 (source, sourceUrl) 的派生 id（岗位池主键）。 */
 function posting(overrides: Partial<NewJobPosting> = {}): NewJobPosting {
   const base = {
@@ -148,7 +155,7 @@ function posting(overrides: Partial<NewJobPosting> = {}): NewJobPosting {
     tags: ['typescript', 'node'],
     description: 'Build TypeScript services.',
     postedAt: '2026-10-01T00:00:00.000Z',
-    fetchedAt: '2026-10-02T00:00:00.000Z',
+    fetchedAt: POOL_SEEN_AT,
     normalizedKey: 'acme-senior-typescript-engineer',
   };
   const merged = { ...base, ...overrides };
@@ -285,7 +292,7 @@ describe('agent workbench — stage 1 loop', () => {
     await insertProfile(repos, 'p-1', ALICE.login);
     const claim = await json('/profiles/p-1/claim', { method: 'POST' });
     expect(claim.status).toBe(200);
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
 
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
@@ -419,7 +426,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -452,7 +459,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -479,7 +486,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -523,7 +530,7 @@ describe('agent workbench — stage 1 loop', () => {
         posting({ sourceUrl: 'https://boards.example.com/acme/jobs/2', title: 'Marketing Manager', tags: ['marketing'], description: 'Own campaigns.' }),
         posting({ sourceUrl: 'https://boards.example.com/acme/jobs/3', title: 'Backend Engineer', tags: ['typescript'], description: 'Rust only.' }),
       ],
-      '2026-10-02T00:00:00.000Z',
+      POOL_SEEN_AT,
     );
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
@@ -550,7 +557,7 @@ describe('agent workbench — stage 1 loop', () => {
         posting({ sourceUrl: 'https://boards.example.com/acme/jobs/1' }),
         posting({ sourceUrl: 'https://boards.example.com/acme/jobs/2', title: 'TypeScript Platform Engineer' }),
       ],
-      '2026-10-02T00:00:00.000Z',
+      POOL_SEEN_AT,
     );
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
@@ -589,7 +596,7 @@ describe('agent workbench — stage 1 loop', () => {
           title: 'TypeScript Backend Engineer',
         }),
       ],
-      '2026-10-02T00:00:00.000Z',
+      POOL_SEEN_AT,
     );
     const run2Res = await json('/agent/runs', {
       method: 'POST',
@@ -617,7 +624,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -715,7 +722,7 @@ describe('agent workbench — stage 1 loop', () => {
     const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
       body: JSON.stringify(PREFERENCE),
@@ -764,7 +771,7 @@ describe('agent workbench — cron tick', () => {
     const { repos, app, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     // 先建一套「扫不到东西」的偏好：创建任务后停在 watching（等下一轮），pending 为空
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
@@ -819,7 +826,7 @@ describe('agent workbench — cron tick', () => {
     const { repos, app, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -867,7 +874,7 @@ describe('agent workbench — cron tick', () => {
     const { repos, app, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -912,7 +919,7 @@ describe('agent stage 2 — extension pending-fills, outcome write-back, LLM pol
     const { repos, json } = h;
     await insertProfile(repos, 'p-1', ALICE.login);
     await json('/profiles/p-1/claim', { method: 'POST' });
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -1026,7 +1033,7 @@ describe('agent workbench — event stream paging', () => {
   async function seededRun(repos: Harness['repos'], json: Harness['json']) {
     await insertProfile(repos, 'p-page', ALICE.login);
     expect((await json('/profiles/p-page/claim', { method: 'POST' })).status).toBe(200);
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', {
       method: 'POST',
       body: JSON.stringify(PREFERENCE),
@@ -1165,7 +1172,7 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
     await insertProfile(repos, 'p-c1', ALICE.login);
     const claim = await json('/profiles/p-c1/claim', { method: 'POST' });
     expect(claim.status).toBe(200);
-    await repos.jobPostings.upsertBatch([posting()], '2026-10-02T00:00:00.000Z');
+    await repos.jobPostings.upsertBatch([posting()], POOL_SEEN_AT);
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
     const runRes = await json('/agent/runs', {
@@ -1260,7 +1267,7 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
           normalizedKey: 'acme-senior-typescript-engineer-3',
         }),
       ],
-      '2026-10-02T00:00:00.000Z',
+      POOL_SEEN_AT,
     );
     const prefRes = await json('/agent/preferences', { method: 'POST', body: JSON.stringify(PREFERENCE) });
     const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
@@ -1279,5 +1286,330 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
     expect(seen).toHaveLength(2);
     expect(body.intents.filter((i) => i.report.jdInsight)).toHaveLength(2);
     expect(body.intents.filter((i) => !i.report.jdInsight)).toHaveLength(1);
+  });
+});
+
+/**
+ * 质量闸的可见面（C 端体验增量）：闸挡下一条岗位必须说得出**为什么**，
+ * 否则用户无法区分"池子里没有"与"被我的阈值挡了"，也就无从调整。
+ *
+ * 分数口径：一个命中技能满分 6（title 3 / tags 2 / description 1），画像只有 TypeScript，
+ * 所以四条夹具分别落在 high / high（靠发布时间排序落选）/ low（仅标签命中）/ 仅描述命中。
+ */
+describe('agent workbench — gate exclusions are visible', () => {
+  const CHOSEN = posting({
+    sourceUrl: 'https://boards.example.com/acme/jobs/chosen',
+    postedAt: '2026-10-03T00:00:00.000Z',
+  });
+  // 同样合格、但本轮没轮到它出票：它既不是票据，也不算"被闸挡下"
+  const NEXT_PICK = posting({
+    sourceUrl: 'https://boards.example.com/acme/jobs/next-pick',
+    postedAt: '2026-10-02T00:00:00.000Z',
+  });
+  const RUNNER_UP = posting({
+    sourceUrl: 'https://boards.example.com/acme/jobs/runner-up',
+    postedAt: '2026-10-01T00:00:00.000Z',
+  });
+  // 标题不含技能、标签含：过得了守卫但分档只有 low
+  const BELOW_TIER = posting({
+    sourceUrl: 'https://boards.example.com/acme/jobs/below',
+    title: 'Data Engineer',
+    tags: ['typescript', 'airflow'],
+    description: 'Pipelines.',
+  });
+  // 只有描述提到技能：规则 0.2 的守卫直接挡下（哪怕分数够）
+  const DESCRIPTION_ONLY = posting({
+    sourceUrl: 'https://boards.example.com/acme/jobs/desc-only',
+    title: 'Backend Engineer',
+    tags: ['go'],
+    description: 'Uses TypeScript in the core.',
+  });
+
+  async function harness(
+    rows: NewJobPosting[],
+    configOverride: Partial<ReturnType<typeof loadAgentConfig>> = {},
+    preferenceOverride: Record<string, unknown> = {},
+  ) {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const { Cookie } = await loginUser(repos, ALICE);
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(ALICE),
+      agentConfig: { ...loadAgentConfig(), ...configOverride },
+    });
+    const json = (path: string, init: RequestInit = {}) =>
+      app.request(path, {
+        ...init,
+        headers: { 'Content-Type': 'application/json', Cookie, ...(init.headers ?? {}) },
+      });
+    await insertProfile(repos, 'p-gate', ALICE.login);
+    await json('/profiles/p-gate/claim', { method: 'POST' });
+    if (rows.length > 0) await repos.jobPostings.upsertBatch(rows, POOL_SEEN_AT);
+    const prefRes = await json('/agent/preferences', {
+      method: 'POST',
+      body: JSON.stringify({ ...PREFERENCE, targetTitles: ['engineer'], ...preferenceOverride }),
+    });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const preferenceId = preference.preferenceId;
+    const runRes = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-gate' }),
+    });
+    expect(runRes.status).toBe(201);
+    const created = (await runRes.json()) as {
+      run: { runId: string; status: string };
+      intents: Array<{ intentId: string; jobId: string }>;
+    };
+    const exclusions = async () => {
+      const res = await json(`/agent/runs/${created.run.runId}/gate-exclusions`);
+      expect(res.status).toBe(200);
+      return (await res.json()) as {
+        runId: string;
+        status: string;
+        minTier: string;
+        poolSize: number;
+        matchedCount: number;
+        items: Array<{
+          postingId: string;
+          jobId: string;
+          title: string;
+          score: number;
+          tier: string;
+          reason: string;
+        }>;
+      };
+    };
+    return { repos, app, json, Cookie, created, preferenceId, exclusions };
+  }
+
+  it('names the gate that blocked each candidate, in the same ranking order as the picks', async () => {
+    const { created, exclusions } = await harness(
+      [CHOSEN, NEXT_PICK, RUNNER_UP, BELOW_TIER, DESCRIPTION_ONLY],
+      { candidateLimit: 1 },
+    );
+    expect(created.intents.map((i) => i.jobId)).toEqual([CHOSEN.jobId]);
+
+    const body = await exclusions();
+    expect(body.minTier).toBe('mid');
+    expect(body.poolSize).toBe(5);
+    expect(body.matchedCount).toBe(5);
+    // 名次与 selected 用同一把尺：分数相同看发布时间，所以"差一点的就排在差很多的前面"
+    expect(body.items.map((i) => [i.jobId, i.reason, i.tier])).toEqual([
+      [RUNNER_UP.jobId, 'over_candidate_limit', 'high'],
+      [BELOW_TIER.jobId, 'below_min_tier', 'low'],
+      [DESCRIPTION_ONLY.jobId, 'no_title_or_tag_hit', 'low'],
+    ]);
+    // 过了闸、只是本轮没轮到出票的那条，两个清单都不属于它——
+    // 把它标成"被挡下"会让用户以为放宽阈值就能拿到，其实下一轮扫描自然会给它票据。
+    const ids = body.items.map((i) => i.jobId);
+    expect(ids).not.toContain(NEXT_PICK.jobId);
+    expect(created.intents.map((i) => i.jobId)).not.toContain(NEXT_PICK.jobId);
+    // 描述命中那条只有 1 分（分档 low），但原因码必须是守卫，不是"分档不够"
+    expect(body.items[2]!.score).toBe(1);
+  });
+
+  it('never lists a job that already has a ticket, and a rejected one stays out too', async () => {
+    const { json, created, exclusions } = await harness([CHOSEN, BELOW_TIER, DESCRIPTION_ONLY]);
+    // 默认名额下 CHOSEN 已变成票据
+    expect(created.intents.map((i) => i.jobId)).toEqual([CHOSEN.jobId]);
+
+    let body = await exclusions();
+    expect(body.items.map((i) => i.jobId)).toEqual([BELOW_TIER.jobId, DESCRIPTION_ONLY.jobId]);
+
+    // 拒绝那张票据之后，它仍不属于"被闸挡下"——那是去重口径，放宽阈值拿不回来
+    const reject = await json(`/agent/runs/${created.run.runId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ intentId: created.intents[0]!.intentId, reason: '已投递过' }),
+    });
+    expect(reject.status).toBe(200);
+    body = await exclusions();
+    expect(body.items.map((i) => i.jobId)).toEqual([BELOW_TIER.jobId, DESCRIPTION_ONLY.jobId]);
+  });
+
+  it('accounts for every matched job: tickets + blocked = matched, nothing silently dropped', async () => {
+    const { created, exclusions } = await harness([
+      CHOSEN,
+      NEXT_PICK,
+      RUNNER_UP,
+      BELOW_TIER,
+      DESCRIPTION_ONLY,
+    ]);
+    const body = await exclusions();
+    expect(created.intents).toHaveLength(3);
+    expect(created.intents.length + body.items.length).toBe(body.matchedCount);
+  });
+
+  describe('POST /agent/runs/:id/gate-override', () => {
+    type OverrideBody = {
+      run: { status: string };
+      overridden: number;
+      intents: Array<{ intentId: string; jobId: string; status: string; matchTier: string }>;
+      events: Array<{ event: string; actor: string; payload: Record<string, unknown> }>;
+    };
+
+    it('forces one blocked job into the to-apply list and logs who and why in the audit stream', async () => {
+      const { json, created, exclusions } = await harness([CHOSEN, BELOW_TIER, DESCRIPTION_ONLY]);
+      const blocked = (await exclusions()).items;
+      const target = blocked.find((i) => i.jobId === BELOW_TIER.jobId)!;
+
+      const res = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: target.postingId }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as OverrideBody;
+
+      expect(body.overridden).toBe(1);
+      const forced = body.intents.find((i) => i.jobId === BELOW_TIER.jobId);
+      // 越过的是质量闸，人机闸一步没省：新写的必须是 pending 票据，由用户自己确认
+      expect(forced).toMatchObject({ status: 'pending', matchTier: 'low' });
+
+      // 审计：actor 必须是 user（与 agent/tick 的迁移分得开），且留得住"当初为什么被挡"
+      const event = body.events.find((e) => e.event === 'gate_override');
+      expect(event).toBeDefined();
+      expect(event!.actor).toBe('user');
+      expect(event!.payload).toMatchObject({
+        postingId: target.postingId,
+        jobId: BELOW_TIER.jobId,
+        blockedBy: 'below_min_tier',
+        minTier: 'mid',
+        matchTier: 'low',
+        intentId: forced!.intentId,
+      });
+
+      // 它现在属于清单，不再是"被挡"
+      const after = await exclusions();
+      expect(after.items.map((i) => i.jobId)).toEqual([DESCRIPTION_ONLY.jobId]);
+    });
+
+    it('cannot use an override to slip past the daily submit limit', async () => {
+      // 每日上限 1：两条放行的票据一起确认，仍按同一口径整批拒绝——放行不产生额度豁免
+      const { json, created, exclusions } = await harness(
+        [CHOSEN, BELOW_TIER, DESCRIPTION_ONLY],
+        {},
+        { dailySubmitLimit: 1 },
+      );
+      const forcedIds: string[] = [];
+      for (const row of (await exclusions()).items) {
+        const res = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+          method: 'POST',
+          body: JSON.stringify({ postingId: row.postingId }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as OverrideBody;
+        forcedIds.push(
+          body.intents.find((i) => i.jobId === row.jobId)!.intentId,
+        );
+      }
+
+      const approve = await json(`/agent/runs/${created.run.runId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ intentIds: forcedIds }),
+      });
+      expect(approve.status).toBe(429);
+      expect(((await approve.json()) as { code: string }).code).toBe(
+        'AGENT_DAILY_SUBMIT_LIMIT_REACHED',
+      );
+      const pending = (await (
+        await json(`/agent/runs/${created.run.runId}/pending-approvals`)
+      ).json()) as { items: Array<{ status: string }> };
+      expect(pending.items.every((i) => i.status === 'pending')).toBe(true);
+    });
+
+    it('refuses anything the gate did not block, and malformed bodies', async () => {
+      const { json, created, exclusions } = await harness([CHOSEN, BELOW_TIER]);
+      // CHOSEN 已是票据，不在挡下清单里
+      const notBlocked = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: CHOSEN.jobId }),
+      });
+      expect(notBlocked.status).toBe(409);
+      expect(((await notBlocked.json()) as { code: string }).code).toBe(
+        'AGENT_GATE_EXCLUSION_NOT_FOUND',
+      );
+
+      const unknown = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: 'nonexistent-row-id' }),
+      });
+      expect(unknown.status).toBe(409);
+
+      // .strict()：多一个键就是 400，不接受"顺手带个 intentId"
+      const extra = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: BELOW_TIER.jobId, force: true }),
+      });
+      expect(extra.status).toBe(400);
+      const missing = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      expect(missing.status).toBe(400);
+
+      // 拒绝之后清单没变（前面的失败一个都没写进去）
+      expect((await exclusions()).items.map((i) => i.jobId)).toEqual([BELOW_TIER.jobId]);
+    });
+
+    it('stops at the same auth and ownership gates as every other agent surface', async () => {
+      const { app, repos, json, created } = await harness([CHOSEN, BELOW_TIER]);
+      const anonymous = await app.request(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postingId: BELOW_TIER.jobId }),
+      });
+      expect(anonymous.status).toBe(401);
+
+      const bob = await loginUser(repos, BOB);
+      const foreign = await app.request(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: bob.Cookie },
+        body: JSON.stringify({ postingId: BELOW_TIER.jobId }),
+      });
+      expect(foreign.status).toBe(404);
+    });
+
+    it('will not override on a run that has left the human gate', async () => {
+      const { json, created } = await harness([CHOSEN, BELOW_TIER]);
+      const cancel = await json(`/agent/runs/${created.run.runId}/cancel`, { method: 'POST' });
+      expect(cancel.status).toBe(200);
+
+      const res = await json(`/agent/runs/${created.run.runId}/gate-override`, {
+        method: 'POST',
+        body: JSON.stringify({ postingId: BELOW_TIER.jobId }),
+      });
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { code: string }).code).toBe('AGENT_INVALID_TRANSITION');
+    });
+  });
+
+  it('fails loudly instead of pretending the pool was empty', async () => {
+    const { repos, json, created, preferenceId, exclusions } = await harness([CHOSEN, BELOW_TIER]);
+    expect((await exclusions()).items).toHaveLength(1);
+
+    // 偏好行没了：派生不出任何口径，必须报错，不能回空列表（空列表＝"池子里确实没被挡的"）
+    await repos.jobPreferences.delete(preferenceId);
+    const res = await json(`/agent/runs/${created.run.runId}/gate-exclusions`);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe('AGENT_PREFERENCE_NOT_FOUND');
+  });
+
+  it('gates the read like every other agent surface: 401 anonymous, 404 foreign run', async () => {
+    const { app, repos, json, created } = await harness([CHOSEN, BELOW_TIER]);
+    const anonymous = await app.request(`/agent/runs/${created.run.runId}/gate-exclusions`);
+    expect(anonymous.status).toBe(401);
+
+    const bob = await loginUser(repos, BOB);
+    const foreign = await app.request(`/agent/runs/${created.run.runId}/gate-exclusions`, {
+      headers: { Cookie: bob.Cookie },
+    });
+    expect(foreign.status).toBe(404);
+
+    // 终态任务没有闸可看（清单已冻结），409 而不是空列表
+    const cancel = await json(`/agent/runs/${created.run.runId}/cancel`, { method: 'POST' });
+    expect(cancel.status).toBe(200);
+    const cancelled = await json(`/agent/runs/${created.run.runId}/gate-exclusions`);
+    expect(cancelled.status).toBe(409);
+    expect(((await cancelled.json()) as { code: string }).code).toBe('AGENT_RUN_NOT_ACTIVE');
   });
 });

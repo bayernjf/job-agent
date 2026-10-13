@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { matchJobs, type JobMatch } from '@jobagent/job-source';
+import { matchJobs, staleCutoffIso, type JobMatch } from '@jobagent/job-source';
 import {
   enhanceMatchReportWithJd,
   filterPostingsForPreference,
   planIntents,
   planTransition,
   preferenceToMatchCriteria,
-  selectCandidatesForPreference,
-  type CandidateLike,
+  selectCandidatesWithReasonsForPreference,
+  type ExcludedCandidate,
 } from '@jobagent/agent-core';
 import {
   buildCoverLetter,
@@ -37,6 +37,7 @@ import type {
   CoverLetterDraft,
   JobPosting,
   MatchReport,
+  MatchScoreTier,
   ResumeDraft,
 } from '@jobagent/shared';
 import { AGENT_ERROR_CODES } from '@jobagent/shared';
@@ -83,7 +84,11 @@ export interface AgentScanStats {
   matchedCount: number;
   /** 过质量闸并成功装配工件的候选数 */
   candidateCount: number;
-  /** 因已出票据/已投递被排除的条数 */
+  /**
+   * 过了硬过滤与匹配、但没进本轮票据的条数＝`matchedCount - candidateCount` 口径里的
+   * "未选中"全集：**既含**已出票据/已投递的去重，**也含**质量闸挡下的条目。
+   * 要区分两者按原因看 `GET /agent/runs/:id/gate-exclusions`（这里只给一个总数）。
+   */
   excludedCount: number;
   /** 装配工件失败被跳过的条数（显式记录，不静默） */
   skippedCount: number;
@@ -346,6 +351,7 @@ export async function advanceRunOnce(
   const cfg = deps.config ?? {
     candidateLimit: AGENT_DEFAULTS.candidateLimit,
     scanPoolLimit: AGENT_DEFAULTS.scanPoolLimit,
+    poolStaleDays: AGENT_DEFAULTS.poolStaleDays,
     tickMaxRuns: AGENT_DEFAULTS.tickMaxRuns,
     submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
     recommendStaleMinutes: AGENT_DEFAULTS.recommendStaleMinutes,
@@ -402,7 +408,35 @@ export async function advanceRunOnce(
   return scanOnce(repos, cfg, run, preference, profile, nowIso, deps.tick);
 }
 
-async function scanOnce(
+/** 一轮扫描里的候选形状：matchJobs 的输出 + 它打分的岗位池行。 */
+export type RunCandidate = { match: JobMatch<StoredJobPosting>; posting: StoredJobPosting };
+
+/** 一轮扫描的候选推导结果：过闸的、被闸挡下的（带原因码）与两个计数。 */
+export interface DerivedCandidates {
+  /** 岗位池行数（新鲜窗口内还被源站列着的 active 行） */
+  poolSize: number;
+  /** 过完偏好硬过滤且有命中（score>0）的条数 */
+  matchedCount: number;
+  profileSkills: string[];
+  selected: RunCandidate[];
+  /**
+   * 被质量闸挡下的条目，按与 `selected` 同一把尺排序（白名单公司 → 分数 → 发布时间），
+   * 所以用户看到的是"差多少"的顺序，而不是一串乱序噪声。
+   * 已出票据/已投递的岗位不在这里——那是去重，不是闸的判断。
+   */
+  excluded: ExcludedCandidate<RunCandidate>[];
+  minTier: MatchScoreTier;
+  candidateLimit: number;
+}
+
+/**
+ * 推导一轮的候选与被挡清单（纯读：不写票据、不推进状态）。
+ *
+ * `scanOnce` 与 `GET /agent/runs/:id/gate-exclusions` 共用这一份实现是刻意的：
+ * 质量闸"实际怎么筛"和"对界面怎么说自己怎么筛"必须是同一段代码，
+ * 否则界面会开始讲一个内核没做的事——那种漂移只能靠人肉发现。
+ */
+export async function deriveRunCandidates(
   repos: AgentRepos,
   cfg: AgentConfig,
   run: StoredJobRun,
@@ -410,15 +444,18 @@ async function scanOnce(
   profile: AbilityProfile,
   nowIso: string,
   tick?: TickContext,
-): Promise<AdvanceOutcome> {
+): Promise<DerivedCandidates> {
   const profileSkills = profile.skillTags.map((tag) => tag.name);
 
-  // 岗位池：只取 active，按发布时间倒序；偏好过滤是硬过滤（宁可少推，不推错的）。
+  // 岗位池：只取 active 且**新鲜窗口内还被源站列着**的行，按发布时间倒序；
+  // 偏好过滤是硬过滤（宁可少推，不推错的）。已关闭的岗位不能变成"待投"票据——
+  // 用户照着它写一封求职信却发现岗位早没了，是真实伤害。窗口与 stats 同旋钮（JOB_STALE_DAYS）。
   // tick 路径整轮只查一次、跨 run 复用同一快照；手动路径（无 tick）照常自查。
   const pool =
     tick?.pool ??
     (await repos.jobPostings.search({
       status: 'active',
+      seenAfter: staleCutoffIso(cfg.poolStaleDays, new Date(nowIso)),
       limit: cfg.scanPoolLimit,
       orderBy: 'posted_desc',
     }));
@@ -431,8 +468,8 @@ async function scanOnce(
   const excludeJobIds = await appliedJobIds(repos, run.profileId);
   for (const intent of existingIntents) excludeJobIds.add(intent.jobId);
 
-  const selected = selectCandidatesForPreference(
-    matches.map((match) => ({ match, posting: match.posting }) satisfies CandidateLike),
+  const selection = selectCandidatesWithReasonsForPreference<RunCandidate>(
+    matches.map((match) => ({ match, posting: match.posting })),
     {
       minTier: preference.minTier,
       limit: cfg.candidateLimit,
@@ -440,6 +477,188 @@ async function scanOnce(
       preferredCompanyTerms: preference.companyWhitelist,
     },
   );
+
+  return {
+    poolSize: pool.length,
+    matchedCount: matches.length,
+    profileSkills,
+    selected: selection.selected,
+    excluded: selection.excluded,
+    minTier: preference.minTier,
+    candidateLimit: cfg.candidateLimit,
+  };
+}
+
+export type GateOverrideOutcome =
+  | { ok: true; view: AgentRunViewData; intentId: string }
+  | { ok: false; status: 404 | 409; code: string; message: string };
+
+/**
+ * 用户显式放行一条被质量闸挡下的岗位（阶段 2「人机闸」的另一半：闸可以越，人不能省）。
+ *
+ * 越过的**只有质量闸**：
+ *  - 写出来的仍是 `pending` 票据——确认动作（approve）与它背后的当日限频一道都不能少，
+ *    否则"放行"就成了绕过防海投闸的后门；
+ *  - 票据内容与 tick 出的票走同一装配路径（`planIntents` + 工件试装），装配不出
+ *    简历/求职信的岗位照样拒绝——放行不该产出用户点开就失败的票据；
+ *  - 状态迁移与审计同事务（`publishGeneratedIntents` 的 CAS），并发的 tick 与放行
+ *    只有一个赢家，输了的一方零票据、零事件。
+ *
+ * 岗位必须在**本次推导**的挡下清单里（按岗位池行主键 `postingId` 认身份）：
+ * 已出票、已被偏好硬过滤、或池行已下架的岗位都不是"被闸挡下"，一律 409 而不是悄悄新建。
+ */
+export async function overrideGateCandidate(
+  deps: { repos: AgentRepos; now: () => string; config: AgentConfig },
+  runId: string,
+  postingId: string,
+): Promise<GateOverrideOutcome> {
+  const { repos, config: cfg } = deps;
+  const nowIso = deps.now();
+
+  const run = await repos.jobRuns.getById(runId);
+  if (!run) {
+    return { ok: false, status: 404, code: AGENT_ERROR_CODES.runNotFound, message: 'job run not found' };
+  }
+  const plan = planTransition(run.status, 'gate_override');
+  if (!plan.ok) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.invalidTransition,
+      message: `job run in ${run.status} cannot accept a gate override`,
+    };
+  }
+
+  const preference = await repos.jobPreferences.getById(run.preferenceId);
+  if (!preference) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.preferenceNotFound,
+      message: `preference ${run.preferenceId} no longer exists`,
+    };
+  }
+  const profileRow = await repos.profiles.getById(run.profileId);
+  const profile = profileRow?.snapshot as AbilityProfile | undefined;
+  if (!profile) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.profileNotOwned,
+      message: `profile ${run.profileId} has no snapshot`,
+    };
+  }
+
+  const derivation = await deriveRunCandidates(repos, cfg, run, preference, profile, nowIso);
+  const blocked = derivation.excluded.find((entry) => entry.item.posting.id === postingId);
+  if (!blocked) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.gateExclusionNotFound,
+      message: `posting ${postingId} is not on this run's blocked list`,
+    };
+  }
+
+  const planned = planIntents([blocked.item], { profileSkills: derivation.profileSkills })[0];
+  if (!planned) {
+    return { ok: false, status: 409, code: AGENT_ERROR_CODES.artifactsUnavailable, message: 'candidate vanished' };
+  }
+
+  // 与 scanOnce 的「generated」闸同一道校验：真装配一遍，装不出来就不写票据
+  const evidence = toEvidenceItems(await repos.evidence.listByProfile(run.profileId));
+  try {
+    const match = resumeMatchFromReport(planned.report);
+    buildResume({ profile, evidence, posting: blocked.item.posting, match, options: { locale: 'zh-CN' } });
+    buildCoverLetter({ profile, evidence, posting: blocked.item.posting, match, options: { locale: 'zh-CN' } });
+  } catch (err) {
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.artifactsUnavailable,
+      message: `artifacts cannot be assembled for posting ${postingId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+
+  const intentId = `intent-${randomUUID()}`;
+  const gated = await repos.jobRuns.publishGeneratedIntents(
+    run.id,
+    run.status,
+    { status: plan.to, updatedAt: nowIso },
+    {
+      id: `evt-${randomUUID()}`,
+      runId: run.id,
+      event: plan.event,
+      fromStatus: plan.from,
+      toStatus: plan.to,
+      // 放行是人的动作，审计流里必须与 agent/tick 的迁移分得开
+      actor: 'user',
+      payload: {
+        intentId,
+        postingId,
+        jobId: blocked.item.posting.jobId,
+        source: blocked.item.posting.source,
+        matchScore: planned.matchScore,
+        matchTier: planned.matchTier,
+        // 挡下它的两个口径一起留档：事后才能回答"当初为什么没推"
+        minTier: derivation.minTier,
+        blockedBy: blocked.reason,
+      },
+      createdAt: nowIso,
+    },
+    [
+      {
+        id: intentId,
+        runId: run.id,
+        accountId: run.accountId,
+        profileId: run.profileId,
+        jobId: planned.job.jobId,
+        jobSource: planned.job.source,
+        job: planned.job,
+        matchScore: planned.matchScore,
+        matchTier: planned.matchTier,
+        report: planned.report,
+        status: 'pending',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+    ],
+  );
+  if (!gated) {
+    // 并发输家（tick 抢先推进了状态）：不写票据、不写事件，让调用方重读视图再试
+    return {
+      ok: false,
+      status: 409,
+      code: AGENT_ERROR_CODES.invalidTransition,
+      message: 'job run changed underneath this override',
+    };
+  }
+
+  return { ok: true, view: await loadRunView(repos, gated), intentId };
+}
+
+async function scanOnce(
+  repos: AgentRepos,
+  cfg: AgentConfig,
+  run: StoredJobRun,
+  preference: StoredJobPreference,
+  profile: AbilityProfile,
+  nowIso: string,
+  tick?: TickContext,
+): Promise<AdvanceOutcome> {
+  const derivation = await deriveRunCandidates(
+    repos,
+    cfg,
+    run,
+    preference,
+    profile,
+    nowIso,
+    tick,
+  );
+  const selected = derivation.selected;
+  const profileSkills = derivation.profileSkills;
 
   const planned = planIntents(selected, { profileSkills });
 
@@ -463,10 +682,10 @@ async function scanOnce(
   }
 
   const stats: AgentScanStats = {
-    poolSize: pool.length,
-    matchedCount: matches.length,
+    poolSize: derivation.poolSize,
+    matchedCount: derivation.matchedCount,
     candidateCount: ready.length,
-    excludedCount: matches.length - selected.length,
+    excludedCount: derivation.matchedCount - selected.length,
     skippedCount: skipped,
   };
 
@@ -500,9 +719,7 @@ async function scanOnce(
     for (const item of ready) {
       if (Date.now() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
       if (tick?.deadlineAt !== undefined && Date.now() >= tick.deadlineAt) break;
-      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting as
-        | StoredJobPosting
-        | undefined;
+      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting;
       const description = posting?.description;
       if (!description) continue;
       try {
@@ -578,6 +795,7 @@ export async function runAgentTickOnce(deps: {
   const cfg = deps.config ?? {
     candidateLimit: AGENT_DEFAULTS.candidateLimit,
     scanPoolLimit: AGENT_DEFAULTS.scanPoolLimit,
+    poolStaleDays: AGENT_DEFAULTS.poolStaleDays,
     tickMaxRuns: AGENT_DEFAULTS.tickMaxRuns,
     submitStaleHours: AGENT_DEFAULTS.submitStaleHours,
     recommendStaleMinutes: AGENT_DEFAULTS.recommendStaleMinutes,
@@ -625,6 +843,7 @@ export async function runAgentTickOnce(deps: {
     runs.length > 0
       ? await deps.repos.jobPostings.search({
           status: 'active',
+          seenAfter: staleCutoffIso(cfg.poolStaleDays, new Date(nowIso)),
           limit: cfg.scanPoolLimit,
           orderBy: 'posted_desc',
         })

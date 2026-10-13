@@ -144,6 +144,12 @@ export interface ApiDeps {
    * （VAPID 未配置时返回 []，不真发）；测试注入 fake 断言告警推送。
    */
   sendWebPush?: typeof import('../web-push.js').sendWebPush;
+  /**
+   * 外部平台告警 webhook 发送器（2026-10-14，watch-heartbeat stale 翻转边沿用）。
+   * 不传 = 用 alert-webhook.ts 的 sendAlertWebhook（读 ALERT_WEBHOOK_URL，未配即静默）；
+   * 测试注入 fake 断言平台告警发送。
+   */
+  sendAlertWebhook?: typeof import('../alert-webhook.js').sendAlertWebhook;
 }
 
 /** Hono 应用环境变量类型（principal 由全局中间件注入）。 */

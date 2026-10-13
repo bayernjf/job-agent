@@ -1,5 +1,6 @@
 import type { JobSource } from '@jobagent/shared';
 import type {
+  JobPostingSighting,
   JobPostingStatus,
   NewJobPosting,
   RecruiterPostingDraft,
@@ -22,6 +23,12 @@ export interface JobPostingQuery {
   salaryMinUsd?: number;
   /** posted_at >= 该 ISO 时间 */
   postedAfter?: string;
+  /**
+   * last_seen_at >= 该 ISO 时间＝"源站这一轮还列着它"。推荐给正在投简历的人时必须传
+   * （决策 #25 之后的 C 端体验增量：不把已关闭的岗位当在招推荐）；不传＝ operator 面
+   * （CLI / 列表 / MCP 检索）照旧看到全部 active 行，两种口径的差别是故意的。
+   */
+  seenAfter?: string;
   limit?: number;
   offset?: number;
   orderBy?: 'posted_desc' | 'posted_asc' | 'salary_desc';
@@ -61,6 +68,12 @@ export interface IJobPostingsRepository {
   getById(id: string): Promise<StoredJobPosting | undefined>;
   /** 按搜岗 run 列出本次入库的岗位（source=websearch，run 关联列） */
   listBySearchRun(runId: string, limit?: number): Promise<StoredJobPosting[]>;
+  /**
+   * 按 `normalized_key` 批量取"同一岗位文本的观测记录"（重复上架/ghost job 弱信号）。
+   * 空输入必须短路（`IN ()` 在两方言行为不同）；只取公开池行，招聘方自建 JD 的
+   * `normalized_key` 本就是 NULL，不会混进来。
+   */
+  listSightingsByNormalizedKeys(keys: readonly string[]): Promise<JobPostingSighting[]>;
   /**
    * 招聘方发布一条自建 JD（决策 #25，B3-a 最小一刀）。身份三件套（`jobId`、
    * `source='recruiter'`、`sourceUrl='https://recruiter.invalid/<account>/<jobId>'`）

@@ -14,9 +14,11 @@ import {
   IntentOutcomeRequestSchema,
   JobRunApproveSchema,
   JobRunCreateSchema,
+  JobRunGateOverrideSchema,
   JobRunRejectSchema,
   ResumeLocaleSchema,
   RunEventsQuerySchema,
+  type AbilityProfile,
   type SupportedPlatform,
 } from '@jobagent/shared';
 import type { StoredJobRun, StoredSubmitIntent } from '@jobagent/storage';
@@ -29,7 +31,9 @@ import {
   advanceRunOnce,
   applyRunEvent,
   buildIntentArtifacts,
+  deriveRunCandidates,
   loadRunView,
+  overrideGateCandidate,
   renderIntentCoverLetter,
   renderIntentResume,
   runAgentTickOnce,
@@ -330,6 +334,54 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     });
   });
 
+  // GET /agent/runs/:id/gate-exclusions：质量闸**挡下了什么**（C 端体验增量：闸不能只挡不说）。
+  // 每次读都现算：它是"当前偏好 × 当前岗位池"的派生视图，不是历史事实。落库反而会让
+  // 界面讲的和下一轮 tick 做的不是同一件事——两侧共用 `deriveRunCandidates` 这一份实现。
+  app.get('/agent/runs/:id/gate-exclusions', async (c) => {
+    const run = await requireOwnedRun(c, c.req.param('id') ?? '');
+    if (run instanceof Response) return run;
+    if (isTerminalStatus(run.status)) {
+      return c.json({ error: 'job run is not active', code: AGENT_ERROR_CODES.runNotActive }, 409);
+    }
+    const [preference, profileRow] = await Promise.all([
+      repos.jobPreferences.getById(run.preferenceId),
+      repos.profiles.getById(run.profileId),
+    ]);
+    const profile = profileRow?.snapshot as AbilityProfile | null | undefined;
+    if (!preference || !profile) {
+      // 偏好在扫描时缺行会把 run 直接置 failed；走到这里说明数据已不完整，如实报错而不是回空列表
+      return c.json(
+        { error: 'job run inputs are missing', code: AGENT_ERROR_CODES.preferenceNotFound },
+        409,
+      );
+    }
+    const derivation = await deriveRunCandidates(agentRepos, agentConfig, run, preference, profile, now());
+    return c.json({
+      runId: run.id,
+      status: run.status,
+      minTier: derivation.minTier,
+      candidateLimit: derivation.candidateLimit,
+      poolSize: derivation.poolSize,
+      matchedCount: derivation.matchedCount,
+      items: derivation.excluded.map((entry) => ({
+        // postingId＝岗位池行主键：不同源可以携带同一个外部 jobId，放行时必须按池行认身份
+        postingId: entry.item.posting.id,
+        jobId: entry.item.posting.jobId,
+        source: entry.item.posting.source,
+        sourceUrl: entry.item.posting.sourceUrl,
+        title: entry.item.posting.title,
+        company: entry.item.posting.company,
+        location: entry.item.posting.location,
+        remote: entry.item.posting.remote,
+        postedAt: entry.item.posting.postedAt,
+        score: entry.item.match.score,
+        matchedSkills: entry.item.match.matchedSkills,
+        tier: entry.tier,
+        reason: entry.reason,
+      })),
+    });
+  });
+
   // GET /agent/runs/:id/submissions：已提交的票据 + 各自的结果回标状态。
   // D1 的写端点（POST /agent/intents/:id/outcome）此前没有任何读取面把结果回给界面，
   // 于是「回标」这件事在产品里不存在——这条是它的读侧，也是复盘样本能攒起来的前提。
@@ -442,6 +494,28 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
         ? ((await applyRunEvent(repos, run, 'reject', 'user', rejectedAt)) ?? run)
         : run;
     return c.json(toRunViewData(await loadRunView(repos, nextRun)));
+  });
+
+  // POST /agent/runs/:id/gate-override：用户点名把一条被质量闸挡下的岗位拉进待投清单。
+  // 越的是质量闸，**不是**人机闸也不是限频闸：票据仍停在 pending，确认与每日额度照旧。
+  // 审计落一条 actor='user' 的 gate_override 事件（含 postingId/分数/档位/挡下原因），
+  // 所以"谁越了闸、越的是哪一条、当初为什么被挡"在可回放的事件流里永远查得到。
+  app.post('/agent/runs/:id/gate-override', async (c) => {
+    const run = await requireOwnedRun(c, c.req.param('id') ?? '');
+    if (run instanceof Response) return run;
+    const parsed = JobRunGateOverrideSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid gate override request', details: parsed.error.flatten() }, 400);
+    }
+    const outcome = await overrideGateCandidate(
+      { repos: agentRepos, now, config: agentConfig },
+      run.id,
+      parsed.data.postingId,
+    );
+    if (!outcome.ok) {
+      return c.json({ error: outcome.message, code: outcome.code }, outcome.status);
+    }
+    return c.json({ ...toRunViewData(outcome.view), overridden: 1 });
   });
 
   // POST /agent/intents/:id/mark-submitted：用户投完回来回填「已投」→ 写一条投递记录（origin=agent）并进入跟踪。

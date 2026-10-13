@@ -5,6 +5,11 @@ export type {
   SourceSyncOutcome,
 } from './types.js';
 export { createJobHttpClient, JobHttpError } from './http-client.js';
+export {
+  JOB_DEFAULT_STALE_DAYS,
+  parseStaleDays,
+  staleCutoffIso,
+} from './freshness.js';
 export { syncOnce, type SyncOnceDeps } from './ingestor.js';
 export * from './normalize/index.js';
 export type { JobSourceAdapter, CollectContext, CollectResult } from './adapters/types.js';

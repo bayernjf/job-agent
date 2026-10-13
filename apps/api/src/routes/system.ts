@@ -74,41 +74,66 @@ function toPublicHeartbeat(hb: {
 }
 
 /**
- * 心跳告警推送（deferred「Cron Worker 的失败信号没有任何读者」闭环，2026-10-10）：
- * 复用决策 #25-2 的 Web Push 通道，模式与 agent-tick 的候选推送一致——gone 删行、
- * ok 记 markSent、失败只 console.error 绝不抛（watchdog 本体照常记录失败心跳）。
- * VAPID 未配置时 sendWebPush 返回 []，天然降级为"只记心跳不打扰"。
+ * 心跳告警推送（deferred「Cron Worker 的失败信号没有任何读者」闭环，2026-10-10；
+ * 2026-10-14 增补外部平台 webhook 通道，补掉剩余缺口②「没有必定有人看的平台对接」）：
+ * 两个通道共用同一个翻转边沿触发点——
+ *   ① Web Push（决策 #25-2）：模式与 agent-tick 的候选推送一致——gone 删行、
+ *      ok 记 markSent、失败只 console.error 绝不抛（watchdog 本体照常记录失败心跳）。
+ *      VAPID 未配置时 sendWebPush 返回 []，天然降级为"只记心跳不打扰"。
+ *   ② 外部平台 webhook（ALERT_WEBHOOK_URL 配置时才发）：企业微信/飞书/Slack 兼容，
+ *      不依赖用户开订阅——配了机器人地址就有一个"必定有人看"的读者。同样绝不抛。
+ * 持续 stale 不重复打扰：由调用方的 lastError 边沿判定保证（见 watch-heartbeat handler）。
  */
-async function maybePushWatchdogAlert(
+async function maybeSendWatchdogAlert(
   repos: RouteDeps['repos'],
   sendWebPush: RouteDeps['sendWebPush'],
+  sendAlertWebhook: RouteDeps['sendAlertWebhook'],
   now: () => string,
   stale: string[],
 ): Promise<void> {
   if (stale.length === 0) return;
   try {
     const subs = await repos.notificationSubscriptions.listEnabledByChannel('web_push');
-    if (subs.length === 0) return;
-    const sent = await sendWebPush(subs, {
-      title: 'JobAgent 服务告警 / Service alert',
-      body: `消费心跳过期: ${stale.join('; ')}`,
-      url: 'https://app.job-agent.bayjf.com/zh-CN/workbench',
-    });
-    const gone = sent.filter((s) => s.gone).map((s) => s.subscriptionId);
-    for (const id of gone) {
-      await repos.notificationSubscriptions.removeById(id);
-    }
-    const okIds = sent.filter((s) => s.ok).map((s) => s.subscriptionId);
-    if (okIds.length > 0) {
-      await repos.notificationSubscriptions.markSent(okIds, now());
+    if (subs.length > 0) {
+      const sent = await sendWebPush(subs, {
+        title: 'JobAgent 服务告警 / Service alert',
+        body: `消费心跳过期: ${stale.join('; ')}`,
+        url: 'https://app.job-agent.bayjf.com/zh-CN/workbench',
+      });
+      const gone = sent.filter((s) => s.gone).map((s) => s.subscriptionId);
+      for (const id of gone) {
+        await repos.notificationSubscriptions.removeById(id);
+      }
+      const okIds = sent.filter((s) => s.ok).map((s) => s.subscriptionId);
+      if (okIds.length > 0) {
+        await repos.notificationSubscriptions.markSent(okIds, now());
+      }
     }
   } catch (err) {
     console.error('[cron] watch-heartbeat web push failed:', JSON.stringify(describeError(err)));
   }
+  // 外部平台 webhook：URL 内嵌 token 是密钥，只走服务端 env；报文含各消费方原始
+  // lastError（该通道的读者＝配了机器人的 owner，与 CRON_SECRET 内部端点同受众）。
+  const webhookUrl = process.env.ALERT_WEBHOOK_URL;
+  if (!webhookUrl) return;
+  const result = await sendAlertWebhook(
+    webhookUrl,
+    [
+      '⚠ [JobAgent] 服务告警 / Service alert：cron 消费方心跳过期 / stale consumer heartbeat',
+      ...stale.map((s) => `- ${s}`),
+      '探活 / Probe: https://app.job-agent.bayjf.com/api/health?deep=1（503＝有消费方过期）',
+    ].join('\n'),
+  );
+  if (!result.ok) {
+    console.error(
+      '[cron] watch-heartbeat alert webhook failed:',
+      JSON.stringify({ status: result.status, error: result.error }),
+    );
+  }
 }
 
 export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now, deps, cronAuthorized, sendWebPush } = d;
+  const { repos, now, deps, cronAuthorized, sendWebPush, sendAlertWebhook } = d;
 
   // 健康检查：浅检查（默认）不依赖 DB，恒定返回进程存活；
   // ?deep=1（或 ?deep=true）额外执行一次持久化层 SELECT 1 往返，DB 不可达时返回 503，
@@ -249,7 +274,8 @@ export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
       if (stale.length > 0) {
         const message = `stale: ${stale.join('; ')}`;
         // 自动告警（deferred「Cron Worker 的失败信号没有任何读者」已闭环）：
-        // 只在"上轮健康 → 本轮 stale"的翻转边沿向启用 web_push 的订阅推一次告警。
+        // 只在"上轮健康 → 本轮 stale"的翻转边沿发一次告警——Web Push 订阅 +
+        // ALERT_WEBHOOK_URL 外部平台（企业微信/飞书/Slack 兼容，2026-10-14）。
         // 防抖依据 watchdog 行 last_error：持续 stale 期间它非空（recordFailure 不清
         // last_success_at 也不清自身 last_error），同一事件不重复打扰；恢复时
         // recordSuccess 清空，下次新事件才会再推。digest-tick 每日邮件兜底。
@@ -257,7 +283,7 @@ export function registerSystem(app: Hono<HonoEnv>, d: RouteDeps): void {
         const wasAlreadyStale =
           watchdogPrev != null && watchdogPrev.lastError != null && watchdogPrev.lastError !== '';
         if (!wasAlreadyStale) {
-          await maybePushWatchdogAlert(repos, sendWebPush, now, stale);
+          await maybeSendWatchdogAlert(repos, sendWebPush, sendAlertWebhook, now, stale);
         }
         await repos.cronHeartbeat.recordFailure(WATCHDOG_CONSUMER, started, message);
         return c.json({ status: 'error', stale }, 503);

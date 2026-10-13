@@ -153,6 +153,20 @@ test.describe('agent workbench — full stack', () => {
     await expect(first).not.toContainText('tag_match');
     await expect(first).not.toContainText('tag_not_in_profile');
 
+    // 质量闸的可观测面（真全栈）：夹具 1005 的 TypeScript 只出现在正文，被守卫挡下。
+    // 这条断言同时钉住"界面读的是真端点真字段"——mock 用例里我自己写的夹具证明不了这件事。
+    const gate = page.getByTestId('agent-gate');
+    await expect(gate.getByTestId('agent-gate-row')).toHaveCount(0); // 折叠时不取
+    await gate.locator('summary').click();
+    const blocked = gate.getByTestId('agent-gate-row');
+    await expect(blocked).toHaveCount(1);
+    await expect(blocked.first()).toContainText('Site Reliability Engineer');
+    await expect(gate.getByTestId('agent-gate-reason').first()).toContainText(
+      'mentioned only in the description',
+    );
+    // 内核只出原因码，句子由渲染侧拼：码印到界面上就是缺陷
+    await expect(gate).not.toContainText('no_title_or_tag_hit');
+
     // 回归：简历下载必须 200（票据快照带岗位池主键），且落地为 md 文件
     const [resumeResponse] = await Promise.all([
       page.waitForResponse((r) => r.url().includes('/resumes/build') && r.request().method() === 'POST'),
@@ -217,6 +231,42 @@ test.describe('agent workbench — full stack', () => {
 
     // 真链路不应有控制台报错（曾经那条 404 就出现在这里）
     expect(consoleErrors).toEqual([]);
+  });
+
+  test('overriding the quality gate puts a pending ticket on the list and logs the user action', async ({
+    page,
+  }) => {
+    await login(page);
+    await openWorkbenchHydrated(page);
+    await createPreferenceAndRun(page);
+
+    const intents = page.getByTestId('agent-intent');
+    await expect(intents).toHaveCount(3);
+
+    const gate = page.getByTestId('agent-gate');
+    await gate.locator('summary').click();
+    const blocked = gate.getByTestId('agent-gate-row');
+    await expect(blocked).toHaveCount(1);
+    await expect(blocked).toContainText('Site Reliability Engineer');
+
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/gate-override') && r.request().method() === 'POST',
+      ),
+      blocked.getByTestId('agent-gate-override').click(),
+    ]);
+    expect(response.status()).toBe(200);
+
+    // 越过的只有质量闸：那条岗位变成第 4 张**待确认**票据，不是"已确认"
+    await expect(intents).toHaveCount(4);
+    const statuses = await page.locator('.agent-intent-status').allInnerTexts();
+    expect(statuses).toEqual(['Pending', 'Pending', 'Pending', 'Pending']);
+    // 它也不再出现在被挡清单里（清单随 run 视图一起重取）
+    await expect(gate.getByTestId('agent-gate-row')).toHaveCount(0);
+    // 审计流必须留得下这条用户动作，且是本地化文案而不是内部码
+    const timelineText = await page.getByTestId('agent-timeline').innerText();
+    expect(timelineText).toContain('User overrode the quality gate for one blocked job');
+    expect(timelineText).not.toContain('gate_override');
   });
 
   test('stage-2 extension contract: pending-fills → tailored cover letter (with AI disclosure) → submitted receipt → outcome write-back', async ({

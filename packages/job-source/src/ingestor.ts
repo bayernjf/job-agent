@@ -1,12 +1,11 @@
 import type { JobSource } from '@jobagent/shared';
 import type { IJobPostingsRepository, NewJobPosting } from '@jobagent/storage';
 import { createJobHttpClient } from './http-client.js';
+import { JOB_DEFAULT_STALE_DAYS, staleCutoffIso } from './freshness.js';
 import { makeNormalizedKey } from './normalize/dedupe-key.js';
 import type { JobHttpClient, JobHttpOptions, SyncResult, SourceSyncOutcome } from './types.js';
 import type { JobSourceAdapter } from './adapters/types.js';
 
-const DEFAULT_STALE_DAYS = 7;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** 单源采集整体预算（毫秒）：ATS 类源在部分网络（如托管 runner）单请求可能挂起超时，
  *  并发拉取只压缩"批数×超时"仍不够时，必须给整个 collect 一个硬顶，超时中止全部在途请求并跳过该源。 */
@@ -101,7 +100,7 @@ export async function syncOnce(deps: SyncOnceDeps): Promise<SyncResult> {
   const now = deps.now ?? (() => new Date());
   const startedAt = now().toISOString();
   const http = deps.http ?? createJobHttpClient(deps.httpOptions);
-  const staleDays = deps.staleDays ?? DEFAULT_STALE_DAYS;
+  const staleDays = deps.staleDays ?? JOB_DEFAULT_STALE_DAYS;
   const outcomes: SourceSyncOutcome[] = [];
   const budgets: Record<JobSource, number> = {
     ...DEFAULT_SOURCE_BUDGETS_MS,
@@ -157,7 +156,7 @@ export async function syncOnce(deps: SyncOnceDeps): Promise<SyncResult> {
 
   let markedStale = 0;
   if (!deps.dryRun) {
-    const cutoff = new Date(now().getTime() - staleDays * DAY_MS).toISOString();
+    const cutoff = staleCutoffIso(staleDays, now());
     markedStale = await deps.repo.markStale(cutoff);
   }
 

@@ -56,6 +56,7 @@ import {
   resolvePrincipal,
 } from './principal.js';
 import { API_TOKEN_TTL_MS } from '@jobagent/shared';
+import { parseStaleDays } from '@jobagent/job-source';
 import { registerSystem, REQUIRED_COLUMNS } from './routes/system.js';
 import { registerDemo } from './routes/demo.js';
 import { registerAuth } from './routes/auth.js';
@@ -70,6 +71,7 @@ import { registerLlmRoutes } from './routes/llm.js';
 import { registerClaimVerifications } from './routes/claim-verifications.js';
 import { registerNotifications } from './routes/notifications.js';
 import { sendWebPush } from './web-push.js';
+import { sendAlertWebhook } from './alert-webhook.js';
 import { describeError } from './routes/helpers.js';
 import type { RouteDeps } from './routes/context.js';
 import type { ApiDeps, ApiRepos, HonoEnv } from './routes/types.js';
@@ -229,11 +231,14 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     }
   }
   const llmEncKey = deps.llmEncKey ?? process.env.LLM_ENC_KEY ?? null;
+  // 岗位新鲜窗口（与 /job-postings/stats 同一个 JOB_STALE_DAYS 口径，不新增 env）。
+  const jobStaleDays = parseStaleDays(process.env.JOB_STALE_DAYS);
 
   // 各域 router 共享的依赖包。
   const routeDeps: RouteDeps = {
     repos,
     now,
+    jobStaleDays,
     cfg,
     authCfg,
     githubProvider,
@@ -249,6 +254,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     cronAuthorized,
     deps,
     sendWebPush: deps.sendWebPush ?? sendWebPush,
+    sendAlertWebhook: deps.sendAlertWebhook ?? sendAlertWebhook,
   };
 
   // 按原 index.ts 的注册顺序挂载（顺序对 /profiles/by-subject、/job-postings/stats 等

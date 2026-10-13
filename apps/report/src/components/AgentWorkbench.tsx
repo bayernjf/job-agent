@@ -131,6 +131,8 @@ export interface Labels {
     lastScan: string;
     lastScanNever: string;
     scanResult: string;
+    /** 装配失败那条的第二句（只在 skippedCount>0 时出现） */
+    scanSkipped: string;
     timeline: string;
     timelineEmpty: string;
     /** 折叠行的时间范围模板（`{from}` / `{to}`） */
@@ -176,6 +178,26 @@ export interface Labels {
     outcomeUnset: string;
     saved: string;
     outcome: Record<OutcomeFeedback, string>;
+  };
+  /**
+   * 质量闸的可观测面（C 端体验增量）：闸挡下一条岗位必须说得出为什么挡，
+   * 否则用户分不清"池子里没有"与"被我的阈值挡了"。
+   */
+  gate: {
+    title: string;
+    /** 已取到清单时的标题（`{count}` 占位） */
+    titleWithCount: string;
+    hint: string;
+    loading: string;
+    empty: string;
+    error: string;
+    /** `{score}` 分与 `{tier}` 档 */
+    scoreLabel: string;
+    reason: Record<GateExclusionReason, string>;
+    /** 显式放行：越过质量闸，把人机闸与限频闸原样留着 */
+    override: string;
+    overriding: string;
+    overridden: string;
   };
   match: {
     title: string;
@@ -244,6 +266,7 @@ const EVENT_KIND_KEYS: Record<JobRunEventKind, string> = {
   generated: 'generated',
   approve: 'approve',
   reject: 'reject',
+  gate_override: 'gateOverride',
   rescan: 'rescan',
   submitted: 'submitted',
   track: 'track',
@@ -471,6 +494,26 @@ type SubmissionRow = SubmitIntent & {
   outcomeFeedbackAt: string | null;
 };
 
+/**
+ * 质量闸挡下的一行：`GET /agent/runs/:id/gate-exclusions`。
+ * `reason` 是内核给的原因码（不是句子），文案取 `labels.gate.reason[code]`。
+ */
+type GateExclusionReason = 'no_title_or_tag_hit' | 'below_min_tier' | 'over_candidate_limit';
+
+interface GateExclusionRow {
+  postingId: string;
+  jobId: string;
+  title: string;
+  company: string;
+  location: string | null;
+  remote: boolean;
+  sourceUrl: string;
+  score: number;
+  tier: MatchScoreTier;
+  reason: GateExclusionReason;
+  matchedSkills: readonly string[];
+}
+
 /** C1「岗位要求」区块：LLM 提取的三类短语，技能以标签渲染、职责/资历以列表渲染；全空不占位。 */
 function JdRequirements({ insight, labels }: { insight: JdInsight; labels: Labels }) {
   const groups: { label: string; items: string[]; asTags: boolean; testid: string }[] = [
@@ -538,6 +581,16 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [pending, setPending] = useState<SubmitIntent[] | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
+  /**
+   * 质量闸挡下的清单。`null`＝还没取过：这个读数每次都要重跑一遍岗位池扫描，
+   * 所以只在用户展开那一节时才拉（首屏不付这个钱），换任务即作废。
+   */
+  const [gateExclusions, setGateExclusions] = useState<GateExclusionRow[] | null>(null);
+  const [gateOpen, setGateOpen] = useState(false);
+  const [gateLoading, setGateLoading] = useState(false);
+  const [gateError, setGateError] = useState<string | null>(null);
+  const [gateNote, setGateNote] = useState<string | null>(null);
+  const [overridingPostingId, setOverridingPostingId] = useState<string | null>(null);
 
   const [prefsLoading, setPrefsLoading] = useState(true);
   const [runsLoading, setRunsLoading] = useState(true);
@@ -568,6 +621,8 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
   const [approvedNote, setApprovedNote] = useState<string | null>(null);
 
   const seqRef = useRef(0);
+  /** 被挡清单单独一个序号：它的请求与 run 视图/待投清单互不相干，不能共用 seq 互相顶掉。 */
+  const gateSeqRef = useRef(0);
 
   /**
    * 清未读：拥有者打开一个有待确认新候选的 run 时，调显式已读端点并就地把
@@ -597,6 +652,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
       setSelectedRunId(runId);
       setScanNote(null);
       setApprovedNote(null);
+      setGateNote(null);
       // 用户主动点开一个带着未读新候选的任务才算「看过」；首屏自动展开不清徽标。
       // 静默、不阻塞详情加载，失败也不影响主流程。
       if (runId && runs.find((r) => r.runId === runId)?.hasUnseenApprovals) {
@@ -662,6 +718,54 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
     },
     [apiBase],
   );
+
+  /**
+   * 质量闸挡下的岗位（展开那一节才取：服务端每次读都要重跑一遍岗位池扫描）。
+   * 失败只影响这一块——与已投清单同一原则，不连带打断待投清单。
+   */
+  const fetchGateExclusions = useCallback(
+    async (runId: string): Promise<GateExclusionRow[]> => {
+      const res = await fetch(
+        `${apiBase}/agent/runs/${encodeURIComponent(runId)}/gate-exclusions`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) throw await failure(res);
+      const body = (await res.json()) as { items?: GateExclusionRow[] };
+      return body.items ?? [];
+    },
+    [apiBase],
+  );
+
+  /**
+   * 只在展开时取，并在"这一屏的数据变了"之后自动重取。
+   *
+   * 为什么不并进首屏那三个并发请求：这个读数服务端每次都要重跑一遍岗位池扫描
+   * （500 条池 + 打分），而多数用户从不展开这一节。
+   * 依赖里带上 `run.updatedAt` 与待投数量：approve/reject/scan/放行之后清单必然变了，
+   * 展开着的面板不该继续显示一批旧答案。
+   */
+  const gateVersion = `${runView?.run.updatedAt ?? ''}:${pending?.length ?? 0}`;
+  useEffect(() => {
+    if (!gateOpen || !selectedRunId) return;
+    const seq = ++gateSeqRef.current;
+    const runId = selectedRunId;
+    void (async () => {
+      setGateLoading(true);
+      setGateError(null);
+      try {
+        const items = await fetchGateExclusions(runId);
+        if (seq !== gateSeqRef.current) return;
+        setGateExclusions(items);
+      } catch (err) {
+        if (seq !== gateSeqRef.current) return;
+        setGateError(err instanceof Error ? err.message : String(err));
+        setGateExclusions(null);
+      } finally {
+        if (seq === gateSeqRef.current) setGateLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateOpen, selectedRunId, gateVersion, fetchGateExclusions]);
 
   /** 首屏：并行拉本人偏好与任务列表。 */
   useEffect(() => {
@@ -930,7 +1034,14 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
       run: JobRun;
       events: JobRunEvent[];
       intents: SubmitIntent[];
-      scan?: { candidates: number; intentsCreated: number; poolSize: number; note?: string };
+      /** 与 `AgentScanStats` 同名字段（旧代码在这里读 `candidates`/`note`，那些键 API 从不返回） */
+      scan?: {
+        poolSize: number;
+        matchedCount: number;
+        candidateCount: number;
+        excludedCount: number;
+        skippedCount: number;
+      };
     }>(
       `/agent/runs/${encodeURIComponent(selectedRunId)}/scan`,
       { method: 'POST' },
@@ -939,12 +1050,17 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
     setScanning(false);
     if (!body) return;
     if (body.scan) {
-      const note = fillTemplate(labels.runs.scanResult, {
-        candidates: body.scan.candidates,
-        intentsCreated: body.scan.intentsCreated,
+      let note = fillTemplate(labels.runs.scanResult, {
         poolSize: body.scan.poolSize,
+        matched: body.scan.matchedCount,
+        candidates: body.scan.candidateCount,
+        blocked: body.scan.excludedCount,
       });
-      setScanNote(body.scan.note ? `${note} — ${body.scan.note}` : note);
+      // 装配失败是第三种"没进清单"，与质量闸挡下分开说，用户才知道该调阈值还是该补证据
+      if (body.scan.skippedCount > 0) {
+        note += ` ${fillTemplate(labels.runs.scanSkipped, { skipped: body.scan.skippedCount })}`;
+      }
+      setScanNote(note);
     }
     await refreshRuns();
   };
@@ -1000,6 +1116,24 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
     setBusyIntentId(null);
     if (!body) return;
     setApprovedNote(fillTemplate(labels.pending.approved, { count: body.approved }));
+  };
+
+  /**
+   * 放行一条被质量闸挡下的岗位：它变成一张 `pending` 票据回到待投清单，
+   * 确认与投递仍由人完成。清单会随 run 视图一起重取（挡下的那条当场从列表消失）。
+   */
+  const overrideBlocked = async (postingId: string): Promise<void> => {
+    if (!selectedRunId) return;
+    setOverridingPostingId(postingId);
+    setGateError(null);
+    const body = await mutate<{ overridden?: number }>(
+      `/agent/runs/${encodeURIComponent(selectedRunId)}/gate-override`,
+      { method: 'POST', body: JSON.stringify({ postingId }) },
+      labels.gate.error,
+    );
+    setOverridingPostingId(null);
+    if (!body) return;
+    setGateNote(labels.gate.overridden);
   };
 
   const rejectIntent = async (intentId: string): Promise<void> => {
@@ -1855,6 +1989,82 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
           <ul className="agent-intent-list">{pendingItems.map(renderIntent)}</ul>
         )}
       </section>
+
+      {/* ── 质量闸挡下的岗位（闸必须说清它挡了什么）───────────────────── */}
+      {selectedRunId && (
+        <section className="ja-card agent-gate" data-testid="agent-gate">
+          <details onToggle={(event) => setGateOpen(event.currentTarget.open)}>
+            <summary>
+              {gateExclusions
+                ? fillTemplate(labels.gate.titleWithCount, { count: gateExclusions.length })
+                : labels.gate.title}
+            </summary>
+            <p className="ja-muted">{labels.gate.hint}</p>
+
+            {gateLoading && (
+              <p className="ja-muted" role="status" aria-live="polite">
+                {labels.gate.loading}
+              </p>
+            )}
+
+            {!gateLoading && gateError && (
+              <p className="ja-muted" role="alert">
+                {labels.gate.error}: {gateError}
+              </p>
+            )}
+
+            {!gateLoading && !gateError && gateExclusions?.length === 0 && (
+              <p className="ja-muted">{labels.gate.empty}</p>
+            )}
+
+            {gateNote && (
+              <p className="ja-muted" role="status" aria-live="polite" data-testid="agent-gate-note">
+                {gateNote}
+              </p>
+            )}
+
+            {gateExclusions && gateExclusions.length > 0 && (
+              <ul className="agent-gate-list">
+                {gateExclusions.map((row) => (
+                  <li className="agent-gate-row" data-testid="agent-gate-row" key={row.postingId}>
+                    <a
+                      className="agent-gate-title"
+                      href={row.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {row.title}
+                    </a>
+                    <span className="ja-muted">{row.company}</span>
+                    {row.location && <span className="ja-muted">{row.location}</span>}
+                    <span className="agent-gate-reason" data-testid="agent-gate-reason">
+                      {labels.gate.reason[row.reason]}
+                    </span>
+                    <span className="ja-muted">
+                      {fillTemplate(labels.gate.scoreLabel, {
+                        score: row.score,
+                        tier: labels.tiers[row.tier],
+                      })}
+                    </span>
+                    {/* 放行只把人机闸的入口打开：票据仍是 pending，确认与投递仍归人 */}
+                    <button
+                      type="button"
+                      className="ja-btn"
+                      data-testid="agent-gate-override"
+                      disabled={overridingPostingId !== null}
+                      onClick={() => void overrideBlocked(row.postingId)}
+                    >
+                      {overridingPostingId === row.postingId
+                        ? labels.gate.overriding
+                        : labels.gate.override}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
+        </section>
+      )}
 
       <section className="ja-card agent-pending" data-testid="agent-submissions">
         <h2>{labels.submissions.title}</h2>

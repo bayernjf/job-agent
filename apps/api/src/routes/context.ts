@@ -18,6 +18,11 @@ export interface RouteDeps {
   repos: ApiRepos;
   /** 可注入的"现在" */
   now: () => string;
+  /**
+   * 岗位新鲜窗口（天），来自 `JOB_STALE_DAYS`（默认 7），与 `/job-postings/stats` 同源。
+   * 推荐给候选人与岗位匹配必须按它过滤——已关闭的岗位不该出现在"为你推荐的岗位"里。
+   */
+  jobStaleDays: number;
   /** 演示模式配置 */
   cfg: DemoConfig;
   /** 账号 / OAuth 配置 */
@@ -44,4 +49,6 @@ export interface RouteDeps {
   deps: ApiDeps;
   /** Web Push 发送器（决策 #25-2；watch-heartbeat 告警用，测试注入 fake） */
   sendWebPush: typeof import('../web-push.js').sendWebPush;
+  /** 外部平台告警 webhook 发送器（2026-10-14；watch-heartbeat 边沿告警用，测试注入 fake） */
+  sendAlertWebhook: typeof import('../alert-webhook.js').sendAlertWebhook;
 }

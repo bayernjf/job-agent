@@ -333,6 +333,92 @@ describe('POST /job-postings/match with profileId', () => {
 });
 
 describe('GET /profiles/:id/job-recommendations', () => {
+  it('excludes postings the sources no longer list, while the operator list still shows them', async () => {
+    // 新鲜窗口（JOB_STALE_DAYS 默认 7 天）只约束"要不要推荐他去投"：
+    // 一条 30 天前最后见到、状态仍是 active 的岗位不该进推荐，但仍要在运营面可查。
+    const { app, repos } = await harness([
+      job({ title: 'Senior Python Engineer', tags: ['python'], description: 'python' }),
+    ]);
+    await repos.jobPostings.upsertBatch(
+      [job({ title: 'Ancient Python Engineer', tags: ['python'], description: 'python' })],
+      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    );
+    await insertProfile(repos, 'prof-stale', ['Python']);
+
+    const rec = (await (
+      await app.request('/profiles/prof-stale/job-recommendations?limit=20')
+    ).json()) as { matches: Array<{ posting: { title: string } }>; candidatePool: number };
+    const titles = rec.matches.map((m) => m.posting.title);
+    expect(titles).toContain('Senior Python Engineer');
+    expect(titles).not.toContain('Ancient Python Engineer');
+    expect(rec.candidatePool).toBe(1);
+
+    // 同一套行、同一个仓储，不加窗口就仍在——证明窗口不是全局偷偷少看
+    const pool = (await (await app.request('/job-postings?limit=50')).json()) as {
+      items: Array<{ title: string }>;
+    };
+    const poolTitles = pool.items.map((p) => p.title);
+    expect(poolTitles).toContain('Senior Python Engineer');
+    expect(poolTitles).toContain('Ancient Python Engineer');
+  });
+
+  it('marks a recommendation whose identical text had gone dark and come back', async () => {
+    // 再上架/ghost job 观察：同一 normalized_key 的历史行最后一次被列着是 40 天前，
+    // 本次这条今天才入库 ⇒ 中间静默 40 天（> 阈值 3 天），推荐里给出可复核的标记。
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const current = job({ title: 'Senior Python Engineer', tags: ['python'], description: 'python' });
+    const prior = job({
+      title: 'Senior Python Engineer',
+      tags: ['python'],
+      description: 'python',
+      source: 'remotive',
+      sourceUrl: 'https://example.test/prior-cycle',
+    });
+    current.normalizedKey = 'nk-recycled';
+    prior.normalizedKey = 'nk-recycled';
+
+    const { app, repos } = await harness([current]);
+    const priorSeenAt = new Date(Date.now() - 40 * DAY_MS).toISOString();
+    await repos.jobPostings.upsertBatch([prior], priorSeenAt);
+    await insertProfile(repos, 'prof-repost', ['Python']);
+
+    const body = (await (
+      await app.request('/profiles/prof-repost/job-recommendations')
+    ).json()) as {
+      candidatePool: number;
+      matches: Array<{
+        posting: { title: string };
+        repost?: { priorListings: number; earliestFirstSeenAt: string };
+      }>;
+    };
+    // 历史那条太陈旧，不会自己进推荐（candidatePool=1），只作为观察来源存在
+    expect(body.candidatePool).toBe(1);
+    expect(body.matches[0]!.repost).toEqual({ priorListings: 1, earliestFirstSeenAt: priorSeenAt });
+  });
+
+  it('does not flag two live cross-source copies of the same opening', async () => {
+    // 假阳性防线：同一在招岗位今天被第二个源抓到，不该伪装成"下架后又出现"。
+    // 两条都是同批入库的 active 行，彼此 last_seen 都很新 ⇒ 静默条件不成立。
+    const a = job({ title: 'Python Engineer (RemoteOK)', tags: ['python'], description: 'python' });
+    const b = job({
+      title: 'Python Engineer (Remotive)',
+      tags: ['python'],
+      description: 'python',
+      source: 'remotive',
+      sourceUrl: 'https://example.test/same-live-copy',
+    });
+    a.normalizedKey = 'nk-same-live';
+    b.normalizedKey = 'nk-same-live';
+
+    const { app, repos } = await harness([a, b]);
+    await insertProfile(repos, 'prof-sibling', ['Python']);
+    const body = (await (
+      await app.request('/profiles/prof-sibling/job-recommendations')
+    ).json()) as { matches: Array<{ repost?: unknown }> };
+    expect(body.matches).toHaveLength(2);
+    expect(body.matches.every((m) => m.repost === undefined)).toBe(true);
+  });
+
   it('returns ranked job recommendations from profile skills', async () => {
     const { app, repos } = await harness([
       job({ title: 'Backend Engineer', description: 'we write python services' }),

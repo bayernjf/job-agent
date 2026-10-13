@@ -9,12 +9,18 @@
  */
 
 import type { JdExtractor } from '@jobagent/agent-core';
+import { JOB_DEFAULT_STALE_DAYS, parseStaleDays } from '@jobagent/job-source';
 
 export interface AgentConfig {
   /** 一轮扫描最多产出多少条待投票据 */
   candidateLimit: number;
   /** 单轮扫描从岗位池取的候选条数（排序按发布时间倒序，取最近的一批） */
   scanPoolLimit: number;
+  /**
+   * 岗位池新鲜窗口（天）。读的是既有 env `JOB_STALE_DAYS`（与 `/job-postings/stats`
+   * 同一个旋钮，不新增配置面）：源站已不再列出的岗位不该被扫成"待投"票据。
+   */
+  poolStaleDays: number;
   /** 一次 agent-tick 最多推进多少任务 */
   tickMaxRuns: number;
   /** 阶段 2：submitting 状态超过该小时数无回执 → cron 回收为 failed（显式原因 submit_timeout） */
@@ -53,6 +59,8 @@ export const AGENT_DEFAULTS = {
   // 生产岗位池 active ≈ 9862 条（2026-09-30 实查），默认 2000 覆盖最近约 20%，
   // 兼顾覆盖面与单轮扫描成本；需要全量时部署方可用 env 调到上限 5000。
   scanPoolLimit: 2000,
+  // 新鲜窗口沿用 job-source 的单一默认（JOB_STALE_DAYS 可覆盖）
+  poolStaleDays: JOB_DEFAULT_STALE_DAYS,
   tickMaxRuns: 10,
   // 用户确认后 24h 内未在扩展完成提交 → 视为放弃，任务显式 failed 不再悬空
   submitStaleHours: 24,
@@ -78,6 +86,7 @@ export function loadAgentConfig(env: NodeJS.ProcessEnv = process.env): AgentConf
   return {
     candidateLimit: positiveInt(env.AGENT_CANDIDATE_LIMIT, AGENT_DEFAULTS.candidateLimit, 'AGENT_CANDIDATE_LIMIT', 50),
     scanPoolLimit: positiveInt(env.AGENT_SCAN_POOL_LIMIT, AGENT_DEFAULTS.scanPoolLimit, 'AGENT_SCAN_POOL_LIMIT', 5000),
+    poolStaleDays: parseStaleDays(env.JOB_STALE_DAYS, AGENT_DEFAULTS.poolStaleDays),
     tickMaxRuns: positiveInt(env.AGENT_TICK_MAX_RUNS, AGENT_DEFAULTS.tickMaxRuns, 'AGENT_TICK_MAX_RUNS', 100),
     submitStaleHours: positiveInt(
       env.AGENT_SUBMIT_STALE_HOURS,

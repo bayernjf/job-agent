@@ -826,6 +826,16 @@ h4 { font-size: var(--ja-text-lg); }
   font-size: var(--ja-text-xs);
 }
 
+/* 再上架/ghost job 观察：琥珀色描边标记，比 .rec-badge 更醒目但只陈述事实（tooltip 给判据） */
+.rec-repost {
+  padding: 0.1rem var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  color: var(--ja-color-warning);
+  font-size: var(--ja-text-xs);
+  cursor: help;
+}
+
 .rec-skills {
   display: flex;
   flex-wrap: wrap;
@@ -2071,6 +2081,41 @@ h4 { font-size: var(--ja-text-lg); }
   display: inline-flex;
   align-items: baseline;
   gap: var(--ja-space-1);
+}
+
+/* ── 质量闸的可观测面：挡下了哪些岗位、各因什么挡下 ─────────────────── */
+.agent-gate summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.agent-gate-list {
+  list-style: none;
+  margin: var(--ja-space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.agent-gate-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+}
+
+.agent-gate-title {
+  color: var(--ja-color-accent);
+}
+
+/* 原因码是警示而非判决：用 warning 文字色，不给底色，避免读成"这条岗有问题" */
+.agent-gate-reason {
+  padding: 0.1rem var(--ja-space-2);
+  border-radius: var(--ja-radius-sm);
+  color: var(--ja-color-warning);
+  font-size: var(--ja-text-xs);
 }
 
 .agent-match {

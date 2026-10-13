@@ -52,6 +52,7 @@
 | `API_MOUNT_PREFIX` | 空 | API 在同源下的挂载前缀，形态 C 设 `/api`；影响 OAuth `redirect_uri` 拼接与 state/return Cookie 的 `Path`（变为 `/api/auth`）。Hono 内部路由本身不带前缀，由转发层剥前缀 |
 | `CRON_SECRET` | 空 | `/internal/cron/*` 鉴权密钥；配置后**只接受** `Authorization: Bearer <值>`（Vercel Cron 平台自动注入，GitHub Actions `cron-poll.yml` 同样发这个头；常量时间比较）。历史形态 `?token=<值>` 已于 2026-10-05 停用——它把共享密钥留在 URL、访问日志与命令行回显里。未配置时仅认 `x-vercel-cron: 1` 头。生产必填，生成：`openssl rand -hex 32` |
 | `PROFILE_CACHE_TTL_MS` | `86400000`（24h） | 完整画像缓存有效期 |
+| `JOB_STALE_DAYS` | `7` | 岗位新鲜窗口（天），单一实现见 `@jobagent/job-source` 的 `freshness.ts`。三处共用同一个值：`GET /job-postings/stats` 的 `active` 计数、**画像岗位推荐与岗位匹配**的候选池、求职 Agent 扫岗的岗位池；非法值/0/负数回落到 7（不承认"0＝不过滤"）。语义是"`last_seen_at` 在近 N 天内还被源站列出"，不是"发布时间在近 N 天内" |
 | `GITHUB_TOKEN` | 空 | 采集凭证（PAT / GitHub App installation token），只在服务端读取；未配置时分析作业会在采集阶段失败 |
 | `GITEE_TOKEN` | 空 | 可选，仅用于提高 Gitee 匿名约 60 次/分的限额；匿名即可读公开数据 |
 | `JOB_HTTP_PROXY` | 空 | 出站 HTTP(S) 代理；API 启动时按此值安装 undici 全局 ProxyAgent（`src/proxy-bootstrap.ts`），用于 OAuth token 交换与拉用户资料。未设时回退标准 `HTTPS_PROXY`/`HTTP_PROXY` |
@@ -86,6 +87,7 @@
 | `TAVILY_API_KEY` | 空 | 指令式搜岗搜索通道 key（主通道 Tavily）；未配时 `/internal/cron/search-tick` 503 并记失败心跳。免费层 1000 credits/月 |
 | `SEARCH_DAILY_LIMIT` | `10` | 搜岗每日次数上限（UTC 日界、按账号、含失败 run）；`0`＝关闭；超限 429 `search_daily_limit`。搜岗 run 仅用户主动发起 |
 | `SCHEMA_CHECK_STRICT` | `0` | 常驻进程启动 schema 自检缺列时是否退出（`1`＝fail fast）；默认仅告警。serverless 不经此路径 |
+| `ALERT_WEBHOOK_URL` | 空 | 外部平台告警 webhook 地址（企业微信群机器人 / 飞书自定义机器人 / Slack 兼容，按 URL 主机自动识别报文格式）；仅在 `watch-heartbeat` 判 stale 的**翻转边沿** POST 一条告警，与 Web Push、digest 每日邮件互补。URL 内嵌 token 是密钥，只走服务端 env；未配＝静默跳过，发送失败只记日志不影响 cron 端点语义。配了才有一个"必定有人看"的平台读者，不依赖用户开订阅 |
 
 > MCP 接入面（独立 stdio 进程 `apps/mcp`，决策 #19，2026-10-01）另读：`MCP_API_KEY`（默认空＝fail-closed，画像类工具返回 MCP_KEY_REQUIRED 错误码、仅 `search_jobs` 可用；生产缺 key 启动即失败）、`MCP_RATE_WINDOW_MS`（默认 `60000`）、`MCP_RATE_LIMIT_PER_WINDOW`（默认 `60`），IP 哈希复用 `DEMO_IP_SALT`。
 
@@ -587,6 +589,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | `limit` | number | `20` | 返回上限，1–100，越界返回 400 |
 | `candidate_limit` | number | `500` | 候选池大小，1–500，越界返回 400 |
 
+**只推荐"还被源站列着"的岗位**：候选池按 `last_seen_at >= now - JOB_STALE_DAYS` 过滤（默认 7 天，与 `GET /job-postings/stats` 的 `active` 同一口径）。一条早已下架但状态仍是 `active` 的岗位不会出现在这里——候选人照它写一封求职信却发现岗位没了，是真实伤害。运营面 `GET /job-postings` 不受此限制（照旧返回全部 `active` 行），两种口径的差别是故意的。
+
 #### 响应（200）
 
 ```json
@@ -613,7 +617,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
           "evidenceRefs": ["ev-001"]
         }
       ],
-      "posting": { "jobId": "...", "source": "remoteok", "title": "...", "company": "...", "sourceUrl": "..." }
+      "posting": { "jobId": "...", "source": "remoteok", "title": "...", "company": "...", "sourceUrl": "..." },
+      "repost": { "priorListings": 2, "earliestFirstSeenAt": "2026-08-14T00:00:00.000Z" }
     }
   ],
   "evidence": {
@@ -632,6 +637,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
   - `skillReasons`：仅 profileId 匹配时返回，在 `skillHits` 基础上挂画像技能元数据（`kind`/`depth`/`confidence`）与证据指针 `evidenceRefs`。
   - `evidence`：**响应顶层**的去重证据字典，key = `evidenceRef`，供前端回溯证据原链；旧后端可能缺，前端应健壮降级。
 - `candidatePool`：过滤后、打分前的候选岗位数，便于解释「为什么只推荐这么少」。
+- **`repost`（重复上架 / ghost job 弱信号，可选字段）**：判据是**同一 `normalized_key` 的另一条岗位行，最后一次被源站列出（`last_seen_at`）早于本行 `first_seen_at` 至少 3 天**（`apps/api/src/match-explain.ts` 的 `REPOST_MIN_DARK_DAYS`）——即"这个文本消失过一阵，又回来了"。用 `last_seen_at` 而不是 `first_seen_at` 是刻意的：后者只反映我们的采集进度，同一在招岗位隔天被第二个源抓到会被伪装成"很久以前出现过"。计数不含本行；`normalized_key` 为空（招聘方自建 JD）或时间戳解析不出时**不产该字段**（宁可少一个提示，也不给一个错日期）。整页一次批量查询，无新表、无迁移。措辞由渲染侧按 locale 现拼，响应只给计数与时间戳。
 - 画像 `skillTags` 为空时返回 200，`matches` 为空数组（不报错）。
 
 #### 错误
@@ -752,6 +758,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | `keyword` / `company` / `tags` / `postedAfter` | — | 否 | 候选池过滤，语义同 GET |
 | `candidateLimit` | number | 否 | 候选池大小，默认 500，上限 500 |
 | `limit` | number | 否 | 返回上限，默认 50，上限 500 |
+
+同画像推荐：候选池额外按新鲜窗口过滤（`last_seen_at >= now - JOB_STALE_DAYS`），报告页与扩展的匹配面板都不会再拿到已下架的岗位。
 
 #### 请求 / 响应
 
@@ -1202,6 +1210,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 - 全部端点要求登录 `user`（匿名、demo 一律 `401 AUTH_REQUIRED`）；偏好、任务、票据都是账号私有数据，非本人资源与不存在的资源同形返回 `404`（不泄露存在性）。扩展 Bearer `tkn-` 与会话 Cookie 均解析为 `user` 态。
 - 新建任务（`POST /agent/runs`）要求画像**已由本人认领**（`profiles.subject_claimed` 且 platform/login 与登录账号一致），否则 `403 AGENT_PROFILE_NOT_OWNED`。
 - 状态机：`created → configured → watching → recommending → awaiting_approval → submitting → submitted → tracking`（阶段 2 扩展回执启用 `submitting/submitted` 两个审计时刻；阶段 1 兼容路径在最后一条票据标记已投时由 `awaiting_approval` 一步到 `tracking`；另有 `cancelled`/`failed` 终态）。每次迁移写入一条 `job_run_events`，`GET /agent/runs/:id` 可回放。
+- 唯一的例外迁移：`gate_override`（`watching`/`recommending` → `awaiting_approval`，在 `awaiting_approval` 上是自环）。它是**用户动作**（`actor='user'`），语义是"人点名把一条被质量闸挡下的岗位拉进待投清单"，不推进流水线：写出来的票据停在 `pending`，确认、投递、当日限频一道都不能少。一旦任务离开人机闸（`submitting`/`submitted`/`tracking`）该迁移即被拒绝（`409 AGENT_INVALID_TRANSITION`）——放行绝不能变成绕过人机闸的后门。
 - 工件不落库：定向简历与求职信在请求时由不可变的画像快照 + 票据内岗位精简快照重新装配（同一份事实 → 同一份交付物），因此现有「简历不持久化」决策不被推翻。
 
 ### `GET /agent/preferences` / `POST /agent/preferences`
@@ -1296,6 +1305,62 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 ```json
 { "runId": "run-...", "status": "awaiting_approval", "items": [ { "intentId": "intent-...", "status": "pending" } ] }
 ```
+
+### `GET /agent/runs/:id/gate-exclusions`
+
+质量闸**挡下了哪些岗位、各因什么挡下**（C 端体验增量：闸不能只挡不说）。这是"当前偏好 × 当前岗位池"的**派生视图**，每次读现算，不落库——落库就会让界面讲的和下一轮 tick 做的不是同一件事；两侧共用 `apps/api/src/agent-runner.ts` 的 `deriveRunCandidates`（同一份池查询 + 偏好硬过滤 + `matchJobs` + 闸），所以"实际怎么筛"与"为什么这么筛"不可能各说一套。
+
+```json
+{
+  "runId": "run-...",
+  "status": "awaiting_approval",
+  "minTier": "mid",
+  "candidateLimit": 10,
+  "poolSize": 9862,
+  "matchedCount": 12,
+  "items": [
+    {
+      "postingId": "a1b2c3d4e5f60718",
+      "jobId": "6f0d...",
+      "source": "remoteok",
+      "sourceUrl": "https://remoteok.com/api/2...",
+      "title": "Junior Frontend Developer",
+      "company": "Beta Ltd",
+      "location": "Remote",
+      "remote": true,
+      "postedAt": "2026-10-08T00:00:00.000Z",
+      "score": 2,
+      "matchedSkills": ["TypeScript"],
+      "tier": "low",
+      "reason": "below_min_tier"
+    }
+  ]
+}
+```
+
+- `reason` 是**内核给的原因码**（值域在 `@jobagent/agent-core` 的 `CandidateExclusionReason`），文案由渲染侧按 locale 现拼：`no_title_or_tag_hit`（技能只在岗位描述里被提到，标题/标签都没命中——规则 0.2 的资格守卫）、`below_min_tier`（过了守卫但分档低于偏好的 `minTier`）、`over_candidate_limit`（完全合格，只是本轮名额已满）。
+- 已出票据 / 已投递 / 被拒过的岗位**不在这个列表里**：那是去重，不是闸的判断；把它们混进来会让用户以为"放宽阈值就能拿到"。
+- `items` 与推荐清单用**同一把尺**排序（白名单公司 → 分数降序 → 发布时间降序），所以展示出来就是"差多少"的顺序。
+- `postingId` 是岗位池行主键（`job_postings.id`），`jobId` 是来源侧外部 id——不同源可以携带同一个外部 `jobId`，因此放行类动作按 `postingId` 认身份。
+- 终态任务 `409 AGENT_RUN_NOT_ACTIVE`；偏好或画像快照已缺失 `409 AGENT_PREFERENCE_NOT_FOUND`（**不返回空列表伪装"确实没有"**）；未登录 `401`，非本人任务 `404 AGENT_RUN_NOT_FOUND`。
+
+### `POST /agent/runs/:id/gate-override`
+
+`{ "postingId": "<job_postings.id>" }`（严格对象，多键或缺键 `400`）。**人显式放行**一条被质量闸挡下的岗位：服务端用与 `GET /agent/runs/:id/gate-exclusions` 同一次推导（`deriveRunCandidates`）确认这条岗位*当下确实被闸挡着*，然后写一张 `pending` 票据 + 一条 `gate_override` 审计事件，两者与状态 CAS 在同一事务里落（`publishGeneratedIntents`）。
+
+按 `postingId`（岗位池行主键）认身份，不按来源侧 `jobId`：不同源可以携带同一个外部 `jobId`，按它放行会放错行。
+
+三道闸里它只越得过第一道：
+
+| 闸 | 放行之后的行为 |
+| --- | --- |
+| 质量闸 | 越过（这正是它的用途），并把"当初为什么被挡"写进事件 payload：`blockedBy`（原因码）、`minTier`、`matchTier`、`matchScore`、`intentId`、`actor='user'` |
+| 人机闸 | **不变**：新票据停在 `pending`，必须由用户 `approve`，投递仍由用户本人完成 |
+| 限频闸 | **不变**：额度在 `approve` 时才核对，所以放行不能用来绕过每来源每日上限（超额照样整批 `429 AGENT_DAILY_SUBMIT_LIMIT_REACHED`） |
+
+装配不出简历/求职信的岗位仍然拒绝写入（与扫描的「generated」闸同一道校验），返回 `409 AGENT_ARTIFACTS_UNAVAILABLE`——放行不该产出用户点开就失败的票据。
+
+`200`：任务视图 + `overridden` 计数。错误：`409 AGENT_GATE_EXCLUSION_NOT_FOUND`（该岗位不在本轮被挡清单里：已出票据、被偏好硬过滤挡掉、或池行已下架——**不当作"没找到"偷偷新建**）；`409 AGENT_INVALID_TRANSITION`（任务已离开人机闸，或 tick 抢先推进了状态）；`409 AGENT_PREFERENCE_NOT_FOUND`（偏好或画像快照已缺失）；`404 AGENT_RUN_NOT_FOUND`（非本人）；`401`（未登录）。
 
 ### `POST /agent/runs/:id/approve` / `POST /agent/runs/:id/reject`
 
@@ -1762,6 +1827,8 @@ token 90 天滑动续期、可撤销。
 `503`：`{ "status": "error", "stale": ["agent-tick lastOk=2026-10-08T03:00:00.000Z lastError=none"] }`
 
 `/health?deep=1` 联动：watchdog 最近一次失败（`last_error` 非空、30 分钟内）时 deep 探活 503 并返回 `watchdog: { status: "error", message, checkedAt }`——让"消费通道断了"成为可探知失败；watchdog 下一轮成功后恢复 200。`message` 是不含明细的固定串（`one or more cron consumers are stale`），stale 明细只在鉴权内部端点可见。未知 consumer 一律忽略，不误报；空表（尚无任何心跳）不算 stale。
+
+**stale 翻转边沿的自动告警**（2026-10-10 起；2026-10-14 增外部平台 webhook）：只在"上轮健康 → 本轮 stale"的边沿发一次，持续 stale 不重复打扰（防抖依据 watchdog 行自身 `last_error`），恢复后再 stale 算新事件。三条通道互补：① 向全部启用的 `web_push` 订阅推一条告警（VAPID 未配置时天然跳过）；② 配了 `ALERT_WEBHOOK_URL` 时向该地址 POST 一条告警（企业微信 / 飞书 / Slack 兼容格式按 webhook 主机自动识别；URL 内嵌 token 是密钥，只走服务端 env；发送失败只记服务端日志，不影响本端点语义）；③ `digest-tick` 每日邮件兜底（零候选也发纯告警信）。
 
 ### `GET /internal/cron/cleanup?task=demo|auth|all`
 

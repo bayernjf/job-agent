@@ -6,8 +6,10 @@ import {
   dedupePostingsById,
   jobPostingSignature,
   makeJobPostingId,
+  toJobPostingSighting,
   toStoredJobPosting,
   RECRUITER_POSTING_SOURCE,
+  type JobPostingSighting,
   type JobPostingStatus,
   type NewJobPosting,
   type RecruiterPostingDraft,
@@ -205,6 +207,9 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     if (query.postedAfter) {
       conditions.push(tsGte(t.postedAt, query.postedAfter));
     }
+    if (query.seenAfter) {
+      conditions.push(tsGte(t.lastSeenAt, query.seenAfter));
+    }
     if (query.tags && query.tags.length > 0) {
       const tagMatch = query.tags.map((tag) => ilike(t.tags, `%${tag}%`));
       conditions.push(or(...tagMatch)!);
@@ -352,6 +357,26 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
       .orderBy(desc(t.firstSeenAt))
       .limit(limit);
     return rows.map(toStoredJobPosting);
+  }
+
+  /**
+   * 同一岗位文本的观测记录（重复上架 / ghost job 弱信号）。与 SQLite 实现同口径：
+   * 空输入短路、只取公开池（自建 JD 的 normalized_key 本就是 NULL）、按首次入库时间升序。
+   */
+  async listSightingsByNormalizedKeys(keys: readonly string[]): Promise<JobPostingSighting[]> {
+    if (keys.length === 0) return [];
+    const rows = await this.db
+      .select({
+        id: t.id,
+        normalizedKey: t.normalizedKey,
+        source: t.source,
+        firstSeenAt: t.firstSeenAt,
+        lastSeenAt: t.lastSeenAt,
+      })
+      .from(t)
+      .where(and(inArray(t.normalizedKey, [...keys]), isNull(t.createdByAccountId)))
+      .orderBy(asc(t.firstSeenAt));
+    return rows.map(toJobPostingSighting);
   }
 
   async getById(id: string): Promise<StoredJobPosting | undefined> {

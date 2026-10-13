@@ -41,6 +41,8 @@ export const JOB_RUN_TRANSITIONS: JobRunTransitionTable = {
     candidates_ready: 'recommending',
     // 本轮没扫到合格岗位：留在 watching 等下一轮（不是失败）
     rescan: 'watching',
+    // 用户放行一条被闸挡下的岗位：清单里立刻有了待确认项，闸口就此打开
+    gate_override: 'awaiting_approval',
     fail: 'failed',
     cancel: 'cancelled',
   },
@@ -48,6 +50,7 @@ export const JOB_RUN_TRANSITIONS: JobRunTransitionTable = {
     generated: 'awaiting_approval',
     // 生成阶段发现候选全被质量闸/生成失败挡掉：退回 watching
     rescan: 'watching',
+    gate_override: 'awaiting_approval',
     fail: 'failed',
     cancel: 'cancelled',
   },
@@ -59,6 +62,8 @@ export const JOB_RUN_TRANSITIONS: JobRunTransitionTable = {
     // 兼容路径：用户不 approve 直接回填「已投」（阶段 1 行为）→ 进入跟踪
     submitted: 'tracking',
     rescan: 'watching',
+    // 自环：再放行一条只是往同一张待投清单上多加一张票
+    gate_override: 'awaiting_approval',
     fail: 'failed',
     cancel: 'cancelled',
   },

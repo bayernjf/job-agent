@@ -229,6 +229,82 @@ export function passesTitleOrTagGuard(match: Pick<MatchLike, 'skillHits'>): bool
 }
 
 /**
+ * 候选被挡下的原因码（渲染侧按 code 现拼句子，内核不写散文——硬约束 ③）。
+ * 只描述质量闸本身；`excludeJobIds`（已出票据/已投递）发生在打分之前，
+ * 那是去重不是"挡下"，所以不进这个值域。
+ */
+export type CandidateExclusionReason =
+  | 'no_title_or_tag_hit'
+  | 'below_min_tier'
+  | 'over_candidate_limit';
+
+export interface ExcludedCandidate<T extends CandidateLike> {
+  item: T;
+  reason: CandidateExclusionReason;
+  /** 该条的分档（below_min_tier 时用户要知道"差多少"） */
+  tier: MatchScoreTier;
+}
+
+export interface CandidateSelection<T extends CandidateLike> {
+  selected: T[];
+  excluded: ExcludedCandidate<T>[];
+}
+
+/**
+ * 候选选择并给出**每条被挡下的原因**（质量闸可观测面，C 端体验增量）。
+ * 排序键（稳定、可解释）：白名单公司 → 匹配分降序 → 发布时间降序（ISO 字符串可直接比较）。
+ * 不做「凑数」：一条都没过闸就返回空 selected，由编排壳走 rescan 而不是硬推低分岗。
+ *
+ * `excluded` 与 `selected` 同源同序产出，两者不会各说一套——闸"为什么挡"必须是可读的，
+ * 否则用户无法区分"池子里没有"与"被我的偏好/阈值挡了"，也就无从调整。
+ */
+export function selectCandidatesWithReasons<T extends CandidateLike>(
+  items: readonly T[],
+  options: SelectCandidatesOptions,
+): CandidateSelection<T> {
+  const limit = Math.max(0, options.limit ?? DEFAULT_CANDIDATE_LIMIT);
+  const handledIds = options.excludeJobIds ?? new Set<string>();
+  const ranked = items
+    .filter((item) => !handledIds.has(item.posting.jobId))
+    .map((item) => {
+      const tier = matchScoreTier(item.match.score, item.match.matchedSkills.length);
+      const hitTitleOrTag = passesTitleOrTagGuard(item.match);
+      return {
+        item,
+        tier,
+        hitTitleOrTag,
+        eligible: hitTitleOrTag && passesQualityGate(tier, options.minTier),
+        priority: options.preferredCompany?.(item.posting.company) ? 1 : 0,
+      };
+    });
+  // 全部条目按同一把尺排序：被挡的那些因此按"差多少"排，而不是按输入顺序乱序出现。
+  // 稳定排序 + 先排后筛，选中集合与筛选后再排的旧实现逐字节一致。
+  ranked.sort((a, b) => {
+    if (b.priority !== a.priority) return b.priority - a.priority;
+    if (b.item.match.score !== a.item.match.score) return b.item.match.score - a.item.match.score;
+    return b.item.posting.postedAt.localeCompare(a.item.posting.postedAt);
+  });
+
+  const selectedEntries = ranked.filter((entry) => entry.eligible).slice(0, limit);
+  // 用对象身份而不是 posting.jobId 认"这条已被选中"：不同源可以携带同一个外部 jobId，
+  // 按 id 去标记会把另一条同 id 的合格候选误标成被挡。
+  const selectedSet = new Set(selectedEntries);
+  const excluded: ExcludedCandidate<T>[] = [];
+  for (const entry of ranked) {
+    if (selectedSet.has(entry)) continue;
+    // 判定顺序与选择路径一致：守卫 → 分档 → 名额
+    const reason: CandidateExclusionReason = !entry.hitTitleOrTag
+      ? 'no_title_or_tag_hit'
+      : !entry.eligible
+        ? 'below_min_tier'
+        : 'over_candidate_limit';
+    excluded.push({ item: entry.item, reason, tier: entry.tier });
+  }
+
+  return { selected: selectedEntries.map((entry) => entry.item), excluded };
+}
+
+/**
  * 候选选择：先过资格守卫（标题/标签命中）与质量闸，再排优先级，最后截断。
  * 排序键（稳定、可解释）：白名单公司 → 匹配分降序 → 发布时间降序（ISO 字符串可直接比较）。
  * 不做「凑数」：一条都没过闸就返回空数组，由编排壳走 rescan 而不是硬推低分岗。
@@ -237,38 +313,37 @@ export function selectCandidates<T extends CandidateLike>(
   items: readonly T[],
   options: SelectCandidatesOptions,
 ): T[] {
-  const limit = options.limit ?? DEFAULT_CANDIDATE_LIMIT;
-  const excluded = options.excludeJobIds ?? new Set<string>();
-  const scored = items
-    .filter((item) => !excluded.has(item.posting.jobId))
-    .filter((item) => passesTitleOrTagGuard(item.match))
-    .map((item) => ({
-      item,
-      tier: matchScoreTier(item.match.score, item.match.matchedSkills.length),
-      priority: options.preferredCompany?.(item.posting.company) ? 1 : 0,
-    }))
-    .filter((entry) => passesQualityGate(entry.tier, options.minTier));
+  return selectCandidatesWithReasons(items, options).selected;
+}
 
-  scored.sort((a, b) => {
-    if (b.priority !== a.priority) return b.priority - a.priority;
-    if (b.item.match.score !== a.item.match.score) return b.item.match.score - a.item.match.score;
-    return b.item.posting.postedAt.localeCompare(a.item.posting.postedAt);
-  });
+/** 偏好入参 → 内核入参：把公司白名单词条折成判定函数（两个 For 变体共用，不各写一份）。 */
+type PreferenceCandidateOptions = Omit<SelectCandidatesOptions, 'preferredCompany'> & {
+  preferredCompanyTerms?: readonly string[];
+};
 
-  return scored.slice(0, Math.max(0, limit)).map((entry) => entry.item);
+function toCandidateOptions(options: PreferenceCandidateOptions): SelectCandidatesOptions {
+  const terms = options.preferredCompanyTerms ?? [];
+  return {
+    ...options,
+    preferredCompany:
+      terms.length > 0
+        ? (company: string) => isPreferredCompany(company, { companyWhitelist: [...terms] })
+        : undefined,
+  };
 }
 
 /** 便捷组合：白名单判定 + 候选选择（编排壳一行调用）。 */
 export function selectCandidatesForPreference<T extends CandidateLike>(
   items: readonly T[],
-  options: Omit<SelectCandidatesOptions, 'preferredCompany'> & {
-    preferredCompanyTerms?: readonly string[];
-  },
+  options: PreferenceCandidateOptions,
 ): T[] {
-  const terms = options.preferredCompanyTerms ?? [];
-  return selectCandidates(items, {
-    ...options,
-    preferredCompany:
-      terms.length > 0 ? (company: string) => isPreferredCompany(company, { companyWhitelist: [...terms] }) : undefined,
-  });
+  return selectCandidates(items, toCandidateOptions(options));
+}
+
+/** 便捷组合：白名单判定 + 带原因的候选选择（质量闸可观测面用）。 */
+export function selectCandidatesWithReasonsForPreference<T extends CandidateLike>(
+  items: readonly T[],
+  options: PreferenceCandidateOptions,
+): CandidateSelection<T> {
+  return selectCandidatesWithReasons(items, toCandidateOptions(options));
 }
