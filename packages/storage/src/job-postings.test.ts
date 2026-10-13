@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { runMigrations } from './sqlite/migrator.js';
 import { openSqlite } from './sqlite/connection.js';
 import { SqliteJobPostingsRepository } from './sqlite/job-postings-repo.js';
-import { makeJobPostingId, type NewJobPosting } from './entities/index.js';
+import { makeJobPostingId, type NewJobPosting, type RecruiterPostingDraft } from './entities/index.js';
 
 const MIGRATIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -199,5 +199,104 @@ describe('SqliteJobPostingsRepository', () => {
     expect(recent.remoteok).toBe(1);
     const all = await repo.countActiveFresh('2026-01-01T00:00:00.000Z');
     expect(all.remoteok).toBe(2);
+  });
+});
+
+/**
+ * 决策 #25（B3-a，2026-10-13）：招聘方自建 JD 是私有行。
+ * 这一组钉的是"公开池永远看不到它"这条隐私不变量——判据是归属列，
+ * 而排除发生在仓储层，所以每个读取口都自动受保护。
+ */
+describe('recruiter-owned postings never enter the public pool', () => {
+  function draft(overrides: Partial<RecruiterPostingDraft> = {}): RecruiterPostingDraft {
+    return {
+      title: 'Staff Agent Engineer',
+      company: 'In-house Team',
+      location: 'Shanghai',
+      remote: false,
+      tags: ['typescript', 'agents'],
+      description: 'Own our internal agent platform.',
+      postedAt: '2026-10-13T00:00:00.000Z',
+      fetchedAt: '2026-10-13T00:00:00.000Z',
+      createdByAccountId: 'acct-recruiter-1',
+      ...overrides,
+    };
+  }
+
+  it('stays out of search()/per-source counts while returning to its owner', async () => {
+    const repo = freshRepo();
+    await repo.upsertBatch([samplePosting()], '2026-09-10T00:00:00.000Z');
+    const owned = await repo.insertOwned(draft(), '2026-10-13T00:00:00.000Z');
+
+    // 默认读取＝公开池：私有行一条都不出现
+    const pool = await repo.search({ limit: 500 });
+    expect(pool).toHaveLength(1);
+    expect(pool.some((p) => p.source === 'recruiter')).toBe(false);
+    const counts = await repo.countBySource();
+    expect(counts.recruiter).toBeUndefined();
+    const fresh = await repo.countActiveFresh('2026-01-01T00:00:00.000Z');
+    expect(fresh.recruiter).toBeUndefined();
+
+    // 只有被显式点名归属时才返回
+    const mine = await repo.search({ ownerAccountId: 'acct-recruiter-1', limit: 500 });
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.title).toBe('Staff Agent Engineer');
+    // 归属列是排除判据，因此仓储的 getById 仍返回该行——单条读取的越权拒绝在路由层
+    expect(await repo.getById(owned.id)).toBeDefined();
+  });
+
+  it('derives its identity inside the repository', async () => {
+    const repo = freshRepo();
+    const owned = await repo.insertOwned(draft(), '2026-10-13T00:00:00.000Z');
+    expect(owned.source).toBe('recruiter');
+    // RFC 2606 保留域：过 JobPostingSchema 的 url 校验，又永远不会被当真外链去抓
+    expect(owned.sourceUrl.startsWith('https://recruiter.invalid/acct-recruiter-1/')).toBe(true);
+    expect(owned.id).toBe(makeJobPostingId('recruiter', owned.sourceUrl));
+    expect(owned.createdByAccountId).toBe('acct-recruiter-1');
+    expect(owned.searchRunId ?? null).toBeNull(); // 不挂搜岗 run，否则会被 run 结果口读出
+    expect(owned.status).toBe('active');
+  });
+
+  it('is never retired by markStale, while pool rows still are (positive control)', async () => {
+    const repo = freshRepo();
+    await repo.upsertBatch([samplePosting()], '2026-01-01T00:00:00.000Z');
+    await repo.insertOwned(draft(), '2026-01-01T00:00:00.000Z');
+
+    const changed = await repo.markStale('2026-06-01T00:00:00.000Z');
+    expect(changed).toBe(1); // 清扫照常工作（不是被我这条例外整体挡掉）
+
+    const mine = await repo.search({ ownerAccountId: 'acct-recruiter-1', status: 'active' });
+    expect(mine).toHaveLength(1);
+    const retired = await repo.search({ ownerAccountId: 'acct-recruiter-1', status: 'inactive' });
+    expect(retired).toHaveLength(0);
+  });
+
+  it('lists only my rows (retired included) and nothing for another account', async () => {
+    const repo = freshRepo();
+    const first = await repo.insertOwned(draft(), '2026-10-13T00:00:00.000Z');
+    await repo.insertOwned(
+      draft({ title: 'Second Role', postedAt: '2026-10-14T00:00:00.000Z' }),
+      '2026-10-14T00:00:00.000Z',
+    );
+    await repo.upsertBatch([samplePosting()], '2026-09-10T00:00:00.000Z');
+
+    const mine = await repo.listOwned('acct-recruiter-1');
+    expect(mine).toHaveLength(2);
+    expect(mine.map((p) => p.title)).toEqual(['Second Role', 'Staff Agent Engineer']); // postedAt desc
+    expect(await repo.listOwned('acct-other')).toHaveLength(0);
+
+    const retired = await repo.retireOwned(first.id, 'acct-recruiter-1', '2026-10-15T00:00:00.000Z');
+    expect(retired!.status).toBe('inactive');
+    expect(await repo.listOwned('acct-recruiter-1')).toHaveLength(2); // 含已下线
+    expect(await repo.listOwned('acct-recruiter-1', { status: 'active' })).toHaveLength(1);
+  });
+
+  it('treats a foreign row as nonexistent on retireOwned (no existence leak)', async () => {
+    const repo = freshRepo();
+    const owned = await repo.insertOwned(draft(), '2026-10-13T00:00:00.000Z');
+    expect(await repo.retireOwned(owned.id, 'acct-intruder', '2026-10-14T00:00:00.000Z')).toBeUndefined();
+    const stillActive = await repo.search({ ownerAccountId: 'acct-recruiter-1' });
+    expect(stillActive[0]!.status).toBe('active');
+    expect(await repo.retireOwned('nope', 'acct-recruiter-1', '2026-10-14T00:00:00.000Z')).toBeUndefined();
   });
 });

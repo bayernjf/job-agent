@@ -25,6 +25,8 @@ export interface StoredInterview {
   profileId: string;
   /** 关联的 applications.id；直接从画像创建时为 null */
   applicationId: string | null;
+  /** 关联的招聘方自建岗位 job_postings.id（决策 #25 补口）；与发布岗位无关时为 null */
+  postingId: string | null;
   /** 面试岗位名称（冗余，无 application 也可读） */
   targetTitle: string;
   targetCompany: string | null;
@@ -50,6 +52,7 @@ export interface NewInterview {
   id: string;
   profileId: string;
   applicationId?: string | null;
+  postingId?: string | null;
   targetTitle: string;
   targetCompany?: string | null;
   scheduledStart: string;
@@ -70,6 +73,7 @@ export interface RawInterviewRow {
   id: string;
   profileId: string;
   applicationId: string | null;
+  postingId: string | null;
   targetTitle: string;
   targetCompany: string | null;
   scheduledStart: string;
@@ -103,6 +107,7 @@ export function toStoredInterview(row: RawInterviewRow): StoredInterview {
     id: row.id,
     profileId: row.profileId,
     applicationId: row.applicationId,
+    postingId: row.postingId,
     targetTitle: row.targetTitle,
     targetCompany: row.targetCompany,
     scheduledStart: row.scheduledStart,

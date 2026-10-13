@@ -1196,6 +1196,73 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(byThird.some((p) => p.sourceUrl === base.sourceUrl)).toBe(true);
   });
 
+  // 决策 #25（B3-a，2026-10-13）：招聘方自建 JD 的隐私不变量在 Postgres 上同口径。
+  // 双方言各有一份 search/countBySource/markStale 实现，SQLite 单测覆盖不到这一侧。
+  pgIt('keeps recruiter-owned JDs out of the public pool on Postgres too', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const accountId = `acct-pg-${suffix}`;
+    const poolUrl = `https://example.com/${suffix}/pg-pool`;
+    await s.jobPostings.upsertBatch(
+      [
+        {
+          jobId: `pool_${suffix}`,
+          source: 'greenhouse' as const,
+          sourceUrl: poolUrl,
+          title: 'Backend Engineer',
+          company: `PG Co ${suffix}`,
+          location: 'Remote',
+          remote: true,
+          salaryMin: null,
+          salaryMax: null,
+          salaryCurrency: null,
+          tags: ['go'],
+          description: 'd',
+          postedAt: '2026-01-01T00:00:00.000Z',
+          fetchedAt: '2026-01-01T00:00:00.000Z',
+          normalizedKey: `nk_${suffix}`,
+        },
+      ],
+      '2026-01-01T00:00:00.000Z',
+    );
+    const owned = await s.jobPostings.insertOwned(
+      {
+        title: 'Staff Agent Engineer',
+        company: `In-house ${suffix}`,
+        remote: false,
+        tags: ['typescript', 'agents'],
+        description: 'Own our internal agent platform.',
+        postedAt: '2026-01-01T00:00:00.000Z',
+        fetchedAt: '2026-01-01T00:00:00.000Z',
+        createdByAccountId: accountId,
+      },
+      '2026-01-01T00:00:00.000Z',
+    );
+
+    const pool = await s.jobPostings.search({ limit: 500 });
+    expect(pool.some((p) => p.sourceUrl === owned.sourceUrl)).toBe(false);
+    const counts = await s.jobPostings.countBySource();
+    expect(counts.recruiter).toBeUndefined();
+    const mine = await s.jobPostings.search({ ownerAccountId: accountId, limit: 500 });
+    expect(mine.map((p) => p.id)).toEqual([owned.id]);
+
+    // 清扫照常作用于公开池（正对照），但永不自动下线自建 JD
+    await s.jobPostings.markStale('2026-06-01T00:00:00.000Z');
+    const retiredPool = await s.jobPostings.getById(
+      pool.find((p) => p.sourceUrl === poolUrl)?.id ?? owned.id,
+    );
+    expect(retiredPool?.status).toBe('inactive');
+    const stillActive = await s.jobPostings.search({ ownerAccountId: accountId, status: 'active' });
+    expect(stillActive.map((p) => p.id)).toEqual([owned.id]);
+
+    // 行级归属：别人的账号 retire 不动我的行
+    const retireStamp = '2026-10-13T00:00:00.000Z';
+    expect(
+      await s.jobPostings.retireOwned(owned.id, `acct-other-${suffix}`, retireStamp),
+    ).toBeUndefined();
+    const retired = await s.jobPostings.retireOwned(owned.id, accountId, retireStamp);
+    expect(retired?.status).toBe('inactive');
+  });
+
   // 回归：api + worker（或水平扩容的多个副本）同时冷启动、对同一空库并发首迁移时，
   // 不得因 schema_migrations 主键冲突而崩溃；迁移应恰好应用一次。
   pgIt('runs concurrent first-time migrations safely across instances', async () => {

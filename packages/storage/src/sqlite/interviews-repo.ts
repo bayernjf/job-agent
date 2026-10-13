@@ -20,6 +20,7 @@ export class SqliteInterviewsRepository implements IInterviewsRepository {
         id: interview.id,
         profileId: interview.profileId,
         applicationId: interview.applicationId ?? null,
+        postingId: interview.postingId ?? null,
         targetTitle: interview.targetTitle,
         targetCompany: interview.targetCompany ?? null,
         scheduledStart: interview.scheduledStart,
@@ -48,6 +49,7 @@ export class SqliteInterviewsRepository implements IInterviewsRepository {
   ): Promise<StoredInterview[]> {
     const conditions = [eq(t.createdByAccountId, createdByAccountId)];
     if (filter.profileId) conditions.push(eq(t.profileId, filter.profileId));
+    if (filter.postingId) conditions.push(eq(t.postingId, filter.postingId));
     if (filter.status) conditions.push(eq(t.status, filter.status));
     const rows = this.db
       .select()

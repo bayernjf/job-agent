@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, inArray, ilike, or, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, inArray, ilike, isNull, or, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { tsGte, tsLt } from './time-text.js';
 import {
@@ -6,8 +7,10 @@ import {
   jobPostingSignature,
   makeJobPostingId,
   toStoredJobPosting,
+  RECRUITER_POSTING_SOURCE,
   type JobPostingStatus,
   type NewJobPosting,
+  type RecruiterPostingDraft,
   type StoredJobPosting,
 } from '../entities/index.js';
 import type {
@@ -179,6 +182,13 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     const conditions = [];
     const status: JobPostingStatus = query.status ?? 'active';
     conditions.push(eq(t.status, status));
+    // 公开池判据（决策 #25，B3-a）：与 SQLite 实现同口径——招聘方自建 JD 只有在被显式
+    // 点名 ownerAccountId 时才返回，默认 IS NULL 是安全侧。
+    conditions.push(
+      query.ownerAccountId
+        ? eq(t.createdByAccountId, query.ownerAccountId)
+        : isNull(t.createdByAccountId),
+    );
 
     if (query.sources && query.sources.length > 0) {
       conditions.push(inArray(t.source, query.sources));
@@ -226,7 +236,7 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     const rows = await this.db
       .select({ source: t.source, count: sql<string>`count(*)` })
       .from(t)
-      .where(eq(t.status, status))
+      .where(and(eq(t.status, status), isNull(t.createdByAccountId)))
       .groupBy(t.source);
     const result: Record<string, number> = {};
     for (const row of rows) result[row.source] = Number(row.count);
@@ -237,7 +247,9 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     const rows = await this.db
       .select({ source: t.source, count: sql<string>`count(*)` })
       .from(t)
-      .where(and(eq(t.status, 'active'), tsGte(t.lastSeenAt, cutoffIso)))
+      .where(
+        and(eq(t.status, 'active'), tsGte(t.lastSeenAt, cutoffIso), isNull(t.createdByAccountId)),
+      )
       .groupBy(t.source);
     const result: Record<string, number> = {};
     for (const row of rows) result[row.source] = Number(row.count);
@@ -248,9 +260,88 @@ export class PgJobPostingsRepository implements IJobPostingsRepository {
     const changed = await this.db
       .update(t)
       .set({ status: 'inactive', updatedAt: new Date().toISOString() })
-      .where(and(eq(t.status, 'active'), tsLt(t.lastSeenAt, cutoffIso)))
+      .where(
+        and(
+          eq(t.status, 'active'),
+          tsLt(t.lastSeenAt, cutoffIso),
+          // 自建 JD 由招聘方自己下线，不参与采集侧的失活清扫（它永不被重新见到）
+          isNull(t.createdByAccountId),
+        ),
+      )
       .returning({ id: t.id });
     return changed.length;
+  }
+
+  async insertOwned(draft: RecruiterPostingDraft, now: string): Promise<StoredJobPosting> {
+    const jobId = randomUUID();
+    // `*.invalid` 是 RFC 2606 保留域，永远解析不了：它既满足 sourceUrl 的 URL 形态
+    // （读取侧会用 JobPostingSchema 再校验一次），又保证没人把这个私有岗位当外链去抓。
+    const sourceUrl = `https://recruiter.invalid/${draft.createdByAccountId}/${jobId}`;
+    const rows = await this.db
+      .insert(t)
+      .values({
+        id: makeJobPostingId(RECRUITER_POSTING_SOURCE, sourceUrl),
+        jobId,
+        source: RECRUITER_POSTING_SOURCE,
+        sourceUrl,
+        title: draft.title,
+        company: draft.company,
+        location: draft.location ?? null,
+        remote: draft.remote,
+        salaryMin: draft.salaryMin ?? null,
+        salaryMax: draft.salaryMax ?? null,
+        salaryCurrency: draft.salaryCurrency ?? null,
+        tags: JSON.stringify(draft.tags ?? []),
+        description: draft.description ?? null,
+        postedAt: draft.postedAt,
+        fetchedAt: draft.fetchedAt,
+        applyUrl: draft.applyUrl ?? null,
+        companyLogoUrl: draft.companyLogoUrl ?? null,
+        companyUrl: draft.companyUrl ?? null,
+        normalizedKey: null,
+        searchRunId: null,
+        status: 'active',
+        createdByAccountId: draft.createdByAccountId,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('job posting insert returned no row');
+    return toStoredJobPosting(row);
+  }
+
+  async listOwned(
+    accountId: string,
+    opts: { status?: JobPostingStatus; limit?: number; offset?: number } = {},
+  ): Promise<StoredJobPosting[]> {
+    const conditions = [eq(t.createdByAccountId, accountId)];
+    if (opts.status) conditions.push(eq(t.status, opts.status));
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(and(...conditions))
+      .orderBy(desc(t.postedAt))
+      .limit(clampLimit(opts.limit))
+      .offset(opts.offset ?? 0);
+    return rows.map(toStoredJobPosting);
+  }
+
+  async retireOwned(
+    id: string,
+    accountId: string,
+    now: string,
+  ): Promise<StoredJobPosting | undefined> {
+    // 行级归属：非本人一律当不存在（调用方回 404，不泄露该 id 归谁）。
+    const rows = await this.db
+      .update(t)
+      .set({ status: 'inactive', updatedAt: now })
+      .where(and(eq(t.id, id), eq(t.createdByAccountId, accountId)))
+      .returning();
+    const row = rows[0];
+    return row ? toStoredJobPosting(row) : undefined;
   }
 
   async listBySearchRun(runId: string, limit = 200): Promise<StoredJobPosting[]> {

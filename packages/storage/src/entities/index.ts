@@ -30,11 +30,13 @@ export { WAITLIST_STATUSES, toStoredWaitlist } from './waitlist.js';
 export type {
   JobPostingStatus,
   NewJobPosting,
+  RecruiterPostingDraft,
   StoredJobPosting,
   RawJobPostingRow,
 } from './job-posting.js';
 export {
   JOB_POSTING_STATUSES,
+  RECRUITER_POSTING_SOURCE,
   makeJobPostingId,
   dedupePostingsById,
   jobPostingSignature,
