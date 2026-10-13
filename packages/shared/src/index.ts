@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// 成本回采/用量计量契约（决策 #25 ④ Wave A）独立成文件，见 ./usage.ts
+export * from './usage.js';
+
 /**
  * 能力画像契约（v0.1，对应 PRD 第 8 章）。
  *
