@@ -27,6 +27,8 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   { table: 'submit_intents', column: 'application_id' }, // 021 投递关联
   { table: 'cron_heartbeat', column: 'consumer' }, // 031 心跳（本批）
   { table: 'notification_subscriptions', column: 'account_id' }, // 034 触达通道订阅（决策 #25）
+  { table: 'job_postings', column: 'created_by_account_id' }, // 036 招聘方自建 JD 归属（决策 #25）
+  { table: 'interviews', column: 'posting_id' }, // 037 面试挂到自建岗位（决策 #25 补口；interviews insert 已引用该列）
 ];
 
 export { REQUIRED_COLUMNS };

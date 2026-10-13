@@ -13,11 +13,32 @@ import type { JobPosting, JobSource } from '@jobagent/shared';
 export type JobPostingStatus = 'active' | 'inactive';
 export const JOB_POSTING_STATUSES: readonly JobPostingStatus[] = ['active', 'inactive'];
 
+/** 招聘方自建 JD 的来源标识（决策 #25，B3-a）；公开池统计与清扫都按归属列排除它。 */
+export const RECRUITER_POSTING_SOURCE = 'recruiter';
+
 /** 入库输入：shared 契约 + 跨源归一化碰撞键。 */
 export type NewJobPosting = JobPosting & {
   normalizedKey: string;
   /** 指令式搜岗来源 run（search_runs.run_id）；定时采集行为 null */
   searchRunId?: string | null;
+  /**
+   * 招聘方自建 JD 的归属账号（accounts.id）；采集/搜岗入库的公开池行为 null/undefined。
+   * **这条判据是"私有 JD 绝不进公开岗位池"的唯一实现点**（决策 #25，2026-10-13）：
+   * 仓储层的每次池读取都要求它是 NULL，所以业务侧不需要记住加过滤条件。
+   */
+  createdByAccountId?: string | null;
+};
+
+/**
+ * 招聘方自建 JD 的入库输入：正文 + 归属账号。
+ * 身份三件套（`jobId`、`source`、`sourceUrl`）、`normalizedKey` 与 `searchRunId`
+ * 都不在这里——由仓储生成/置空，业务侧不拼 DB 身份。
+ */
+export type RecruiterPostingDraft = Omit<
+  NewJobPosting,
+  'jobId' | 'source' | 'sourceUrl' | 'normalizedKey' | 'searchRunId'
+> & {
+  createdByAccountId: string;
 };
 
 /** 存储行（camelCase，tags 已解析为数组）。 */
@@ -52,6 +73,7 @@ export interface RawJobPostingRow {
   companyUrl: string | null;
   normalizedKey: string | null;
   status: string;
+  createdByAccountId: string | null;
   firstSeenAt: string;
   lastSeenAt: string;
   createdAt: string;
@@ -155,6 +177,7 @@ export function toStoredJobPosting(row: RawJobPostingRow): StoredJobPosting {
     companyUrl: row.companyUrl ?? undefined,
     normalizedKey: row.normalizedKey ?? '',
     status: toStatus(row.status),
+    createdByAccountId: row.createdByAccountId ?? null,
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
     createdAt: row.createdAt,

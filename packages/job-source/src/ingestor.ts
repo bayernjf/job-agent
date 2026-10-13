@@ -20,6 +20,8 @@ const DEFAULT_SOURCE_BUDGETS_MS: Record<JobSource, number> = {
   jobicy: 3 * 60_000,
   websearch: 3 * 60_000, // 指令式搜岗（search-source 执行，不经过 job-source 采集）
   manual: 60_000,
+  // 招聘方自建 JD：由 API 直接写入岗位表，不经本采集管道，预算仅用于满足 Record 穷尽性。
+  recruiter: 0,
 };
 
 export interface SyncOnceDeps {

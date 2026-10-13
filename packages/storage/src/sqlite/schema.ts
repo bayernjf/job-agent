@@ -195,6 +195,7 @@ export const jobPostings = sqliteTable(
     companyUrl: text('company_url'),
     normalizedKey: text('normalized_key'),
     status: text('status').notNull().default('active'),
+    createdByAccountId: text('created_by_account_id'),
     firstSeenAt: text('first_seen_at').notNull(),
     lastSeenAt: text('last_seen_at').notNull(),
     createdAt: text('created_at')
@@ -209,6 +210,7 @@ export const jobPostings = sqliteTable(
     index('idx_job_postings_source').on(table.source),
     index('idx_job_postings_company').on(table.company),
     index('idx_job_postings_normalized').on(table.normalizedKey),
+    index('idx_job_postings_created_by').on(table.createdByAccountId, table.status),
   ],
 );
 
@@ -389,6 +391,7 @@ export const interviews = sqliteTable(
     id: text('id').primaryKey(),
     profileId: text('profile_id').notNull(),
     applicationId: text('application_id'),
+    postingId: text('posting_id'),
     targetTitle: text('target_title').notNull(),
     targetCompany: text('target_company'),
     scheduledStart: text('scheduled_start').notNull(),
@@ -417,6 +420,7 @@ export const interviews = sqliteTable(
     ),
     index('idx_interviews_profile_start').on(table.profileId, table.scheduledStart),
     index('idx_interviews_application').on(table.applicationId),
+    index('idx_interviews_posting').on(table.postingId),
   ],
 );
 

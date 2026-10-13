@@ -13,6 +13,7 @@
 import Layout from '../../layouts/Layout.astro';
 import GateCard from '../../components/GateCard.astro';
 import CandidateWorkspace from '../../components/CandidateWorkspace.tsx';
+import RecruiterPostings from '../../components/RecruiterPostings.tsx';
 import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
 import { loadInitialCandidates } from '../../lib/db.js';
 import { browserApiBase } from '../../lib/api-base.js';
@@ -83,6 +84,57 @@ const loginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(p
           )}
         </div>
       </GateCard>
+    )}
+
+    {isRecruiter && (
+      <RecruiterPostings
+        client:load
+        apiBase={apiBase}
+        reportBasePath={reportBasePath}
+        locale={locale}
+        labels={{
+          title: t('recruit.jd.title'),
+          subtitle: t('recruit.jd.subtitle'),
+          formTitle: t('recruit.jd.formTitle'),
+          fieldTitle: t('recruit.jd.fieldTitle'),
+          fieldTitlePlaceholder: t('recruit.jd.fieldTitlePlaceholder'),
+          fieldCompany: t('recruit.jd.fieldCompany'),
+          fieldCompanyPlaceholder: t('recruit.jd.fieldCompanyPlaceholder'),
+          fieldLocation: t('recruit.jd.fieldLocation'),
+          fieldRemote: t('recruit.jd.fieldRemote'),
+          fieldTags: t('recruit.jd.fieldTags'),
+          fieldTagsPlaceholder: t('recruit.jd.fieldTagsPlaceholder'),
+          fieldDescription: t('recruit.jd.fieldDescription'),
+          submit: t('recruit.jd.submit'),
+          submitting: t('recruit.jd.submitting'),
+          published: t('recruit.jd.published'),
+          formError: t('recruit.jd.formError'),
+          listError: t('recruit.jd.listError'),
+          reload: t('recruit.jd.reload'),
+          empty: t('recruit.jd.empty'),
+          retire: t('recruit.jd.retire'),
+          retiring: t('recruit.jd.retiring'),
+          statusActive: t('recruit.jd.statusActive'),
+          statusInactive: t('recruit.jd.statusInactive'),
+          findCandidates: t('recruit.jd.findCandidates'),
+          needTags: t('recruit.jd.needTags'),
+          candidatesLoading: t('recruit.jd.candidatesLoading'),
+          candidatesError: t('recruit.jd.candidatesError'),
+          candidatesEmpty: t('recruit.jd.candidatesEmpty'),
+          candidatesCount: t('recruit.jd.candidatesCount'),
+          verifiedClaims: t('recruit.verifiedClaims'),
+          interviewsTitle: t('recruit.jd.interviewsTitle'),
+          interviewsEmpty: t('recruit.jd.interviewsEmpty'),
+          interviewsError: t('recruit.jd.interviewsError'),
+          statusLabels: {
+            scheduled: t('interviews.status.scheduled'),
+            completed: t('interviews.status.completed'),
+            cancelled: t('interviews.status.cancelled'),
+            no_show: t('interviews.status.no_show'),
+            rescheduled: t('interviews.status.rescheduled'),
+          },
+        }}
+      />
     )}
 
     {isRecruiter && (

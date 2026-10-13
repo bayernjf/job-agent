@@ -1717,6 +1717,92 @@ h4 { font-size: var(--ja-text-lg); }
   margin-top: var(--ja-space-5);
 }
 
+/* ─── 招聘方自建 JD（决策 #25 B3-a，RecruiterPostings island）───────────────
+   Global for the same reason as the other islands: rendered by a client:load
+   island, so Astro scoped styles would not reach it. Tokens only. */
+
+.recruit-jd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+  margin-bottom: var(--ja-space-6);
+  padding: var(--ja-space-4);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+}
+
+.recruit-jd h2 {
+  font-size: var(--ja-text-xl);
+}
+
+.recruit-jd h3 {
+  font-size: var(--ja-text-lg);
+  margin-bottom: var(--ja-space-2);
+}
+
+.recruit-jd-remote {
+  display: flex;
+  gap: var(--ja-space-2);
+  align-items: flex-start;
+  font-size: var(--ja-text-sm);
+}
+
+.recruit-jd-tagcount {
+  font-size: var(--ja-text-sm);
+}
+
+.recruit-jd-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-3);
+}
+
+.recruit-jd-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-sm);
+  background: var(--ja-color-surface-muted);
+}
+
+.recruit-jd-cands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.recruit-jd-sub {
+  font-size: var(--ja-text-base);
+  margin-top: var(--ja-space-2);
+}
+
+.recruit-jd-cands ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-2);
+}
+
+.recruit-jd-cand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ja-space-2);
+  align-items: baseline;
+  font-size: var(--ja-text-sm);
+}
+
+.recruit-jd-headline {
+  flex: 1 1 240px;
+}
+
 /* ─── 求职工作台 AgentWorkbench React island（阶段 1，/[locale]/workbench）──
    Global for the same reason as the other islands: rendered by a client:load
    island, so Astro scoped styles would not reach it. Tokens only. */

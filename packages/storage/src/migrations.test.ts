@@ -453,6 +453,48 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 037（interviews.posting_id：面试挂到招聘方自建岗位，决策 #25 补口）
+    const ivBefore37 = db.prepare('PRAGMA table_info(interviews)').all() as Array<{ name: string }>;
+    expect(ivBefore37.map((c) => c.name)).toContain('posting_id');
+    const idxBefore37 = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_interviews_posting'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(idxBefore37.map((i) => i.name)).toContain('idx_interviews_posting');
+    const result37 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result37.version).toBe('037');
+    const ivAfter37 = db.prepare('PRAGMA table_info(interviews)').all() as Array<{ name: string }>;
+    expect(ivAfter37.map((c) => c.name)).not.toContain('posting_id');
+    const idxAfter37 = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_interviews_posting'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(idxAfter37.map((i) => i.name)).not.toContain('idx_interviews_posting');
+
+    // 回滚 036（job_postings.created_by_account_id 归属列，招聘方自建 JD，决策 #25）
+    const jpBefore36 = db.prepare('PRAGMA table_info(job_postings)').all() as Array<{
+      name: string;
+    }>;
+    expect(jpBefore36.map((c) => c.name)).toContain('created_by_account_id');
+    const idxBefore36 = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_job_postings_created_by'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(idxBefore36.map((i) => i.name)).toContain('idx_job_postings_created_by');
+    const result36 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result36.version).toBe('036');
+    const jpAfter36 = db.prepare('PRAGMA table_info(job_postings)').all() as Array<{ name: string }>;
+    expect(jpAfter36.map((c) => c.name)).not.toContain('created_by_account_id');
+    const idxAfter36 = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_job_postings_created_by'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(idxAfter36.map((i) => i.name)).not.toContain('idx_job_postings_created_by');
+
     // 回滚 035（applications.submit_intent_id 部分唯一索引，mark-submitted 幂等）
     const idxBefore35 = db
       .prepare(

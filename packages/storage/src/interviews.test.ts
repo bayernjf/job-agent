@@ -65,6 +65,7 @@ describe('SqliteInterviewsRepository', () => {
         id: 'int-1',
         profileId: 'prof-1',
         createdByAccountId: 'acc-1',
+        postingId: 'jhp-1',
         scheduledStart: '2026-09-24T09:00:00.000Z',
         scheduledEnd: '2026-09-24T10:00:00.000Z',
       }),
@@ -101,6 +102,15 @@ describe('SqliteInterviewsRepository', () => {
 
     const other = await repo.listByOwner('acc-2');
     expect(other.map((i) => i.id)).toEqual(['int-3']);
+
+    // 决策 #25 补口（迁移 037）：岗位维度过滤，且本人作用域不被绕过
+    const byPosting = await repo.listByOwner('acc-1', { postingId: 'jhp-1' });
+    expect(byPosting.map((i) => i.id)).toEqual(['int-1']);
+    expect(byPosting[0]!.postingId).toBe('jhp-1');
+    expect(await repo.listByOwner('acc-1', { postingId: 'jhp-other' })).toHaveLength(0);
+    expect(await repo.listByOwner('acc-2', { postingId: 'jhp-1' })).toHaveLength(0);
+    // 没挂岗位的面试仍可整列读出（pre-037 的形状不能凭空消失）
+    expect((await repo.listByOwner('acc-1')).filter((i) => i.postingId === null)).toHaveLength(1);
     close();
   });
 
@@ -152,6 +162,7 @@ describe('SqliteInterviewsRepository', () => {
       id: 'int-x',
       profileId: 'prof-1',
       applicationId: null,
+      postingId: null,
       targetTitle: 'Senior Engineer',
       targetCompany: null,
       scheduledStart: '2026-09-24T09:00:00.000Z',

@@ -1,12 +1,15 @@
-import { and, asc, desc, eq, gte, inArray, like, or, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, gte, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   dedupePostingsById,
   jobPostingSignature,
   makeJobPostingId,
   toStoredJobPosting,
+  RECRUITER_POSTING_SOURCE,
   type JobPostingStatus,
   type NewJobPosting,
+  type RecruiterPostingDraft,
   type StoredJobPosting,
 } from '../entities/index.js';
 import type {
@@ -107,6 +110,13 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
     const conditions = [];
     const status: JobPostingStatus = query.status ?? 'active';
     conditions.push(eq(t.status, status));
+    // 公开池判据（决策 #25，B3-a）：招聘方自建 JD 只有在被显式点名 ownerAccountId 时
+    // 才返回；默认 IS NULL 是安全侧——忘记加条件的调用方只会少看私有行，不会泄露。
+    conditions.push(
+      query.ownerAccountId
+        ? eq(t.createdByAccountId, query.ownerAccountId)
+        : isNull(t.createdByAccountId),
+    );
 
     if (query.sources && query.sources.length > 0) {
       conditions.push(inArray(t.source, query.sources));
@@ -157,7 +167,7 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
     const rows = this.db
       .select({ source: t.source, count: sql<number>`count(*)` })
       .from(t)
-      .where(eq(t.status, status))
+      .where(and(eq(t.status, status), isNull(t.createdByAccountId)))
       .groupBy(t.source)
       .all();
     const result: Record<string, number> = {};
@@ -169,7 +179,9 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
     const rows = this.db
       .select({ source: t.source, count: sql<number>`count(*)` })
       .from(t)
-      .where(and(eq(t.status, 'active'), gte(t.lastSeenAt, cutoffIso)))
+      .where(
+        and(eq(t.status, 'active'), gte(t.lastSeenAt, cutoffIso), isNull(t.createdByAccountId)),
+      )
       .groupBy(t.source)
       .all();
     const result: Record<string, number> = {};
@@ -181,9 +193,95 @@ export class SqliteJobPostingsRepository implements IJobPostingsRepository {
     const info = this.db
       .update(t)
       .set({ status: 'inactive', updatedAt: new Date().toISOString() })
-      .where(and(eq(t.status, 'active'), sql`${t.lastSeenAt} < ${cutoffIso}`))
+      .where(
+        and(
+          eq(t.status, 'active'),
+          sql`${t.lastSeenAt} < ${cutoffIso}`,
+          // 自建 JD 由招聘方自己下线，不参与采集侧的失活清扫（它永不被重新见到）
+          isNull(t.createdByAccountId),
+        ),
+      )
       .run();
     return Number(info.changes ?? 0);
+  }
+
+  async insertOwned(draft: RecruiterPostingDraft, now: string): Promise<StoredJobPosting> {
+    const jobId = randomUUID();
+    // `*.invalid` 是 RFC 2606 保留域，永远解析不了：它既满足 sourceUrl 的 URL 形态
+    // （读取侧会用 JobPostingSchema 再校验一次），又保证没人把这个私有岗位当外链去抓。
+    const sourceUrl = `https://recruiter.invalid/${draft.createdByAccountId}/${jobId}`;
+    const id = makeJobPostingId(RECRUITER_POSTING_SOURCE, sourceUrl);
+    this.db
+      .insert(t)
+      .values({
+        id,
+        jobId,
+        source: RECRUITER_POSTING_SOURCE,
+        sourceUrl,
+        title: draft.title,
+        company: draft.company,
+        location: draft.location ?? null,
+        remote: draft.remote,
+        salaryMin: draft.salaryMin ?? null,
+        salaryMax: draft.salaryMax ?? null,
+        salaryCurrency: draft.salaryCurrency ?? null,
+        tags: JSON.stringify(draft.tags ?? []),
+        description: draft.description ?? null,
+        postedAt: draft.postedAt,
+        fetchedAt: draft.fetchedAt,
+        applyUrl: draft.applyUrl ?? null,
+        companyLogoUrl: draft.companyLogoUrl ?? null,
+        companyUrl: draft.companyUrl ?? null,
+        normalizedKey: null,
+        searchRunId: null,
+        status: 'active',
+        createdByAccountId: draft.createdByAccountId,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    const row = this.db.select().from(t).where(eq(t.id, id)).get();
+    if (!row) throw new Error(`job posting ${id} vanished right after insert`);
+    return toStoredJobPosting(row);
+  }
+
+  async listOwned(
+    accountId: string,
+    opts: { status?: JobPostingStatus; limit?: number; offset?: number } = {},
+  ): Promise<StoredJobPosting[]> {
+    const conditions = [eq(t.createdByAccountId, accountId)];
+    if (opts.status) conditions.push(eq(t.status, opts.status));
+    const rows = this.db
+      .select()
+      .from(t)
+      .where(and(...conditions))
+      .orderBy(desc(t.postedAt))
+      .limit(clampLimit(opts.limit))
+      .offset(opts.offset ?? 0)
+      .all();
+    return rows.map(toStoredJobPosting);
+  }
+
+  async retireOwned(
+    id: string,
+    accountId: string,
+    now: string,
+  ): Promise<StoredJobPosting | undefined> {
+    // 行级归属：非本人一律当不存在（调用方回 404，不泄露该 id 归谁）。
+    const owned = this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.id, id), eq(t.createdByAccountId, accountId)))
+      .get();
+    if (!owned) return undefined;
+    this.db
+      .update(t)
+      .set({ status: 'inactive', updatedAt: now })
+      .where(eq(t.id, id))
+      .run();
+    return { ...toStoredJobPosting(owned), status: 'inactive', updatedAt: now };
   }
 
   async listBySearchRun(runId: string, limit = 200): Promise<StoredJobPosting[]> {

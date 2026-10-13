@@ -18,10 +18,17 @@ import {
   collectEvidence,
   skillTagMap,
 } from '../match-explain.js';
-import { isProfileOwner } from './helpers.js';
-import { JobMatchRequestSchema, JobSearchQuerySchema } from './schemas.js';
+import { isProfileOwner, requireRecruiter } from './helpers.js';
+import {
+  JobMatchRequestSchema,
+  JobSearchQuerySchema,
+  RecruiterPostingInputSchema,
+} from './schemas.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
+
+/** 单个招聘方同时在册的自建 JD 上限（写侧唯一的数量闸）。 */
+const RECRUITER_MAX_ACTIVE_POSTINGS = 50;
 
 export function registerJobPostings(app: Hono<HonoEnv>, d: RouteDeps): void {
   const { repos, now, cfg, ipHashOf } = d;
@@ -56,6 +63,92 @@ export function registerJobPostings(app: Hono<HonoEnv>, d: RouteDeps): void {
     return c.json({ items: rows, limit: q.limit ?? 100, offset: q.offset ?? 0 });
   });
 
+  // ── 招聘方自建 JD（决策 #25，B3-a 最小子集，2026-10-13）────────────────────
+  // 私有岗位：归属列 created_by_account_id 非 NULL，仓储层的每次公开池读取都排除它
+  // （见 packages/storage job-postings-repo 的 search/countBySource/markStale）。
+  // 静态路径 /recruiter 必须注册在 /:id 之前，与 stats 同一条顺序纪律。
+
+  // POST /job-postings/recruiter：发布一条自建 JD
+  app.post('/job-postings/recruiter', async (c) => {
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const accountId = recruiter.principal.accountId;
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    const parsed = RecruiterPostingInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
+    }
+    // 唯一的写侧节流：这条路径只对流量的已声明招聘方开放，没有别的配额闸，
+    // 所以兜住单账号在册岗位数量，避免岗位表被一个账号灌满。
+    const active = await repos.jobPostings.listOwned(accountId, {
+      status: 'active',
+      limit: RECRUITER_MAX_ACTIVE_POSTINGS + 1,
+    });
+    if (active.length >= RECRUITER_MAX_ACTIVE_POSTINGS) {
+      return c.json(
+        {
+          error: `too many active postings (max ${RECRUITER_MAX_ACTIVE_POSTINGS})`,
+          code: 'TOO_MANY_POSTINGS',
+        },
+        429,
+      );
+    }
+    const stamp = now();
+    const posting = await repos.jobPostings.insertOwned(
+      {
+        ...parsed.data,
+        tags: [...new Set(parsed.data.tags)], // 归一：去空白差异后的重复标签不重复计分
+        createdByAccountId: accountId,
+        postedAt: stamp,
+        fetchedAt: stamp,
+      },
+      stamp,
+    );
+    return c.json(posting, 201);
+  });
+
+  // GET /job-postings/recruiter：我的岗位（含已下线）
+  app.get('/job-postings/recruiter', async (c) => {
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const limitRaw = c.req.query('limit');
+    const offsetRaw = c.req.query('offset');
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const offset = offsetRaw ? Number(offsetRaw) : 0;
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100)) {
+      return c.json({ error: 'limit must be an integer between 1 and 100' }, 400);
+    }
+    if (!Number.isInteger(offset) || offset < 0) {
+      return c.json({ error: 'offset must be a non-negative integer' }, 400);
+    }
+    const items = await repos.jobPostings.listOwned(recruiter.principal.accountId, {
+      limit,
+      offset,
+    });
+    return c.json({ items, limit: limit ?? 100, offset });
+  });
+
+  // DELETE /job-postings/recruiter/:id：下线自己发布的岗位（软下线为 inactive）
+  app.delete('/job-postings/recruiter/:id', async (c) => {
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'invalid job posting id' }, 400);
+    const retired = await repos.jobPostings.retireOwned(
+      id,
+      recruiter.principal.accountId,
+      now(),
+    );
+    // 非本人或不存在都是 404：不告诉调用方"这条岗位存在但属于别人"。
+    if (!retired) return c.json({ error: 'job posting not found' }, 404);
+    return c.json(retired);
+  });
+
   // GET /job-postings/stats：按源统计（须在 :id 路由之前注册，避免 stats 被当成 id）
   app.get('/job-postings/stats', async (c) => {
     // T24①：active 只统计 last_seen_at 在新鲜窗口内的岗位（JOB_STALE_DAYS 默认 7），
@@ -78,6 +171,14 @@ export function registerJobPostings(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (!id) return c.json({ error: 'invalid job posting id' }, 400);
     const posting = await repos.jobPostings.getById(id);
     if (!posting) return c.json({ error: 'job posting not found' }, 404);
+    // 私有 JD 只对本人可读：别人的 id 命中也回 404。派生 id 不出现在任何公开列表，
+    // 但"墙只画在页面上不等于访问控制"——单条读取口同样要收口。
+    if (posting.createdByAccountId) {
+      const principal = c.get('principal');
+      if (principal.kind !== 'user' || principal.accountId !== posting.createdByAccountId) {
+        return c.json({ error: 'job posting not found' }, 404);
+      }
+    }
     return c.json(posting);
   });
 

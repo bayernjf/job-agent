@@ -5,6 +5,8 @@ import type { NewInterview, StoredInterview } from '../entities/index.js';
 export interface InterviewListFilter {
   profileId?: string;
   status?: InterviewStatus;
+  /** 只看挂在某条自建岗位下的面试（决策 #25 补口，迁移 037） */
+  postingId?: string;
 }
 
 /**

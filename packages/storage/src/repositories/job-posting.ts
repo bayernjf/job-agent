@@ -1,5 +1,10 @@
 import type { JobSource } from '@jobagent/shared';
-import type { JobPostingStatus, NewJobPosting, StoredJobPosting } from '../entities/index.js';
+import type {
+  JobPostingStatus,
+  NewJobPosting,
+  RecruiterPostingDraft,
+  StoredJobPosting,
+} from '../entities/index.js';
 
 /** 岗位列表过滤条件（MVP 用 SQL LIKE + 结构化过滤，不上全文搜索）。 */
 export interface JobPostingQuery {
@@ -20,6 +25,12 @@ export interface JobPostingQuery {
   limit?: number;
   offset?: number;
   orderBy?: 'posted_desc' | 'posted_asc' | 'salary_desc';
+  /**
+   * 只看某个招聘方自建的岗位（决策 #25，B3-a 最小一刀）。
+   * **不传＝只返回公开池**（`created_by_account_id IS NULL`）：默认值是安全侧，
+   * 这样任何忘记加过滤的调用方都只会少看私有行，绝不会把别人的 JD 漏进公开池。
+   */
+  ownerAccountId?: string;
 }
 
 export interface UpsertCounts {
@@ -50,4 +61,22 @@ export interface IJobPostingsRepository {
   getById(id: string): Promise<StoredJobPosting | undefined>;
   /** 按搜岗 run 列出本次入库的岗位（source=websearch，run 关联列） */
   listBySearchRun(runId: string, limit?: number): Promise<StoredJobPosting[]>;
+  /**
+   * 招聘方发布一条自建 JD（决策 #25，B3-a 最小一刀）。身份三件套（`jobId`、
+   * `source='recruiter'`、`sourceUrl='https://recruiter.invalid/<account>/<jobId>'`）
+   * 与派生主键都由仓储生成——业务侧不该拼 DB 身份，而 `recruiter.invalid` 是 RFC 2606
+   * 保留域，保证这个 URL 既过 schema 校验、又永不被当成真外链去抓。
+   * `createdByAccountId` 是"私有岗位绝不进公开池"的唯一判据。
+   */
+  insertOwned(draft: RecruiterPostingDraft, now: string): Promise<StoredJobPosting>;
+  /** 列出某招聘方自己发布的岗位（含已下线的，默认按发布时间倒序）。 */
+  listOwned(
+    accountId: string,
+    opts?: { status?: JobPostingStatus; limit?: number; offset?: number },
+  ): Promise<StoredJobPosting[]>;
+  /**
+   * 下线自己发布的岗位。行级归属：不存在或非本人一律返回 `undefined`，
+   * 调用方据此回 404（不泄露该 id 是否存在）。
+   */
+  retireOwned(id: string, accountId: string, now: string): Promise<StoredJobPosting | undefined>;
 }

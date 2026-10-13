@@ -49,6 +49,22 @@ export const JobSearchQuerySchema = z.object({
   orderBy: z.enum(['posted_desc', 'posted_asc', 'salary_desc']).optional(),
 });
 
+// 招聘方自建 JD 的请求体（决策 #25，B3-a 最小一刀）。
+// 只收正文：身份三件套（jobId/source/sourceUrl）与归属账号由服务端决定，客户端无法指定，
+// 否则任何人都能把岗位挂到别人账号下、或伪造 source 混进公开池。
+export const RecruiterPostingInputSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  company: z.string().trim().min(1).max(120),
+  location: z.string().trim().max(160).optional(),
+  remote: z.boolean().default(false),
+  tags: z.array(z.string().trim().min(1).max(60)).max(25).default([]),
+  description: z.string().trim().max(20_000).optional(),
+  salaryMin: z.number().int().nonnegative().max(10_000_000).optional(),
+  salaryMax: z.number().int().nonnegative().max(10_000_000).optional(),
+  salaryCurrency: z.string().trim().length(3).optional(),
+});
+export type RecruiterPostingInput = z.infer<typeof RecruiterPostingInputSchema>;
+
 // 画像匹配请求体：skills 与 profileId 二选一（profileId 优先，从画像快照取 skillTags.name）
 export const JobMatchRequestSchema = z.object({
   skills: z.array(z.string().trim().min(1)).optional(),
