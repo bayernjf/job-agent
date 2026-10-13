@@ -6,8 +6,8 @@ import {
   planIntents,
   planTransition,
   preferenceToMatchCriteria,
-  selectCandidatesForPreference,
-  type CandidateLike,
+  selectCandidatesWithReasonsForPreference,
+  type ExcludedCandidate,
 } from '@jobagent/agent-core';
 import {
   buildCoverLetter,
@@ -37,6 +37,7 @@ import type {
   CoverLetterDraft,
   JobPosting,
   MatchReport,
+  MatchScoreTier,
   ResumeDraft,
 } from '@jobagent/shared';
 import { AGENT_ERROR_CODES } from '@jobagent/shared';
@@ -83,7 +84,11 @@ export interface AgentScanStats {
   matchedCount: number;
   /** 过质量闸并成功装配工件的候选数 */
   candidateCount: number;
-  /** 因已出票据/已投递被排除的条数 */
+  /**
+   * 过了硬过滤与匹配、但没进本轮票据的条数＝`matchedCount - candidateCount` 口径里的
+   * "未选中"全集：**既含**已出票据/已投递的去重，**也含**质量闸挡下的条目。
+   * 要区分两者按原因看 `GET /agent/runs/:id/gate-exclusions`（这里只给一个总数）。
+   */
   excludedCount: number;
   /** 装配工件失败被跳过的条数（显式记录，不静默） */
   skippedCount: number;
@@ -403,7 +408,35 @@ export async function advanceRunOnce(
   return scanOnce(repos, cfg, run, preference, profile, nowIso, deps.tick);
 }
 
-async function scanOnce(
+/** 一轮扫描里的候选形状：matchJobs 的输出 + 它打分的岗位池行。 */
+export type RunCandidate = { match: JobMatch<StoredJobPosting>; posting: StoredJobPosting };
+
+/** 一轮扫描的候选推导结果：过闸的、被闸挡下的（带原因码）与两个计数。 */
+export interface DerivedCandidates {
+  /** 岗位池行数（新鲜窗口内还被源站列着的 active 行） */
+  poolSize: number;
+  /** 过完偏好硬过滤且有命中（score>0）的条数 */
+  matchedCount: number;
+  profileSkills: string[];
+  selected: RunCandidate[];
+  /**
+   * 被质量闸挡下的条目，按与 `selected` 同一把尺排序（白名单公司 → 分数 → 发布时间），
+   * 所以用户看到的是"差多少"的顺序，而不是一串乱序噪声。
+   * 已出票据/已投递的岗位不在这里——那是去重，不是闸的判断。
+   */
+  excluded: ExcludedCandidate<RunCandidate>[];
+  minTier: MatchScoreTier;
+  candidateLimit: number;
+}
+
+/**
+ * 推导一轮的候选与被挡清单（纯读：不写票据、不推进状态）。
+ *
+ * `scanOnce` 与 `GET /agent/runs/:id/gate-exclusions` 共用这一份实现是刻意的：
+ * 质量闸"实际怎么筛"和"对界面怎么说自己怎么筛"必须是同一段代码，
+ * 否则界面会开始讲一个内核没做的事——那种漂移只能靠人肉发现。
+ */
+export async function deriveRunCandidates(
   repos: AgentRepos,
   cfg: AgentConfig,
   run: StoredJobRun,
@@ -411,7 +444,7 @@ async function scanOnce(
   profile: AbilityProfile,
   nowIso: string,
   tick?: TickContext,
-): Promise<AdvanceOutcome> {
+): Promise<DerivedCandidates> {
   const profileSkills = profile.skillTags.map((tag) => tag.name);
 
   // 岗位池：只取 active 且**新鲜窗口内还被源站列着**的行，按发布时间倒序；
@@ -435,8 +468,8 @@ async function scanOnce(
   const excludeJobIds = await appliedJobIds(repos, run.profileId);
   for (const intent of existingIntents) excludeJobIds.add(intent.jobId);
 
-  const selected = selectCandidatesForPreference(
-    matches.map((match) => ({ match, posting: match.posting }) satisfies CandidateLike),
+  const selection = selectCandidatesWithReasonsForPreference<RunCandidate>(
+    matches.map((match) => ({ match, posting: match.posting })),
     {
       minTier: preference.minTier,
       limit: cfg.candidateLimit,
@@ -444,6 +477,38 @@ async function scanOnce(
       preferredCompanyTerms: preference.companyWhitelist,
     },
   );
+
+  return {
+    poolSize: pool.length,
+    matchedCount: matches.length,
+    profileSkills,
+    selected: selection.selected,
+    excluded: selection.excluded,
+    minTier: preference.minTier,
+    candidateLimit: cfg.candidateLimit,
+  };
+}
+
+async function scanOnce(
+  repos: AgentRepos,
+  cfg: AgentConfig,
+  run: StoredJobRun,
+  preference: StoredJobPreference,
+  profile: AbilityProfile,
+  nowIso: string,
+  tick?: TickContext,
+): Promise<AdvanceOutcome> {
+  const derivation = await deriveRunCandidates(
+    repos,
+    cfg,
+    run,
+    preference,
+    profile,
+    nowIso,
+    tick,
+  );
+  const selected = derivation.selected;
+  const profileSkills = derivation.profileSkills;
 
   const planned = planIntents(selected, { profileSkills });
 
@@ -467,10 +532,10 @@ async function scanOnce(
   }
 
   const stats: AgentScanStats = {
-    poolSize: pool.length,
-    matchedCount: matches.length,
+    poolSize: derivation.poolSize,
+    matchedCount: derivation.matchedCount,
     candidateCount: ready.length,
-    excludedCount: matches.length - selected.length,
+    excludedCount: derivation.matchedCount - selected.length,
     skippedCount: skipped,
   };
 
@@ -504,9 +569,7 @@ async function scanOnce(
     for (const item of ready) {
       if (Date.now() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
       if (tick?.deadlineAt !== undefined && Date.now() >= tick.deadlineAt) break;
-      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting as
-        | StoredJobPosting
-        | undefined;
+      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting;
       const description = posting?.description;
       if (!description) continue;
       try {

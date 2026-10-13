@@ -1304,6 +1304,44 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 { "runId": "run-...", "status": "awaiting_approval", "items": [ { "intentId": "intent-...", "status": "pending" } ] }
 ```
 
+### `GET /agent/runs/:id/gate-exclusions`
+
+质量闸**挡下了哪些岗位、各因什么挡下**（C 端体验增量：闸不能只挡不说）。这是"当前偏好 × 当前岗位池"的**派生视图**，每次读现算，不落库——落库就会让界面讲的和下一轮 tick 做的不是同一件事；两侧共用 `apps/api/src/agent-runner.ts` 的 `deriveRunCandidates`（同一份池查询 + 偏好硬过滤 + `matchJobs` + 闸），所以"实际怎么筛"与"为什么这么筛"不可能各说一套。
+
+```json
+{
+  "runId": "run-...",
+  "status": "awaiting_approval",
+  "minTier": "mid",
+  "candidateLimit": 10,
+  "poolSize": 9862,
+  "matchedCount": 12,
+  "items": [
+    {
+      "postingId": "a1b2c3d4e5f60718",
+      "jobId": "6f0d...",
+      "source": "remoteok",
+      "sourceUrl": "https://remoteok.com/api/2...",
+      "title": "Junior Frontend Developer",
+      "company": "Beta Ltd",
+      "location": "Remote",
+      "remote": true,
+      "postedAt": "2026-10-08T00:00:00.000Z",
+      "score": 2,
+      "matchedSkills": ["TypeScript"],
+      "tier": "low",
+      "reason": "below_min_tier"
+    }
+  ]
+}
+```
+
+- `reason` 是**内核给的原因码**（值域在 `@jobagent/agent-core` 的 `CandidateExclusionReason`），文案由渲染侧按 locale 现拼：`no_title_or_tag_hit`（技能只在岗位描述里被提到，标题/标签都没命中——规则 0.2 的资格守卫）、`below_min_tier`（过了守卫但分档低于偏好的 `minTier`）、`over_candidate_limit`（完全合格，只是本轮名额已满）。
+- 已出票据 / 已投递 / 被拒过的岗位**不在这个列表里**：那是去重，不是闸的判断；把它们混进来会让用户以为"放宽阈值就能拿到"。
+- `items` 与推荐清单用**同一把尺**排序（白名单公司 → 分数降序 → 发布时间降序），所以展示出来就是"差多少"的顺序。
+- `postingId` 是岗位池行主键（`job_postings.id`），`jobId` 是来源侧外部 id——不同源可以携带同一个外部 `jobId`，因此放行类动作按 `postingId` 认身份。
+- 终态任务 `409 AGENT_RUN_NOT_ACTIVE`；偏好或画像快照已缺失 `409 AGENT_PREFERENCE_NOT_FOUND`（**不返回空列表伪装"确实没有"**）；未登录 `401`，非本人任务 `404 AGENT_RUN_NOT_FOUND`。
+
 ### `POST /agent/runs/:id/approve` / `POST /agent/runs/:id/reject`
 
 人机闸的两个动作。

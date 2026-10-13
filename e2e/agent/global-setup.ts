@@ -39,7 +39,11 @@ export const FIXTURE_RECRUITER_LOGIN = 'recruiter-e2e';
 
 const ISO = (day: number) => `2026-10-0${day}T00:00:00.000Z`;
 
-/** 三条会进待投清单（high 1 + mid 2）+ 一条被偏好关键词挡掉的噪声岗位。 */
+/**
+ * 三条会进待投清单（high 1 + mid 2）+ 一条被偏好关键词挡掉的噪声岗位
+ * + 一条过得了关键词、却因技能只在正文里被提到而被质量闸守卫挡下的岗位（1005，
+ * 真全栈用例断言它出现在「质量闸挡下」清单里）。
+ */
 function fixturePostings() {
   const base = {
     source: 'greenhouse' as const,
@@ -91,6 +95,18 @@ function fixturePostings() {
       description: 'Own campaigns and brand.',
       postedAt: ISO(6),
       normalizedKey: 'fixture-1004',
+    },
+    {
+      ...base,
+      jobId: 'native-1005',
+      sourceUrl: 'https://fixtures.test/jobs/1005',
+      title: 'Site Reliability Engineer',
+      tags: ['python'],
+      // 刻意让 TypeScript 只出现在正文：它过得了偏好关键词（engineer/typescript），
+      // 但过不了"标题或标签必须命中"的守卫 ⇒ 质量闸挡下清单里唯一的一条（真全栈用例断言它）
+      description: 'On-call rotation; our internal tooling is written in TypeScript.',
+      postedAt: ISO(7),
+      normalizedKey: 'fixture-1005',
     },
   ];
 }

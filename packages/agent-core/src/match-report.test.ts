@@ -10,6 +10,8 @@ import {
   passesTitleOrTagGuard,
   selectCandidates,
   selectCandidatesForPreference,
+  selectCandidatesWithReasons,
+  selectCandidatesWithReasonsForPreference,
 } from './match-report.js';
 import type { JdInsight } from '@jobagent/shared';
 import { planIntents, toSubmitIntentJob, type IntentJobSnapshotSource } from './plan.js';
@@ -202,6 +204,112 @@ describe('selectCandidates', () => {
 
   it('returns an empty list when everything is filtered out', () => {
     expect(selectCandidates([], { minTier: 'low' })).toEqual([]);
+  });
+});
+
+describe('selectCandidatesWithReasons', () => {
+  const passing: MatchLike = match({
+    score: 3,
+    matchedSkills: ['Go'],
+    fieldScores: { title: 3, tags: 0, description: 0 },
+    skillHits: [{ skill: 'Go', score: 3, fields: ['title'] }],
+  });
+  // 仅描述命中：分数再高也过不了守卫（0.2 规则），必须是这个原因码而不是"分档不够"
+  const descriptionOnly: MatchLike = match({
+    score: 12,
+    matchedSkills: ['Go', 'Rust', 'K8s'],
+    fieldScores: { title: 0, tags: 0, description: 12 },
+    skillHits: [
+      { skill: 'Go', score: 4, fields: ['description'] },
+      { skill: 'Rust', score: 4, fields: ['description'] },
+      { skill: 'K8s', score: 4, fields: ['description'] },
+    ],
+  });
+  // 2/(1*6) = 33% → low：过了守卫但没过用户阈值
+  const belowTier: MatchLike = match({
+    score: 2,
+    matchedSkills: ['Go'],
+    fieldScores: { title: 2, tags: 0, description: 0 },
+    skillHits: [{ skill: 'Go', score: 2, fields: ['title'] }],
+  });
+
+  it('labels each blocked candidate with the gate that blocked it', () => {
+    const items = [
+      { match: descriptionOnly, posting: posting({ jobId: 'desc-only' }) },
+      { match: belowTier, posting: posting({ jobId: 'below-tier' }) },
+      { match: passing, posting: posting({ jobId: 'chosen' }) },
+    ];
+    const result = selectCandidatesWithReasons(items, { minTier: 'mid' });
+
+    expect(result.selected.map((i) => i.posting.jobId)).toEqual(['chosen']);
+    expect(result.excluded.map((e) => [e.item.posting.jobId, e.reason, e.tier])).toEqual([
+      // 12 分 / 3 个命中技能 = 67% → mid：分档够，被"只认标题/标签命中"的守卫挡下
+      ['desc-only', 'no_title_or_tag_hit', 'mid'],
+      ['below-tier', 'below_min_tier', 'low'],
+    ]);
+  });
+
+  it('separates "over the round limit" from "failed the gate"', () => {
+    const items = [
+      { match: match({ score: 9 }), posting: posting({ jobId: 'best' }) },
+      { match: passing, posting: posting({ jobId: 'good-but-cut' }) },
+      { match: belowTier, posting: posting({ jobId: 'weak' }) },
+    ];
+    const result = selectCandidatesWithReasons(items, { minTier: 'mid', limit: 1 });
+
+    expect(result.selected.map((i) => i.posting.jobId)).toEqual(['best']);
+    // 被名额截掉的排在被闸挡掉的前面（同一把尺排序，用户看到的是"差多少"的顺序）
+    expect(result.excluded.map((e) => [e.item.posting.jobId, e.reason])).toEqual([
+      ['good-but-cut', 'over_candidate_limit'],
+      ['weak', 'below_min_tier'],
+    ]);
+  });
+
+  it('keeps already-ticketed jobs out of both lists (dedupe is not a gate verdict)', () => {
+    const items = [
+      { match: passing, posting: posting({ jobId: 'already-applied' }) },
+      { match: passing, posting: posting({ jobId: 'live' }) },
+    ];
+    const result = selectCandidatesWithReasons(items, {
+      minTier: 'mid',
+      excludeJobIds: new Set(['already-applied']),
+    });
+    expect(result.selected.map((i) => i.posting.jobId)).toEqual(['live']);
+    expect(result.excluded).toEqual([]);
+  });
+
+  it('selects exactly what selectCandidates selects (single implementation, no drift)', () => {
+    const items = [
+      { match: passing, posting: posting({ jobId: 'a', postedAt: '2026-10-01T00:00:00.000Z' }) },
+      { match: passing, posting: posting({ jobId: 'b', postedAt: '2026-10-02T00:00:00.000Z' }) },
+      { match: descriptionOnly, posting: posting({ jobId: 'c' }) },
+      { match: belowTier, posting: posting({ jobId: 'd' }) },
+      { match: passing, posting: posting({ jobId: 'skip-me' }) },
+    ];
+    const options = { minTier: 'mid' as const, limit: 2, excludeJobIds: new Set(['skip-me']) };
+    const withReasons = selectCandidatesWithReasons(items, options);
+    expect(withReasons.selected).toEqual(selectCandidates(items, options));
+    const ids = new Set([
+      ...withReasons.selected.map((i) => i.posting.jobId),
+      ...withReasons.excluded.map((e) => e.item.posting.jobId),
+    ]);
+    expect([...ids].sort()).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('applies the company whitelist to the reasons path the same way', () => {
+    const items = [
+      { match: passing, posting: posting({ jobId: 'plain' }) },
+      { match: passing, posting: posting({ jobId: 'friend', company: 'Stripe' }) },
+    ];
+    const result = selectCandidatesWithReasonsForPreference(items, {
+      minTier: 'mid',
+      limit: 1,
+      preferredCompanyTerms: ['Stripe'],
+    });
+    expect(result.selected.map((i) => i.posting.jobId)).toEqual(['friend']);
+    expect(result.excluded.map((e) => [e.item.posting.jobId, e.reason])).toEqual([
+      ['plain', 'over_candidate_limit'],
+    ]);
   });
 });
 

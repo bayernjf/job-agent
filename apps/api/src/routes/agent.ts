@@ -17,6 +17,7 @@ import {
   JobRunRejectSchema,
   ResumeLocaleSchema,
   RunEventsQuerySchema,
+  type AbilityProfile,
   type SupportedPlatform,
 } from '@jobagent/shared';
 import type { StoredJobRun, StoredSubmitIntent } from '@jobagent/storage';
@@ -29,6 +30,7 @@ import {
   advanceRunOnce,
   applyRunEvent,
   buildIntentArtifacts,
+  deriveRunCandidates,
   loadRunView,
   renderIntentCoverLetter,
   renderIntentResume,
@@ -327,6 +329,54 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       runId: run.id,
       status: run.status,
       items: [...pending, ...approved].map(toIntentView),
+    });
+  });
+
+  // GET /agent/runs/:id/gate-exclusions：质量闸**挡下了什么**（C 端体验增量：闸不能只挡不说）。
+  // 每次读都现算：它是"当前偏好 × 当前岗位池"的派生视图，不是历史事实。落库反而会让
+  // 界面讲的和下一轮 tick 做的不是同一件事——两侧共用 `deriveRunCandidates` 这一份实现。
+  app.get('/agent/runs/:id/gate-exclusions', async (c) => {
+    const run = await requireOwnedRun(c, c.req.param('id') ?? '');
+    if (run instanceof Response) return run;
+    if (isTerminalStatus(run.status)) {
+      return c.json({ error: 'job run is not active', code: AGENT_ERROR_CODES.runNotActive }, 409);
+    }
+    const [preference, profileRow] = await Promise.all([
+      repos.jobPreferences.getById(run.preferenceId),
+      repos.profiles.getById(run.profileId),
+    ]);
+    const profile = profileRow?.snapshot as AbilityProfile | null | undefined;
+    if (!preference || !profile) {
+      // 偏好在扫描时缺行会把 run 直接置 failed；走到这里说明数据已不完整，如实报错而不是回空列表
+      return c.json(
+        { error: 'job run inputs are missing', code: AGENT_ERROR_CODES.preferenceNotFound },
+        409,
+      );
+    }
+    const derivation = await deriveRunCandidates(agentRepos, agentConfig, run, preference, profile, now());
+    return c.json({
+      runId: run.id,
+      status: run.status,
+      minTier: derivation.minTier,
+      candidateLimit: derivation.candidateLimit,
+      poolSize: derivation.poolSize,
+      matchedCount: derivation.matchedCount,
+      items: derivation.excluded.map((entry) => ({
+        // postingId＝岗位池行主键：不同源可以携带同一个外部 jobId，放行时必须按池行认身份
+        postingId: entry.item.posting.id,
+        jobId: entry.item.posting.jobId,
+        source: entry.item.posting.source,
+        sourceUrl: entry.item.posting.sourceUrl,
+        title: entry.item.posting.title,
+        company: entry.item.posting.company,
+        location: entry.item.posting.location,
+        remote: entry.item.posting.remote,
+        postedAt: entry.item.posting.postedAt,
+        score: entry.item.match.score,
+        matchedSkills: entry.item.match.matchedSkills,
+        tier: entry.tier,
+        reason: entry.reason,
+      })),
     });
   });
 

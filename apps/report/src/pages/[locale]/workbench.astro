@@ -121,6 +121,7 @@ const claimedProfileId = viewer.kind === 'user' ? viewer.claimedProfileId : null
             lastScan: t('workbench.runs.lastScan'),
             lastScanNever: t('workbench.runs.lastScanNever'),
             scanResult: t('workbench.runs.scanResult'),
+            scanSkipped: t('workbench.runs.scanSkipped'),
             timeline: t('workbench.runs.timeline'),
             timelineEmpty: t('workbench.runs.timelineEmpty'),
             eventRange: t('workbench.runs.eventRange'),
@@ -165,6 +166,20 @@ const claimedProfileId = viewer.kind === 'user' ? viewer.claimedProfileId : null
               interview: t('workbench.submissions.outcome.interview'),
               offer: t('workbench.submissions.outcome.offer'),
               rejected: t('workbench.submissions.outcome.rejected'),
+            },
+          },
+          gate: {
+            title: t('workbench.gate.title'),
+            titleWithCount: t('workbench.gate.titleWithCount'),
+            hint: t('workbench.gate.hint'),
+            loading: t('workbench.gate.loading'),
+            empty: t('workbench.gate.empty'),
+            error: t('workbench.gate.error'),
+            scoreLabel: t('workbench.gate.scoreLabel'),
+            reason: {
+              no_title_or_tag_hit: t('workbench.gate.reason.no_title_or_tag_hit'),
+              below_min_tier: t('workbench.gate.reason.below_min_tier'),
+              over_candidate_limit: t('workbench.gate.reason.over_candidate_limit'),
             },
           },
           match: {

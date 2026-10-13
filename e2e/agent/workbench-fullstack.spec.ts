@@ -153,6 +153,20 @@ test.describe('agent workbench — full stack', () => {
     await expect(first).not.toContainText('tag_match');
     await expect(first).not.toContainText('tag_not_in_profile');
 
+    // 质量闸的可观测面（真全栈）：夹具 1005 的 TypeScript 只出现在正文，被守卫挡下。
+    // 这条断言同时钉住"界面读的是真端点真字段"——mock 用例里我自己写的夹具证明不了这件事。
+    const gate = page.getByTestId('agent-gate');
+    await expect(gate.getByTestId('agent-gate-row')).toHaveCount(0); // 折叠时不取
+    await gate.locator('summary').click();
+    const blocked = gate.getByTestId('agent-gate-row');
+    await expect(blocked).toHaveCount(1);
+    await expect(blocked.first()).toContainText('Site Reliability Engineer');
+    await expect(gate.getByTestId('agent-gate-reason').first()).toContainText(
+      'mentioned only in the description',
+    );
+    // 内核只出原因码，句子由渲染侧拼：码印到界面上就是缺陷
+    await expect(gate).not.toContainText('no_title_or_tag_hit');
+
     // 回归：简历下载必须 200（票据快照带岗位池主键），且落地为 md 文件
     const [resumeResponse] = await Promise.all([
       page.waitForResponse((r) => r.url().includes('/resumes/build') && r.request().method() === 'POST'),
