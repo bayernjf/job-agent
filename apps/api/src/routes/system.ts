@@ -29,6 +29,9 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   { table: 'notification_subscriptions', column: 'account_id' }, // 034 触达通道订阅（决策 #25）
   { table: 'job_postings', column: 'created_by_account_id' }, // 036 招聘方自建 JD 归属（决策 #25）
   { table: 'interviews', column: 'posting_id' }, // 037 面试挂到自建岗位（决策 #25 补口；interviews insert 已引用该列）
+  // 038 成本回采用量事件（决策 #25 ④）：recorder 是 fail-open——insert 失败只进日志，
+  // 缺表/缺列不会炸主链路而会**静默失盲**，因此必须进漂移守卫显式暴露。
+  { table: 'usage_events', column: 'billing_source' },
 ];
 
 export { REQUIRED_COLUMNS };

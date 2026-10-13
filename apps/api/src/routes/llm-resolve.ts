@@ -18,8 +18,8 @@ import {
   OpenAICompatibleClient,
   decryptApiKey,
   type CoverLetterProvider,
+  type MeteredResumePolishProvider,
 } from '@jobagent/llm';
-import type { ResumePolishProvider } from '@jobagent/resume-core';
 import type { RouteDeps } from './context.js';
 
 export type LlmSource = 'byok' | 'builtin' | 'none';
@@ -27,7 +27,9 @@ export type LlmSource = 'byok' | 'builtin' | 'none';
 export interface ResolvedTextLlm {
   source: LlmSource;
   cover: CoverLetterProvider | null;
-  polish: ResumePolishProvider | null;
+  // Metered 放宽（决策 #25 ④ Wave B）：调用点可注入 onUsage 观察者回采 token；
+  // 既有的非 Metered 实现经方法双变仍可赋值（context.ts 的 builtin 注入不用动）。
+  polish: MeteredResumePolishProvider | null;
 }
 
 export async function resolveTextLlm(c: Context, d: RouteDeps): Promise<ResolvedTextLlm> {

@@ -7,18 +7,19 @@
  * 全部内存 SQLite + FakeAuthProvider（不打网络），Hono app.request。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { AbilityProfile, EvidenceItem } from '@jobagent/shared';
+import type { AbilityProfile, EvidenceItem, RecordUsageInput } from '@jobagent/shared';
 import {
   createStorage,
   makeJobPostingId,
   type NewJobPosting,
   type StorageContext,
+  type UsageRecorder,
 } from '@jobagent/storage';
 import { createApp, type ApiDeps } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';
 import { loadAuthConfig } from './auth-config.js';
-import { loadAgentConfig } from './agent-config.js';
+import { loadAgentConfig, type JdExtractorMeta, type MeteredJdExtractor } from './agent-config.js';
 import type { JdExtractor } from '@jobagent/agent-core';
 
 const ALICE: OAuthProfile = {
@@ -1146,10 +1147,24 @@ describe('agent workbench — event stream paging', () => {
 });
 
 describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
+  /** 计量埋点测试用（决策 #25 ④ Wave B）：收集 record 入参的假 UsageRecorder。 */
+  function fakeUsageRecorder(): { calls: RecordUsageInput[]; recorder: UsageRecorder } {
+    const calls: RecordUsageInput[] = [];
+    return {
+      calls,
+      recorder: {
+        record: async (input) => {
+          calls.push(input);
+        },
+      },
+    };
+  }
+
   /** 起内存库 + 已登录 Alice，并注入带 jdExtractor 的 AgentConfig。 */
   async function harnessWithJd(
-    jdExtractor: JdExtractor,
+    jdExtractor: MeteredJdExtractor,
     configOverride: Partial<ReturnType<typeof loadAgentConfig>> = {},
+    extras: { usageRecorder?: UsageRecorder; jdExtractorMeta?: JdExtractorMeta } = {},
   ) {
     const repos = await createStorage({ sqlitePath: ':memory:' });
     const { Cookie } = await loginUser(repos, ALICE);
@@ -1157,7 +1172,13 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
       repos,
       authConfig: loadAuthConfig({}),
       githubAuthProvider: new FakeAuthProvider(ALICE),
-      agentConfig: { ...loadAgentConfig(), ...configOverride, jdExtractor },
+      usageRecorder: extras.usageRecorder,
+      agentConfig: {
+        ...loadAgentConfig(),
+        ...configOverride,
+        jdExtractor,
+        ...(extras.jdExtractorMeta ? { jdExtractorMeta: extras.jdExtractorMeta } : {}),
+      },
     });
     const json = (path: string, init: RequestInit = {}) =>
       app.request(path, {
@@ -1286,6 +1307,73 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
     expect(seen).toHaveLength(2);
     expect(body.intents.filter((i) => i.report.jdInsight)).toHaveLength(2);
     expect(body.intents.filter((i) => !i.report.jdInsight)).toHaveLength(1);
+  });
+
+  it('records jd_extraction usage with extractor meta after a successful extraction (决策 #25 ④ Wave B)', async () => {
+    const meter = fakeUsageRecorder();
+    const extractor: MeteredJdExtractor = async (_title, _description, onUsage) => {
+      onUsage?.({ promptTokens: 11, completionTokens: 7 });
+      return { responsibilities: [], requiredSkills: ['Rust'], qualifications: [] };
+    };
+    const { repos, json } = await harnessWithJd(extractor, {}, {
+      usageRecorder: meter.recorder,
+      jdExtractorMeta: { provider: 'fake', model: 'fake-model-1', billingSource: 'builtin' },
+    });
+    await scanOnce(json, repos);
+
+    const account = await repos.accounts.getByProvider('github', ALICE.providerAccountId);
+    expect(meter.calls).toEqual([
+      {
+        accountId: account!.id,
+        category: 'llm',
+        feature: 'jd_extraction',
+        billingSource: 'builtin',
+        provider: 'fake',
+        model: 'fake-model-1',
+        promptTokens: 11,
+        completionTokens: 7,
+        quantity: null,
+      },
+    ]);
+  });
+
+  it('records null token/provider fields when the extractor reports no usage and no meta is wired', async () => {
+    const meter = fakeUsageRecorder();
+    const extractor: MeteredJdExtractor = async () => ({
+      responsibilities: [],
+      requiredSkills: ['Rust'],
+      qualifications: [],
+    });
+    const { repos, json } = await harnessWithJd(extractor, {}, { usageRecorder: meter.recorder });
+    await scanOnce(json, repos);
+
+    const account = await repos.accounts.getByProvider('github', ALICE.providerAccountId);
+    expect(meter.calls).toEqual([
+      {
+        accountId: account!.id,
+        category: 'llm',
+        feature: 'jd_extraction',
+        // meta 缺失兜底 'builtin'（cron 无登录用户上下文只走内置 env）
+        billingSource: 'builtin',
+        provider: null,
+        model: null,
+        promptTokens: null,
+        completionTokens: null,
+        quantity: null,
+      },
+    ]);
+  });
+
+  it('does not record usage when the extractor throws (只记成功完成的 LLM 调用)', async () => {
+    const meter = fakeUsageRecorder();
+    const extractor: MeteredJdExtractor = async () => {
+      throw new Error('llm down');
+    };
+    const { repos, json } = await harnessWithJd(extractor, {}, { usageRecorder: meter.recorder });
+    const body = await scanOnce(json, repos);
+
+    expect(body.run.status).toBe('awaiting_approval');
+    expect(meter.calls).toHaveLength(0);
   });
 });
 

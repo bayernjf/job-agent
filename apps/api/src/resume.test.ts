@@ -7,11 +7,11 @@
  * 全部用内存 SQLite + 仓储注入，不启动服务器、不打网络、不调 LLM。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AbilityProfile, JobPosting, ResumeDraft, SkillTag } from '@jobagent/shared';
-import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
+import type { AbilityProfile, JobPosting, RecordUsageInput, ResumeDraft, SkillTag } from '@jobagent/shared';
+import { createStorage, type NewJobPosting, type StorageContext, type UsageRecorder } from '@jobagent/storage';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
-import type { CoverLetterProvider } from '@jobagent/llm';
-import { FakeLlmClient, LlmCoverLetterProvider, LlmResponseError, LlmResumePolishProvider } from '@jobagent/llm';
+import type { CoverLetterProvider, LlmTokenUsage } from '@jobagent/llm';
+import { encryptApiKey, FakeLlmClient, LlmCoverLetterProvider, LlmResponseError, LlmResumePolishProvider } from '@jobagent/llm';
 import { AUTH_SESSION_COOKIE } from '@jobagent/shared';
 import { createApp } from './index.js';
 
@@ -61,8 +61,42 @@ function profileWith(tags: SkillTag[]): AbilityProfile {
   };
 }
 
+/** 计量埋点测试用（决策 #25 ④ Wave B）：收集 record 入参的假 UsageRecorder。 */
+function fakeUsageRecorder(): { calls: RecordUsageInput[]; recorder: UsageRecorder } {
+  const calls: RecordUsageInput[] = [];
+  return {
+    calls,
+    recorder: {
+      record: async (input) => {
+        calls.push(input);
+      },
+    },
+  };
+}
+
+/** BYOK 用例的 LLM_ENC_KEY（值本身无格式要求，只用于加解密对通）。 */
+const ENC_KEY = 'test-enc-key-20261014';
+
+/** 仓储层直造 acc-alice 的 BYOK 配置（绕过 PUT 端点，不依赖其输入 schema）。 */
+async function seedByokConfig(repos: StorageContext, model = 'byok-model-9'): Promise<void> {
+  await repos.userLlmConfigs.upsert({
+    accountId: 'acc-alice',
+    provider: 'custom',
+    baseUrl: 'https://byok.example.com/v1',
+    model,
+    apiKeyEncrypted: encryptApiKey('sk-byok-test', ENC_KEY),
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+}
+
 async function harness(
-  opts: { resumePolish?: ResumePolishProvider | null; coverLetter?: CoverLetterProvider | null } = {},
+  opts: {
+    resumePolish?: ResumePolishProvider | null;
+    coverLetter?: CoverLetterProvider | null;
+    usageRecorder?: UsageRecorder;
+    llmEncKey?: string;
+  } = {},
 ): Promise<{
   app: Awaited<ReturnType<typeof createApp>>;
   repos: StorageContext;
@@ -107,6 +141,8 @@ async function harness(
     now: () => NOW,
     resumePolish: opts.resumePolish,
     coverLetter: opts.coverLetter,
+    usageRecorder: opts.usageRecorder,
+    llmEncKey: opts.llmEncKey,
   });
   return { app, repos, jobId: tsJob.id };
 }
@@ -268,13 +304,14 @@ describe('POST /resumes/build optional LLM polish', () => {
     process.env.ADMIN_ACCOUNT_LOGINS = 'alice';
   });
   afterEach(() => {
+    vi.unstubAllGlobals();
     if (prevAdminLogins === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
     else process.env.ADMIN_ACCOUNT_LOGINS = prevAdminLogins;
   });
 
-  /** 用 FakeLlmClient 包装的润色 provider（确定性、零网络）；responder 决定模型输出。 */
-  function providerWith(output: unknown): ResumePolishProvider {
-    return new LlmResumePolishProvider(new FakeLlmClient(() => output));
+  /** 用 FakeLlmClient 包装的润色 provider（确定性、零网络）；responder 决定模型输出，usage 决定透出的 token 用量。 */
+  function providerWith(output: unknown, usage?: LlmTokenUsage): ResumePolishProvider {
+    return new LlmResumePolishProvider(new FakeLlmClient(() => output, 'fake-model-1', usage));
   }
 
   /** 仓储层直接造 alice 的登录会话（T27 后 polish 只对已登录 user 开放）。 */
@@ -393,6 +430,98 @@ describe('POST /resumes/build optional LLM polish', () => {
     expect(body.draft.summary).toBe(rule.draft.summary);
     expect(body.draft.provenance.polish).toBeUndefined();
   });
+
+  it('records resume_polish usage with builtin routing after a successful polish (决策 #25 ④ Wave B)', async () => {
+    const polishedSummary = 'A concise, evidence-backed professional profile.';
+    const meter = fakeUsageRecorder();
+    const { app, repos, jobId } = await harness({
+      resumePolish: providerWith({ summary: polishedSummary }, { promptTokens: 11, completionTokens: 7 }),
+      usageRecorder: meter.recorder,
+    });
+    const cookie = await loginCookie(repos);
+    const body = await build(app, jobId, { polish: true, locale: 'en' }, cookie);
+    expect(body.polish).toEqual({ requested: true, applied: true });
+    expect(meter.calls).toEqual([
+      {
+        accountId: 'acc-alice',
+        category: 'llm',
+        feature: 'resume_polish',
+        billingSource: 'builtin',
+        provider: 'fake',
+        model: 'fake-model-1',
+        promptTokens: 11,
+        completionTokens: 7,
+        quantity: null,
+      },
+    ]);
+  });
+
+  it('records null token counts when the LLM response carries no usage', async () => {
+    const meter = fakeUsageRecorder();
+    const { app, repos, jobId } = await harness({
+      resumePolish: providerWith({ summary: 'A concise, evidence-backed professional profile.' }),
+      usageRecorder: meter.recorder,
+    });
+    const cookie = await loginCookie(repos);
+    const body = await build(app, jobId, { polish: true, locale: 'en' }, cookie);
+    expect(body.polish).toEqual({ requested: true, applied: true });
+    expect(meter.calls).toHaveLength(1);
+    expect(meter.calls[0]).toMatchObject({
+      category: 'llm',
+      feature: 'resume_polish',
+      billingSource: 'builtin',
+      promptTokens: null,
+      completionTokens: null,
+    });
+  });
+
+  it('records byok billingSource with the user-configured provider/model and real token counts', async () => {
+    const meter = fakeUsageRecorder();
+    const { app, repos, jobId } = await harness({
+      usageRecorder: meter.recorder,
+      llmEncKey: ENC_KEY,
+    });
+    const cookie = await loginCookie(repos);
+    await seedByokConfig(repos);
+    vi.stubGlobal('fetch', async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            { message: { content: JSON.stringify({ summary: 'A concise, evidence-backed professional profile.' }) } },
+          ],
+          usage: { prompt_tokens: 23, completion_tokens: 5 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const body = await build(app, jobId, { polish: true, locale: 'en' }, cookie);
+    expect(body.polish).toEqual({ requested: true, applied: true });
+    expect(meter.calls).toEqual([
+      {
+        accountId: 'acc-alice',
+        category: 'llm',
+        feature: 'resume_polish',
+        billingSource: 'byok',
+        provider: 'custom',
+        model: 'byok-model-9',
+        promptTokens: 23,
+        completionTokens: 5,
+        quantity: null,
+      },
+    ]);
+  });
+
+  it('does not record usage when the provider call fails (只记成功完成的 LLM 调用)', async () => {
+    const meter = fakeUsageRecorder();
+    const { app, repos, jobId } = await harness({
+      resumePolish: providerWith('not-json-at-all'),
+      usageRecorder: meter.recorder,
+    });
+    const cookie = await loginCookie(repos);
+    const body = await build(app, jobId, { polish: true }, cookie);
+    expect(body.polish).toEqual({ requested: true, applied: false, reason: 'provider_error' });
+    expect(meter.calls).toHaveLength(0);
+  });
 });
 
 describe('POST /resumes/cover-letter (A)', () => {
@@ -402,13 +531,14 @@ describe('POST /resumes/cover-letter (A)', () => {
     process.env.ADMIN_ACCOUNT_LOGINS = 'alice';
   });
   afterEach(() => {
+    vi.unstubAllGlobals();
     if (prevCoverAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
     else process.env.ADMIN_ACCOUNT_LOGINS = prevCoverAdmin;
   });
 
-  /** 用 FakeLlmClient 包装的求职信 provider（确定性、零网络）；responder 决定模型输出。 */
-  function coverProviderWith(output: unknown): CoverLetterProvider {
-    return new LlmCoverLetterProvider(new FakeLlmClient(() => output));
+  /** 用 FakeLlmClient 包装的求职信 provider（确定性、零网络）；responder 决定模型输出，usage 决定透出的 token 用量。 */
+  function coverProviderWith(output: unknown, usage?: LlmTokenUsage): CoverLetterProvider {
+    return new LlmCoverLetterProvider(new FakeLlmClient(() => output, 'fake-model-1', usage));
   }
 
   /** 仓储层直接造 alice 的登录会话（LLM 付费，仅登录 user 可调）。 */
@@ -541,5 +671,90 @@ describe('POST /resumes/cover-letter (A)', () => {
       body: JSON.stringify({ profileId: 'p-resume' }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it('records cover_letter usage with builtin routing after a successful generation (决策 #25 ④ Wave B)', async () => {
+    const meter = fakeUsageRecorder();
+    const { app, repos, jobId } = await harness({
+      coverLetter: coverProviderWith(
+        {
+          subject: 'Application for Senior TypeScript Engineer',
+          body: 'Dear hiring team, I am a TypeScript backend developer whose public work shows dependable concurrency fixes.',
+        },
+        { promptTokens: 19, completionTokens: 41 },
+      ),
+      usageRecorder: meter.recorder,
+    });
+    const cookie = await loginCookie(repos);
+    const { status } = await cover(app, jobId, { locale: 'en' }, cookie);
+    expect(status).toBe(200);
+    expect(meter.calls).toEqual([
+      {
+        accountId: 'acc-alice',
+        category: 'llm',
+        feature: 'cover_letter',
+        billingSource: 'builtin',
+        provider: 'fake',
+        model: 'fake-model-1',
+        promptTokens: 19,
+        completionTokens: 41,
+        quantity: null,
+      },
+    ]);
+  });
+
+  it('records byok billingSource for cover letter when the user has a BYOK config', async () => {
+    const meter = fakeUsageRecorder();
+    const { app, repos, jobId } = await harness({
+      usageRecorder: meter.recorder,
+      llmEncKey: ENC_KEY,
+    });
+    const cookie = await loginCookie(repos);
+    await seedByokConfig(repos);
+    vi.stubGlobal('fetch', async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  subject: 'Application for Senior TypeScript Engineer',
+                  body: 'Dear hiring team, evidence-backed body.',
+                }),
+              },
+            },
+          ],
+          usage: { prompt_tokens: 13, completion_tokens: 29 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const { status } = await cover(app, jobId, { locale: 'en' }, cookie);
+    expect(status).toBe(200);
+    expect(meter.calls).toEqual([
+      {
+        accountId: 'acc-alice',
+        category: 'llm',
+        feature: 'cover_letter',
+        billingSource: 'byok',
+        provider: 'custom',
+        model: 'byok-model-9',
+        promptTokens: 13,
+        completionTokens: 29,
+        quantity: null,
+      },
+    ]);
+  });
+
+  it('does not record usage when the provider errors (只记成功完成的 LLM 调用)', async () => {
+    const meter = fakeUsageRecorder();
+    const { app, repos, jobId } = await harness({
+      coverLetter: coverProviderWith('not-json'),
+      usageRecorder: meter.recorder,
+    });
+    const cookie = await loginCookie(repos);
+    const { status } = await cover(app, jobId, {}, cookie);
+    expect(status).toBe(502);
+    expect(meter.calls).toHaveLength(0);
   });
 });
