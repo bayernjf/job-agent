@@ -1,136 +1,132 @@
 # JobAgent
 
-AI 时代，以代码托管平台（GitHub / Gitee）行为痕迹为"可验证工作证据"的招聘（B 端）+ 应聘（C 端）双向平台。当前 **M1（MVP）核心完成、P1·Chrome 扩展进入稳定期、P2 职位聚合与画像↔岗位匹配完成、GitHub/Gitee 双证据源与在线融合画像（platform=all）、演示模式 Demo Mode、岗位定向简历（规则版 + LLM 受约束润色/求职信）、招聘痛点解决方案批次 1+2、GitHub/Gitee 双平台 OAuth 登录与本人画像认领、报告页授权分级闸、简历声明逐条核验（决策 #23）、求职 Agent 阶段 1「求职工作台」与阶段 2「半自动投递」、指令式全网搜岗 websearch P0 均已落地**；真实性规则 0.8（0.1→0.8 各轮双向校准与真实双源回归见 handoff item5/25/26/66）。**形态 C 生产已于 2026-09-30 上线（`https://app.job-agent.bayjf.com`，Vercel + Supabase），J1–J5 人工 smoke 与 cron/轮询已于 2026-10-02 实测通过，J6 异议邮箱已于 2026-10-08 闭环（真实投递验证通过）、生产 `LLM_*` 已于 2026-10-09 配齐并连通验证，剩 B4 Supabase 备份、CWS 上架（均卡用户/外部条件）；分析消费定时器已于 2026-10-06 切到 Cloudflare Worker Cron（决策 #24，排队最坏等待 ≤5 分钟）**，其余推进项卡外部条件（Workday 直渲染租户端到端、扩展真人试用，见 handoff 与 `docs/部署前就绪确认单-20260924.md`）。pnpm workspaces 全仓（12 packages + 7 apps）、`packages/shared` 契约（画像 + JobPosting）、`packages/storage` 双方言持久化层、L0/L1 分析链路、报告页 + 分享、浏览器扩展一键填充、六源岗位库与技能匹配、求职工作台、指令式搜岗均落地，typecheck/test/build/check-migrations 全绿。工程惯例与 `agent-world` 对齐。
+把开发者在 GitHub / Gitee 上留下的**行为痕迹**（commit、PR、Issue、项目演进）分析成**可信、可解释、可复核**的能力画像，用于技术招聘与应聘。一句话：**自述简历会被美化，行为痕迹不会**——JobAgent 做的就是把两者对齐，并让每一条结论都能点回证据。
 
-## 从哪读起
+生产地址：<https://app.job-agent.bayjf.com>（落地页 <https://job-agent.bayjf.com>）。界面与报告**中英双语**。
 
-- **接手/了解进度先读 [handoff.md](handoff.md)**（当前状态 + 活跃待办 + 文档索引）。
-- 按场景找文档看 [docs/README.md](docs/README.md)；刻意缓做的事项看 [docs/deferred-items.md](docs/deferred-items.md)。
-- 在本仓库写代码前必读 [AGENTS.md](AGENTS.md)（工程约定单一事实源）；参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+---
 
-## 当前阶段
+## 1. 产品
 
-- **M1 完成**：W1 持久化层（SQLite/Postgres 双方言）→ W2 采集+分析内核+CLI → W3 服务化 → W4 报告+分享 → 端到端联调 + 真实性三轮校准（26 账号 0 误报/0 漏报）。MVP 最小闭环：输入 GitHub 或 Gitee 用户名 → L0/L1 分析（不 clone 仓库）→ 产出**可解释、可复核**的能力画像报告。
-- **P1 稳定期**：Chrome 扩展（MV3，Greenhouse/Lever/Workday 三 ATS 适配 + 一键填充）真实环境冒烟通过（Greenhouse + Lever 真实写入），summary→自定义问题映射、中英 i18n + 共享设计 token、岗位匹配面板、浏览器级 E2E、本地档案跨端自动同步（chrome.storage + externally_connectable）均已落地；[试用安装指南](apps/extension/INSTALL.md) 已就绪，待真实用户装扩展试用与 Workday 直渲染租户端到端。
-- **P2 完成**：六源岗位库（RemoteOK/Remotive/WeWorkRemotely/Greenhouse/Lever 日更 + HN Who-is-hiring 月更）入库与增量同步、纯函数 `matchJobs` 技能匹配、API 岗位搜索/匹配端点、画像↔岗位推荐端到端接线（报告页推荐岛 + 扩展匹配面板，可解释 fieldScores/skillReasons）均落地。
-- **Gitee 第二证据源完成**：`packages/gitee-source`（v5 REST-only）+ CLI/API/Worker/报告页/扩展全链路平台切换，海内外同步；双源在线融合画像（`platform=all`，镜像去重 + 跨源同帖去重 7 天窗 + 融合作业 demo 配额扣 2）与 FusionReport 去重统计已落地。
-- **演示模式完成**：免注册「试用演示」以 HttpOnly Cookie 临时身份进入真实产品，三态身份 + 会话/IP/Worker 三道配额闸 + 三态预置示例，代码全落地；配额已于 2026-09-21 决策：每会话 3 次新分析（融合扣 2）、有效期 24h；已随形态 C 上线（2026-09-30），J4 三道闸生产实测通过（2026-10-02）。
-- **岗位定向简历完成（P-R1/P-R2/P-R3 可闭环子项）**：在画像范围内按岗位生成匹配度高的简历（no-fabrication，每条断言挂证据、只重排不造事实），CLI build/batch + API + 报告页 ResumeBuilder + 扩展深链 + OpenAI 兼容可选润色（默认关闭）。
-- **LLM 模型供给双轨完成（2026-10-03，决策 #21，handoff item105）**：内置模型＝管理员在 `/admin` 面板管理目录（凭证只在 env `LLM_*`）；BYOK＝登录用户工作台「模型设置」自由配 OpenAI 兼容端点（apiKey 服务端 AES-256-GCM 加密，`LLM_ENC_KEY`）；请求路由 BYOK 优先 → 内置回落。生产已配非密钥项 `LLM_ENC_KEY` + `ADMIN_ACCOUNT_LOGINS`（2026-10-06），剩 `LLM_*` 是否进生产待拍板，详见 docs/design-llm-model-provisioning-20261003.md。
-- **招聘痛点解决方案批次 1+2 完成**：企业核验视图（`?view=recruiter`）、面试准备包导出、画像库人才检索（`/candidates`）、企业筛选工作台（`/recruit`）、投递记录追踪（applications）均已落地；批次 3 依赖外部条件。
-- **求职 Agent 阶段 1「求职工作台」落地（2026-10-03，PRD F12 / handoff item94）**：把画像与岗位池接成「找 → 评 → 改 → 投（人工）」——多套**求职偏好**（岗位关键词/技能/地区/远程/薪资/公司黑白名单/质量闸/每源每日上限）→ 新建任务即扫岗位池 → **可解释匹配报告**（命中技能与字段分值、岗位提到而画像无证据的缺口、补强建议）→ 岗位定向简历 + 规则版求职信 → **待投清单**（确认 / 拒绝 / 标记已投）。页面 `/[locale]/workbench`，契约见 [docs/API.md](docs/API.md) §3.8，设计与实施差异见 [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md)；阶段 2/3 的边界已由决策 #20 拍板（2026-10-03：**扩展自动填充、填完等用户点提交**／快照暂不落库／复盘人工确认且样本 ≥20／对招聘方披露「AI 辅助投递」）。
-- **求职 Agent 阶段 2「半自动投递」落地（2026-10-04，handoff item112）**：扩展登录态（决策 #22：工作台签发一次性授权码 → 扩展兑换长期 Bearer token）→ 扩展在真实 Greenhouse/Lever ATS 页**一键填充**简历与求职信（cover_letter 优先；**填完停手，绝不自动点提交**——决策 #20 硬边界）→ 用户本人提交后点「我已提交」回执转 tracking → 投递结果回写（`outcomeFeedback`，追踪下拉 / `/my` 提示 / 票据端点三口同一值域）；求职信 LLM 润色 fail-closed 回落规则版、每封末尾固定 AI 辅助披露；限频/质量闸复核；真全栈 E2E（`pnpm e2e:agent`）钉住全链。阶段 3「全自动点提交」明确不做。
-- **指令式全网搜岗 websearch P0 落地（2026-10-08/09，决策 #16 扩展，handoff item139–142）**：在「搜岗工作台」用自然语言（如"深圳的 Java 开发，坐班，可远程"）或一键再搜已保存筛选条件预设，Agent 在**全网**搜索（Tavily 主通道 + 意图解析 LLM fail-closed 回落规则 + JD 抽取 + URL 去重入岗位池，与定时采集并存）；结果可即时筛选（公司/仅远程）与 CSV 导出，预设/搜岗历史可保存与删除；**成本硬约束＝搜岗仅登录态主动触发、禁止任何自动/定时调度**（Tavily 付费搜索，避免不可控账单）。生产迁移 032/033 与 `TAVILY_API_KEY` 已于 2026-10-09 配齐并验证真实搜索链路，已随 PR #152/#153 上线 main；设计见 docs/design-websearch-job-discovery-20261008.md。
-- 长期分支：`main`（稳定，只能经 `dev → main` 的 PR 合入）、`dev`（日常集成，**日常改动直接在此提交**）；流程见 [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md)。
+### C 端（应聘方）：一轮求职走得完
 
-## 文档导航
-
-| 文档 | 作用 |
+| 步骤 | 你能做什么 |
 | --- | --- |
-| [docs/PRD.md](docs/PRD.md) | 产品需求：范围、F1–F13、数据契约、指标、风险 |
-| [docs/技术选型-MVP-20260910.md](docs/技术选型-MVP-20260910.md) | 技术栈、架构、工程结构与 M1 落地顺序 |
-| [docs/待拍板决策清单-20260910.md](docs/待拍板决策清单-20260910.md) | 需产品负责人决策的事项（#1–#8 已决策、#9–#13 延后、#14–#23 已决策——#21 LLM 供给 2026-10-03、#22 扩展登录态 2026-10-04、#23 简历声明核验 2026-10-05） |
-| [docs/讨论记录-01-切入口与MVP收敛-20260910.md](docs/讨论记录-01-切入口与MVP收敛-20260910.md) | 关键产品判断的讨论过程与依据 |
-| [docs/讨论记录-02-投递功能与竞品分析-20260911.md](docs/讨论记录-02-投递功能与竞品分析-20260911.md) | 投递方向、四种技术路径、职位聚合/扩展可行性 |
-| [docs/产品构想-以GitHub为桥梁的招聘系统.md](docs/产品构想-以GitHub为桥梁的招聘系统.md) | 最初的产品构想与市场背景 |
-| [docs/deferred-items.md](docs/deferred-items.md) | 缓做/低优事项 + 重启触发条件 |
-| [docs/市场调研-AI求职赛道-20260910.md](docs/市场调研-AI求职赛道-20260910.md) | AI 求职赛道市场格局、代表性产品画像与跟进建议 |
-| [docs/市场调研-招聘市场痛点-20260916.md](docs/市场调研-招聘市场痛点-20260916.md) | 中国招聘市场企业/求职者双方痛点调研（量化 + 对产品启示） |
-| [docs/设计-痛点解决方案-20260916.md](docs/设计-痛点解决方案-20260916.md) | 12 项痛点→解决方案对位 + 实施批次（批 1+2 已落地） |
-| [docs/技术栈总览-分层架构-20260916.md](docs/技术栈总览-分层架构-20260916.md) | 当前技术栈分层一页总览（五层 + 各包职责 + 数据流） |
-| [docs/design-i18n-20260910.md](docs/design-i18n-20260910.md) | 用户可见文案双语与 i18n 落地约定 |
-| [docs/design-tokens-20260910.md](docs/design-tokens-20260910.md) | 设计 token 体系与禁 hex 约定 |
-| [docs/design-storage-dual-dialect-20260911.md](docs/design-storage-dual-dialect-20260911.md) | 持久化层 SQLite/Postgres 双方言适配设计 |
-| [docs/设计-职位聚合-Spike-20260913.md](docs/设计-职位聚合-Spike-20260913.md) | P2 职位聚合 Spike：数据源实测结论与最小链路 |
-| [docs/design-job-ingestion-20260913.md](docs/design-job-ingestion-20260913.md) | P2 岗位采集管道工程设计（建表/适配器/编排/CLI sync） |
-| [docs/design-match-wiring-20260914.md](docs/design-match-wiring-20260914.md) | 画像↔岗位匹配端到端接线设计 |
-| [docs/design-gitee-source-spike-20260914.md](docs/design-gitee-source-spike-20260914.md) | Gitee 证据源 Spike：v5 可行性与差异结论 |
-| [docs/design-gitee-source-20260914.md](docs/design-gitee-source-20260914.md) | Gitee 第二证据源实现设计（REST 采集/映射/CLI--platform） |
-| [docs/design-behavior-diversity-20260915.md](docs/design-behavior-diversity-20260915.md) | 行为多样性信号（双源 events 聚合 + narrow_activity_scope，规则 0.2） |
-| [docs/design-skill-extraction-20260915.md](docs/design-skill-extraction-20260915.md) | 技能标签精确提取（技术词典/多信号/词边界/深度置信度） |
-| [docs/design-cross-source-fusion-20260915.md](docs/design-cross-source-fusion-20260915.md) | 跨源镜像去重与双源融合（fuseInputs/在线 platform=all/7 天窗） |
-| [docs/design-demo-mode-20260915.md](docs/design-demo-mode-20260915.md) | 演示模式设计（三态身份/配额闸/预置示例/迁移 006–008） |
-| [docs/design-targeted-resume-20260915.md](docs/design-targeted-resume-20260915.md) | 岗位定向简历设计（no-fabrication/polish 安全层/本地档案 canonical） |
-| [docs/design-extension-match-ui-20260914.md](docs/design-extension-match-ui-20260914.md) | 扩展面板岗位匹配 UI 设计 |
-| [docs/design-extension-e2e-20260914.md](docs/design-extension-e2e-20260914.md) | 扩展浏览器级 E2E 设计 |
-| [docs/API.md](docs/API.md) | HTTP API 接口文档（analyze/jobs/profiles/health + GitHub/Gitee OAuth/认领/可见性矩阵） |
-| [docs/design-auth-gating-20260919.md](docs/design-auth-gating-20260919.md) | 账号收尾：OAuth return_to 深链回跳 + 报告页授权分级闸两档可见性 |
-| [docs/design-gitee-oauth-20260919.md](docs/design-gitee-oauth-20260919.md) | Gitee OAuth 登录与本人画像认领（协议差异 / AuthProvider / /auth/providers） |
-| [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md) | 部署 / 上线 Runbook（形态 A/B、生产 env、迁移、cron、上线 smoke） |
-| [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md) | 形态 C 上线照勾执行单（Vercel 单项目 + Supabase + Cloudflare DNS + Vercel Cron） |
-| [docs/design-cron-scheduler-20261006.md](docs/design-cron-scheduler-20261006.md) | 分析消费定时器选型（**决策 #24 已落地**：GitHub Actions schedule 丢触发 ⇒ Cloudflare Worker Cron `*/5`） |
-| [docs/评审-MVP-20260922.md](docs/评审-MVP-20260922.md) | 上线就绪度评审：代码级 MVP 已达成，唯一硬阻塞 P0-3 生产部署（**生产已于 2026-09-30 上线，此单为历史基线**） |
-| [docs/设计-求职Agent-20261002.md](docs/设计-求职Agent-20261002.md) | 求职 Agent 构想：六步闭环、人机确认闸、JobRun 状态机、三阶段路径（**阶段 1 求职工作台已落地，§10 记实施差异**） |
-| [apps/extension/INSTALL.md](apps/extension/INSTALL.md) | 浏览器扩展试用安装指南（本地服务、Chrome load unpacked、ATS 支持矩阵） |
-| [AGENTS.md](AGENTS.md) | AI coding agent 必读卡（工程约定单一事实源） |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 环境、命令、测试、提交与 PR 要求 |
-| [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md) | 数据库迁移规范（`db/migrations/NNN_*.sql`） |
-| [PULL_REQUEST_WORKFLOW.md](PULL_REQUEST_WORKFLOW.md) | dev 直接提交 + `dev → main` PR 的交付流程 |
-| [git-commit-message.md](git-commit-message.md) | 原子提交与 Conventional Commits 规范 |
-| [handoff.md](handoff.md) | 项目交接主入口（当前状态 / 下一步 / 文档索引） |
+| **找** | 输入 GitHub/Gitee 用户名出画像；从岗位池要推荐；或用自然语言**全网搜岗**（如「深圳的 Java 开发，坐班，可远程」）并把筛选条件存成预设 |
+| **评** | 每条能力标签、每个真实性判据都挂 `evidenceRefs`；可解释的画像↔岗位匹配报告（命中技能、字段分值、岗位要求而画像无证据的缺口） |
+| **改** | 岗位定向简历 + 求职信：只在画像已有事实内重排，**不造事实**；LLM 润色可选且 fail-closed（无密钥就回落规则版） |
+| **投** | 浏览器扩展在 Greenhouse / Lever / Workday / Ashby 等 ATS 页**一键填充**，**填完停手——提交由你本人点**（这是产品硬边界，不做自动投递） |
+| **跟** | 投递记录与结果回写（`outcomeFeedback`）、面试计划表、`/my` 回访页（排队中的任务也看得见） |
+| **复盘** | 「简历上这句话，你的 GitHub 撑得起吗」——声明逐条核验，输出 `supportable / partial / no_trace / insufficient_data` |
 
-> 上表是常用入口、非完整清单；**全部文档（含 2026-09-25 起的批次）以 [handoff.md](handoff.md) 的「Project documents」区为单一事实源**，场景导航见 [docs/README.md](docs/README.md)。
+免注册的**演示模式**用临时身份进真实产品（每会话 3 次新分析、24h 有效），另有三个预置示例画像秒开。
 
-## 技术栈（选定方向，详见技术选型文档）
+### B 端（招聘方）：先看证据，再看人
 
-- 语言/运行时：TypeScript（strict、ESM）+ Node.js（版本以 [.nvmrc](.nvmrc) 为准，`nvm use`）
-- 工程组织：**pnpm workspaces** monorepo（`packages/*` + `apps/*`，不用 npm/yarn）
-- 后端：Hono + Zod；后台分析：独立 Worker（消费 analysis_jobs）
-- 数据：**SQLite（本地/实验）+ PostgreSQL（生产）双方言** + Drizzle ORM（方言差异只在 `packages/storage` 内部，业务依赖统一仓储接口）；MVP 不引入 Redis
-- 迁移：`db/migrations/{sqlite,postgres}/NNN_verb_snake_case.sql` 对称目录，规范见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)
-- 采集：GitHub 官方 Octokit（GraphQL 批量优先）；Gitee v5 REST-only（匿名可读，`GITEE_TOKEN` 可选提额）
-- 页面：Astro + React islands（落地页为独立 Astro 工程 `bayernjf/job-agent-landing`）
-- 扩展：P1 浏览器扩展 `apps/extension`（MV3 + esbuild，三 ATS 适配）
-- 测试：Vitest（就近单测）+ Playwright（E2E）
+- 人才库检索与筛选工作台（`/recruit`）：按技能、平台、真实性分级、置信度过滤，卡片直接显示真实性与已核验声明数。
+- 单张画像的招聘方视角：原始证据外链、面试题、面试准备包导出（这些**只对登录用户解锁**，结论与匹配理由保持公开可回溯）。
+- **发布自己的私有 JD，并按这条 JD 排候选人**——同屏给出「命中的人」与「已经排了的面试」。私有岗位**绝不进入 C 端公开岗位池**。
+- 投递与面试记录按行归属：招聘方不能改写候选人自己的投递记录。
 
-## 开发
+> 范围、优先级与不做什么以 [docs/PRD.md](docs/PRD.md) 为准；真实进度以 [handoff.md](handoff.md) 为准（本文件不记流水）。
+
+---
+
+## 2. 启动
+
+### 2.1 本地跑起来（SQLite，最快路径）
 
 ```bash
-pnpm install                 # 安装依赖
-pnpm -r typecheck            # 全仓类型检查
-pnpm -r test                 # 全部就近单测（Vitest）
-pnpm -r build                # 构建各 workspace
-pnpm --filter <pkg> dev      # 只跑某个包/应用
-pnpm migrate:up / migrate:down / migrate:status   # SQLite 迁移（migrate:pg:* 走 Postgres）
-bash tools/check-migrations.sh   # 校验 sqlite/postgres 迁移目录对齐
-bash tools/preflight.sh          # 上线前一键本地预检：typecheck/迁移/单测/build/audit（--e2e 追加两套 E2E；--deploy 追加 Vercel 产物构建 + Docker PG 方言闸 + 扩展 release 打包）
-bash tools/backup-db.sh          # 数据库备份（B4）：pg_dump 到 backups/ 带时间戳、保留最新 N 份（--dry-run 只打印计划；DATABASE_URL 需 5432 session 串）
+nvm use                       # Node 版本以 .nvmrc 为准（当前 24.0.0）
+pnpm install                  # pnpm workspaces，不用 npm/yarn
+cp .env.example .env          # 环境变量权威模板（含注释与默认值）
+pnpm -r build                 # api 的 dev 与 worker 的 start 都跑 dist/，先构建一次
+pnpm migrate:up               # 建表（目标库优先级 --db > DB_PATH > data/job-agent.db）
+pnpm --filter @jobagent/api dev         # API :3000
+pnpm --filter @jobagent/worker start    # 分析任务消费者
+pnpm --filter @jobagent/report dev      # 报告页/工作台 :4321
 ```
 
-扩展 CWS 发布包（release 构建 + zip，需指定生产 API/站点域，详见 [store-assets README](apps/extension/store-assets/README.md)）：
+打开 <http://localhost:4321> 输入一个 GitHub 用户名即可。要一条命令拉起服务：
 
 ```bash
+docker compose up -d                      # api / worker / report（SQLite）
+docker compose --profile with-pg up -d     # 再加 Postgres :5432
+```
+
+**必需**：`GITHUB_TOKEN`（worker 采集用，fine-grained PAT 公开只读即可）。
+**可选**：`GITEE_TOKEN`（只提额度，匿名可读公开数据）；`GITHUB_OAUTH_*` / `GITEE_OAUTH_*`（不配则该平台登录返回 501，其余功能照常）；`LLM_*`（不配则润色/求职信走规则版）。密钥只进 `.env`，绝不入库。
+
+> 换过 Node 大版本后要重编译原生依赖：`pnpm rebuild -r better-sqlite3`（必须带 `-r`，否则静默 no-op）。
+
+### 2.2 生产数据库（Postgres）
+
+```bash
+DB_DRIVER=postgres DATABASE_URL='postgresql://…?sslmode=no-verify' pnpm migrate:pg:status
+DB_DRIVER=postgres DATABASE_URL='postgresql://…?sslmode=no-verify' pnpm migrate:pg:up
+```
+
+结构变更只走 `db/migrations/{sqlite,postgres}/NNN_verb_snake_case.sql` 对称目录（当前 37 对），规范见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。**上线形态 C（Vercel + Supabase + Cloudflare DNS）的照勾步骤**在 [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md)，通用 runbook 见 [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md)。队列消费由 `apps/cron-worker`（Cloudflare Worker Cron，`*/5` 档）驱动，部署用 `pnpm --filter @jobagent/cron-worker deploy`（wrangler secret 注入凭证）。
+
+### 2.3 浏览器扩展
+
+```bash
+pnpm --filter @jobagent/extension build      # 产出 dist/，Chrome 开发者模式「加载未打包」
 EXTENSION_API_BASE=https://<app-origin>/api EXTENSION_SITE_ORIGIN=https://<app-origin> \
-  pnpm --filter @jobagent/extension release   # 产出 apps/extension/release/*.zip
+  pnpm --filter @jobagent/extension release  # CWS/自分发用的 release zip
 ```
 
-### 本地配置与登录（可选）
+安装步骤与 ATS 支持矩阵见 [apps/extension/INSTALL.md](apps/extension/INSTALL.md)。
+
+### 2.4 交付前自检
 
 ```bash
-cp .env.example .env         # 所有环境变量的权威模板（含注释/默认值）；密钥只填 .env、绝不入库
+pnpm -r typecheck && pnpm -r build && pnpm -r test
+bash tools/check-migrations.sh
+bash tools/preflight.sh            # 五阶段一键预检；--e2e 追加三套 Playwright，--deploy 追加产物闸
 ```
 
-- **采集凭证**：`GITHUB_TOKEN`（worker 必需，fine-grained PAT 公开只读；生产建议 GitHub App）、`GITEE_TOKEN`（可选，匿名即可读公开数据）。
-- **GitHub 登录（OAuth）**：GitHub → Settings → Developer settings → OAuth Apps，回调填 `http://localhost:3000/auth/github/callback`，scope `user:email`，填入 `GITHUB_OAUTH_CLIENT_ID/SECRET`。
-- **Gitee 登录（OAuth）**：Gitee → 设置 → 第三方应用 → 创建应用，回调填 `http://localhost:3000/auth/gitee/callback`，scope 固定 `user_info`，填入 `GITEE_OAUTH_CLIENT_ID/SECRET`。
-- 两平台共用 `AUTH_STATE_SECRET`（本地可留空，进程内随机）与 `AUTH_CALLBACK_BASE_URL`（本地留空按请求推导）。**不配置某平台时，该平台登录路由返回 501，其余功能照常。**
-- 本地跨端口联调（report:4321 → api:3000）前端需带凭证（已用 `credentials:'include'`）；服务端直连 github.com 受限时配 `JOB_HTTP_PROXY`（Node 全局 fetch 默认不读代理 env，api 启动时经 `proxy-bootstrap.ts` 装全局代理）。
-- 端点 / Cookie / 错误码 / 可见性矩阵见 [docs/API.md](docs/API.md) §1.2；Gitee 协议差异见 [design-gitee-oauth-20260919](docs/design-gitee-oauth-20260919.md)；**生产 / 上线部署**形态 C（Vercel + Supabase）照勾 [部署执行单](docs/部署执行单-形态C-20260921.md)，形态 A/B 与通用说明见 [部署 Runbook](docs/deployment-runbook-20260920.md)。
+E2E 分三套：`pnpm e2e`（报告页，mock API）、`pnpm e2e:agent`（求职工作台**真全栈**：真 API + 真 SQLite + 真报告页）、`pnpm e2e:extension`（扩展加载 unpacked MV3）。日常命令与提交规范以 [AGENTS.md](AGENTS.md) / [CONTRIBUTING.md](CONTRIBUTING.md) 为准。
 
-## Docker 运行
+---
 
-```bash
-docker compose up -d                  # SQLite 模式（api:3000, report:4321）
-docker compose --profile with-pg up -d # 加 Postgres（端口 5432）
-# 环境变量：GITHUB_TOKEN（api/worker）、DB_DRIVER=postgres + DATABASE_URL 切 PG
+## 3. 架构概览
+
+### 3.1 一次分析的数据流
+
+```
+用户名 ─▶ API（Hono + Zod 校验）──▶ analysis_jobs(queued)   ← 立即返回 jobId
+                                          │
+        apps/cron-worker（Cloudflare Worker Cron */5）叫醒消费者
+                                          ▼
+                        Worker 认领 ─▶ github-source / gitee-source / semantic-source
+                                          │  产出证据源无关的 AnalyzerInput
+                                          ▼
+                        analyzer-core（纯函数 + 规则版本 RULE_VERSION，当前 0.9）
+                                          ▼
+        profiles（不可变快照）+ evidence ─▶ 报告页 SSR 直读只读 storage
 ```
 
-## 当前不可违背的产品/工程规则
+关键不变量：一次分析**只发布一份可分享结论**（进度走 job stage，不允许先出半成品再升级同一个链接）；任一层失败必须显式标注缺失，**禁止输出"看似完整"的报告**；画像存快照而非实时重算，避免源数据变化导致已分享结论漂移。
 
-- 分析内核（`analyzer-core`）必须是**纯函数、带 analyzerVersion、可复现**，不直接做 I/O。
-- **任何结论必须有证据（EvidenceItem）支撑；证据不足输出 `insufficient_data`，不臆断。**
-- 真实性用"分级 + 证据信号 + 置信度"，**不输出单一"真实度百分比"**。
-- MVP **只走平台公开 API（L0/L1），不 clone、不执行任何仓库代码**；支持 GitHub 与 Gitee 双平台。
-- 所有 DB 访问经单一持久化/仓储模块，业务层不写裸 SQL、不感知方言。
-- 共享类型与画像契约只放 `packages/shared`（含 P2 预留的 `JobPosting`）。
-- 所有写入 GitHub 的内容（commit/PR/Issue/Actions 名称）使用英文；本地中文文档与中文汇报不受限。
+### 3.2 分层与目录（14 packages + 7 apps）
+
+| 层 | 位置 | 职责 |
+| --- | --- | --- |
+| 契约 | `packages/shared` | `AbilityProfile` / `EvidenceItem` / `JobPosting` / 各 API 请求体的 Zod 单一事实源；内核散文的本地化 composer 也在这 |
+| 持久化 | `packages/storage` | 仓储接口 + SQLite/Postgres 双实现 + 迁移器；**方言差异只允许出现在这一层内部** |
+| 证据源 | `github-source`、`gitee-source`、`semantic-source` | Octokit（GraphQL 批量 + REST 补）、Gitee v5 REST-only、L3 不 clone 的语义采集，都产 `AnalyzerInput` |
+| 内核（纯函数） | `analyzer-core`、`semantic-core`、`resume-core`、`claim-core`、`agent-core` | 真实性分级与画像装配；成熟度/技术栈；岗位定向简历与受约束润色安全层；简历声明逐条核验；求职任务状态机与匹配闸 |
+| 岗位与搜岗 | `job-source`、`search-source` | 7 个岗位源适配器 + 增量同步去重；指令式全网搜岗（Tavily 主通道 + 意图解析 + JD 抽取） |
+| 供给 | `llm`、`ui-tokens` | OpenAI 兼容端口 + Fake（内置目录 / BYOK 双轨，凭证只在 env）；设计 token 单一事实源 |
+| 进程 | `apps/api`、`apps/worker`、`apps/cron-worker` | HTTP 面与求职 Agent 编排壳；队列消费者；定时器（`*/5` 档驱动 process-job / agent-tick / search-tick / watchdog / digest） |
+| 表面 | `apps/report`、`apps/extension`、`apps/cli`、`apps/mcp` | Astro + React islands（报告页、工作台、`/recruit`、`/my`、admin）；MV3 扩展；批量分析与运维 CLI；只读 MCP 接入面 |
+
+### 3.3 四条硬边界
+
+1. **内核不做 I/O**：`analyzer-core` 等纯函数不发请求、不读库、不读文件，输入是采集后的结构化数据——这样才能对固定夹具做确定性单测、才能版本化复现。
+2. **DB 访问只走 `packages/storage`**：业务模块不写裸 SQL、不感知方言，`createStorage()` 按 `DB_DRIVER` 切换。
+3. **结论必须挂证据**：无证据不下结论，证据不足输出 `insufficient_data`；真实性用「分级 + 信号 + 置信度」，不出单一「真实度百分比」。
+4. **不 clone、不执行任何仓库代码**：只走平台公开 API 或本人 OAuth 授权数据；更深的分析（L2 起）需要先过隔离沙箱与合规闸门。
+
+对外可见性的口径（哪些内容登录才可见、JSON API 同口径收口）、i18n 与设计 token 约定、迁移与提交纪律，全部集中在 **[AGENTS.md](AGENTS.md)**；缓做事项与重启触发条件在 **[docs/deferred-items.md](docs/deferred-items.md)**；按场景找文档看 **[docs/README.md](docs/README.md)**。
