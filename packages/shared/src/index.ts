@@ -749,6 +749,9 @@ export const JobSourceSchema = z.enum([
   'websearch',
   // T24②：用户粘贴 JD 直传的临时来源（不入岗位库，仅本次简历渲染使用）
   'manual',
+  // 决策 #25（2026-10-13）B3-a 最小子集：招聘方自建 JD，由 API 写入、不经采集。
+  // 私有岗位，绝不进 C 端公开岗位池（判据是 job_postings.created_by_account_id，见迁移 036）。
+  'recruiter',
 ]);
 export type JobSource = z.infer<typeof JobSourceSchema>;
 
@@ -1497,6 +1500,9 @@ export const InterviewCreateSchema = z
   .object({
     profileId: z.string().min(1, 'profileId is required'),
     applicationId: z.string().min(1).nullish(),
+    // 决策 #25 补口（迁移 037）：挂到招聘方自己发布的岗位（job_postings.id，source='recruiter'）。
+    // 归属由 API 层校验——只能挂自己的私有岗位，公开池的行一律 404。
+    postingId: z.string().min(1).nullish(),
     targetTitle: z.string().min(1, 'targetTitle is required'),
     targetCompany: z.string().min(1).nullish(),
     scheduledStart: z.string().datetime(),
@@ -1536,6 +1542,8 @@ export type InterviewPatchInput = z.infer<typeof InterviewPatchSchema>;
 export const InterviewListQuerySchema = z.object({
   profileId: z.string().min(1).optional(),
   status: InterviewStatusSchema.optional(),
+  // 只看挂在我自己某条发布岗位下的面试（决策 #25 补口，迁移 037）
+  postingId: z.string().min(1).optional(),
 });
 export type InterviewListQuery = z.infer<typeof InterviewListQuerySchema>;
 
