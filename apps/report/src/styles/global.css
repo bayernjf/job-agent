@@ -19,6 +19,15 @@ html {
   background-color: var(--ja-color-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* 报告页 TOC 等页内锚点平滑跳转（章节另设 scroll-margin-top 给 sticky header 留白）；
+     用户偏好减少动效时关掉，跳转即时完成 */
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 body {
