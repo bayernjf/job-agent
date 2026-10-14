@@ -18,7 +18,7 @@ import {
   collectEvidence,
   skillTagMap,
 } from '../match-explain.js';
-import { isProfileOwner, requireRecruiter } from './helpers.js';
+import { isProfileOwner, publicApplication, requireRecruiter } from './helpers.js';
 import {
   JobMatchRequestSchema,
   JobSearchQuerySchema,
@@ -147,6 +147,22 @@ export function registerJobPostings(app: Hono<HonoEnv>, d: RouteDeps): void {
     // 非本人或不存在都是 404：不告诉调用方"这条岗位存在但属于别人"。
     if (!retired) return c.json({ error: 'job posting not found' }, 404);
     return c.json(retired);
+  });
+
+  // GET /job-postings/recruiter/:id/applications：我的自建岗位上的投递（B3-b pipeline 数据源）
+  // 静态路径在 :id 之前注册（与 stats 同纪律）；归属校验同 DELETE——非本人岗位一律 404。
+  // 返回投递列表（publicApplication 剥归属列），stage 字段随行带出；前端据此渲染 pipeline。
+  app.get('/job-postings/recruiter/:id/applications', async (c) => {
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'invalid job posting id' }, 400);
+    const posting = await repos.jobPostings.getById(id);
+    if (!posting || posting.createdByAccountId !== recruiter.principal.accountId) {
+      return c.json({ error: 'job posting not found' }, 404);
+    }
+    const items = await repos.applications.listByJobId(id);
+    return c.json({ items: items.map(publicApplication) });
   });
 
   // GET /job-postings/stats：按源统计（须在 :id 路由之前注册，避免 stats 被当成 id）
