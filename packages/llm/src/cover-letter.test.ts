@@ -6,6 +6,7 @@ import {
   FakeLlmClient,
   LlmCoverLetterProvider,
   LlmResponseError,
+  type LlmTokenUsage,
 } from './index.js';
 
 const NOW = '2026-09-16T00:00:00.000Z';
@@ -129,5 +130,18 @@ describe('LlmCoverLetterProvider', () => {
     const out = await new LlmCoverLetterProvider(client).generate({ draft, posting, locale: 'en' });
     expect(out.body).toContain('TypeScript');
     expect('extraNoise' in out).toBe(false);
+  });
+
+  it('forwards onUsage to the underlying client (计量接缝，决策 #25 ④)', async () => {
+    const { draft, posting } = makeDraft();
+    const client = new FakeLlmClient(
+      () => ({ body: 'Dear team, I ship dependable TypeScript services in public.' }),
+      'fake-model-1',
+      { promptTokens: 321, completionTokens: 98 },
+    );
+    const provider = new LlmCoverLetterProvider(client);
+    const observed: LlmTokenUsage[] = [];
+    await provider.generate({ draft, posting, locale: 'en', onUsage: (u) => observed.push(u) });
+    expect(observed).toEqual([{ promptTokens: 321, completionTokens: 98 }]);
   });
 });

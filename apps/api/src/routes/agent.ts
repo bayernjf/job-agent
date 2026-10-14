@@ -53,7 +53,7 @@ import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
 export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now, agentConfig, agentRepos, cronAuthorized } = d;
+  const { repos, now, agentConfig, agentRepos, cronAuthorized, usageRecorder } = d;
 
   const requireAgentUser = (
     c: Context,
@@ -237,7 +237,11 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       preferenceId: preference.id,
       createdAt: now(),
     });
-    const outcome = await advanceRunOnce({ repos: agentRepos, now, config: agentConfig }, id, 'user');
+    const outcome = await advanceRunOnce(
+      { repos: agentRepos, now, config: agentConfig, usage: usageRecorder },
+      id,
+      'user',
+    );
     if (!outcome.ok) {
       return c.json({ error: outcome.message, code: outcome.code }, outcome.status);
     }
@@ -298,7 +302,11 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (isTerminalStatus(run.status)) {
       return c.json({ error: 'job run is not active', code: AGENT_ERROR_CODES.runNotActive }, 409);
     }
-    const outcome = await advanceRunOnce({ repos: agentRepos, now, config: agentConfig }, run.id, 'user');
+    const outcome = await advanceRunOnce(
+      { repos: agentRepos, now, config: agentConfig, usage: usageRecorder },
+      run.id,
+      'user',
+    );
     if (!outcome.ok) {
       return c.json({ error: outcome.message, code: outcome.code }, outcome.status);
     }
@@ -724,7 +732,7 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (!cronAuthorized(c)) return c.json({ error: 'unauthorized' }, 401);
     const started = now();
     try {
-      const outcome = await runAgentTickOnce({ repos: agentRepos, now, config: agentConfig });
+      const outcome = await runAgentTickOnce({ repos: agentRepos, now, config: agentConfig, usage: usageRecorder });
       // 触达通道（决策 #25-2）：本轮有 run 新进入 awaiting_approval（pending 候选>0）时，
       // 对该 account 的启用 web_push 订阅发推送。失败绝不阻塞 tick、不记 run 失败；
       // 404/410 端点即时删行（决策 #25-2 不留沉默订阅）。

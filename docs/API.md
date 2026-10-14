@@ -1752,6 +1752,57 @@ token 90 天滑动续期、可撤销。
 
 ---
 
+## 3.12 用量计量读侧（决策 #25 ④，2026-10-14）
+
+成本回采的读口：把 `usage_events`（只追加事件日志，记**原始单位** token/次数，绝不记金额）
+按窗口聚合读出。口径与字段定义见 `packages/shared/src/usage.ts` 与
+[design-cost-metering-20261014.md](design-cost-metering-20261014.md)。
+
+两个面共用的 query 参数（Zod 校验，非法一律 `400 { error: 'validation failed', details }`）：
+
+- `sinceIso`（必填，UTC ISO8601）：窗口起点，**含**；**距今不得早于 180 天**（代码常量，不加 env），
+  超窗或时间串不可解析 → `400 { error, code: 'BAD_REQUEST' }`。
+- `untilIso`（可选）：窗口终点，**不含**；省略＝至今。
+- `category`（可选）：`llm | search | analysis`；省略＝全部大类。
+
+响应均为 `{ summary, daily }`：`summary` 按 `(category, feature, billingSource)` 分组
+（`events` / `sumPromptTokens` / `sumCompletionTokens` / `sumQuantity` 恒为数字，组内全 NULL 计 0）；
+`daily` 按自然日（UTC `YYYY-MM-DD`）+ category 分组。窗口内无事件时两个数组均为空（仍 `200`）。
+
+### `GET /account/usage`
+
+本人面：登录 `user` 看自己的用量，**accountId 强制＝当次账号**——query 里塞 `accountId` 会被
+静默忽略，响应也**不回显** accountId。未登录（anonymous/demo）`401 AUTH_REQUIRED`。
+
+```json
+{
+  "summary": [
+    { "category": "llm", "feature": "cover_letter", "billingSource": "byok",
+      "events": 3, "sumPromptTokens": 1200, "sumCompletionTokens": 480, "sumQuantity": 0 }
+  ],
+  "daily": [
+    { "day": "2026-10-13", "category": "llm",
+      "events": 3, "sumPromptTokens": 1200, "sumCompletionTokens": 480, "sumQuantity": 0 }
+  ]
+}
+```
+
+### `GET /admin/usage`
+
+admin 面：全平台口径，额外接受 `accountId` query 过滤单账号；带 `accountId` 时响应顶层
+回显该过滤条件。未登录 `401 AUTH_REQUIRED`；已登录非 admin `403 FORBIDDEN`
+（与 `/admin/llm-catalog` 同一闸）。匿名/平台级事件（`account_id IS NULL`）计入全平台口径。
+
+```json
+{
+  "summary": [ … ],
+  "daily": [ … ],
+  "accountId": "acct-<…>"
+}
+```
+
+---
+
 ## 4. 健康检查
 
 ### `GET /health`

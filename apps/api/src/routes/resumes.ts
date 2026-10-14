@@ -22,6 +22,7 @@ import {
   renderHtml,
   renderMarkdown,
 } from '@jobagent/resume-core';
+import type { LlmTokenUsage, MeteredResumePolishProvider } from '@jobagent/llm';
 import type { RouteDeps } from './context.js';
 import { resolveTextLlm } from './llm-resolve.js';
 import { describeError } from './helpers.js';
@@ -111,13 +112,54 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
       if (llm.source === 'none') {
         polish.reason = 'not_configured';
       } else {
-        const result = await polishResume(ruleDraft, posting, llm.polish!, {
+        // 成本回采（决策 #25 ④ Wave B）：给 provider 包一层计量装饰器注入 onUsage
+        // 观察者；token 由响应 usage 透出，缺失记 null（绝不编数）。billingSource
+        // 按当次 resolveTextLlm 的真实路由结果定（不是按账号有没有 BYOK 配置猜）。
+        // 显式构造四字段对象而非 spread，避免把实现类的 private 字段拷出来。
+        const usageHolder: { current: LlmTokenUsage | null; succeeded: boolean } = {
+          current: null,
+          succeeded: false,
+        };
+        const base = llm.polish!;
+        const metered: MeteredResumePolishProvider = {
+          provider: base.provider,
+          model: base.model,
+          promptVersion: base.promptVersion,
+          polish: async (input) => {
+            const out = await base.polish({
+              ...input,
+              onUsage: (u) => {
+                usageHolder.current = u;
+              },
+            });
+            // provider 不抛 ⇒ 本次 LLM 调用成功完成（schema 校验失败会抛，
+            // 被 polishResume 吞成 provider_error，那种情形不记）。
+            usageHolder.succeeded = true;
+            return out;
+          },
+        };
+        const result = await polishResume(ruleDraft, posting, metered, {
           locale,
           now: now(),
         });
         finalDraft = result.draft;
         polish.applied = result.applied;
         if (!result.applied && result.reason) polish.reason = result.reason;
+        // 只记成功完成的 LLM 调用（口径与 cover-letter / JD 抽取一致）；
+        // recorder 本身 fail-open，调用点不再包 try/catch。
+        if (usageHolder.succeeded) {
+          await d.usageRecorder.record({
+            accountId: buildPrincipal.kind === 'user' ? buildPrincipal.accountId : null,
+            category: 'llm',
+            feature: 'resume_polish',
+            billingSource: llm.source === 'byok' ? 'byok' : 'builtin',
+            provider: base.provider,
+            model: base.model,
+            promptTokens: usageHolder.current?.promptTokens ?? null,
+            completionTokens: usageHolder.current?.completionTokens ?? null,
+            quantity: null,
+          });
+        }
       }
     }
 
@@ -221,7 +263,29 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     });
 
     try {
-      const out = await coverLetterProvider.generate({ draft: ruleDraft, posting, locale });
+      // 成本回采（决策 #25 ④ Wave B）：onUsage 观察者回采 token，缺失记 null；
+      // billingSource 按当次 resolveTextLlm 的真实路由结果定。LLM 调用成功
+      // （不抛错）后立即记录一次可计费调用；recorder fail-open，不包 try/catch。
+      const usageHolder: { current: LlmTokenUsage | null } = { current: null };
+      const out = await coverLetterProvider.generate({
+        draft: ruleDraft,
+        posting,
+        locale,
+        onUsage: (u) => {
+          usageHolder.current = u;
+        },
+      });
+      await d.usageRecorder.record({
+        accountId: buildPrincipal.accountId,
+        category: 'llm',
+        feature: 'cover_letter',
+        billingSource: llm.source === 'byok' ? 'byok' : 'builtin',
+        provider: coverLetterProvider.provider,
+        model: coverLetterProvider.model,
+        promptTokens: usageHolder.current?.promptTokens ?? null,
+        completionTokens: usageHolder.current?.completionTokens ?? null,
+        quantity: null,
+      });
       return c.json({
         subject: out.subject,
         // E1 决策 #20-4：固定 AI 辅助投递披露，模型无法省略。

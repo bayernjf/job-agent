@@ -32,11 +32,15 @@ import { GiteeSource, type GiteeCollectedData } from '@jobagent/gitee-source';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
 import type { AbilityProfile, EvidenceItem } from '@jobagent/shared';
 import {
+  createNullUsageRecorder,
   createStorage,
+  createUsageRecorder,
   type IAnalysisJobsRepository,
   type IEvidenceRepository,
   type IProfilesRepository,
+  type StorageContext,
   type StoredAnalysisJob,
+  type UsageRecorder,
 } from '@jobagent/storage';
 
 // ─── 类型 ───────────────────────────────────────────────────────────────
@@ -84,6 +88,12 @@ export interface WorkerDeps {
   sources?: SourceMap;
   /** 注入仓储（测试用内存库；生产默认 createStorage） */
   repos?: WorkerRepos;
+  /**
+   * 用量计量 recorder（决策 #25 ④ Wave A 接缝；fail-open）。
+   * 不传且用默认 createStorage 仓储时按真实 recorder 装配；注入测试 repos 时
+   * 默认不计量（要断言埋点请显式注入 fake）。
+   */
+  usageRecorder?: UsageRecorder;
   /** 注入 GITHUB_TOKEN（生产从环境变量读） */
   token?: string;
   /** 注入 GITEE_TOKEN（生产从环境变量读；Gitee 匿名可读，可为空） */
@@ -155,6 +165,54 @@ function makeSources(deps: WorkerDeps): SourceMap {
 // ─── 核心逻辑 ───────────────────────────────────────────────────────────
 
 /**
+ * 融合作业成本权重（决策 #25 ④ Wave C，与 demo 配额同口径）：读
+ * DEMO_FUSION_QUOTA_COST，默认 2、最小 1；非法值 warn 回退。worker 侧自解析，
+ * 不 import apps/api（包边界；解析规则与 apps/api/src/demo-config.ts 对齐）。
+ */
+function fusionAnalyzeCost(): number {
+  const raw = process.env.DEMO_FUSION_QUOTA_COST;
+  if (raw === undefined || raw.trim() === '') return 2;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    console.warn(`[worker] invalid DEMO_FUSION_QUOTA_COST=${JSON.stringify(raw)}, fallback to 2`);
+    return 2;
+  }
+  return n;
+}
+
+/** 分析作业成本权重：platform=all 双源融合按 fusionAnalyzeCost（默认 2），单源恒 1。 */
+function analysisJobCostWeight(requestedPlatform: string): number {
+  return requestedPlatform === 'all' ? fusionAnalyzeCost() : 1;
+}
+
+/**
+ * 记一条 analysis_job 用量事件（决策 #25 ④ Wave C）：一次作业只在终态记一条
+ * （succeeded 含 partial 终态 / 重试耗尽或 not_found 的最终 failed；中间重试不记）。
+ * provider=实际持久化平台（all 降级纯 GitHub 时为 'github'；失败终态无持久化产物，
+ * 用请求平台——额度在 collect 阶段已真实消耗）；quantity=按**请求平台**计的成本权重
+ * （all 即使降级也按融合权重，理由同上）；accountId=null（平台算力，不归属账号），
+ * token/model 恒 null。recorder 缺失走 null 语义，绝不影响主流程。
+ */
+async function recordAnalysisJobUsage(
+  usage: UsageRecorder | undefined,
+  provider: string,
+  quantity: number,
+): Promise<void> {
+  if (!usage) return;
+  await usage.record({
+    accountId: null,
+    category: 'analysis',
+    feature: 'analysis_job',
+    billingSource: 'platform',
+    provider,
+    model: null,
+    promptTokens: null,
+    completionTokens: null,
+    quantity,
+  });
+}
+
+/**
  * 处理单个分析任务：采集 → 分析 → 写画像 → 标记成功。
  * 纯逻辑（无轮询/无循环），便于对固定夹具做单测。
  * 抛出异常时由调用方决定重试或标记失败。
@@ -164,6 +222,10 @@ export async function processJob(
   repos: WorkerRepos,
   sources: SourceMap,
   logger: Pick<Console, 'info' | 'warn' | 'error'> = console,
+  // 决策 #25 ④ Wave C：由 claimAndProcessOne 装配透传；成功终态（含 partial）
+  // 记一条 analysis_job 用量（成本权重 1|fusionAnalyzeCost），失败终态由
+  // handleJobFailure 记录——两侧合起来保证一次作业恰好一条。
+  usage?: UsageRecorder,
 ): Promise<ProcessJobResult> {
   const login = job.subjectLogin;
   const requestedPlatform = job.subjectPlatform ?? 'github';
@@ -346,6 +408,11 @@ export async function processJob(
       `budget[${budgetSummary}] missing=${missing.length}`,
   );
 
+  // 决策 #25 ④ Wave C：成功终态（含 partial）记一条 analysis_job 用量。
+  // provider=实际持久化平台；权重按请求平台计——all 降级纯 GitHub 时
+  // provider='github' 但两源额度已真实消耗，仍按融合权重计量。
+  await recordAnalysisJobUsage(usage, persistPlatform, analysisJobCostWeight(requestedPlatform));
+
   return {
     profileId,
     profile,
@@ -367,13 +434,23 @@ export async function handleJobFailure(
   error: Error,
   maxRetries: number,
   logger: Pick<Console, 'info' | 'warn' | 'error'> = console,
+  // 决策 #25 ④ Wave C：终态 failed（not_found 直接失败 / 重试耗尽）记一条
+  // analysis_job 用量；中间重试（resetToQueued）不记——与 processJob 成功侧
+  // 合起来保证一次作业恰好一条。
+  usage?: UsageRecorder,
 ): Promise<void> {
   const message = error.message;
   const code = (error as { code?: string }).code;
+  // 失败终态无持久化产物：provider 用请求平台（额度在 collect 阶段已真实消耗），
+  // 权重同样按请求平台计。记录点在 fail 落库之后——fail 抛错则不记。
+  const requestedPlatform = job.subjectPlatform ?? 'github';
+  const recordTerminalFailure = () =>
+    recordAnalysisJobUsage(usage, requestedPlatform, analysisJobCostWeight(requestedPlatform));
   // not_found (account/repo does not exist) is deterministic — retrying cannot help.
   if (code === 'not_found') {
     await repos.jobs.fail(job.id, message);
     logger.error(`[worker] job ${job.id} not found, failing permanently: ${message}`);
+    await recordTerminalFailure();
     return;
   }
   if (job.attempts < maxRetries) {
@@ -384,6 +461,7 @@ export async function handleJobFailure(
   } else {
     await repos.jobs.fail(job.id, message);
     logger.error(`[worker] job ${job.id} failed permanently (attempt ${job.attempts}): ${message}`);
+    await recordTerminalFailure();
   }
 }
 
@@ -407,6 +485,12 @@ export interface ClaimOneDeps {
   sources?: SourceMap;
   /** 注入仓储（测试用内存库；生产默认 createStorage） */
   repos?: WorkerRepos;
+  /**
+   * 用量计量 recorder（决策 #25 ④ Wave A 接缝；fail-open）。
+   * 不传且用默认 createStorage 仓储时按真实 recorder 装配；注入测试 repos 时
+   * 默认不计量（要断言埋点请显式注入 fake）。
+   */
+  usageRecorder?: UsageRecorder;
   /** 注入 GITHUB_TOKEN（生产从环境变量读） */
   token?: string;
   /** 注入 GITEE_TOKEN（生产从环境变量读；Gitee 匿名可读，可为空） */
@@ -443,6 +527,12 @@ export async function claimAndProcessOne(deps: ClaimOneDeps = {}): Promise<Claim
     deps.demoMaxConcurrent ?? envPositiveInt(process.env.DEMO_MAX_CONCURRENT) ?? 1;
 
   const repos = deps.repos ?? (await createStorage());
+  // 用量计量（决策 #25 ④）：默认仓储（createStorage 产物带 usageEvents）装配
+  // 真实 recorder；注入测试仓储时默认不计量。Wave C 由 processJob/handleJobFailure
+  // 消费它记录 analysis_job 事件（一次作业终态恰好一条）。
+  const usageRecorder =
+    deps.usageRecorder ??
+    (deps.repos ? createNullUsageRecorder() : createUsageRecorder((repos as StorageContext).usageEvents));
 
   // serverless cron 没有"启动回收"环节：每次触发先回收 >阈值仍 running 的僵尸任务
   // （函数超时/实例被回收会留下 running；常驻 Worker 在 runWorker 启动时只回收一次）。
@@ -474,13 +564,13 @@ export async function claimAndProcessOne(deps: ClaimOneDeps = {}): Promise<Claim
   const sources = deps.sources ?? makeSources(deps);
 
   try {
-    const result = await processJob(job, repos, sources, logger);
+    const result = await processJob(job, repos, sources, logger, usageRecorder);
     return { kind: 'processed', jobId: job.id, profileId: result.profileId };
   } catch (err) {
     const error = err as Error;
     const code = (error as { code?: string }).code;
     const permanent = code === 'not_found' || job.attempts >= maxRetries;
-    await handleJobFailure(job, repos, error, maxRetries, logger);
+    await handleJobFailure(job, repos, error, maxRetries, logger, usageRecorder);
     return { kind: 'failed', jobId: job.id, permanent, message: error.message };
   }
 }
@@ -507,6 +597,11 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
 
   const repos = deps.repos ?? (await createStorage());
   const sources = makeSources(deps);
+  // 用量计量（决策 #25 ④ Wave A）：语义同 claimAndProcessOne——默认仓储装真 recorder，
+  // 注入测试仓储默认不计量；透传给每轮认领。
+  const usageRecorder =
+    deps.usageRecorder ??
+    (deps.repos ? createNullUsageRecorder() : createUsageRecorder((repos as StorageContext).usageEvents));
 
   logger.info(
     `[worker] ${workerId} started (poll=${pollIntervalMs}ms, maxRetries=${maxRetries}, ` +
@@ -525,6 +620,7 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
     const outcome = await claimAndProcessOne({
       repos,
       sources,
+      usageRecorder,
       token: deps.token,
       giteeToken: deps.giteeToken,
       workerId,

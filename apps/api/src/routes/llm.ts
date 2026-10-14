@@ -38,10 +38,10 @@ const LLM_VALIDATION_FAILED = 'LLM_VALIDATION_FAILED';
 const BAD_REQUEST = 'BAD_REQUEST';
 
 /** 守卫结果：ok=true 携带 accountId；ok=false 携带已写入的 Response。 */
-type GuardResult = { ok: true; accountId: string } | { ok: false; response: Response };
+export type GuardResult = { ok: true; accountId: string } | { ok: false; response: Response };
 
-/** 只允许登录用户（kind='user'）；匿名/demo 一律 401。 */
-async function requireUser(c: Context, d: RouteDeps): Promise<GuardResult> {
+/** 只允许登录用户（kind='user'）；匿名/demo 一律 401。导出供 usage 等路由复用同一闸。 */
+export async function requireUser(c: Context, d: RouteDeps): Promise<GuardResult> {
   const principal = c.get('principal');
   if (principal.kind !== 'user') {
     return { ok: false, response: c.json({ error: 'login required', code: AUTH_REQUIRED }, 401) };
@@ -53,8 +53,8 @@ async function requireUser(c: Context, d: RouteDeps): Promise<GuardResult> {
   return { ok: true, accountId: principal.accountId };
 }
 
-/** admin 面：登录用户 + is_admin；非 admin 一律 403。 */
-async function requireAdmin(c: Context, d: RouteDeps): Promise<GuardResult> {
+/** admin 面：登录用户 + is_admin；非 admin 一律 403。导出供 usage 等路由复用同一闸。 */
+export async function requireAdmin(c: Context, d: RouteDeps): Promise<GuardResult> {
   const user = await requireUser(c, d);
   if (!user.ok) return user;
   const account = await d.repos.accounts.getById(user.accountId);

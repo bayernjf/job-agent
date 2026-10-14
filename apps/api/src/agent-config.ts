@@ -9,7 +9,30 @@
  */
 
 import type { JdExtractor } from '@jobagent/agent-core';
+import type { LlmUsageObserver } from '@jobagent/llm';
+import type { JdInsight, UsageBillingSource } from '@jobagent/shared';
 import { JOB_DEFAULT_STALE_DAYS, parseStaleDays } from '@jobagent/job-source';
+
+/**
+ * 计量感知的 JD 抽取端口（决策 #25 ④ Wave B）：在 agent-core 的 {@link JdExtractor}
+ * 二参签名上加可选第三参 onUsage 观察者；既有的二参注入天然兼容（可赋值给本类型）。
+ */
+export type MeteredJdExtractor = (
+  title: string,
+  description: string,
+  onUsage?: LlmUsageObserver,
+) => Promise<JdInsight | null>;
+
+/**
+ * JD 抽取 provider 的计量上下文（与 jdExtractor 由同一装配处一并给出）：
+ * provider/model/billingSource 是装配决策的事实记录——后台 cron 无登录用户上下文，
+ * 只走内置 env，故生产装配恒为 'builtin'；测试注入无 meta 时兜底 'builtin'。
+ */
+export interface JdExtractorMeta {
+  provider: string | null;
+  model: string | null;
+  billingSource: UsageBillingSource;
+}
 
 export interface AgentConfig {
   /** 一轮扫描最多产出多少条待投票据 */
@@ -36,8 +59,16 @@ export interface AgentConfig {
    * 运行时由 apps/api 装配（env AGENT_JD_LLM_ENABLED 且 LLM 可用时注入），
    * 不进 loadAgentConfig 的 env 数值解析；agent-core 只定义端口、不发请求。
    * 返回 null 或抛错都按 fail-closed 处理（保留纯规则报告，不阻塞推荐）。
+   * 类型为计量感知的 {@link MeteredJdExtractor}（可选第三参 onUsage，
+   * 决策 #25 ④ Wave B）；二参的 agent-core {@link JdExtractor} 天然兼容。
    */
-  jdExtractor?: JdExtractor;
+  jdExtractor?: MeteredJdExtractor;
+  /**
+   * jdExtractor 的计量上下文（决策 #25 ④ Wave B）：与 jdExtractor 由同一装配处
+   * 一并给出；埋点据此写 provider/model/billingSource，缺失时 provider/model
+   * 记 null、billingSource 兜底 'builtin'（测试注入无 meta 的场景）。
+   */
+  jdExtractorMeta?: JdExtractorMeta;
   /**
    * 单轮扫描内 LLM JD 增强的整体墙钟预算（毫秒）：每条候选调用前检查，预算耗尽后
    * 剩余候选保留纯规则报告、票据照常写出。防止串行 LLM 等待把整轮 tick 拖过

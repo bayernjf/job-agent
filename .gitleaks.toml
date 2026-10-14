@@ -38,4 +38,5 @@ regexes = [
   '^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A[A-Za-z0-9+/]+={0,2}$',
   '^sk-(bob-secret-9876|byok-key|secret-1234|abcdef1234|test-key-1234567890abcdef1234567890abcdef|x)$',
   '^test-enc-key-20261003$',
+  '^test-enc-key-20261014$',
 ]

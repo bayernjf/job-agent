@@ -837,3 +837,35 @@ export const notificationSubscriptions = sqliteTable(
 
 export type NotificationSubscriptionInsert = typeof notificationSubscriptions.$inferInsert;
 export type NotificationSubscriptionSelect = typeof notificationSubscriptions.$inferSelect;
+
+/**
+ * usage_events（迁移 038，决策 #25 ④ Wave A）：成本回采/用量计量事件日志。
+ * 只追加、不回改；记原始单位（token 数/次数）不记金额；account_id 可空
+ * （匿名/平台级事件）且无外键；类别演进由应用 Zod 守门，DB 无 CHECK。
+ */
+export const usageEvents = sqliteTable(
+  'usage_events',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id'),
+    category: text('category').notNull(),
+    feature: text('feature').notNull(),
+    billingSource: text('billing_source').notNull(),
+    provider: text('provider'),
+    model: text('model'),
+    promptTokens: integer('prompt_tokens'),
+    completionTokens: integer('completion_tokens'),
+    quantity: integer('quantity'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_usage_events_created').on(table.createdAt),
+    index('idx_usage_events_account_created').on(table.accountId, table.createdAt),
+    index('idx_usage_events_category_created').on(table.category, table.createdAt),
+  ],
+);
+
+export type UsageEventInsert = typeof usageEvents.$inferInsert;
+export type UsageEventSelect = typeof usageEvents.$inferSelect;

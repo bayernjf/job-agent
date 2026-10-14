@@ -66,6 +66,7 @@
 | 扩展如何获得登录用户身份（一次性授权码 → API Token，决策 #22；含签发/消费/撤销契约） | [design-扩展登录态-20261004.md](design-扩展登录态-20261004.md) ★ + [API.md](API.md) §3.10 |
 | 想让产品把**用户带来的简历**逐条对账（"这句话 GitHub 支撑得起吗"）——**✅ 决策 #23 于 2026-10-05 拍板，批次 1（内核+持久化）/ 2（三端点 + B/C 两端表面 + /recruit 计数）/ 3（真全栈 E2E）均已落地** | [design-claim-verification-20261005.md](design-claim-verification-20261005.md)（三路线取舍、§9 五个子问、§10 明确不做）+ `packages/claim-core` + 迁移 029；明细见 handoff item128 |
 | 配置 LLM 模型（内置模型＝**Admin UI 管理**（参考 agent-world model-catalog：admin 管目录、env 管凭证）/ BYOK＝用户自由设置 OpenAI 兼容 key；方向与细节已拍板 2026-10-03（决策 #21，P0 已落地：迁移 023–025 + admin/BYOK 端点 + report 面板 + 请求路由 BYOK 优先→内置回落）） | [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md) ★ |
+| 问「哪个功能在烧 token / 在花钱」——用量计量（usage_events 事件日志、LLM/分析作业/websearch 三面埋点、`/account/usage` 与 `/admin/usage` 读侧、CLI `usage summary|daily`；✅ 决策 #25 ④ 于 2026-10-14 全波落地） | [design-cost-metering-20261014.md](design-cost-metering-20261014.md)（迁移 038；记原始单位不记金额、计量 fail-open）+ [API.md](API.md) §3.12 + handoff item163 |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 看扩展一键填充覆盖哪些 ATS、为什么 Workday 是骨架、下一步扩哪个（Ashby 优先） | [design-ats-support-20261010.md](design-ats-support-20261010.md) ★ |

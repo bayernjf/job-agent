@@ -3,12 +3,13 @@ import {
   OpenAICompatibleClient,
   createResumePolishProviderFromEnv,
   parseJsonObject,
+  parseTokenUsage,
   providerFromBaseUrl,
   type LlmFetch,
   type LlmFetchInit,
   type LlmFetchResponse,
 } from './openai-compatible-client.js';
-import { LlmResponseError } from './port.js';
+import { LlmResponseError, type LlmTokenUsage } from './port.js';
 
 function contentResponse(content: unknown, status = 200): LlmFetchResponse {
   const body =
@@ -174,6 +175,103 @@ describe('OpenAICompatibleClient', () => {
     expect(
       () => new OpenAICompatibleClient({ ...baseCfg, baseUrl: '' }),
     ).toThrow(/baseUrl/);
+  });
+});
+
+describe('OpenAICompatibleClient token usage 透出（决策 #25 ④）', () => {
+  function successBody(content: unknown, usage?: unknown) {
+    return {
+      choices: [{ message: { content: JSON.stringify(content) } }],
+      ...(usage === undefined ? {} : { usage }),
+    };
+  }
+
+  it('forwards full usage to onUsage exactly once on success', async () => {
+    const { fn } = fakeFetch(() =>
+      contentResponse(successBody({ ok: true }, { prompt_tokens: 120, completion_tokens: 34 })),
+    );
+    const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+    const observed: LlmTokenUsage[] = [];
+    const out = await client.generateJson<{ ok: boolean }>({
+      messages: [],
+      onUsage: (u) => observed.push(u),
+    });
+    expect(out).toEqual({ ok: true });
+    expect(observed).toEqual([{ promptTokens: 120, completionTokens: 34 }]);
+  });
+
+  it('reports null fields when the response carries no usage (gateway 不回 usage)', async () => {
+    const { fn } = fakeFetch(() => contentResponse(successBody({ ok: true })));
+    const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+    const observed: LlmTokenUsage[] = [];
+    await client.generateJson({ messages: [], onUsage: (u) => observed.push(u) });
+    expect(observed).toEqual([{ promptTokens: null, completionTokens: null }]);
+  });
+
+  it('reports null fields when usage shape is invalid (Zod 守门，绝不编数)', async () => {
+    for (const bad of ['n/a', 42, { prompt_tokens: '12' }, { prompt_tokens: -1, completion_tokens: 1.5 }]) {
+      const { fn } = fakeFetch(() => contentResponse(successBody({ ok: true }, bad)));
+      const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+      const observed: LlmTokenUsage[] = [];
+      await client.generateJson({ messages: [], onUsage: (u) => observed.push(u) });
+      expect(observed).toEqual([{ promptTokens: null, completionTokens: null }]);
+    }
+  });
+
+  it('keeps a single missing field null while forwarding the present one', async () => {
+    const { fn } = fakeFetch(() =>
+      contentResponse(successBody({ ok: true }, { prompt_tokens: 88 })),
+    );
+    const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+    const observed: LlmTokenUsage[] = [];
+    await client.generateJson({ messages: [], onUsage: (u) => observed.push(u) });
+    expect(observed).toEqual([{ promptTokens: 88, completionTokens: null }]);
+  });
+
+  it('never invokes onUsage on failure paths (HTTP / parse errors)', async () => {
+    const observed: LlmTokenUsage[] = [];
+    const onUsage = (u: LlmTokenUsage) => observed.push(u);
+
+    const httpFail = new OpenAICompatibleClient({
+      ...baseCfg,
+      fetchImpl: fakeFetch(() => contentResponse({ error: 'boom' }, 500)).fn,
+    });
+    await expect(httpFail.generateJson({ messages: [], onUsage })).rejects.toThrow(/HTTP 500/);
+
+    const parseFail = new OpenAICompatibleClient({
+      ...baseCfg,
+      fetchImpl: fakeFetch(() => contentResponse('not json at all')).fn,
+    });
+    await expect(parseFail.generateJson({ messages: [], onUsage })).rejects.toThrow(
+      /not a JSON object/,
+    );
+
+    expect(observed).toEqual([]);
+  });
+
+  it('works without an observer (onUsage omitted)', async () => {
+    const { fn } = fakeFetch(() =>
+      contentResponse(successBody({ ok: true }, { prompt_tokens: 1, completion_tokens: 2 })),
+    );
+    const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+    await expect(client.generateJson({ messages: [] })).resolves.toEqual({ ok: true });
+  });
+
+  it('parseTokenUsage: 有/无/畸形/缺单字段四态', () => {
+    expect(parseTokenUsage({ usage: { prompt_tokens: 10, completion_tokens: 5 } })).toEqual({
+      promptTokens: 10,
+      completionTokens: 5,
+    });
+    expect(parseTokenUsage({})).toEqual({ promptTokens: null, completionTokens: null });
+    expect(parseTokenUsage(null)).toEqual({ promptTokens: null, completionTokens: null });
+    expect(parseTokenUsage({ usage: { prompt_tokens: 'x' } })).toEqual({
+      promptTokens: null,
+      completionTokens: null,
+    });
+    expect(parseTokenUsage({ usage: { completion_tokens: 7 } })).toEqual({
+      promptTokens: null,
+      completionTokens: 7,
+    });
   });
 });
 

@@ -12,6 +12,7 @@
  *   jobagent removal approve --request <id>                     # 复核通过：级联删除画像并结单
  *   jobagent removal reject --request <id>                      # 复核驳回：清除软挂起并结单
  *   jobagent semantic analyze <user> [--repos N] [--format json|markdown]  # L3 语义信号（不 clone，见 design-semantic-layer）
+ *   jobagent usage summary|daily --since <ISO> [--account <id>] [--category llm|search|analysis] [--format json|table]  # 用量计量读侧（决策 #25 ④ Wave D）
  *
  * 凭证：环境变量 GITHUB_TOKEN（本地 PAT，见 .env.example；绝不下发前端/不入 Git）。
  */
@@ -34,6 +35,7 @@ import { runDemo } from './demo-commands.js';
 import { runAuth } from './auth-commands.js';
 import { runProfiles } from './profiles-commands.js';
 import { runRemoval } from './removal-commands.js';
+import { runUsage } from './usage-commands.js';
 import { runResume } from './resume-commands.js';
 import { runSemantic, attachLlmSummary, makeSemanticSource } from './semantic-commands.js';
 import type { L3CollectedData } from '@jobagent/semantic-source';
@@ -370,8 +372,12 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     return runSemantic(rest, deps);
   }
 
+  if (command === 'usage') {
+    return runUsage(rest, deps);
+  }
+
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | auth cleanup | resume build ... | resume batch ... | profiles delete --profile <id> | removal list|approve|reject ... | semantic analyze <user> [--repos N]',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | auth cleanup | resume build ... | resume batch ... | profiles delete --profile <id> | removal list|approve|reject ... | semantic analyze <user> [--repos N] | usage summary|daily --since <ISO> [--account <id>] [--category llm|search|analysis] [--format json|table]',
   );
   return 2;
 }

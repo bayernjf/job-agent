@@ -453,6 +453,24 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 038（usage_events 成本计量事件表，决策 #25 ④）
+    const ueBefore38 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='usage_events'")
+      .all() as Array<{ name: string }>;
+    expect(ueBefore38.map((t) => t.name)).toContain('usage_events');
+    const result38 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result38.version).toBe('038');
+    const ueAfter38 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='usage_events'")
+      .all() as Array<{ name: string }>;
+    expect(ueAfter38.map((t) => t.name)).not.toContain('usage_events');
+    const ueIdxAfter38 = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_usage_events_%'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(ueIdxAfter38).toHaveLength(0);
+
     // 回滚 037（interviews.posting_id：面试挂到招聘方自建岗位，决策 #25 补口）
     const ivBefore37 = db.prepare('PRAGMA table_info(interviews)').all() as Array<{ name: string }>;
     expect(ivBefore37.map((c) => c.name)).toContain('posting_id');

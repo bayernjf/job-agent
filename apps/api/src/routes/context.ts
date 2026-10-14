@@ -12,6 +12,7 @@ import type { CatalogCache, CoverLetterProvider } from '@jobagent/llm';
 import type { AuthConfig } from '../auth-config.js';
 import type { DemoConfig } from '../demo-config.js';
 import type { ApiDeps, ApiRepos } from './types.js';
+import type { UsageRecorder } from '@jobagent/storage';
 
 export interface RouteDeps {
   /** 全部仓储（生产 createStorage / 测试内存库） */
@@ -51,4 +52,6 @@ export interface RouteDeps {
   sendWebPush: typeof import('../web-push.js').sendWebPush;
   /** 外部平台告警 webhook 发送器（2026-10-14；watch-heartbeat 边沿告警用，测试注入 fake） */
   sendAlertWebhook: typeof import('../alert-webhook.js').sendAlertWebhook;
+  /** 用量计量 recorder（决策 #25 ④ Wave A；fail-open，埋点只追加 usage_events） */
+  usageRecorder: UsageRecorder;
 }

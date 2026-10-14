@@ -20,9 +20,10 @@ import type {
   IJobPostingsRepository,
   ISearchRunsRepository,
   StoredSearchRun,
+  UsageRecorder,
 } from '@jobagent/storage';
 import { extractJobFromSearchResult } from './jd-extract.js';
-import type { SearchClient, SearchResultItem } from './types.js';
+import type { SearchClient, SearchQueryObserver, SearchResultItem } from './types.js';
 
 /**
  * ATS 详情页域名（混合召回，T1-1）：通用搜索的结果常被 Indeed/LinkedIn 等
@@ -47,6 +48,11 @@ export interface RunSearchDeps {
   maxResultsPerQuery?: number;
   /** 单次搜岗最多执行几个 query（成本闸，默认 3） */
   maxQueries?: number;
+  /**
+   * 用量记录器（决策 #25 ④ Wave C）：一次任务结束时把实际发出的 Tavily 查询数
+   * 记为一条 websearch 事件；缺省走 null 语义，不影响主流程。
+   */
+  usage?: UsageRecorder;
 }
 
 export interface SearchTickOutcome {
@@ -83,6 +89,12 @@ export async function executeSearchRun(
   const candidates: RawPostingCandidate[] = [];
   const seenUrls = new Set<string>();
   const searchErrors: string[] = [];
+  // 计量（决策 #25 ④ Wave C）：SearchClient 每成功受理一次查询回调一次（失败不回调），
+  // 任务结束时按 queriesSent 记一条 websearch 事件——发出即计入，后续抽取/落库失败不清零。
+  let queriesSent = 0;
+  const onQuery: SearchQueryObserver = () => {
+    queriesSent += 1;
+  };
 
   /** 把一批搜索结果去重、抽取后并入候选（通用搜索与 ATS 召回共用）。 */
   const ingestItems = (items: SearchResultItem[]): void => {
@@ -115,6 +127,7 @@ export async function executeSearchRun(
     try {
       const items = await deps.searchClient.search(q, {
         maxResults: deps.maxResultsPerQuery ?? 5,
+        onQuery,
       });
       executed.push(q);
       ingestItems(items);
@@ -130,12 +143,29 @@ export async function executeSearchRun(
       const atsItems = await deps.searchClient.search(firstQuery, {
         maxResults: deps.maxResultsPerQuery ?? 5,
         includeDomains: ATS_INCLUDE_DOMAINS,
+        onQuery,
       });
       executed.push(`${firstQuery} [ats]`);
       ingestItems(atsItems);
     } catch (err) {
       searchErrors.push(`ats: ${(err as Error).message}`);
     }
+  }
+
+  // 计量落库（决策 #25 ④ Wave C）：在入库阶段之前记录——只要 Tavily 查询真实发出
+  // 就计入（后续 JD 抽取/落库失败不影响）；一条没发（queries 为空/全部失败未受理）不记。
+  if (queriesSent > 0) {
+    await deps.usage?.record({
+      accountId: run.accountId,
+      category: 'search',
+      feature: 'websearch',
+      billingSource: 'platform',
+      provider: deps.searchClient.provider,
+      model: null,
+      promptTokens: null,
+      completionTokens: null,
+      quantity: queriesSent,
+    });
   }
 
   // 入库（buildPosting 过 Zod；跨源疑似同岗键标记）

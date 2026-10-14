@@ -48,6 +48,7 @@ export type {
   INotificationSubscriptionsRepository,
   NewNotificationSubscription,
 } from './repositories/notification-subscriptions.js';
+export type { IUsageEventsRepository } from './repositories/usage-events.js';
 
 // 实体领域类型
 export type {
@@ -199,6 +200,11 @@ export {
   toStoredSubmitIntent,
   toStoredJobPreference,
 } from './entities/index.js';
+
+// 成本回采 recorder（决策 #25 ④ Wave A；fail-open 薄壳，api/worker 共用）
+export { createUsageRecorder, createNullUsageRecorder } from './usage-recorder.js';
+export type { UsageRecorder } from './usage-recorder.js';
+export type { UsageEventRecord, RawUsageEventRow } from './entities/usage-event.js';
 
 // 迁移（CLI/脚本/测试）
 export {

@@ -6,6 +6,7 @@ import {
   LlmJdExtractionProvider,
   LlmResponseError,
   createJdExtractionProviderFromEnv,
+  type LlmTokenUsage,
 } from './index.js';
 
 describe('LlmJdExtractionProvider', () => {
@@ -70,6 +71,18 @@ describe('LlmJdExtractionProvider', () => {
     const fake = new FakeLlmClient(() => 'not-json');
     const provider = new LlmJdExtractionProvider(fake);
     await expect(provider.extract('Engineer', 'desc')).rejects.toThrow(LlmResponseError);
+  });
+
+  it('forwards onUsage to the underlying client (计量接缝，决策 #25 ④)', async () => {
+    const fake = new FakeLlmClient(
+      () => ({ responsibilities: [], requiredSkills: ['TypeScript'], qualifications: [] }),
+      'fake-model-1',
+      { promptTokens: 512, completionTokens: 64 },
+    );
+    const provider = new LlmJdExtractionProvider(fake);
+    const observed: LlmTokenUsage[] = [];
+    await provider.extract('Backend Engineer', 'TypeScript required', (u) => observed.push(u));
+    expect(observed).toEqual([{ promptTokens: 512, completionTokens: 64 }]);
   });
 });
 

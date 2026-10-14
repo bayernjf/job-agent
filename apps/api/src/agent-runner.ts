@@ -31,7 +31,9 @@ import {
   type StoredJobRun,
   type StoredJobRunEvent,
   type StoredSubmitIntent,
+  type UsageRecorder,
 } from '@jobagent/storage';
+import type { LlmTokenUsage } from '@jobagent/llm';
 import type {
   AbilityProfile,
   CoverLetterDraft,
@@ -343,7 +345,14 @@ export async function appliedJobIds(
  *   无合格项：watching --rescan--> watching（记 lastScanAt，不是失败）
  */
 export async function advanceRunOnce(
-  deps: { repos: AgentRepos; now: () => string; config?: AgentConfig; tick?: TickContext },
+  deps: {
+    repos: AgentRepos;
+    now: () => string;
+    config?: AgentConfig;
+    tick?: TickContext;
+    /** 用量计量 recorder（决策 #25 ④ Wave B；fail-open）：JD 抽取 LLM 埋点经它落 usage_events */
+    usage?: UsageRecorder;
+  },
   runId: string,
   actor: 'user' | 'agent',
 ): Promise<AdvanceOutcome> {
@@ -405,7 +414,7 @@ export async function advanceRunOnce(
     };
   }
 
-  return scanOnce(repos, cfg, run, preference, profile, nowIso, deps.tick);
+  return scanOnce(repos, cfg, run, preference, profile, nowIso, deps.tick, deps.usage);
 }
 
 /** 一轮扫描里的候选形状：matchJobs 的输出 + 它打分的岗位池行。 */
@@ -647,6 +656,7 @@ async function scanOnce(
   profile: AbilityProfile,
   nowIso: string,
   tick?: TickContext,
+  usage?: UsageRecorder,
 ): Promise<AdvanceOutcome> {
   const derivation = await deriveRunCandidates(
     repos,
@@ -722,8 +732,27 @@ async function scanOnce(
       const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting;
       const description = posting?.description;
       if (!description) continue;
+      // 成本回采（决策 #25 ④ Wave B）：onUsage 观察者回采 token，缺失记 null；
+      // provider/model/billingSource 由装配处经 jdExtractorMeta 给出（cron 只走
+      // 内置 env，故生产恒 'builtin'）。抽取成功（不抛错）后立即记录一次可计费
+      // 调用；失败路径 onUsage 本就不触发、token 不可得、不记。recorder 本身
+      // fail-open，不包额外 try/catch（外层 catch 只兜主链路）。
+      const usageHolder: { current: LlmTokenUsage | null } = { current: null };
       try {
-        const insight = await cfg.jdExtractor(item.job.title, description);
+        const insight = await cfg.jdExtractor(item.job.title, description, (u) => {
+          usageHolder.current = u;
+        });
+        await usage?.record({
+          accountId: run.accountId,
+          category: 'llm',
+          feature: 'jd_extraction',
+          billingSource: cfg.jdExtractorMeta?.billingSource ?? 'builtin',
+          provider: cfg.jdExtractorMeta?.provider ?? null,
+          model: cfg.jdExtractorMeta?.model ?? null,
+          promptTokens: usageHolder.current?.promptTokens ?? null,
+          completionTokens: usageHolder.current?.completionTokens ?? null,
+          quantity: null,
+        });
         if (insight) {
           item.report = enhanceMatchReportWithJd(item.report, insight, profileSkills);
         }
@@ -786,6 +815,12 @@ export async function runAgentTickOnce(deps: {
   repos: AgentRepos;
   now: () => string;
   config?: AgentConfig;
+  /**
+   * 用量计量 recorder（决策 #25 ④ Wave A 接缝；fail-open）。
+   * 由 agent-tick 路由装配传入，后续 JD 抽取 LLM 埋点（jd_extraction）经它落
+   * usage_events；缺省 null recorder（不计量）。
+   */
+  usage?: UsageRecorder;
 }): Promise<{
   advanced: number;
   recycled: number;

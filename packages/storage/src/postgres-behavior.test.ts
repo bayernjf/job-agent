@@ -1263,6 +1263,84 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(retired?.status).toBe('inactive');
   });
 
+  // usage_events（迁移 038，成本回采）：PG 方言对等验证——insert、COALESCE 聚合、
+  // ::timestamptz 自然日 bucket、tsGte/tsLt 文本时间比较（事务池化串下不得 42883）。
+  // 全部断言按带随机后缀的 accountId 过滤隔离，连跑同一库不假红。
+  pgIt('inserts usage events and aggregates them consistently on Postgres', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const acct = `acct-usg-${suffix}`;
+    const base = {
+      accountId: acct,
+      provider: null,
+      model: null,
+      promptTokens: null,
+      completionTokens: null,
+      quantity: null,
+    };
+    await s.usageEvents.insert({
+      ...base,
+      id: `usg-pg-${suffix}-1`,
+      category: 'llm',
+      feature: 'cover_letter',
+      billingSource: 'builtin',
+      promptTokens: 100,
+      completionTokens: 50,
+      createdAt: '2026-10-13T23:30:00.000Z',
+    });
+    await s.usageEvents.insert({
+      ...base,
+      id: `usg-pg-${suffix}-2`,
+      category: 'llm',
+      feature: 'cover_letter',
+      billingSource: 'byok',
+      promptTokens: 200,
+      completionTokens: 80,
+      createdAt: '2026-10-14T00:30:00.000Z',
+    });
+    await s.usageEvents.insert({
+      ...base,
+      id: `usg-pg-${suffix}-3`,
+      category: 'search',
+      feature: 'websearch',
+      billingSource: 'platform',
+      provider: 'tavily',
+      quantity: 3,
+      createdAt: '2026-10-14T02:00:00.000Z',
+    });
+
+    const rows = await s.usageEvents.summarize({
+      sinceIso: '2026-10-13T00:00:00.000Z',
+      untilIso: '2026-10-15T00:00:00.000Z',
+      accountId: acct,
+    });
+    expect(rows).toEqual([
+      { category: 'llm', feature: 'cover_letter', billingSource: 'builtin', events: 1, sumPromptTokens: 100, sumCompletionTokens: 50, sumQuantity: 0 },
+      { category: 'llm', feature: 'cover_letter', billingSource: 'byok', events: 1, sumPromptTokens: 200, sumCompletionTokens: 80, sumQuantity: 0 },
+      { category: 'search', feature: 'websearch', billingSource: 'platform', events: 1, sumPromptTokens: 0, sumCompletionTokens: 0, sumQuantity: 3 },
+    ]);
+
+    // until 排他（文本时间比较不 42883）：切到 10-14 00:00 只剩第一条。
+    const head = await s.usageEvents.summarize({
+      sinceIso: '2026-10-13T00:00:00.000Z',
+      untilIso: '2026-10-14T00:00:00.000Z',
+      accountId: acct,
+    });
+    expect(head).toHaveLength(1);
+    expect(head[0]).toMatchObject({ billingSource: 'builtin', sumPromptTokens: 100 });
+
+    // UTC 自然日 bucket：10-13 与 10-14 两天、按 category 升序。
+    const days = await s.usageEvents.summarizeDaily({
+      sinceIso: '2026-10-13T00:00:00.000Z',
+      untilIso: '2026-10-15T00:00:00.000Z',
+      accountId: acct,
+    });
+    expect(days).toEqual([
+      { day: '2026-10-13', category: 'llm', events: 1, sumPromptTokens: 100, sumCompletionTokens: 50, sumQuantity: 0 },
+      { day: '2026-10-14', category: 'llm', events: 1, sumPromptTokens: 200, sumCompletionTokens: 80, sumQuantity: 0 },
+      { day: '2026-10-14', category: 'search', events: 1, sumPromptTokens: 0, sumCompletionTokens: 0, sumQuantity: 3 },
+    ]);
+  });
+
   // 回归：api + worker（或水平扩容的多个副本）同时冷启动、对同一空库并发首迁移时，
   // 不得因 schema_migrations 主键冲突而崩溃；迁移应恰好应用一次。
   pgIt('runs concurrent first-time migrations safely across instances', async () => {

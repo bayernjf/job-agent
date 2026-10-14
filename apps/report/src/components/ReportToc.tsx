@@ -34,19 +34,35 @@ export default function ReportToc({ items, ariaLabel }: Props) {
       .filter((el): el is HTMLElement => el !== null);
     if (sections.length === 0) return;
 
-    // 视口顶部 40% 为「当前章节」判定带；顶部 -72px 与章节 scroll-margin-top:88px 错开
+    // 「当前章节」判定带：视口顶部 72px 起、40% 视口高度止（与 rootMargin 同源，
+    // 两个常量只此一处定义）。顶部 -72px 与章节 scroll-margin-top:88px 错开
     // （88px 停在判定带 72px 起点之下，交集 >0，保证锚点直达后当前章节必高亮）
+    const BAND_TOP_PX = 72;
+    const BAND_BOTTOM_MARGIN_RATIO = 0.6;
     const observer = new IntersectionObserver(
       (entries) => {
         const intersecting = entries.filter((entry) => entry.isIntersecting);
         if (intersecting.length === 0) return;
+        // 瞬跳（prefers-reduced-motion、Find 跳转、程序化 scrollTo）时，上一章节可能
+        // 只剩底边搭在带顶（top < 带顶仍算相交），与落点章节同批派发；「顶边已进带」
+        // 的章节才是读者落点，优先于只剩尾部擦带的章节。无顶边在带内时退回全体相交项
+        // （超高章节横跨整条带、或向上回滚时上一章节从带顶重新进入的情形）。
+        const bandBottom = window.innerHeight * (1 - BAND_BOTTOM_MARGIN_RATIO);
+        const arriving = intersecting.filter((entry) => {
+          const top = entry.boundingClientRect.top;
+          return top >= BAND_TOP_PX && top <= bandBottom;
+        });
+        const candidates = arriving.length > 0 ? arriving : intersecting;
         // 判定带内可能同时容下多个短章节（如技能标签列表），取「顶部最靠上」的作为当前章节
-        const topmost = intersecting.reduce((best, entry) =>
+        const topmost = candidates.reduce((best, entry) =>
           entry.boundingClientRect.top < best.boundingClientRect.top ? entry : best,
         );
         setActiveId((topmost.target as HTMLElement).id);
       },
-      { rootMargin: '-72px 0px -60% 0px', threshold: 0 },
+      {
+        rootMargin: `-${BAND_TOP_PX}px 0px -${BAND_BOTTOM_MARGIN_RATIO * 100}% 0px`,
+        threshold: 0,
+      },
     );
     sections.forEach((section) => observer.observe(section));
     observerRef.current = observer;
