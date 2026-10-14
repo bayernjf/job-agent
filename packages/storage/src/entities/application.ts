@@ -34,6 +34,48 @@ export const APPLICATION_STATUSES: readonly ApplicationStatus[] = [
   'withdrawn',
 ];
 
+/** B3-b（迁移 039）：招聘方 pipeline 阶段（design-b3b-pipeline-state-machine）。 */
+export type ApplicationStage =
+  | 'new' // 新进入 pipeline
+  | 'screening' // 初筛中
+  | 'interview' // 面试中
+  | 'offer' // 已发 offer
+  | 'hired' // 已录用（终态）
+  | 'rejected'; // 未通过（终态）
+
+export const APPLICATION_STAGES: readonly ApplicationStage[] = [
+  'new',
+  'screening',
+  'interview',
+  'offer',
+  'hired',
+  'rejected',
+];
+
+/**
+ * B3-b 合法迁移集。null 表示首次推进（招聘方直接落到当前位置，任意阶段均可）；
+ * 非 null 时仅允许表中迁移。单向、不回退；hired/rejected 为终态。
+ */
+export const APPLICATION_STAGE_TRANSITIONS: Readonly<
+  Record<ApplicationStage, readonly ApplicationStage[]>
+> = {
+  new: ['screening', 'rejected'],
+  screening: ['interview', 'rejected'],
+  interview: ['offer', 'rejected'],
+  offer: ['hired', 'rejected'],
+  hired: [],
+  rejected: [],
+};
+
+/** B3-b 阶段迁移合法判定：fromStage=null（首次推进）任意 to 均合法。 */
+export function isAllowedStageTransition(
+  fromStage: ApplicationStage | null,
+  toStage: ApplicationStage,
+): boolean {
+  if (fromStage === null) return true;
+  return APPLICATION_STAGE_TRANSITIONS[fromStage].includes(toStage);
+}
+
 /** 投递动作来源 */
 export type ApplicationOrigin = 'manual' | 'report' | 'extension' | 'agent';
 
@@ -76,6 +118,11 @@ export interface StoredApplication {
   outcomeFeedback: OutcomeFeedback | null;
   /** 结果回写时间（UTC ISO8601），未回写为 null */
   outcomeFeedbackAt: string | null;
+  /**
+   * B3-b（迁移 039）：招聘方 pipeline 阶段；null=不在任何招聘方 pipeline
+   * （历史行、手动投递、聚合岗位投递）。由岗位归属招聘方推进（PATCH /applications/:id/stage）。
+   */
+  stage: ApplicationStage | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -126,6 +173,7 @@ export interface RawApplicationRow {
   submitIntentId: string | null;
   outcomeFeedback: string | null;
   outcomeFeedbackAt: string | null;
+  stage: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -157,7 +205,79 @@ export function toStoredApplication(row: RawApplicationRow): StoredApplication {
       ? (row.outcomeFeedback as OutcomeFeedback)
       : null,
     outcomeFeedbackAt: row.outcomeFeedbackAt ?? null,
+    stage: (APPLICATION_STAGES as readonly string[]).includes(row.stage ?? '')
+      ? (row.stage as ApplicationStage)
+      : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  };
+}
+
+/** 阶段迁移事件 actor（对齐 job_run_events 的 user|agent|system，招聘方侧用 recruiter） */
+export type ApplicationEventActor = 'user' | 'recruiter' | 'system';
+
+/** B3-b：写入 application_events 的一条阶段迁移（只追加，不回改） */
+export interface NewApplicationEvent {
+  id: string;
+  applicationId: string;
+  /** 本期唯一 kind：stage_change；预留扩展（如归属变更、手动修正） */
+  event: string;
+  /** 迁移前阶段；首次推进为 null */
+  fromStage: ApplicationStage | null;
+  toStage: ApplicationStage;
+  actor: ApplicationEventActor;
+  /** 结构化载荷（{ note?, postingId? }），缺省 '{}' */
+  payload?: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** application_events 行（camelCase），两方言结构一致 */
+export interface RawApplicationEventRow {
+  id: string;
+  applicationId: string;
+  event: string;
+  fromStage: string | null;
+  toStage: string;
+  actor: string;
+  payload: string;
+  createdAt: string;
+}
+
+export interface StoredApplicationEvent {
+  id: string;
+  applicationId: string;
+  event: string;
+  fromStage: ApplicationStage | null;
+  toStage: ApplicationStage;
+  actor: ApplicationEventActor;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export function toStoredApplicationEvent(row: RawApplicationEventRow): StoredApplicationEvent {
+  let payload: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(row.payload);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      payload = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // 非法 JSON 保持 {}（对齐 job_run_events 的宽松读取）；只追加流不回改
+  }
+  return {
+    id: row.id,
+    applicationId: row.applicationId,
+    event: row.event,
+    fromStage: (APPLICATION_STAGES as readonly string[]).includes(row.fromStage ?? '')
+      ? (row.fromStage as ApplicationStage)
+      : null,
+    toStage: (APPLICATION_STAGES as readonly string[]).includes(row.toStage)
+      ? (row.toStage as ApplicationStage)
+      : 'new',
+    actor: (row.actor === 'user' || row.actor === 'recruiter' || row.actor === 'system'
+      ? row.actor
+      : 'system') as ApplicationEventActor,
+    payload,
+    createdAt: row.createdAt,
   };
 }

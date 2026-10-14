@@ -63,13 +63,26 @@ export {
 
 export type {
   ApplicationStatus,
+  ApplicationStage,
   ApplicationOrigin,
   StoredApplication,
   NewApplication,
   ApplicationPatch,
   RawApplicationRow,
+  NewApplicationEvent,
+  StoredApplicationEvent,
+  RawApplicationEventRow,
+  ApplicationEventActor,
 } from './application.js';
-export { APPLICATION_STATUSES, APPLICATION_ORIGINS, toStoredApplication } from './application.js';
+export {
+  APPLICATION_STATUSES,
+  APPLICATION_STAGES,
+  APPLICATION_STAGE_TRANSITIONS,
+  APPLICATION_ORIGINS,
+  isAllowedStageTransition,
+  toStoredApplication,
+  toStoredApplicationEvent,
+} from './application.js';
 
 export type {
   StoredInterview,

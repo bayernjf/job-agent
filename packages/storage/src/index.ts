@@ -86,10 +86,18 @@ export type {
 } from './entities/demo-session.js';
 export type {
   ApplicationStatus,
+  ApplicationStage,
   ApplicationOrigin,
   StoredApplication,
   NewApplication,
   ApplicationPatch,
+  NewApplicationEvent,
+  StoredApplicationEvent,
+} from './entities/application.js';
+export {
+  APPLICATION_STAGES,
+  APPLICATION_STAGE_TRANSITIONS,
+  isAllowedStageTransition,
 } from './entities/application.js';
 export type {
   StoredInterview,
