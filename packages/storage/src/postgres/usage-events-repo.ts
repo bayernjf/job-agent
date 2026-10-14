@@ -33,15 +33,22 @@ interface RawDailyRow {
   sumQuantity: number;
 }
 
+// Postgres returns aggregate columns (count/sum over int8/numeric) as string or BigInt,
+// while SQLite returns numbers. Coerce everything to number here so the row shape matches
+// UsageSummaryRowSchema (all z.number()) regardless of the driver.
+function toNumber(value: unknown): number {
+  return typeof value === 'number' ? value : Number(value);
+}
+
 function toSummaryRow(r: RawSummaryRow): UsageSummaryRow {
   return {
     category: r.category as UsageCategory,
     feature: r.feature as UsageFeature,
     billingSource: r.billingSource as UsageBillingSource,
-    events: r.events,
-    sumPromptTokens: r.sumPromptTokens,
-    sumCompletionTokens: r.sumCompletionTokens,
-    sumQuantity: r.sumQuantity,
+    events: toNumber(r.events),
+    sumPromptTokens: toNumber(r.sumPromptTokens),
+    sumCompletionTokens: toNumber(r.sumCompletionTokens),
+    sumQuantity: toNumber(r.sumQuantity),
   };
 }
 
@@ -49,10 +56,10 @@ function toDailyRow(r: RawDailyRow): UsageDailyRow {
   return {
     day: r.day,
     category: r.category as UsageCategory,
-    events: r.events,
-    sumPromptTokens: r.sumPromptTokens,
-    sumCompletionTokens: r.sumCompletionTokens,
-    sumQuantity: r.sumQuantity,
+    events: toNumber(r.events),
+    sumPromptTokens: toNumber(r.sumPromptTokens),
+    sumCompletionTokens: toNumber(r.sumCompletionTokens),
+    sumQuantity: toNumber(r.sumQuantity),
   };
 }
 
