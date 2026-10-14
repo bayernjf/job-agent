@@ -131,7 +131,9 @@ const tocItems: { id: string; label: string }[] = [
       profile.collaboration.externalMergedContributions.length > 0))
     ? [{ id: 'section-collaboration', label: t('report.collaboration.title') }]
     : []),
-  ...(profile.interviewQuestions.length > 0 ? [{ id: 'section-interview', label: t('report.interview.title') }] : []),
+  ...(canViewGated && profile.interviewQuestions.length > 0
+    ? [{ id: 'section-interview', label: t('report.interview.title') }]
+    : []),
   ...(!isRecruiter && canUseApplications ? [{ id: 'applications-section', label: t('applications.title') }] : []),
 ];
 ---
