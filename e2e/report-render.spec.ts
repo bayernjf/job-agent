@@ -179,4 +179,42 @@ test.describe('report TOC anchor navigation', () => {
     await authLink.click();
     await expect(authLink).toHaveClass(/is-active/);
   });
+
+  test('scroll spy highlights a section reached by scrolling, not by clicking the TOC', async ({ page }) => {
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+    const toc = page.locator('.report-toc');
+    await expect(toc).toHaveAttribute('data-hydrated', 'true');
+    // 关掉平滑滚动，让 IO 在滚动后立即派发（与既有点击用例同口径）
+    await page.addStyleTag({ content: 'html { scroll-behavior: auto !important; }' });
+
+    const skillsLink = toc.locator('a[href="#section-skills"]');
+    await expect(skillsLink).toHaveCount(1);
+
+    // 非点击路径：window.scrollTo 直接把章节滚到判定带（88px 留白），
+    // 不经过 TOC 点击——组件的 onClick 乐观高亮不会触发，能真实证明 IO scroll spy
+    await page.evaluate(() => {
+      const el = document.getElementById('section-skills');
+      if (!el) throw new Error('#section-skills missing');
+      window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 88);
+    });
+
+    await expect(skillsLink).toHaveClass(/is-active/);
+    await expect(toc.locator('a[href="#section-summary"]')).not.toHaveClass(/is-active/);
+  });
+
+  test.describe('below the 960px breakpoint', () => {
+    test.use({ viewport: { width: 900, height: 800 } });
+
+    test('hides the TOC and keeps the page free of horizontal overflow', async ({ page }) => {
+      await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+      // <960：锚点导航 CSS 隐藏，布局回到单列
+      await expect(page.locator('.report-toc')).toBeHidden();
+
+      const dims = await page.evaluate(() => ({
+        vw: document.documentElement.clientWidth,
+        docW: document.documentElement.scrollWidth,
+      }));
+      expect(dims.docW).toBeLessThanOrEqual(dims.vw + 1);
+    });
+  });
 });
