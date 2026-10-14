@@ -1,0 +1,60 @@
+---
+/**
+ * "用量与成本回采"页 /[locale]/usage（决策 #25 ④，design-cost-metering-20261014）。
+ * 登录用户看自己的用量（account/usage），管理员额外看全平台口径（admin/usage）。
+ * SSR 仅做身份与路由判定；真实数据由客户端 UsagePanel island 拉取。
+ */
+import Layout from '../../layouts/Layout.astro';
+import GateCard from '../../components/GateCard.astro';
+import UsagePanel from '../../components/UsagePanel.tsx';
+import { isLocale, createTranslator, type Locale } from '../../i18n/index.js';
+import { resolveViewer } from '../../lib/auth.js';
+import { browserApiBase } from '../../lib/api-base.js';
+
+const { locale: rawLocale } = Astro.params;
+if (!isLocale(rawLocale)) {
+  return Astro.redirect('/en/');
+}
+const locale: Locale = rawLocale;
+const t = createTranslator(locale);
+const apiBase = browserApiBase();
+
+const viewer = await resolveViewer(Astro.request.headers.get('cookie'));
+const loginHref = `${apiBase}/auth/github/login?return_to=${encodeURIComponent(`/${locale}/usage`)}`;
+---
+
+<Layout locale={locale} titleKey="usage.title" robots="noindex,nofollow">
+  <div class="usage-page ja-container">
+    <header class="usage-header">
+      <h1>{t('usage.title')}</h1>
+      <p class="ja-muted">{t('usage.subtitle')}</p>
+    </header>
+
+    {
+      viewer.kind !== 'user' ? (
+        <GateCard
+          title={t('usage.title')}
+          body={t('usage.subtitle')}
+          loginHref={loginHref}
+          loginLabel={t('account.signInGithub')}
+          testId="usage-gate"
+        />
+      ) : (
+        <UsagePanel client:load apiBase={apiBase} locale={locale} />
+      )
+    }
+  </div>
+</Layout>
+
+<style>
+  .usage-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-4);
+  }
+  .usage-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ja-space-1);
+  }
+</style>
