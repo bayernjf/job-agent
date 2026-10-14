@@ -33,6 +33,8 @@ interface Application {
   /** D1 回标；item126 起四种来源都能在此标 */
   outcomeFeedback: OutcomeFeedback | null;
   outcomeFeedbackAt: string | null;
+  /** B3-b（039）：招聘方 pipeline 阶段；null=不在任何招聘方 pipeline（只读展示） */
+  stage: string | null;
 }
 
 interface TrackerLabels {
@@ -60,6 +62,9 @@ interface TrackerLabels {
   outcome: string;
   outcomeUnset: string;
   outcomeLabels: Record<OutcomeFeedback, string>;
+  /** B3-b：招聘方 pipeline 阶段（只读徽标） */
+  stage: string;
+  stageLabels: Record<string, string>;
 }
 
 interface Props {
@@ -392,6 +397,14 @@ export default function ApplicationTracker({ profileId, apiBase, locale, labels 
                   ))}
                 </select>
               </label>
+              {a.stage && (
+                <span className="apptrk-status">
+                  <span className="ja-muted apptrk-status-label">{labels.stage}</span>
+                  <span className="ja-badge ja-badge--likely" data-testid="apptrk-stage-badge">
+                    {labels.stageLabels[a.stage] ?? a.stage}
+                  </span>
+                </span>
+              )}
             </li>
           ))}
         </ul>
