@@ -36,6 +36,9 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   // 事件 INSERT 都引用这些列，缺列即 500，进守卫让生产深探活先于用户点击暴露。
   { table: 'applications', column: 'stage' },
   { table: 'application_events', column: 'application_id' },
+  // 040 验证漏斗事件（design-funnel-analytics-20261015 §4）：recorder 同为 fail-open，
+  // 缺表只进日志＝漏斗静默失盲，进守卫让深探活显式 503。
+  { table: 'funnel_events', column: 'event' },
 ];
 
 export { REQUIRED_COLUMNS };

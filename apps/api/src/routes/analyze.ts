@@ -3,15 +3,20 @@
  */
 import type { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
-import { DEMO_ERROR_CODES } from '@jobagent/shared';
+import { DEMO_ERROR_CODES, FUNNEL_SESSION_COOKIE } from '@jobagent/shared';
 import { oneHourAgo } from '../demo-config.js';
+import { readCookie } from '../principal.js';
 import { formatJob } from './helpers.js';
 import { AnalyzeRequestSchema, JobIdParamSchema } from './schemas.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
 export function registerAnalyze(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now, cfg, ipHashOf } = d;
+  const { repos, now, cfg, ipHashOf, funnelRecorder } = d;
+
+  /** 漏斗事件读取 ja_sid（design-funnel-analytics-20261015；无 cookie 记 NULL 组） */
+  const funnelSid = (c: { req: { header: (name: string) => string | undefined } }) =>
+    readCookie(c.req.header('cookie'), FUNNEL_SESSION_COOKIE) ?? null;
 
   // POST /analyze：创建分析任务
   app.post('/analyze', async (c) => {
@@ -51,6 +56,13 @@ export function registerAnalyze(app: Hono<HonoEnv>, d: RouteDeps): void {
     ) {
       // NFR-7 可观测：缓存命中（不扣配额），与下方 cache_miss 配对统计命中率。
       console.info(`[analyze] result=cache_hit platform=${platform} login=${username}`);
+      // 漏斗：缓存命中（fail-open；不记 profileId/平台，避免主体标识落表）
+      await funnelRecorder.record({
+        event: 'analyze_cache_hit',
+        sessionRef: funnelSid(c),
+        profileId: null,
+        requester: null,
+      });
       return c.json({
         profileId: latestProfile.id,
         status: 'succeeded',
@@ -96,6 +108,13 @@ export function registerAnalyze(app: Hono<HonoEnv>, d: RouteDeps): void {
         demoSessionId: null,
       });
       console.info(`[analyze] result=queued requester=user platform=${platform} login=${username} job=${userJobId}`);
+      // 漏斗：新建分析入队（fail-open；去重复用/配额拦截不记）
+      await funnelRecorder.record({
+        event: 'analyze_enqueued',
+        sessionRef: funnelSid(c),
+        profileId: null,
+        requester: 'user',
+      });
       return c.json(
         {
           jobId: userJobId,
@@ -205,6 +224,13 @@ export function registerAnalyze(app: Hono<HonoEnv>, d: RouteDeps): void {
     console.info(
       `[analyze] result=queued requester=demo platform=${platform} login=${username} job=${jobId} remaining=${slot.remaining} cost=${analyzeCost}`,
     );
+    // 漏斗：新建分析入队（fail-open；jobs.create 失败走补偿路径、到不了这里）
+    await funnelRecorder.record({
+      event: 'analyze_enqueued',
+      sessionRef: funnelSid(c),
+      profileId: null,
+      requester: 'demo',
+    });
     return c.json(
       {
         jobId,

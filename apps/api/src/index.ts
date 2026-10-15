@@ -34,7 +34,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
-import { createStorage, createUsageRecorder } from '@jobagent/storage';
+import { createStorage, createUsageRecorder, createFunnelRecorder } from '@jobagent/storage';
 import {
   createCatalogCache,
   createCoverLetterProviderFromEnv,
@@ -71,6 +71,7 @@ import { registerLlmRoutes } from './routes/llm.js';
 import { registerClaimVerifications } from './routes/claim-verifications.js';
 import { registerNotifications } from './routes/notifications.js';
 import { registerUsage } from './routes/usage.js';
+import { registerFunnel } from './routes/funnel.js';
 import { sendWebPush } from './web-push.js';
 import { sendAlertWebhook } from './alert-webhook.js';
 import { describeError } from './routes/helpers.js';
@@ -243,6 +244,8 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   // 用量计量 recorder（决策 #25 ④ Wave A）：fail-open 薄壳，埋点失败只进日志；
   // 测试可注入 fake 断言埋点或 null recorder 显式关闭。
   const usageRecorder = deps.usageRecorder ?? createUsageRecorder(repos.usageEvents);
+  // 验证漏斗 recorder（design-funnel-analytics-20261015）：fail-open 薄壳，与 usageRecorder 同纪律。
+  const funnelRecorder = deps.funnelRecorder ?? createFunnelRecorder(repos.funnelEvents);
   // 岗位新鲜窗口（与 /job-postings/stats 同一个 JOB_STALE_DAYS 口径，不新增 env）。
   const jobStaleDays = parseStaleDays(process.env.JOB_STALE_DAYS);
 
@@ -268,6 +271,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     sendWebPush: deps.sendWebPush ?? sendWebPush,
     sendAlertWebhook: deps.sendAlertWebhook ?? sendAlertWebhook,
     usageRecorder,
+    funnelRecorder,
   };
 
   // 按原 index.ts 的注册顺序挂载（顺序对 /profiles/by-subject、/job-postings/stats 等
@@ -286,6 +290,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   registerClaimVerifications(app, routeDeps);
   registerNotifications(app, routeDeps);
   registerUsage(app, routeDeps);
+  registerFunnel(app, routeDeps);
 
   // 404 兜底
   app.notFound((c) => {
