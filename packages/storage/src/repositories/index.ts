@@ -30,3 +30,4 @@ export type {
   NewNotificationSubscription,
 } from './notification-subscriptions.js';
 export type { IUsageEventsRepository } from './usage-events.js';
+export type { IFunnelEventsRepository } from './funnel-events.js';

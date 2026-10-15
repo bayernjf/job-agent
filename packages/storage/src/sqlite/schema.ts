@@ -892,3 +892,38 @@ export const usageEvents = sqliteTable(
 
 export type UsageEventInsert = typeof usageEvents.$inferInsert;
 export type UsageEventSelect = typeof usageEvents.$inferSelect;
+
+/**
+ * funnel_events（迁移 040，design-funnel-analytics-20261015）：产品验证漏斗匿名事件日志。
+ * 只追加、不回改；隐私硬约束＝不记账号 id / IP / 被分析用户名 / UA，会话串联只用
+ * 24h 随机 ja_sid；profile_id 无外键（画像删除后聚合计数保留）；值域由应用 Zod 守门。
+ */
+export const funnelEvents = sqliteTable(
+  'funnel_events',
+  {
+    id: text('id').primaryKey(),
+    event: text('event').notNull(),
+    sessionRef: text('session_ref'),
+    profileId: text('profile_id'),
+    requester: text('requester'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_funnel_events_created').on(table.createdAt),
+    index('idx_funnel_events_session_event_created').on(
+      table.sessionRef,
+      table.event,
+      table.createdAt,
+    ),
+    index('idx_funnel_events_event_profile_created').on(
+      table.event,
+      table.profileId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type FunnelEventInsert = typeof funnelEvents.$inferInsert;
+export type FunnelEventSelect = typeof funnelEvents.$inferSelect;
