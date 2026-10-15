@@ -18,7 +18,7 @@
 
 ### JobAgent Privacy Policy
 
-_Last updated: 2026-10-01_
+_Last updated: 2026-10-15_
 
 This policy covers the JobAgent web service (the ability-report site and its API)
 and the **JobAgent Autofill** browser extension (collectively, "JobAgent", "we",
@@ -74,6 +74,17 @@ After OAuth sign-in we set an HTTP-only session cookie so you stay signed in.
 The extension uses Chrome's `storage` permission for the on-device contact
 details described in 1.4. We do not use advertising or cross-site tracking
 cookies.
+
+**1.7 Anonymous product-usage funnel events.**
+To understand whether the service works end-to-end (analysis requested →
+report viewed → report shared), we record four counters server-side:
+`analyze_enqueued`, `analyze_cache_hit`, `report_viewed` and `share_clicked`.
+Each event stores only an opaque random session identifier (a 24-hour
+HTTP-only `ja_sid` cookie, where present), the report id where relevant, the
+kind of requester (visitor / demo / signed-in user) and a timestamp. These
+events are **not** linked to your account, your IP address, the analyzed
+username, your browser or device, and they are used only as aggregate counts
+to measure the product funnel — never for advertising or individual tracking.
 
 #### 2. Information we do NOT collect
 
@@ -214,7 +225,7 @@ do not store the cover letter after it is delivered to you.
 
 ### JobAgent 隐私政策
 
-_最后更新：2026-10-01_
+_最后更新：2026-10-15_
 
 本政策适用于 JobAgent 网络服务（能力报告站及其 API）与 **JobAgent 自动填充**
 浏览器扩展（合称"JobAgent"或"我们"）。JobAgent 只分析开发者在 GitHub、Gitee
@@ -256,6 +267,14 @@ _最后更新：2026-10-01_
 **1.6 严格必要的 Cookie 与客户端存储。**
 OAuth 登录后我们设置 HttpOnly 会话 Cookie 以保持登录态。扩展使用 Chrome 的
 `storage` 权限保存 1.4 所述的本机联系方式。我们不使用广告或跨站追踪 Cookie。
+
+**1.7 匿名的产品使用漏斗事件。**
+为了解服务是否端到端可用（发起分析 → 查看报告 → 分享报告），我们在服务端记录
+四类计数事件：`analyze_enqueued`、`analyze_cache_hit`、`report_viewed` 与
+`share_clicked`。每条事件只保存：一个不透明的随机会话标识（若存在，来自 24 小时
+有效的 HttpOnly `ja_sid` Cookie）、相关报告 id、请求方类型（访客 / 演示 / 已登录
+用户）与时间戳。这些事件**不会**关联到你的账号、IP 地址、被分析用户名、浏览器或
+设备，仅作为聚合计数用于衡量产品漏斗——绝不用于广告或个体追踪。
 
 #### 2. 我们不收集哪些信息
 
