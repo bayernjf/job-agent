@@ -32,11 +32,33 @@ useDefault = true
 # credential anywhere — including in the same files — is still reported):
 # 1) Base64 RSA public key (Chrome extension manifest `key`), published not secret;
 # 2) fake placeholder API keys used only in unit-test fixtures (also annotated
-#    inline with `// gitleaks:allow` in the sources).
-description = "Public extension manifest key and fake test-fixture API keys"
+#    inline with `// gitleaks:allow` in the sources);
+# 3) public client-side distribution keys captured verbatim in the third-party
+#    job-board HTML fixtures under tests/fixtures/ats/ (commit 139f35e). Every
+#    one of these is a value the site itself ships to every anonymous browser:
+#    reCAPTCHA/hCaptcha *site* keys, a Datadog RUM *client* token (`pub…`
+#    prefix), a Rollbar `post_client_item` token, a Dropbox Chooser app key,
+#    Greenhouse's location-service key, and a GCP API key Greenhouse embeds in
+#    its public job-board pages. None of them is a credential of this project.
+#
+#    They are pinned as exact values, not shape regexes, on purpose: reCAPTCHA
+#    *secret* keys share the `6L…` shape with site keys, and Rollbar
+#    *server* tokens share the 32-hex shape with client tokens, so any
+#    shape-based entry would silently hide real secrets.
+description = "Public extension manifest key, fake test-fixture API keys, and public client keys in captured ATS fixtures"
 regexes = [
   '^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A[A-Za-z0-9+/]+={0,2}$',
   '^sk-(bob-secret-9876|byok-key|secret-1234|abcdef1234|test-key-1234567890abcdef1234567890abcdef|x)$',
   '^test-enc-key-20261003$',
   '^test-enc-key-20261014$',
+  '^pub1a87c7036063ee7d4b7914b397e6324e$',
+  '^6LeFb_YUAAAAALUD5h-BiQEp8JaFChe0e0A6r49Y$',
+  '^6LezdY0tAAAAAEnollNLCAI0z1VDGwM7AzGrU4XZ$',
+  '^6LfmcbcpAAAAAChNTbhUShzUOAMj_wY9LQIvLFX0$',
+  '^AIzaSyBeoz4WOjOsy8ZJFIkkQBvL8BZQCzLplHQ$',
+  '^mh9jyh4mfwjnfhj$',
+  '^ge-39f1178289d5d0c5$',
+  '^fb557f59a5a84ab788801dd742eacf34$',
+  '^e33f87f8-88ec-4e1a-9a13-df9bbb1d8120$',
+  '^6a247c6ff13012d02fde17377f0b857b$',
 ]
