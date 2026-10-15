@@ -29,6 +29,7 @@ import {
   composeSignalLabel,
   prSummaryFactsFromProfile,
 } from '../../../lib/report-page';
+import { recordReportView } from '../../../lib/funnel';
 import type { MessageKey, SkillTagKind } from '@jobagent/shared';
 
 /**
@@ -105,6 +106,14 @@ const {
   applicationStageLabels,
   disputeEmail,
 } = pageData;
+
+// 漏斗埋点（design-funnel-analytics-20261015 §5.1）：报告成功加载后记一次 report_viewed，
+// 种/读 ja_sid（24h HttpOnly），仓储侧 30 分钟 (session, profile) 去重；fail-open 不阻断渲染。
+await recordReportView({
+  cookies: Astro.cookies,
+  profileId: pageData.profileRecord.id,
+  requester: canViewGated ? 'user' : 'visitor',
+});
 
 // L3 语义洞察：仓库类型计数（报告页 semantic 板块用）
 const semanticKindCounts: Record<string, number> = {};
@@ -238,6 +247,8 @@ const tocItems: { id: string; label: string }[] = [
           url={shareUrl}
           copyLabel={t('report.copyLink')}
           copiedLabel={t('report.shareCopied')}
+          apiBase={apiBase}
+          profileId={pageData.profileRecord.id}
         />
       </div>
       {

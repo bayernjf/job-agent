@@ -102,6 +102,24 @@ test.describe('report page SSR render', () => {
     await expect(badge).toContainText('双源融合');
     await expect(page.getByTestId('fusion-stats')).toContainText('条重复提交已去重');
   });
+
+  // 漏斗埋点（design-funnel-analytics-20261015 §7）：首次打开报告页种 24h HttpOnly ja_sid。
+  test('plants the ja_sid funnel session cookie on first report view', async ({
+    page,
+    context,
+  }) => {
+    const response = await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+    const setCookie = (await response?.allHeaders())['set-cookie'] ?? '';
+    expect(setCookie).toContain('ja_sid=');
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('Max-Age=86400');
+    const sid = (await context.cookies()).find((c) => c.name === 'ja_sid');
+    expect(sid).toBeDefined();
+    expect(sid?.value).toMatch(/^[0-9a-f-]{36}$/);
+    expect(sid?.httpOnly).toBe(true);
+    expect(sid?.sameSite).toBe('Lax');
+    expect(sid?.path).toBe('/');
+  });
 });
 
 /**
