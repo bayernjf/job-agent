@@ -23,7 +23,7 @@ describe('RequesterKindSchema', () => {
 
 describe('DemoRateKindSchema', () => {
   it('accepts the session / analyze / match / subject / removal / candidates buckets', () => {
-    expect(DEMO_RATE_KINDS).toEqual(['session', 'analyze', 'match', 'subject', 'removal', 'candidates']);
+    expect(DEMO_RATE_KINDS).toEqual(['session', 'analyze', 'match', 'subject', 'removal', 'candidates', 'funnel']);
     expect(DemoRateKindSchema.safeParse('session').success).toBe(true);
     expect(DemoRateKindSchema.safeParse('analyze').success).toBe(true);
     expect(DemoRateKindSchema.safeParse('match').success).toBe(true);
