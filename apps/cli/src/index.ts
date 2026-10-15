@@ -36,6 +36,7 @@ import { runAuth } from './auth-commands.js';
 import { runProfiles } from './profiles-commands.js';
 import { runRemoval } from './removal-commands.js';
 import { runUsage } from './usage-commands.js';
+import { runFunnel } from './funnel-commands.js';
 import { runResume } from './resume-commands.js';
 import { runSemantic, attachLlmSummary, makeSemanticSource } from './semantic-commands.js';
 import type { L3CollectedData } from '@jobagent/semantic-source';
@@ -376,8 +377,12 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
     return runUsage(rest, deps);
   }
 
+  if (command === 'funnel') {
+    return runFunnel(rest, deps);
+  }
+
   logger.error(
-    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | auth cleanup | resume build ... | resume batch ... | profiles delete --profile <id> | removal list|approve|reject ... | semantic analyze <user> [--repos N] | usage summary|daily --since <ISO> [--account <id>] [--category llm|search|analysis] [--format json|table]',
+    'Usage: jobagent analyze <user> [--out <file>] [--format json|markdown|html] | batch <file> [--out <file>] | waitlist [--status <s>] [--limit <n>] [--count] | jobs <sync|search|stats|match> | demo <seed|cleanup> | auth cleanup | resume build ... | resume batch ... | profiles delete --profile <id> | removal list|approve|reject ... | semantic analyze <user> [--repos N] | usage summary|daily --since <ISO> [--account <id>] [--category llm|search|analysis] [--format json|table] | funnel summary|daily --since <ISO> [--until <ISO>] [--format json|table]',
   );
   return 2;
 }
