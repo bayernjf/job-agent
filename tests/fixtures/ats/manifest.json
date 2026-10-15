@@ -1,0 +1,37 @@
+{
+  "note": "真实公开 ATS 申请页 DOM 样本（tools/capture-ats-samples.mjs 录制）。无个人信息无需脱敏；回归测试见 apps/extension/src/ats/real-dom-regression.test.ts。Workday 因多步账号门槛流程不抓，继续由 fake-doc 单测覆盖。",
+  "samples": [
+    {
+      "file": "greenhouse-anthropic.html",
+      "ats": "greenhouse",
+      "mode": "ssr-embed",
+      "sourceUrl": "https://boards.greenhouse.io/embed/job_app?for=anthropic&token=5183044008",
+      "finalUrl": "https://job-boards.greenhouse.io/embed/job_app?for=anthropic&token=5183044008",
+      "capturedAt": "2026-10-15T10:35:50.575Z"
+    },
+    {
+      "file": "lever-sonarsource.html",
+      "ats": "lever",
+      "mode": "ssr-apply",
+      "sourceUrl": "https://jobs.lever.co/sonarsource/bfdee967-bfaa-4880-afa2-2a5d66cc52cf/apply",
+      "finalUrl": "https://jobs.lever.co/sonarsource/bfdee967-bfaa-4880-afa2-2a5d66cc52cf/apply",
+      "capturedAt": "2026-10-15T10:35:52.892Z"
+    },
+    {
+      "file": "lever-alluxio.html",
+      "ats": "lever",
+      "mode": "ssr-apply",
+      "sourceUrl": "https://jobs.lever.co/alluxio/ab568a91-31db-4ef1-89ff-66543e5d3149/apply",
+      "finalUrl": "https://jobs.lever.co/alluxio/ab568a91-31db-4ef1-89ff-66543e5d3149/apply",
+      "capturedAt": "2026-10-15T10:35:54.382Z"
+    },
+    {
+      "file": "ashby-linear.html",
+      "ats": "ashby",
+      "mode": "rendered-spa",
+      "sourceUrl": "https://jobs.ashbyhq.com/linear/6dd5500a-4bd4-4f57-ba09-7b07acefecf4",
+      "finalUrl": "https://jobs.ashbyhq.com/linear/6dd5500a-4bd4-4f57-ba09-7b07acefecf4/application",
+      "capturedAt": "2026-10-15T10:36:05.913Z"
+    }
+  ]
+}

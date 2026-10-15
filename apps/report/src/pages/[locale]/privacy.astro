@@ -32,7 +32,7 @@ interface PrivacySection {
   blocks: Block[];
 }
 
-const lastUpdated = '2026-10-01';
+const lastUpdated = '2026-10-15';
 
 const en: PrivacySection[] = [
   {
@@ -71,6 +71,11 @@ const en: PrivacySection[] = [
       {
         kind: 'p',
         text: 'After OAuth sign-in we set an HTTP-only session cookie. The extension uses the Chrome storage permission for on-device contact details (1.4). We do not use advertising or cross-site tracking cookies.',
+      },
+      { kind: 'sub', text: '1.7 Anonymous product-usage funnel events' },
+      {
+        kind: 'p',
+        text: 'To understand whether the service works end-to-end (analysis requested → report viewed → report shared), we record four counters server-side: analyze_enqueued, analyze_cache_hit, report_viewed and share_clicked. Each event stores only an opaque random session identifier (a 24-hour HTTP-only ja_sid cookie, where present), the report id where relevant, the kind of requester (visitor / demo / signed-in user) and a timestamp. These events are not linked to your account, your IP address, the analyzed username, your browser or device, and are used only as aggregate counts to measure the product funnel — never for advertising or individual tracking.',
       },
     ],
   },
@@ -258,6 +263,11 @@ const zhCN: PrivacySection[] = [
       {
         kind: 'p',
         text: 'OAuth 登录后我们设置 HttpOnly 会话 Cookie 以保持登录态。扩展使用 Chrome 的 storage 权限保存 1.4 所述的本机联系方式。我们不使用广告或跨站追踪 Cookie。',
+      },
+      { kind: 'sub', text: '1.7 匿名的产品使用漏斗事件' },
+      {
+        kind: 'p',
+        text: '为了解服务是否端到端可用（发起分析 → 查看报告 → 分享报告），我们在服务端记录四类计数事件：analyze_enqueued、analyze_cache_hit、report_viewed 与 share_clicked。每条事件只保存：一个不透明的随机会话标识（若存在，来自 24 小时有效的 HttpOnly ja_sid Cookie）、相关报告 id、请求方类型（访客 / 演示 / 已登录用户）与时间戳。这些事件不会关联到你的账号、IP 地址、被分析用户名、浏览器或设备，仅作为聚合计数用于衡量产品漏斗——绝不用于广告或个体追踪。',
       },
     ],
   },

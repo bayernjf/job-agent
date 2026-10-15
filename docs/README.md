@@ -31,7 +31,7 @@
 | **问“产品到底哪里难用、下一步该改哪一屏”** | [走查-陌生访客视角-20261008.md](走查-陌生访客视角-20261008.md) — 对生产站点的逐屏走查（入口页/报告页匿名路径实测），11 条带证据的发现 + 可转发的真人试用脚本与回收格式；**未覆盖：登录认领主路、手机视口** |
 | 做招聘方 pipeline 状态机 / 想知道阶段怎么推进、事件流怎么回放 | [design-b3b-pipeline-state-machine-20261014.md](design-b3b-pipeline-state-machine-20261014.md)（**已落地并生产部署 2026-10-15**：6 阶段单向状态机、迁移 039、三端点契约、`/recruit` 投递区推进按钮、首推进 null→new 缺口修复；端点文档见 [API.md](API.md) §3.6） |
 | 看哪些事被刻意缓做、什么条件下重启 | [deferred-items.md](deferred-items.md) |
-| **问"UI 要不要重新设计 / 下一步改哪一屏"** | [design-ui-polish-20261010.md](design-ui-polish-20261010.md)（方案，2026-10-10 生产三页面实测：信息架构/证据链/合规文案是强项，**定向视觉升级**而非重做；V1 宽屏栅格 + V3 报告页锚点导航＝P0 一个批次，V2 品牌层级 P1，V4 空态 P2；不换体系、不改文案、不碰接口契约；主色基调待拍板） |
+| **问"UI 要不要重新设计 / 下一步改哪一屏"** | [design-ui-polish-20261010.md](design-ui-polish-20261010.md)（**P0/P1/P2/V5 全批次已落地 2026-10-10**：生产三页面实测——信息架构/证据链/合规文案是强项，**定向视觉升级**而非重做；V1 宽屏栅格 + V3 报告页锚点导航＝P0，V2 品牌层级三通道 P1，V4 空态引导 P2；不换体系、不改文案、不碰接口契约；主色沿用绿-teal 已拍板） |
 | 想知道「所有还没做的事」怎么排先后（L1 就差你一次动作 / L2 待拍板 / L3 触发部分满足 / L4 外部未到 / 永久边界） | [待推进路线图-20261009.md](待推进路线图-20261009.md)（排序视图；实施进度以 handoff 为准） |
 | 接手写代码 / 了解工程硬约束 | [../AGENTS.md](../AGENTS.md) + [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | 新增 / 修改数据库结构 | [../MIGRATION_CONVENTION.md](../MIGRATION_CONVENTION.md) |
@@ -68,6 +68,7 @@
 | 想让产品把**用户带来的简历**逐条对账（"这句话 GitHub 支撑得起吗"）——**✅ 决策 #23 于 2026-10-05 拍板，批次 1（内核+持久化）/ 2（三端点 + B/C 两端表面 + /recruit 计数）/ 3（真全栈 E2E）均已落地** | [design-claim-verification-20261005.md](design-claim-verification-20261005.md)（三路线取舍、§9 五个子问、§10 明确不做）+ `packages/claim-core` + 迁移 029；明细见 handoff item128 |
 | 配置 LLM 模型（内置模型＝**Admin UI 管理**（参考 agent-world model-catalog：admin 管目录、env 管凭证）/ BYOK＝用户自由设置 OpenAI 兼容 key；方向与细节已拍板 2026-10-03（决策 #21，P0 已落地：迁移 023–025 + admin/BYOK 端点 + report 面板 + 请求路由 BYOK 优先→内置回落）） | [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md) ★ |
 | 问「哪个功能在烧 token / 在花钱」——用量计量（usage_events 事件日志、LLM/分析作业/websearch 三面埋点、`/account/usage` 与 `/admin/usage` 读侧、CLI `usage summary|daily`；✅ 决策 #25 ④ 于 2026-10-14 全波落地） | [design-cost-metering-20261014.md](design-cost-metering-20261014.md)（迁移 038；记原始单位不记金额、计量 fail-open）+ [API.md](API.md) §3.12 + handoff item163 |
+| 问「验证漏斗转化怎么样 / 多少人从分析走到分享」——验证漏斗埋点（funnel_events 四事件、`ja_sid` 24h cookie 串联不 join 账号/IP、`POST /funnel/events` 只收分享点击、CLI `funnel summary|daily` 读口；✅ 2026-10-15 落地） | [design-funnel-analytics-20261015.md](design-funnel-analytics-20261015.md)（迁移 040；全链 fail-open、PRD §11.2）+ [API.md](API.md) §3.13 + handoff item165 |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 看扩展一键填充覆盖哪些 ATS、为什么 Workday 是骨架、下一步扩哪个（Ashby 优先） | [design-ats-support-20261010.md](design-ats-support-20261010.md) ★ |

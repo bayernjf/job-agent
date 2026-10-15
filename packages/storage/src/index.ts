@@ -49,6 +49,7 @@ export type {
   NewNotificationSubscription,
 } from './repositories/notification-subscriptions.js';
 export type { IUsageEventsRepository } from './repositories/usage-events.js';
+export type { IFunnelEventsRepository } from './repositories/funnel-events.js';
 
 // 实体领域类型
 export type {
@@ -213,6 +214,13 @@ export {
 export { createUsageRecorder, createNullUsageRecorder } from './usage-recorder.js';
 export type { UsageRecorder } from './usage-recorder.js';
 export type { UsageEventRecord, RawUsageEventRow } from './entities/usage-event.js';
+export {
+  createFunnelRecorder,
+  createNullFunnelRecorder,
+  FUNNEL_VIEW_DEDUPE_WINDOW_MS,
+} from './funnel-recorder.js';
+export type { FunnelRecorder } from './funnel-recorder.js';
+export type { FunnelEventRecord, RawFunnelEventRow } from './entities/funnel-event.js';
 
 // 迁移（CLI/脚本/测试）
 export {

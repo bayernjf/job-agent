@@ -16,6 +16,8 @@ ATS 是招聘方用来管理「岗位发布 → 申请收集 → 筛选 → 面�
 
 适配器层是**注册式**的：`detect()` 识别当前页面属于哪个 ATS → `mapFields()` 把「可信画像（ExportableProfile）+ 本地补填（LocalFields）」映射为语义化 FillValue → `fill()` 写入页面 DOM。新增 ATS = 新增一个适配器文件 + 在 `ats/index.ts` 注册一行，面板与填充链路零改动。
 
+> **注册顺序即正确性（2026-10-15 真实 DOM 回归实测补记）**：`detectAts` 取**第一个** `detect()` 命中的适配器，而真实页面可能同时命中多家特征（Ashby 申请面板 form id 与 Lever 同为 `#job-application-form`；Linear 页正文含 "workday" 字样）。顺序必须是「判据最特异者优先」：greenhouse → ashby → lever → workday。新增适配器时先想清它的判据特异度排第几，并在回归样本上验证（见 §4）。
+
 | ATS | 类型 | 实现状态 | 能力边界 |
 | --- | --- | --- | --- |
 | **Greenhouse** | 现代 SaaS | ✅ 完整 + 真机验证 | 7 类标准字段 + 动机问题（why_company/why_role）识别；真实 Vercel Greenhouse 岗位页端到端实测通过（item114，2026-10-04） |
@@ -50,6 +52,7 @@ iCIMS、Oracle Taleo、SAP SuccessFactors、BambooHR（HR 套件内置招聘模�
 
 ## 4. 已知记录（不重复展开）
 
+- **真实 DOM 回归（2026-10-15 落地）**：`tests/fixtures/ats/` 存 4 份真实申请页样本（Greenhouse embed SSR / Lever `/apply` SSR ×2 租户 / Ashby SPA 渲染；Workday 因账号门槛维持 fake-doc 覆盖），`apps/extension/src/ats/real-dom-regression.test.ts` 在样本上钉 detect 归属 + 关键字段落值 + 防误写；重抓样本＝`node tools/capture-ats-samples.mjs`（刻意行为，须审阅测试断言是否同步）。day-one 即抓出并修复 detect 顺序 bug（见 §2 补记）；Lever `cards[<uuid>][fieldN]` letter 漂移钉住未修，修复入口见 [deferred-items](deferred-items.md) 平台与工程线。
 - 扩展真机安装/试用/跨端同步：`apps/extension/INSTALL.md` + `apps/extension/README.md`（handoff item46）；
 - Workday 真人验证法、CWS 上架素材：handoff「已知限制 / 待核实」；
 - 扩展 E2E 机制与 ATS 模拟页：`design-extension-e2e-20260914.md`；

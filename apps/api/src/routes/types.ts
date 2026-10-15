@@ -29,6 +29,8 @@ import type {
   INotificationSubscriptionsRepository,
   IUsageEventsRepository,
   UsageRecorder,
+  IFunnelEventsRepository,
+  FunnelRecorder,
 } from '@jobagent/storage';
 import type { Principal } from '@jobagent/shared';
 import type { DemoConfig } from '../demo-config.js';
@@ -80,6 +82,8 @@ export interface ApiRepos {
   notificationSubscriptions: INotificationSubscriptionsRepository;
   /** 成本回采用量事件（决策 #25 ④，迁移 038；写口只经 UsageRecorder，读侧聚合查询） */
   usageEvents: IUsageEventsRepository;
+  /** 验证漏斗匿名事件（design-funnel-analytics-20261015，迁移 040；写口只经 FunnelRecorder） */
+  funnelEvents: IFunnelEventsRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
   /** 迁移漂移守卫（deferred「迁移漂移守卫」）：核对实际 schema 关键列，返回缺失列表 */
@@ -160,6 +164,12 @@ export interface ApiDeps {
    * 或注入 createNullUsageRecorder() 显式关闭计量。
    */
   usageRecorder?: UsageRecorder;
+  /**
+   * 验证漏斗 recorder（design-funnel-analytics-20261015；fail-open，失败只记日志）。
+   * 不传 = 按 repos.funnelEvents 装配真实 recorder；测试注入 fake 断言埋点、
+   * 或注入 createNullFunnelRecorder() 显式关闭。
+   */
+  funnelRecorder?: FunnelRecorder;
 }
 
 /** Hono 应用环境变量类型（principal 由全局中间件注入）。 */

@@ -835,3 +835,38 @@ export const usageEvents = pgTable(
 
 export type UsageEventInsert = typeof usageEvents.$inferInsert;
 export type UsageEventSelect = typeof usageEvents.$inferSelect;
+
+/**
+ * funnel_events（迁移 040，design-funnel-analytics-20261015）：产品验证漏斗匿名事件日志。
+ * JS 字段名/物理列名与 sqlite/schema.ts 逐一对齐（schema-parity 测试守护）；
+ * 时间戳刻意保持 TEXT，不用 TIMESTAMPTZ（见本文件头约定）。
+ */
+export const funnelEvents = pgTable(
+  'funnel_events',
+  {
+    id: text('id').primaryKey(),
+    event: text('event').notNull(),
+    sessionRef: text('session_ref'),
+    profileId: text('profile_id'),
+    requester: text('requester'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_funnel_events_created').on(table.createdAt),
+    index('idx_funnel_events_session_event_created').on(
+      table.sessionRef,
+      table.event,
+      table.createdAt,
+    ),
+    index('idx_funnel_events_event_profile_created').on(
+      table.event,
+      table.profileId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type FunnelEventInsert = typeof funnelEvents.$inferInsert;
+export type FunnelEventSelect = typeof funnelEvents.$inferSelect;

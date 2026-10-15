@@ -1842,6 +1842,35 @@ admin 面：全平台口径，额外接受 `accountId` query 过滤单账号；�
 
 ---
 
+## 3.13 验证漏斗（2026-10-15）
+
+PRD §11.2 验证漏斗的埋点面，设计见 [design-funnel-analytics-20261015.md](design-funnel-analytics-20261015.md)。
+四类事件——`analyze_enqueued` / `analyze_cache_hit` / `report_viewed` / `share_clicked`——
+append-only 落 `funnel_events`；前三类由**服务端**在 `/analyze` 与报告页 SSR 内自记（无对外端点），
+只有 `share_clicked` 经下面的公开端点从浏览器上报。串联键是 24h HttpOnly Cookie
+`ja_sid`（报告页首次查看时种，`SameSite=Lax`），**绝不 join 账号 / demo 会话 / IP**；
+读口是 CLI `funnel summary|daily`（见 §6 设计文档），无在线读 API。
+
+### `POST /funnel/events`
+
+公开端点，**无身份闸**（anonymous/demo/user 均可）。body 经 Zod 白名单校验，只接受
+`share_clicked`——伪造其余三类事件名一律拒绝：
+
+```json
+{ "event": "share_clicked", "profileId": "<uuid，可选>" }
+```
+
+- 非 JSON body → `400 { "error": "invalid JSON body" }`；
+- schema 不过（缺 `event` / 事件名不在白名单 / `profileId` 非 uuid）→
+  `400 { "error": "validation failed", "details": … }`；
+- IP 滑窗限流：同一可信 IP 60 次/小时（复用 `demo_ip_windows`，bucket `'funnel'`；
+  取不到可信 IP 不拦），超限 →
+  `429 { "error": "funnel event rate limit exceeded", "retryAfterSeconds": 3600 }`；
+- 成功 → `202` 空 body。**fail-open**：recorder 内部吞错（只记服务端日志），
+  响应层永不暴露埋点写库失败——埋点绝不能打挂业务链路。
+
+---
+
 ## 4. 健康检查
 
 ### `GET /health`

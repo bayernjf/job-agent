@@ -453,6 +453,22 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 040（funnel_events 验证漏斗匿名事件表，design-funnel-analytics-20261015）
+    const feBefore40 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='funnel_events'")
+      .all() as Array<{ name: string }>;
+    expect(feBefore40.map((t) => t.name)).toContain('funnel_events');
+    const result40 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result40.version).toBe('040');
+    const feAfter40 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='funnel_events'")
+      .all() as Array<{ name: string }>;
+    expect(feAfter40.map((t) => t.name)).not.toContain('funnel_events');
+    const feIdxAfter40 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_funnel_events_%'")
+      .all() as Array<{ name: string }>;
+    expect(feIdxAfter40).toHaveLength(0);
+
     // 回滚 039（B3-b：applications.stage + application_events，design-b3b-pipeline-state-machine）
     const appStageBefore39 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='application_events'")

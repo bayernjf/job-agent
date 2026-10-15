@@ -3,6 +3,9 @@ import { z } from 'zod';
 // 成本回采/用量计量契约（决策 #25 ④ Wave A）独立成文件，见 ./usage.ts
 export * from './usage.js';
 
+// 验证漏斗匿名事件契约（design-funnel-analytics-20261015）独立成文件，见 ./funnel.ts
+export * from './funnel.js';
+
 /**
  * 能力画像契约（v0.1，对应 PRD 第 8 章）。
  *
@@ -809,8 +812,8 @@ export const REQUESTER_KINDS = ['anonymous', 'demo', 'user'] as const;
 export const RequesterKindSchema = z.enum(REQUESTER_KINDS);
 export type RequesterKind = z.infer<typeof RequesterKindSchema>;
 
-/** IP 滑动窗口限流的桶类型：建会话 / 触发分析 / 岗位匹配 / 公开主体解析 / 移除申请提交 / 人才检索 */
-export const DEMO_RATE_KINDS = ['session', 'analyze', 'match', 'subject', 'removal', 'candidates'] as const;
+/** IP 滑动窗口限流的桶类型：建会话 / 触发分析 / 岗位匹配 / 公开主体解析 / 移除申请提交 / 人才检索 / 漏斗事件上报 */
+export const DEMO_RATE_KINDS = ['session', 'analyze', 'match', 'subject', 'removal', 'candidates', 'funnel'] as const;
 export const DemoRateKindSchema = z.enum(DEMO_RATE_KINDS);
 export type DemoRateKind = z.infer<typeof DemoRateKindSchema>;
 

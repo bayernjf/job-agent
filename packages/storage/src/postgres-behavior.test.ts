@@ -3,11 +3,12 @@ import { rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vitest';
-import type { AbilityProfile } from '@jobagent/shared';
+import type { AbilityProfile, FunnelEventName } from '@jobagent/shared';
 import EmbeddedPostgres from 'embedded-postgres';
 import { createStorage } from './storage.js';
 import type { StorageContext } from './types.js';
 import type { NewApplication, NewJobRunEvent, NewSubmitIntent } from './entities/index.js';
+import type { FunnelEventRecord } from './entities/funnel-event.js';
 import { openPostgres } from './postgres/connection.js';
 import { listMigrationFiles } from './migrations-fs.js';
 
@@ -1339,6 +1340,67 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       { day: '2026-10-14', category: 'llm', events: 1, sumPromptTokens: 200, sumCompletionTokens: 80, sumQuantity: 0 },
       { day: '2026-10-14', category: 'search', events: 1, sumPromptTokens: 0, sumCompletionTokens: 0, sumQuantity: 3 },
     ]);
+  });
+
+  // funnel_events（迁移 040，验证漏斗）：PG 方言对等验证——recordView 30 分钟去重的
+  // 文本时间比较（不得 42883）、COUNT DISTINCT 忽略 NULL、NULL 组 CASE WHEN、聚合列
+  // string→number coercion、UTC 自然日 bucket。表无账号列可过滤，故聚合用增量断言，
+  // sessionRef/主键带随机后缀，连跑同一库不假红。
+  pgIt('inserts funnel events and aggregates them consistently on Postgres', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const sid = `sid-pg-${suffix}`;
+    const profileId = randomUUID();
+    const SINCE = '2026-10-13T00:00:00.000Z';
+    const UNTIL = '2026-10-15T00:00:00.000Z';
+    let n = 0;
+    const at = (iso: string, over: Partial<FunnelEventRecord> = {}): FunnelEventRecord => ({
+      id: `fe-pg-${suffix}-${(n += 1)}`,
+      event: 'report_viewed',
+      sessionRef: sid,
+      profileId,
+      requester: null,
+      createdAt: iso,
+      ...over,
+    });
+
+    // recordView 30 分钟 (session, profile) 去重：窗口内 deduped、滑出窗口重新计数。
+    const W = 30 * 60 * 1000;
+    expect(await s.funnelEvents.recordView(at('2026-10-14T12:00:00.000Z'), W)).toBe('inserted');
+    expect(await s.funnelEvents.recordView(at('2026-10-14T12:10:00.000Z'), W)).toBe('deduped');
+    expect(await s.funnelEvents.recordView(at('2026-10-14T12:31:00.000Z'), W)).toBe('inserted');
+
+    // 聚合增量（recordView 的两条 viewed 已在基线内，对下方两个事件的增量无影响）。
+    const base = await s.funnelEvents.summarize({ sinceIso: SINCE, untilIso: UNTIL });
+    const baseDays = await s.funnelEvents.summarizeDaily({ sinceIso: SINCE, untilIso: UNTIL });
+    await s.funnelEvents.insert(
+      at('2026-10-13T23:30:00.000Z', { event: 'analyze_enqueued', profileId: null, requester: 'user' }),
+    );
+    await s.funnelEvents.insert(
+      at('2026-10-14T02:00:00.000Z', { event: 'share_clicked', sessionRef: null }),
+    );
+    const after = await s.funnelEvents.summarize({ sinceIso: SINCE, untilIso: UNTIL });
+    const afterDays = await s.funnelEvents.summarizeDaily({ sinceIso: SINCE, untilIso: UNTIL });
+
+    const delta = (event: FunnelEventName) => {
+      const b = base.find((r) => r.event === event) ?? { events: 0, distinctSessions: 0, nullSessions: 0 };
+      const a = after.find((r) => r.event === event)!;
+      return {
+        events: a.events - b.events,
+        distinctSessions: a.distinctSessions - b.distinctSessions,
+        nullSessions: a.nullSessions - b.nullSessions,
+      };
+    };
+    expect(delta('analyze_enqueued')).toEqual({ events: 1, distinctSessions: 1, nullSessions: 0 });
+    // share_clicked 无会话标识：不进 distinct、单独落 NULL 组。
+    expect(delta('share_clicked')).toEqual({ events: 1, distinctSessions: 0, nullSessions: 1 });
+
+    const dayDelta = (day: string, event: FunnelEventName) => {
+      const b = baseDays.find((r) => r.day === day && r.event === event)?.events ?? 0;
+      const a = afterDays.find((r) => r.day === day && r.event === event)?.events ?? 0;
+      return a - b;
+    };
+    expect(dayDelta('2026-10-13', 'analyze_enqueued')).toBe(1);
+    expect(dayDelta('2026-10-14', 'share_clicked')).toBe(1);
   });
 
   // 回归：api + worker（或水平扩容的多个副本）同时冷启动、对同一空库并发首迁移时，

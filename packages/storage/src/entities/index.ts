@@ -236,3 +236,6 @@ export { toStoredNotificationSubscription } from './notification-subscription.js
 
 export type { UsageEventRecord, RawUsageEventRow } from './usage-event.js';
 export { toUsageEventRecord } from './usage-event.js';
+
+export type { FunnelEventRecord, RawFunnelEventRow } from './funnel-event.js';
+export { toFunnelEventRecord } from './funnel-event.js';

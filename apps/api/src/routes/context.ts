@@ -12,7 +12,7 @@ import type { CatalogCache, CoverLetterProvider } from '@jobagent/llm';
 import type { AuthConfig } from '../auth-config.js';
 import type { DemoConfig } from '../demo-config.js';
 import type { ApiDeps, ApiRepos } from './types.js';
-import type { UsageRecorder } from '@jobagent/storage';
+import type { FunnelRecorder, UsageRecorder } from '@jobagent/storage';
 
 export interface RouteDeps {
   /** 全部仓储（生产 createStorage / 测试内存库） */
@@ -54,4 +54,6 @@ export interface RouteDeps {
   sendAlertWebhook: typeof import('../alert-webhook.js').sendAlertWebhook;
   /** 用量计量 recorder（决策 #25 ④ Wave A；fail-open，埋点只追加 usage_events） */
   usageRecorder: UsageRecorder;
+  /** 验证漏斗 recorder（design-funnel-analytics-20261015；fail-open，埋点只追加 funnel_events） */
+  funnelRecorder: FunnelRecorder;
 }
