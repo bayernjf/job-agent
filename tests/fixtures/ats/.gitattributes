@@ -1,0 +1,4 @@
+# Real ATS page captures are ground truth and must be preserved
+# byte-for-byte; trailing whitespace in the original markup is data,
+# not an error, so exempt these fixtures from blank-at-eol checks.
+*.html whitespace=-blank-at-eol
