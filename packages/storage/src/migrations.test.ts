@@ -453,6 +453,32 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 039（B3-b：applications.stage + application_events，design-b3b-pipeline-state-machine）
+    const appStageBefore39 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='application_events'")
+      .all() as Array<{ name: string }>;
+    expect(appStageBefore39.map((t) => t.name)).toContain('application_events');
+    const stageColBefore39 = db
+      .prepare('PRAGMA table_info(applications)')
+      .all() as Array<{ name: string }>;
+    expect(stageColBefore39.map((c) => c.name)).toContain('stage');
+    const result39 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result39.version).toBe('039');
+    const appEventsAfter39 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='application_events'")
+      .all() as Array<{ name: string }>;
+    expect(appEventsAfter39.map((t) => t.name)).not.toContain('application_events');
+    const stageColAfter39 = db
+      .prepare('PRAGMA table_info(applications)')
+      .all() as Array<{ name: string }>;
+    expect(stageColAfter39.map((c) => c.name)).not.toContain('stage');
+    const appsIdxAfter39 = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_app_evt_application','idx_applications_job')",
+      )
+      .all() as Array<{ name: string }>;
+    expect(appsIdxAfter39).toHaveLength(0);
+
     // 回滚 038（usage_events 成本计量事件表，决策 #25 ④）
     const ueBefore38 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='usage_events'")

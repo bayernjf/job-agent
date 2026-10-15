@@ -41,6 +41,18 @@ interface InterviewRow {
   outcome: string | null;
 }
 
+/** B3-b：投到这条自建岗位的投递（GET /job-postings/recruiter/:id/applications） */
+interface PostingApplication {
+  id: string;
+  profileId: string;
+  targetTitle: string;
+  targetCompany: string;
+  targetUrl: string | null;
+  appliedAt: string;
+  status: string;
+  stage: string | null;
+}
+
 interface CandidateBlock {
   loading: boolean;
   error: string | null;
@@ -49,6 +61,10 @@ interface CandidateBlock {
   interviewsLoading: boolean;
   interviewsError: string | null;
   interviews: InterviewRow[];
+  applicationsLoading: boolean;
+  applicationsError: string | null;
+  applications: PostingApplication[];
+  advancingId: string | null;
 }
 
 interface Labels {
@@ -85,6 +101,12 @@ interface Labels {
   interviewsTitle: string;
   interviewsEmpty: string;
   interviewsError: string;
+  applicationsTitle: string;
+  applicationsEmpty: string;
+  applicationsError: string;
+  advanceStage: string;
+  stageChangeFailed: string;
+  stageLabels: Record<string, string>;
   statusLabels: Record<string, string>;
 }
 
@@ -103,6 +125,21 @@ const EMPTY_CANDIDATES: CandidateBlock = {
   interviewsLoading: false,
   interviewsError: null,
   interviews: [],
+  applicationsLoading: false,
+  applicationsError: null,
+  applications: [],
+  advancingId: null,
+};
+
+/** B3-b：pipeline 单向前进顺序（用于渲染"下一阶段"按钮；'null'=尚未进入 pipeline，首推进落到 new；rejected/hired 为终态） */
+const STAGE_NEXT: Record<string, string[]> = {
+  null: ['new'],
+  new: ['screening', 'rejected'],
+  screening: ['interview', 'rejected'],
+  interview: ['offer', 'rejected'],
+  offer: ['hired', 'rejected'],
+  hired: [],
+  rejected: [],
 };
 
 /** 面试排期按读者语言环境格式化（服务端已给 UTC ISO8601，这里只做展示层转换）。 */
@@ -228,7 +265,12 @@ export default function RecruiterPostings({ apiBase, reportBasePath, locale, lab
     if (candidates[posting.id]?.items.length) return;
     setCandidates((prev) => ({
       ...prev,
-      [posting.id]: { ...EMPTY_CANDIDATES, loading: true, interviewsLoading: true },
+      [posting.id]: {
+        ...EMPTY_CANDIDATES,
+        loading: true,
+        interviewsLoading: true,
+        applicationsLoading: true,
+      },
     }));
     const params = new URLSearchParams({
       skills: posting.tags.join(','),
@@ -236,16 +278,26 @@ export default function RecruiterPostings({ apiBase, reportBasePath, locale, lab
       sortBy: 'skills',
       limit: '8',
     });
-    // 两条读取并行：候选人（既有 /candidates 的技能过滤）+ 这条岗位已排的面试。
-    // 面板就是这条岗位的 pipeline 视图——"有谁命中、已经排到第几面"。
-    const [candsRes, interviewsRes] = await Promise.allSettled([
+    // 三路读取并行：候选人（既有 /candidates 的技能过滤）+ 这条岗位已排的面试 +
+    // 投到这条岗位的投递（B3-b pipeline）。面板就是这条岗位的 pipeline 视图——
+    // "有谁命中、已经排到第几面、候选人走到哪一阶段"。
+    const [candsRes, interviewsRes, appsRes] = await Promise.allSettled([
       fetch(`${apiBase}/candidates?${params.toString()}`, { credentials: 'include' }),
       fetch(`${apiBase}/interviews?postingId=${encodeURIComponent(posting.id)}`, {
         credentials: 'include',
       }),
+      fetch(
+        `${apiBase}/job-postings/recruiter/${encodeURIComponent(posting.id)}/applications`,
+        { credentials: 'include' },
+      ),
     ]);
 
-    let block: CandidateBlock = { ...EMPTY_CANDIDATES, loading: false, interviewsLoading: false };
+    let block: CandidateBlock = {
+      ...EMPTY_CANDIDATES,
+      loading: false,
+      interviewsLoading: false,
+      applicationsLoading: false,
+    };
     if (candsRes.status === 'fulfilled' && candsRes.value.ok) {
       const body = (await candsRes.value.json()) as { items: RankedCandidate[]; total: number };
       block = { ...block, total: body.total, items: body.items };
@@ -258,7 +310,59 @@ export default function RecruiterPostings({ apiBase, reportBasePath, locale, lab
     } else {
       block = { ...block, interviewsError: labels.interviewsError };
     }
+    if (appsRes.status === 'fulfilled' && appsRes.value.ok) {
+      const body = (await appsRes.value.json()) as { items: PostingApplication[] };
+      block = { ...block, applications: body.items };
+    } else {
+      block = { ...block, applicationsError: labels.applicationsError };
+    }
     setCandidates((prev) => ({ ...prev, [posting.id]: block }));
+  }
+
+  /** B3-b：推进候选人 pipeline 阶段（PATCH /applications/:id/stage），成功后本地更新 */
+  async function advance(postingId: string, applicationId: string, toStage: string) {
+    const block = candidates[postingId];
+    if (!block || block.advancingId) return;
+    setCandidates((prev) => ({
+      ...prev,
+      [postingId]: { ...prev[postingId]!, advancingId: applicationId },
+    }));
+    try {
+      const res = await fetch(
+        `${apiBase}/applications/${encodeURIComponent(applicationId)}/stage`,
+        {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ toStage }),
+        },
+      );
+      if (!res.ok) throw new Error(String(res.status));
+      const updated = (await res.json()) as PostingApplication;
+      setCandidates((prev) => {
+        const current = prev[postingId];
+        if (!current) return prev;
+        return {
+          ...prev,
+          [postingId]: {
+            ...current,
+            applications: current.applications.map((a) =>
+              a.id === updated.id ? { ...a, stage: updated.stage } : a,
+            ),
+          },
+        };
+      });
+    } catch {
+      setCandidates((prev) => ({
+        ...prev,
+        [postingId]: { ...prev[postingId]!, applicationsError: labels.stageChangeFailed },
+      }));
+    } finally {
+      setCandidates((prev) => ({
+        ...prev,
+        [postingId]: { ...prev[postingId]!, advancingId: null },
+      }));
+    }
   }
 
   return (
@@ -496,6 +600,55 @@ export default function RecruiterPostings({ apiBase, reportBasePath, locale, lab
                           <span className="ja-badge">
                             {labels.statusLabels[interview.status] ?? interview.status}
                           </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <h4 className="recruit-jd-sub">{labels.applicationsTitle}</h4>
+                  {block.applicationsLoading && <p className="ja-muted">{labels.candidatesLoading}</p>}
+                  {!block.applicationsLoading && block.applicationsError && (
+                    <p className="ja-error" role="alert" data-testid="jd-apps-error">
+                      {block.applicationsError}
+                    </p>
+                  )}
+                  {!block.applicationsLoading &&
+                    !block.applicationsError &&
+                    block.applications.length === 0 && (
+                      <p className="ja-muted" data-testid="jd-apps-empty">
+                        {labels.applicationsEmpty}
+                      </p>
+                    )}
+                  {block.applications.length > 0 && (
+                    <ul>
+                      {block.applications.map((application) => (
+                        <li key={application.id} className="recruit-jd-cand" data-testid="jd-application-item">
+                          <a
+                            href={`${reportBasePath}/${application.profileId}?view=recruiter`}
+                            data-testid="jd-application-link"
+                          >
+                            {application.targetTitle}
+                          </a>
+                          <span className="ja-muted">
+                            {application.targetCompany} · {formatWhen(application.appliedAt, locale)}
+                          </span>
+                          <span className="ja-badge ja-badge--likely">
+                            {application.stage
+                              ? (labels.stageLabels[application.stage] ?? application.stage)
+                              : labels.stageLabels.new}
+                          </span>
+                          {STAGE_NEXT[application.stage ?? 'null']?.map((next) => (
+                              <button
+                                key={next}
+                                type="button"
+                                className="ja-btn ja-btn--sm"
+                                disabled={block.advancingId !== null}
+                                onClick={() => void advance(posting.id, application.id, next)}
+                                data-testid="jd-stage-advance"
+                              >
+                                {labels.advanceStage.replace('{stage}', labels.stageLabels[next] ?? next)}
+                              </button>
+                            ))}
                         </li>
                       ))}
                     </ul>

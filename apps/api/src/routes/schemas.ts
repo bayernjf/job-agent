@@ -10,9 +10,11 @@ import {
   ResumeLocaleSchema,
 } from '@jobagent/shared';
 import {
+  APPLICATION_STAGES,
   APPLICATION_STATUSES,
   APPLICATION_ORIGINS,
   type ApplicationOrigin,
+  type ApplicationStage,
   type ApplicationStatus,
 } from '@jobagent/storage';
 
@@ -147,6 +149,17 @@ export const ApplicationStatusSchema = z.enum(
 export const ApplicationOriginSchema = z.enum(
   APPLICATION_ORIGINS as unknown as [ApplicationOrigin, ...ApplicationOrigin[]],
 );
+/** B3-b（039）：招聘方 pipeline 阶段枚举 */
+export const ApplicationStageSchema = z.enum(
+  APPLICATION_STAGES as unknown as [ApplicationStage, ...ApplicationStage[]],
+);
+
+/** B3-b：招聘方推进候选人 pipeline 阶段（PATCH /applications/:id/stage） */
+export const ApplicationStagePatchSchema = z.object({
+  toStage: ApplicationStageSchema,
+  /** 迁移说明（如拒绝原因、下一轮安排），写入事件 payload */
+  note: z.string().trim().max(2000).optional(),
+});
 
 export const ApplicationCreateSchema = z.object({
   jobId: z.string().min(1).nullish(),

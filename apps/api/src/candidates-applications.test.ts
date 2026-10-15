@@ -39,6 +39,8 @@ interface ApplicationResponse {
   outcomeFeedbackAt: string | null;
   /** 013 起的行级归属；单行响应回显，列表响应刻意剥掉（见 api 的 publicApplication） */
   createdByAccountId?: string | null;
+  /** B3-b（迁移 039）：招聘方 pipeline 阶段；null = 尚未进入 pipeline */
+  stage?: string | null;
 }
 interface ApplicationListResponse {
   items: ApplicationResponse[];
@@ -733,5 +735,249 @@ describe('application privacy (#17-F11)', () => {
     const ownGet = await app.request('/profiles/p1/applications', { headers: alice });
     expect(ownGet.status).toBe(200);
     expect(((await ownGet.json()) as ApplicationListResponse).items).toEqual([]);
+  });
+});
+
+// ── B3-b（决策 #25 授权，迁移 039）：招聘方 pipeline 状态机 ────────────────
+// PATCH /applications/:id/stage（推进）、GET /applications/:id/events（回放）、
+// GET /job-postings/recruiter/:id/applications（岗位投递列表）。验收：候选人从
+// 投递到 offer 全程有可回放的状态流；只允许岗位归属招聘方推进。
+describe('B3-b recruiter pipeline stage machine', () => {
+  /** 招聘方建一条自建 JD，返回岗位 id */
+  async function publishPosting(app: Awaited<ReturnType<typeof createApp>>, cookie: string) {
+    const res = await app.request('/job-postings/recruiter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body: JSON.stringify({
+        title: 'Staff Agent Engineer',
+        company: 'In-house Team',
+        tags: ['typescript', 'agents'],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { id: string };
+    return body.id;
+  }
+
+  it('advances a candidate from new to hired with a replayable event stream', async () => {
+    const { app, repos } = await harness();
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const alice = await loginUser(repos, ALICE);
+    const recruiter = await recruiterHeaders(repos);
+    const postingId = await publishPosting(app, recruiter.Cookie);
+
+    // 候选人投递并关联到该自建岗位
+    const created = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...alice },
+      body: JSON.stringify({
+        jobId: postingId,
+        source: 'recruiter',
+        targetTitle: 'Staff Agent Engineer',
+        targetCompany: 'In-house Team',
+      }),
+    });
+    expect(created.status).toBe(201);
+    const appId = ((await created.json()) as { id: string }).id;
+
+    // 招聘方推进 new → screening → interview → offer → hired
+    for (const toStage of ['new', 'screening', 'interview', 'offer', 'hired']) {
+      const res = await app.request(`/applications/${appId}/stage`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...recruiter },
+        body: JSON.stringify({ toStage }),
+      });
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { stage: string }).stage).toBe(toStage);
+    }
+
+    // 事件流可回放：5 条迁移，from/to 完整且正序
+    const events = await app.request(`/applications/${appId}/events`, {
+      headers: recruiter,
+    });
+    expect(events.status).toBe(200);
+    const stream = ((await events.json()) as { items: Array<{ fromStage: string | null; toStage: string; actor: string }> }).items;
+    expect(stream.map((e) => [e.fromStage, e.toStage])).toEqual([
+      [null, 'new'],
+      ['new', 'screening'],
+      ['screening', 'interview'],
+      ['interview', 'offer'],
+      ['offer', 'hired'],
+    ]);
+    expect(stream.every((e) => e.actor === 'recruiter')).toBe(true);
+  });
+
+  it('rejects jumps and rollbacks with 400 and gates non-owners with 404', async () => {
+    const { app, repos } = await harness();
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const alice = await loginUser(repos, ALICE);
+    const recruiter = await recruiterHeaders(repos);
+    const postingId = await publishPosting(app, recruiter.Cookie);
+    const created = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...alice },
+      body: JSON.stringify({
+        jobId: postingId,
+        targetTitle: 'Staff Agent Engineer',
+        targetCompany: 'In-house Team',
+      }),
+    });
+    const appId = ((await created.json()) as { id: string }).id;
+
+    // 先推进到 new（首推进合法），再跳级 new → interview 非法 → 400，带当前/目标阶段
+    const toNew = await app.request(`/applications/${appId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...recruiter },
+      body: JSON.stringify({ toStage: 'new' }),
+    });
+    expect(toNew.status).toBe(200);
+    const jump = await app.request(`/applications/${appId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...recruiter },
+      body: JSON.stringify({ toStage: 'interview' }),
+    });
+    expect(jump.status).toBe(400);
+    const jumpBody = (await jump.json()) as { code?: string };
+    expect(jumpBody.code).toBe('invalid-stage-transition');
+
+    // 推进到终态 rejected 后再推进 → 400
+    const reject = await app.request(`/applications/${appId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...recruiter },
+      body: JSON.stringify({ toStage: 'rejected' }),
+    });
+    expect(reject.status).toBe(200);
+    const afterReject = await app.request(`/applications/${appId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...recruiter },
+      body: JSON.stringify({ toStage: 'new' }),
+    });
+    expect(afterReject.status).toBe(400);
+
+    // 非归属招聘方（bob 声明）推进 → 404，不泄露存在性
+    const bob = await loginUser(repos, BOB);
+    const bobDeclare = await app.request('/auth/recruiter', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...bob },
+      body: '{}',
+    });
+    expect(bobDeclare.status).toBe(200);
+    const foreign = await app.request(`/applications/${appId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...bob },
+      body: JSON.stringify({ toStage: 'screening' }),
+    });
+    expect(foreign.status).toBe(404);
+
+    // 未关联自建岗位的投递（手动投递无 jobId）→ 招聘方也 404
+    const manual = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...alice },
+      body: JSON.stringify({ targetTitle: 'External Role', targetCompany: 'SomeCo' }),
+    });
+    expect(manual.status).toBe(201);
+    const manualId = ((await manual.json()) as { id: string }).id;
+    const manualAdvance = await app.request(`/applications/${manualId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...recruiter },
+      body: JSON.stringify({ toStage: 'new' }),
+    });
+    expect(manualAdvance.status).toBe(404);
+  });
+
+  it('gates stage writes: anonymous 401, undeclared 403, empty body 400', async () => {
+    const { app, repos } = await harness();
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const alice = await loginUser(repos, ALICE);
+    const recruiter = await recruiterHeaders(repos);
+    const postingId = await publishPosting(app, recruiter.Cookie);
+    const created = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...alice },
+      body: JSON.stringify({ jobId: postingId, targetTitle: 'T', targetCompany: 'C' }),
+    });
+    const appId = ((await created.json()) as { id: string }).id;
+
+    const anon = await app.request(`/applications/${appId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toStage: 'screening' }),
+    });
+    expect(anon.status).toBe(401);
+
+    // 已登录未声明（alice 是普通候选人）→ 403 RECRUITER_DECLARATION_REQUIRED
+    const undeclared = await app.request(`/applications/${appId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...alice },
+      body: JSON.stringify({ toStage: 'screening' }),
+    });
+    expect(undeclared.status).toBe(403);
+
+    const empty = await app.request(`/applications/${appId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...recruiter },
+      body: JSON.stringify({}),
+    });
+    expect(empty.status).toBe(400);
+  });
+
+  it('lists applications on a recruiter posting and scopes readers of the event stream', async () => {
+    const { app, repos } = await harness();
+    await insertProfile(repos, makeProfile('p1', 'alice'));
+    const alice = await loginUser(repos, ALICE);
+    const recruiter = await recruiterHeaders(repos);
+    const postingId = await publishPosting(app, recruiter.Cookie);
+
+    // 投递两条（一条关联岗位、一条不关联），推进一条 stage
+    const a1 = await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...alice },
+      body: JSON.stringify({ jobId: postingId, targetTitle: 'Role A', targetCompany: 'C' }),
+    });
+    const a1Id = ((await a1.json()) as { id: string }).id;
+    await app.request('/profiles/p1/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...alice },
+      body: JSON.stringify({ targetTitle: 'Role B', targetCompany: 'C' }),
+    });
+    await app.request(`/applications/${a1Id}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...recruiter },
+      body: JSON.stringify({ toStage: 'screening' }),
+    });
+
+    // 岗位归属招聘方：看到该岗位的投递（仅关联岗位那条，stage 随行）
+    const postApps = await app.request(
+      `/job-postings/recruiter/${postingId}/applications`,
+      { headers: recruiter },
+    );
+    expect(postApps.status).toBe(200);
+    const postBody = (await postApps.json()) as ApplicationListResponse;
+    expect(postBody.items).toHaveLength(1);
+    expect(postBody.items[0]!.stage).toBe('screening');
+
+    // 他人查询该岗位投递 → 404（不泄露存在）
+    const bob = await loginUser(repos, BOB);
+    const bobDeclare = await app.request('/auth/recruiter', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...bob },
+      body: '{}',
+    });
+    expect(bobDeclare.status).toBe(200);
+    const foreignApps = await app.request(
+      `/job-postings/recruiter/${postingId}/applications`,
+      { headers: bob },
+    );
+    expect(foreignApps.status).toBe(404);
+
+    // 事件流读侧：候选人本人（alice）可读；匿名 404；他人（bob）404
+    const ownerEvents = await app.request(`/applications/${a1Id}/events`, { headers: alice });
+    expect(ownerEvents.status).toBe(200);
+    const stream = ((await ownerEvents.json()) as { items: unknown[] }).items;
+    expect(stream).toHaveLength(1);
+    expect((await app.request(`/applications/${a1Id}/events`)).status).toBe(404);
+    expect(
+      (await app.request(`/applications/${a1Id}/events`, { headers: bob })).status,
+    ).toBe(404);
   });
 });

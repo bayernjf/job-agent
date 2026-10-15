@@ -32,6 +32,10 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   // 038 成本回采用量事件（决策 #25 ④）：recorder 是 fail-open——insert 失败只进日志，
   // 缺表/缺列不会炸主链路而会**静默失盲**，因此必须进漂移守卫显式暴露。
   { table: 'usage_events', column: 'billing_source' },
+  // 039 招聘方 pipeline 状态机（B3-b，决策 #25 授权）：advanceStage 的 UPDATE 与
+  // 事件 INSERT 都引用这些列，缺列即 500，进守卫让生产深探活先于用户点击暴露。
+  { table: 'applications', column: 'stage' },
+  { table: 'application_events', column: 'application_id' },
 ];
 
 export { REQUIRED_COLUMNS };

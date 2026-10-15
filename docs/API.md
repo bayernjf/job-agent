@@ -742,6 +742,10 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 下线自己发布的岗位（软下线为 `inactive`，不物理删除，保留可审计性）。本人成功返回更新后的岗位（200）；**非本人的 id 与不存在的 id 都是 404**（行级归属，不泄露存在性）。
 
+### `GET /job-postings/recruiter/:id/applications`
+
+**B3-b（迁移 039，2026-10-14）**：投到这条自建岗位的投递列表（按 `appliedAt` 倒序），招聘方 pipeline 面板的数据源。响应 `{ "items": [...] }`，每条为完整投递记录（`publicApplication` 剥掉 `createdByAccountId`；`stage` 字段随行带出，`null` = 尚未进入 pipeline）。只允许**岗位归属招聘方**读取；非本人的 id 一律 `404`（不泄露存在性）。
+
 ### `POST /job-postings/match`
 
 先用结构化条件取候选池（默认最近 500 条），再按技能名对 title（权重 3）/tags（权重 2）/description（权重 1）做词边界加权打分，按分数降序返回；至少命中一个技能才会出现在结果里。技能来源二选一：直接传 `skills`，或传 `profileId` 由服务端从画像快照取 `skillTags[].name`（**profileId 优先**）；后者响应额外带 `profileSkills` 字段，回显实际参与匹配的技能。
@@ -1108,6 +1112,41 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 - `200`：返回更新后的完整记录。
 - `400`：非法 JSON、请求体为空（无任何可更新字段）、枚举/URL/时间格式非法。
 - `404`：投递记录不存在。
+
+---
+
+### `PATCH /applications/:id/stage`
+
+**B3-b（决策 #25 授权，迁移 039，2026-10-14）**：招聘方在自己发布的私有岗位 pipeline 上推进候选人的阶段。
+
+- **只有岗位归属招聘方可推进**：投递必须关联到当前登录招聘方**自建**的岗位（`job_postings.created_by_account_id` = 当前账号）。未关联岗位、聚合岗位投递、或岗位属于别人——一律 `404`（不泄露他人岗位的投递存在性）。
+- **状态机单向、不回退**：`new → screening → interview → offer → hired`，任意阶段可 `rejected`；`hired`/`rejected` 为终态；首次推进（`stage` 为 null）可直接落到任意阶段。非法迁移 `400`（`code: invalid-stage-transition`，响应带 `currentStage`/`toStage`）。
+- **原子条件更新（CAS）+ 事件同事务**：并发推进输家回 `409`（`code: stage-conflict`，提示重读重试），事件零写入。
+- 每次成功推进写一条 `application_events`（只追加、不回改），`actor=recruiter`，事件流可回放。
+
+#### 请求体
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `toStage` | enum | 是 | `new` / `screening` / `interview` / `offer` / `hired` / `rejected` |
+| `note` | string | 否 | 迁移说明（拒绝原因、下一轮安排等），≤2000 字符，写入事件 `payload.note` |
+
+#### 响应
+
+- `200`：返回更新后的完整投递记录（含 `stage`）。
+- `400`：非法 JSON、非法 `toStage`、非法迁移（跳级/回退/终态再推进）。
+- `401`：未登录（`AUTH_REQUIRED`）；`403 RECRUITER_DECLARATION_REQUIRED`：已登录未声明招聘方。
+- `404`：投递不存在，或投递未关联当前招聘方自建岗位。
+- `409`：CAS 输家（阶段已被并发推进）。
+
+### `GET /applications/:id/events`
+
+某条投递的阶段迁移事件流（只追加审计，`created_at` 正序回放）。读侧闸：**候选人本人**（认领画像主体，平台+login 匹配）或**岗位归属招聘方**可读；其余（含匿名）一律 `404` 不泄露存在性。
+
+#### 响应
+
+- `200`：`{ items: ApplicationEvent[] }`。`ApplicationEvent` 形如 `{ id, applicationId, event: 'stage_change', fromStage, toStage, actor: 'user'|'recruiter'|'system', payload, createdAt }`。
+- `404`：投递不存在，或调用者既非候选人本人也非岗位归属招聘方。
 
 ---
 

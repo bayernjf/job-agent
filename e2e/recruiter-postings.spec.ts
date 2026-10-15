@@ -192,3 +192,107 @@ test.describe('recruiter-published job descriptions', () => {
     await expect(rank).toHaveAttribute('title', /skill tag/);
   });
 });
+
+// ── B3-b（迁移 039）：招聘方 pipeline 状态机最小闭环（2026-10-14）──────────
+// 真人点得动的路：岗位投递区列出候选人 → 点「推进到 next」→ PATCH
+// /applications/:id/stage 真实发出 → 徽标变为下一阶段、按钮随状态机前进。
+test.describe('B3-b recruiter pipeline stage machine', () => {
+  test.beforeEach(async ({ context }) => {
+    await context.addCookies([
+      {
+        name: 'jobagent_session',
+        value: FIXTURE_RECRUITER_SESSION_TOKEN,
+        domain: '127.0.0.1',
+        path: '/',
+      },
+    ]);
+  });
+
+  test('lists applications on a posting and advances the candidate stage', async ({
+    page,
+  }) => {
+    // 一条自建岗位（mock 列表）
+    await page.route(MY_POSTINGS_URL, async (route: Route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({ json: { id: 'jp-pipe', title: 'Pipe Role', company: 'C' } });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              id: 'jp-pipe',
+              title: 'Pipe Role',
+              company: 'In-house Team',
+              location: null,
+              remote: false,
+              tags: ['typescript'],
+              status: 'active',
+              postedAt: '2026-10-14T00:00:00.000Z',
+            },
+          ],
+          limit: 100,
+          offset: 0,
+        },
+      });
+    });
+
+    // 投递列表 mock：stage 随推进更新；同时记录真实的 PATCH 请求体
+    let currentStage: string | null = null;
+    const stagePatches: Array<{ url: string; body: Record<string, unknown> }> = [];
+    await page.route('**/job-postings/recruiter/jp-pipe/applications', async (route: Route) => {
+      await route.fulfill({
+        json: {
+          items: [
+            {
+              id: 'app-pipe-1',
+              profileId: FIXTURE_PROFILE_ID,
+              jobId: 'jp-pipe',
+              targetTitle: 'Pipe Role',
+              targetCompany: 'In-house Team',
+              appliedAt: '2026-10-14T01:00:00.000Z',
+              status: 'applied',
+              stage: currentStage,
+            },
+          ],
+        },
+      });
+    });
+    await page.route('**/applications/app-pipe-1/stage', async (route: Route) => {
+      const body = route.request().postDataJSON() as { toStage: string; note?: string };
+      stagePatches.push({ url: route.request().url(), body });
+      currentStage = body.toStage;
+      await route.fulfill({
+        json: {
+          id: 'app-pipe-1',
+          profileId: FIXTURE_PROFILE_ID,
+          targetTitle: 'Pipe Role',
+          stage: body.toStage,
+        },
+      });
+    });
+    // 展开面板会并行读候选人/面试/投递三路，前两路 mock 空
+    await page.route(CANDIDATES_URL, async (route: Route) => {
+      await route.fulfill({ json: { items: [], total: 0 } });
+    });
+    await page.route('**/interviews**', async (route: Route) => {
+      await route.fulfill({ json: { items: [] } });
+    });
+
+    await page.goto('/en/recruit');
+
+    // 展开岗位面板（投递区随展开加载）
+    await page.getByTestId('jd-rank').first().click();
+
+    // 投递区出现候选人，初始 stage=null 按 new 显示，推进按钮可点
+    await expect(page.getByTestId('jd-application-item')).toHaveCount(1);
+    await expect(page.getByText('New', { exact: true })).toBeVisible();
+
+    // 点「推进到 New」→ PATCH 真实发出，body 带 toStage=new（首推进）
+    await page.getByTestId('jd-stage-advance').first().click();
+    await expect(page.getByText('New', { exact: true }).first()).toBeVisible();
+    expect(stagePatches).toHaveLength(1);
+    expect(stagePatches[0]!.body.toStage).toBe('new');
+    expect(stagePatches[0]!.url).toContain('/applications/app-pipe-1/stage');
+  });
+});

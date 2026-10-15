@@ -298,6 +298,8 @@ export const applications = sqliteTable(
     /** 028 D1：结果回写 no_response|interview|offer|rejected；NULL=未回写 */
     outcomeFeedback: text('outcome_feedback'),
     outcomeFeedbackAt: text('outcome_feedback_at'),
+    /** 039 B3-b：招聘方 pipeline 阶段 new|screening|interview|offer|hired|rejected；NULL=不在任何招聘方 pipeline */
+    stage: text('stage'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(CURRENT_TIMESTAMP)`),
@@ -544,6 +546,27 @@ export const jobRunEvents = sqliteTable(
 
 export type JobRunEventInsert = typeof jobRunEvents.$inferInsert;
 export type JobRunEventSelect = typeof jobRunEvents.$inferSelect;
+
+/** application_events 表——投递阶段迁移审计流（迁移 039，B3-b）；列集合与 postgres 对齐。只追加、不回改。 */
+export const applicationEvents = sqliteTable(
+  'application_events',
+  {
+    id: text('id').primaryKey(),
+    applicationId: text('application_id').notNull(),
+    event: text('event').notNull(),
+    fromStage: text('from_stage'),
+    toStage: text('to_stage').notNull(),
+    actor: text('actor').notNull(),
+    payload: text('payload').notNull().default('{}'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [index('idx_app_evt_application').on(table.applicationId, table.createdAt)],
+);
+
+export type ApplicationEventInsert = typeof applicationEvents.$inferInsert;
+export type ApplicationEventSelect = typeof applicationEvents.$inferSelect;
 
 /**
  * submit_intents 表——人机闸投递票据（迁移 021，设计 §4.3）。

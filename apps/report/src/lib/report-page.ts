@@ -75,6 +75,7 @@ export type ReportPageData =
       interviewKitUrl: string;
       applicationStatusLabels: Record<string, string>;
       applicationOutcomeLabels: Record<string, string>;
+      applicationStageLabels: Record<string, string>;
     };
 
 export async function loadReportPageData(input: ReportPageInput): Promise<ReportPageData> {
@@ -225,6 +226,16 @@ export async function loadReportPageData(input: ReportPageInput): Promise<Report
     rejected: t('applications.outcome.rejected'),
   };
 
+  // B3-b：招聘方 pipeline 阶段文案（候选人侧只读徽标，值域来自 storage 的 APPLICATION_STAGES）
+  const applicationStageLabels = {
+    new: t('applications.stage.new'),
+    screening: t('applications.stage.screening'),
+    interview: t('applications.stage.interview'),
+    offer: t('applications.stage.offer'),
+    hired: t('applications.stage.hired'),
+    rejected: t('applications.stage.rejected'),
+  };
+
   return {
     kind: 'ok',
     locale,
@@ -263,6 +274,7 @@ export async function loadReportPageData(input: ReportPageInput): Promise<Report
     interviewKitUrl,
     applicationStatusLabels,
     applicationOutcomeLabels,
+    applicationStageLabels,
   };
 }
 

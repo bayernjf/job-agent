@@ -14,7 +14,8 @@ import {
   InterviewPatchSchema,
   type AuthenticityStatus,
 } from '@jobagent/shared';
-import type { ApplicationStatus, CandidateSearchQuery, CandidateSummary } from '@jobagent/storage';
+import type { ApplicationStatus, ApplicationStage, CandidateSearchQuery, CandidateSummary } from '@jobagent/storage';
+import { isAllowedStageTransition } from '@jobagent/storage';
 import { z } from 'zod';
 import { oneHourAgo } from '../demo-config.js';
 import {
@@ -27,6 +28,7 @@ import { toCsv } from '../csv.js';
 import {
   ApplicationCreateSchema,
   ApplicationPatchSchema,
+  ApplicationStagePatchSchema,
   CandidateSearchQuerySchema,
   ProfileIdParamSchema,
 } from './schemas.js';
@@ -286,6 +288,97 @@ export function registerRecruiting(app: Hono<HonoEnv>, d: RouteDeps): void {
     );
     if (!updated) return c.json({ error: 'application not found' }, 404);
     return c.json(updated);
+  });
+
+  // ── B3-b（决策 #25 授权，迁移 039）：招聘方在自建岗位 pipeline 上推进候选人阶段 ──
+  // 只允许岗位归属招聘方推进；投递必须关联到该招聘方自建的岗位（私有 JD），否则与
+  // "不存在"同形回 404（不泄露他人岗位的投递存在性）。迁移合法性按
+  // APPLICATION_STAGE_TRANSITIONS 预校验（非法 400），仓储层 CAS 输家回 409（并发已变）。
+  app.patch('/applications/:id/stage', async (c) => {
+    const recruiter = await requireRecruiter(c, repos.accounts);
+    if (recruiter instanceof Response) return recruiter;
+    const principal = recruiter.principal;
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'invalid application id' }, 400);
+    const parsed = ApplicationStagePatchSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: 'invalid stage patch', details: parsed.error.flatten() }, 400);
+    }
+    const existing = await repos.applications.getById(id);
+    if (!existing) return c.json({ error: 'application not found' }, 404);
+    // 岗位归属校验：投递必须落在当前招聘方自建的岗位（聚合岗位/无岗位投递不在任何人的
+    // 私有 pipeline 里，一律 404；别人的岗位同样 404 不泄露存在性）。
+    if (!existing.jobId) return c.json({ error: 'application not found' }, 404);
+    const posting = await repos.jobPostings.getById(existing.jobId);
+    if (!posting || posting.createdByAccountId !== principal.accountId) {
+      return c.json({ error: 'application not found' }, 404);
+    }
+    // 迁移合法性预校验：非法迁移 400（带当前/目标阶段，便于调用方修正）
+    if (!isAllowedStageTransition(existing.stage, parsed.data.toStage)) {
+      return c.json(
+        {
+          error: 'invalid stage transition',
+          currentStage: existing.stage,
+          toStage: parsed.data.toStage,
+          code: 'invalid-stage-transition',
+        },
+        400,
+      );
+    }
+    const event = {
+      id: `evt-${randomUUID()}`,
+      applicationId: existing.id,
+      event: 'stage_change',
+      fromStage: existing.stage,
+      toStage: parsed.data.toStage,
+      actor: 'recruiter' as const,
+      payload: { ...(parsed.data.note ? { note: parsed.data.note } : {}), postingId: posting.id },
+      createdAt: now(),
+    };
+    const updated = await repos.applications.advanceStage(
+      existing.id,
+      existing.stage,
+      parsed.data.toStage,
+      event,
+    );
+    // CAS 输家：读取到的 stage 已被并发推进，让调用方重读重试
+    if (!updated) {
+      return c.json(
+        { error: 'stage changed concurrently, re-read and retry', code: 'stage-conflict' },
+        409,
+      );
+    }
+    return c.json(publicApplication(updated));
+  });
+
+  // ── B3-b：投递阶段事件流（只追加审计，正序回放）──
+  // 读侧闸：候选人本人（认领画像主体）或岗位归属招聘方可读；其余一律 404 不泄露存在性。
+  app.get('/applications/:id/events', async (c) => {
+    const id = c.req.param('id');
+    if (!id) return c.json({ error: 'invalid application id' }, 400);
+    const existing = await repos.applications.getById(id);
+    if (!existing) return c.json({ error: 'application not found' }, 404);
+    const principal = c.get('principal');
+    if (principal.kind !== 'user') {
+      return c.json({ error: 'application not found' }, 404);
+    }
+    const owningProfile = await repos.profiles.getById(existing.profileId);
+    if (!owningProfile) return c.json({ error: 'application not found' }, 404);
+    const isCandidateOwner =
+      principal.platform === owningProfile.subjectPlatform &&
+      principal.login === owningProfile.subjectLogin;
+    let isPostingOwner = false;
+    if (existing.jobId) {
+      const posting = await repos.jobPostings.getById(existing.jobId);
+      if (posting && posting.createdByAccountId === principal.accountId) {
+        isPostingOwner = true;
+      }
+    }
+    if (!isCandidateOwner && !isPostingOwner) {
+      return c.json({ error: 'application not found' }, 404);
+    }
+    const items = await repos.applications.listStageEvents(id);
+    return c.json({ items });
   });
 
   // ── 面试计划（interviews，handoff item45）：招聘方排期/流转/结果，全部要求登录、行级归属 ──
