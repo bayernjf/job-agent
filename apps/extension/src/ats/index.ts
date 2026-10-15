@@ -105,7 +105,11 @@ export function toFillValues(
   return values;
 }
 
-const ADAPTERS: readonly AtsAdapter[] = [greenhouseAdapter, leverAdapter, workdayAdapter, ashbyAdapter];
+// 顺序即正确性（2026-10-15 真实 DOM 回归实测）：Ashby 的申请面板 form id 与 Lever 同为
+// #job-application-form，且 Linear 等页面正文含 "workday" 字样——Ashby 的判据
+// （hostname=ashbyhq / _systemfield_ 前缀）最特异，必须排在 Lever/Workday 之前，
+// 否则真实 Ashby 页会被 Lever 抢先认领（见 ats/real-dom-regression.test.ts 钉住）。
+const ADAPTERS: readonly AtsAdapter[] = [greenhouseAdapter, ashbyAdapter, leverAdapter, workdayAdapter];
 
 export function detectAts(doc: Document): AtsAdapter | null {
   return ADAPTERS.find((a) => a.detect(doc)) ?? null;

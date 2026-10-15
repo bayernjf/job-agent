@@ -1,7 +1,8 @@
 /**
  * Ashby ATS 适配器。
  * 表单特征：jobs.ashbyhq.com 单页 React SPA，Application 面板 id=job-application-form（与 Lever 同名，
- * 靠域名区分）。系统字段 id 前缀 _systemfield_（name/email/resume 等，公司配置不同）；其余全是
+ * 靠 ADAPTERS 注册顺序区分——本适配器判据更特异、排在 Lever 前，见 ats/index.ts 注释）。
+ * 系统字段 id 前缀 _systemfield_（name/email/resume 等，公司配置不同）；其余全是
  * 自定义问题——字段 id 为裸 UUID（无前缀），问题文本在其关联 <label> 中。
  *
  * 填充策略（2026-10-10 真机探测 Linear/Supabase 表单后定型）：
