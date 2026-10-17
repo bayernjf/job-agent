@@ -96,6 +96,7 @@ JobAgent 当前状态，截至 2026-10-16。
 - [docs/design-cron-scheduler-20261006.md](docs/design-cron-scheduler-20261006.md) — **分析任务消费的定时器选型（2026-10-06，待拍板）**：实测 GitHub Actions `schedule` 会连续数小时不触发（`*/15` 档改后 3 小时零 run，而工作流 active、表达式无误、secret 齐备），故比较三条路——维持现状 / 升 Vercel Pro / **用已在用的 Cloudflare 账号跑 Worker Cron（推荐：免费档 288 次/天 vs 上限 10 万，档位可到 1 分钟）**；含并发安全论证（`claimNext` 原子认领 ⇒ 两调度器并存无害，可先交叉验证再撤 GitHub 轮询）、官方文档核实的免费额度核算、五条验收与四个待拍板项；**未写代码、未改配置**（现行，待拍板）
 - [docs/design-cost-metering-20261014.md](docs/design-cost-metering-20261014.md) — **成本回采链：usage_events 用量计量（决策 #25 ④，2026-10-14 全波落地 item163）**：只追加 `usage_events` 事件日志（迁移 038）、记原始单位（token/次数）不记金额、计量 fail-open；埋点＝LLM 成功调用恰好一条（`onUsage` 观察者，byok/builtin 分源）＋分析作业终态恰好一条（融合按配额权重）＋websearch 按实发 Tavily 查询数；读侧＝`/account/usage`（本人）＋`/admin/usage`＋CLI `usage summary|daily`（现行）
 - [docs/design-funnel-analytics-20261015.md](docs/design-funnel-analytics-20261015.md) — **验证漏斗埋点（PRD §11.2，2026-10-15 落地 item165）**：四事件（analyze_enqueued/analyze_cache_hit/report_viewed/share_clicked）append-only 落 `funnel_events`（迁移 040 双方言）；串联键＝24h HttpOnly Cookie `ja_sid`，**绝不 join 账号/demo/IP**；写点＝`/analyze` 服务端自记两类＋报告页 SSR 记查看（30 分钟 (session,profile) 去重）＋公开端点 `POST /funnel/events` 只收 `share_clicked`（复用 demo_ip_windows 限流 60/h）；全链 fail-open；读口＝CLI `funnel summary|daily`（无在线读 API）；隐私政策双语 1.7 小节同步（现行）
+- [docs/验证清单-新用户E2E-20261017.md](docs/验证清单-新用户E2E-20261017.md) — 新用户视角功能验证清单（2026-10-17，现行）：以全新用户视角用真实浏览器逐项实测核心功能（入口/画像生成/报告分享/求职工作台/定向简历/搜岗/B 端/平台健康），每项标注执行方（🟢agent 自动 vs 🔵需用户）与预期结果，附已知边界与状态记录区，供 agent 操作浏览器做 E2E 时执行留痕
 
 ## 当前状态
 
