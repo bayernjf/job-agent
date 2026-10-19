@@ -3,9 +3,11 @@
  *
  * - 纯展示 + 滚动高亮：IntersectionObserver 观察各章节 id，进入视口顶部区域的章节高亮；
  * - 点击锚点走原生 href 平滑滚动（CSS scroll-behavior: smooth + 章节 scroll-margin-top）；
- * - <960px 由 CSS 隐藏（report-page.css，与 --ja-breakpoint-lg 对齐）。
+ * - <960px 由 CSS 隐藏（report-page.css，与 --ja-breakpoint-lg 对齐）；
+ * - 窄屏无锚点导航时提供固定「返回顶部」按钮（P1-7）：宽屏 CSS 隐藏、<960px 显示；
+ *   按钮与 TOC 同属一个 island，避免为单个按钮再引入一次 React hydrate。
  *
- * 用户可见文案（aria-label）由 Astro 侧经 t() 传入，组件内不硬编码。
+ * 用户可见文案（aria-label / 按钮文本）由 Astro 侧经 t() 传入，组件内不硬编码。
  */
 import { useEffect, useRef, useState } from 'react';
 
@@ -17,9 +19,11 @@ export interface ReportTocItem {
 interface Props {
   items: ReportTocItem[];
   ariaLabel: string;
+  /** 窄屏返回顶部按钮文本；未提供（如单测旧调用）时不渲染按钮 */
+  backToTopLabel?: string;
 }
 
-export default function ReportToc({ items, ariaLabel }: Props) {
+export default function ReportToc({ items, ariaLabel, backToTopLabel }: Props) {
   const [activeId, setActiveId] = useState<string>(items[0]?.id ?? '');
   const [hydrated, setHydrated] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -72,21 +76,32 @@ export default function ReportToc({ items, ariaLabel }: Props) {
   if (items.length === 0) return null;
 
   return (
-    <nav className="report-toc" aria-label={ariaLabel} data-hydrated={hydrated ? 'true' : undefined}>
-      <ul>
-        {items.map((item) => (
-          <li key={item.id}>
-            <a
-              href={`#${item.id}`}
-              className={activeId === item.id ? 'is-active' : undefined}
-              aria-current={activeId === item.id ? 'true' : undefined}
-              onClick={() => setActiveId(item.id)}
-            >
-              {item.label}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </nav>
+    <>
+      <nav className="report-toc" aria-label={ariaLabel} data-hydrated={hydrated ? 'true' : undefined}>
+        <ul>
+          {items.map((item) => (
+            <li key={item.id}>
+              <a
+                href={`#${item.id}`}
+                className={activeId === item.id ? 'is-active' : undefined}
+                aria-current={activeId === item.id ? 'true' : undefined}
+                onClick={() => setActiveId(item.id)}
+              >
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      {backToTopLabel && (
+        <button
+          type="button"
+          className="back-to-top"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        >
+          {backToTopLabel}
+        </button>
+      )}
+    </>
   );
 }

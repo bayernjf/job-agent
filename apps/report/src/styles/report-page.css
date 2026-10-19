@@ -167,16 +167,21 @@
   padding: var(--ja-space-3);
   background: var(--ja-color-surface-muted);
   border-radius: var(--ja-radius-md);
+  /* grid item 默认 min-width:auto 会阻止收缩，长内容（mono 指标键）会把整列撑出容器 */
+  min-width: 0;
 }
 
 .metric-value {
   font-size: var(--ja-text-xl);
   font-weight: 600;
+  /* 长数值/货币串允许在词内折行，避免撑破 grid 列（E2E 675px 溢出根因） */
+  overflow-wrap: anywhere;
 }
 
 .metric-key {
   font-size: var(--ja-text-xs);
   font-family: var(--ja-font-mono);
+  overflow-wrap: anywhere;
 }
 
 .merged-list {
@@ -425,6 +430,26 @@
   font-weight: 500;
 }
 
+/* 窄屏回顶按钮（P1-7）：宽屏隐藏，<960px 显示固定右下角。
+   定位属性放默认规则（media query 内只切换 display），对齐 .report-toc 的 display:none 契约 */
+.back-to-top {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  right: var(--ja-space-4);
+  bottom: var(--ja-space-4);
+  z-index: 20;
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: none;
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-accent);
+  color: var(--ja-color-accent-fg);
+  font-size: var(--ja-text-sm);
+  cursor: pointer;
+  box-shadow: var(--ja-shadow-card);
+}
+
 @media (max-width: 960px) {
   /* 对齐 --ja-breakpoint-lg：窄屏隐藏锚点导航，回到单列 */
   .report-layout {
@@ -433,6 +458,9 @@
   }
   .report-toc {
     display: none;
+  }
+  .back-to-top {
+    display: inline-flex;
   }
 }
 

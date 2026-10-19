@@ -111,6 +111,39 @@ describe('AnalyzeForm', () => {
     );
   });
 
+  it('reads the API error field (not errorMessage) when the job fails', async () => {
+    // API GET /jobs/:id 实际返回字段为 error（P1-8：此前只读 errorMessage 会把真实失败原因吞掉）
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(okJson({ jobId: 'job-2' }))
+      .mockResolvedValueOnce(okJson({ status: 'failed', error: 'Could not resolve to a User with the login of "ghost"' }));
+
+    render(<AnalyzeForm {...makeProps()} />);
+    await userEvent.type(screen.getByLabelText('username'), 'ghost');
+    await userEvent.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    await waitFor(
+      () => expect(screen.getByRole('alert')).toHaveTextContent('Could not resolve to a User'),
+      { timeout: 5000 },
+    );
+  });
+
+  it('maps a not-found job error to the friendly label when provided', async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(okJson({ jobId: 'job-3' }))
+      .mockResolvedValueOnce(okJson({ status: 'failed', error: 'Could not resolve to a User with the login of "ghost"' }));
+
+    render(<AnalyzeForm {...makeProps()} notFoundLabel="用户不存在或当前平台无法访问，请检查用户名后重试" />);
+    await userEvent.type(screen.getByLabelText('username'), 'ghost');
+    await userEvent.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    await waitFor(
+      () => expect(screen.getByRole('alert')).toHaveTextContent('用户不存在'),
+      { timeout: 5000 },
+    );
+  });
+
   it('auto-starts a demo session after DEMO_REQUIRED then retries the analysis', async () => {
     global.fetch = vi
       .fn()
