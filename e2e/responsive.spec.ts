@@ -69,3 +69,27 @@ test.describe('mobile responsive (390px)', () => {
     await NO_HORIZONTAL_OVERFLOW(page);
   });
 });
+
+/**
+ * 窄桌面档（675px，P0-1）：2026-10-19 真实浏览器走查发现该档报告页横向溢出
+ * ~19px（metrics-grid 内 mono 指标键不换行撑破 grid 列，scrollWidth 679 > 660）。
+ * 此前 V5 抽样只覆盖 360/753，675 是缺口档。同时守护 P1-7 的窄屏回顶按钮：
+ * <960px 显示、宽屏隐藏（display 切换纯 CSS，这里是行为契约）。
+ */
+test.describe('narrow desktop responsive (675px)', () => {
+  test.use({ viewport: { width: 675, height: 800 } });
+
+  test('report has no horizontal overflow at 675px and shows the back-to-top button', async ({ page }) => {
+    await page.goto(`/zh-CN/report/${FIXTURE_PROFILE_ID}`);
+    await expect(page.locator('.profile-header')).toBeVisible();
+    await NO_HORIZONTAL_OVERFLOW(page);
+    await expect(page.locator('.back-to-top')).toBeVisible();
+  });
+
+  test('back-to-top stays hidden on wide screens (>=960px)', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`/zh-CN/report/${FIXTURE_PROFILE_ID}`);
+    await expect(page.locator('.profile-header')).toBeVisible();
+    await expect(page.locator('.back-to-top')).toBeHidden();
+  });
+});

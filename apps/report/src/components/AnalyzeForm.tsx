@@ -18,6 +18,8 @@ interface AnalyzeFormProps {
   queuedLabel: string;
   runningLabel: string;
   failedLabel: string;
+  /** 用户名不存在（GitHub GraphQL "Could not resolve to a User..."）的友好提示；未提供则显示原文 */
+  notFoundLabel?: string;
   /**
    * 轮询预算（5 分钟）用尽而任务仍未完成：如实说明"在排队、没被丢弃、怎么回来查"。
    * T25 要求的是"失败必须显式"，不是"必须写成服务不可用"——排队本就不是失败。
@@ -68,6 +70,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     queuedLabel,
     runningLabel,
     failedLabel,
+    notFoundLabel,
     queueNoticeTitle,
     queueNoticeBody,
     queueJobRefLabel,
@@ -120,6 +123,8 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
             status: string;
             stage?: string | null;
             profileId?: string | null;
+            /** API 返回字段为 error（errorMessage 是组件侧早期拼写，双读兼容） */
+            error?: string | null;
             errorMessage?: string | null;
             attempts?: number;
           };
@@ -132,7 +137,11 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
 
           if (job.status === 'failed') {
             setPhase('error');
-            setErrorText(job.errorMessage ?? failedLabel);
+            // API 实际返回 error 字段；errorMessage 仅作旧契约兜底。
+            // not_found（GitHub GraphQL 固定原文）映射为友好文案，其余显示原文或通用失败文案。
+            const rawError = job.errorMessage ?? job.error ?? failedLabel;
+            const notFound = /could not resolve to a user/i.test(rawError);
+            setErrorText(notFound && notFoundLabel ? notFoundLabel : rawError);
             return;
           }
 
@@ -158,7 +167,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
       }, POLL_INTERVAL_MS);
       pollTimerRef.current = timer;
     },
-    [apiBase, locale, pollingLabel, queuedLabel, runningLabel, stageL0Label, stageL1Label, attemptsLabel, failedLabel],
+    [apiBase, locale, pollingLabel, queuedLabel, runningLabel, stageL0Label, stageL1Label, attemptsLabel, failedLabel, notFoundLabel],
   );
 
   const handleSubmit = useCallback(

@@ -997,7 +997,12 @@ const tocItems: { id: string; label: string }[] = [
       </p>
     </section>
     </div>
-    <ReportToc client:load items={tocItems} ariaLabel={t('report.toc.label')} />
+    <ReportToc
+      client:load
+      items={tocItems}
+      ariaLabel={t('report.toc.label')}
+      backToTopLabel={t('report.backToTop')}
+    />
   </div>
 </Layout>
 
