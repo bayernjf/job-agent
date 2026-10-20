@@ -111,7 +111,7 @@ flowchart LR
 > - **GitHub OAuth 本人认领**：已落地（handoff item28–32，含真实 OAuth 端到端、return_to 深链、授权分级闸）；
 > - **Gitee 适配器 + Gitee OAuth**：已落地（item14、item33，含双源融合 platform=all，item20/22/23/27）；
 > - **报告异议入口**：已落地（item37 P0-2，报告页局限区 mailto，PRD F6.4 的 P0 兜底先于 P1 接通处理流程）；
-> - **Chrome 扩展一键填充**：已落地并经真实 Greenhouse/Lever 真机验证（item9、item40、item46），CWS 上架为外部待办；Workday 直渲染租户端到端已于 2026-10-09/10 真机验证闭环（路线图 L1-4）；
+> - **Chrome 扩展一键填充**：已落地并经真实 Greenhouse/Lever 真机验证（item9、item40、item46），Ashby 适配已落地并真机验证（见 [design-ats-support-20261010.md](design-ats-support-20261010.md)），CWS 上架为外部待办；**Workday 已具备字段定位能力，直渲染租户端到端仍待真人验证**（以 handoff「已知限制」为准）；
 > - **L3 语义层**：**已落地（2026-10-11，L3-A/B/C 三层，`RULE_VERSION 0.9`，不 clone 口径，见 design-semantic-layer-20261011）**。
 > - 此外 P2 的职位聚合、画像↔岗位匹配、岗位定向简历、演示模式（免注册试用）等亦已提前实现，见 handoff item10/12/17/18/21。
 
