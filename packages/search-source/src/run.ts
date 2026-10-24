@@ -55,17 +55,33 @@ export interface RunSearchDeps {
   usage?: UsageRecorder;
 }
 
+/**
+ * 滞留 `running` 的搜岗任务超过该阈值即落终态 `failed`。
+ * 默认 10 分钟＝CF Worker 每 5 分钟档的两个周期，远大于单个 run 的正常耗时
+ * （至多 3 次 Tavily 查询 + JD 抽取），因此不会回收正在进行中的 run。
+ */
+export const SEARCH_RUN_STALE_MS = 10 * 60 * 1000;
+
 export interface SearchTickOutcome {
   advanced: number;
   failed: number;
+  /** 本轮把滞留 running 落成 failed 的条数；刻意不重放（见 ISearchRunsRepository 契约） */
+  reclaimed: number;
 }
 
-/** search-tick 循环：认领并执行最多 tickMaxRuns 个 queued 搜岗任务。 */
+/** search-tick 循环：先回收滞留 running，再认领并执行最多 tickMaxRuns 个 queued 搜岗任务。 */
 export async function runSearchTick(
   deps: RunSearchDeps,
-  opts: { tickMaxRuns?: number } = {},
+  opts: { tickMaxRuns?: number; reclaimStaleMs?: number } = {},
 ): Promise<SearchTickOutcome> {
   const now = deps.now?.() ?? new Date().toISOString();
+  // 先回收：serverless 平台可能在执行中切断 tick（CF Worker 的 CPU/时长上限），
+  // run 于是停在 running；而 claimNextQueued 只认 queued，没有这一步它永远卡住、
+  // 前端轮询永不收敛，且 Tavily 的额度已经真实花掉。
+  const reclaimed = await deps.searchRuns.reclaimStaleRunning(
+    opts.reclaimStaleMs ?? SEARCH_RUN_STALE_MS,
+    now,
+  );
   let advanced = 0;
   let failed = 0;
   for (let i = 0; i < (opts.tickMaxRuns ?? 5); i++) {
@@ -75,7 +91,7 @@ export async function runSearchTick(
     if (finished.status === 'failed') failed += 1;
     else advanced += 1;
   }
-  return { advanced, failed };
+  return { advanced, failed, reclaimed };
 }
 
 /** 执行一次搜岗（搜索→抽取→入库→回写）；返回回写后的 run（回写失败则原 run）。 */

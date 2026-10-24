@@ -37,6 +37,20 @@ export interface ISearchRunsRepository {
    */
   finish(id: string, patch: SearchRunFinishPatch, updatedAt: string): Promise<StoredSearchRun | undefined>;
   /**
+   * 把 `running` 且 `updated_at` 早于 (now - maxAgeMs) 的滞留任务落终态 `failed`，
+   * 返回处置条数。
+   *
+   * 与 analysis_jobs 的 reclaimStaleRunning 有一处**刻意的不同：这里绝不退回 queued**。
+   * search_runs 没有 attempts 列，而每执行一个 run 都要真实花掉 Tavily credits——
+   * 退回重试等于把同一笔已付费的搜索无限重放。落 failed 并写明原因；用户要重试
+   * 就新建一次搜岗（唯一创建入口仍是登录态 POST /api/agent/search，见文件头的成本硬约束）。
+   *
+   * 需要它的原因：search-tick 在执行中被 serverless 平台切断（CF Worker 的 CPU/时长上限）
+   * 时，run 会停在 `running`；而 `claimNextQueued` 只认 `status='queued'`，没有这一步
+   * 它就永远卡住、前端轮询永不收敛，且钱已经花了。
+   */
+  reclaimStaleRunning(maxAgeMs: number, now: string): Promise<number>;
+  /**
    * 删除单条搜岗历史（仅删个人视角的发起记录，不级联删共享岗位池）。
    * 归属校验由调用方用 getById 完成。
    */

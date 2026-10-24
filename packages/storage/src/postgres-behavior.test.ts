@@ -1205,6 +1205,63 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(await s.jobs.latestActiveBySubject('github', exhaustedLogin)).toBeUndefined();
   });
 
+  pgIt('reclaims stale search runs over text timestamps without 42883', async (s) => {
+    if (!basePgUrl) throw new Error('PG url not initialized');
+    const suffix = randomUUID().slice(0, 8);
+    const staleRun = `run_stale_${suffix}`;
+    const freshRun = `run_fresh_${suffix}`;
+    const conditions = {
+      queries: ['Berlin backend engineer'],
+      location: 'Berlin',
+      remote: false,
+      salaryMinUsd: null,
+      keywords: [],
+    };
+    const nowIso = new Date().toISOString();
+    for (const runId of [staleRun, freshRun]) {
+      await s.searchRuns.insert({
+        runId,
+        accountId: `acc_${suffix}`,
+        query: 'q',
+        conditions,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+      await s.searchRuns.claimNextQueued(nowIso);
+    }
+
+    const backdate = openPostgres(basePgUrl, { max: 2 });
+    try {
+      await backdate.client.unsafe(
+        `update search_runs set updated_at=$1 where run_id=$2`,
+        [new Date(Date.now() - 30 * 60_000).toISOString(), staleRun],
+      );
+    } finally {
+      await backdate.client.end({ timeout: 5 });
+    }
+
+    const moved = await s.searchRuns.reclaimStaleRunning(10 * 60_000, new Date().toISOString());
+    expect(moved).toBe(1);
+    // Terminal, and deliberately NOT requeued: replaying it would spend Tavily credits again.
+    const stale = await s.searchRuns.getById(staleRun);
+    expect(stale?.status).toBe('failed');
+    expect(stale?.error).toContain('not retried');
+    expect((await s.searchRuns.getById(freshRun))?.status).toBe('running');
+
+    // pooler 形态（prepare=false，Supabase 6543 同款）：tsLt 的 ::text 定型必须健康，
+    // 否则就是当年把 cron reclaim 打成 42883 的那个故障。
+    const pooled = openPostgres(basePgUrl, { max: 2, prepare: false });
+    try {
+      const rows = await pooled.client.unsafe(
+        `select run_id from search_runs where status='running' and updated_at < $1::text limit 5`,
+        [new Date(Date.now() - 10 * 60_000).toISOString()],
+      );
+      expect(Array.isArray(rows)).toBe(true);
+    } finally {
+      await pooled.client.end({ timeout: 5 });
+    }
+  });
+
   pgIt('rejects duplicate waitlist email', async (s) => {
     const email = `pg_${randomUUID().slice(0, 8)}@example.com`;
     await s.waitlist.insert({ id: `wl_${randomUUID()}`, email });
