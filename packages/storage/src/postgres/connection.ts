@@ -79,7 +79,7 @@ export function openPostgres(databaseUrl: string, options?: PgOpenOptions): PgCo
   // connection, never credentials. Used to diagnose production driver issues
   // (e.g. Vercel serverless) where the runtime connection differs from local.
   if (process.env.JA_PG_DIAG === '1') {
-    let host = '?';
+    let host: string;
     let port = '(default)';
     let sslmode = '(default)';
     try {

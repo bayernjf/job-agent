@@ -47,7 +47,7 @@ interface ExtensionFixtures {
 
 export const test = base.extend<ExtensionFixtures>({
   // eslint-disable-next-line no-empty-pattern
-  _harness: async ({}, use) => {
+  _harness: async ({}, provide) => {
     const userDataDir = await mkdtemp(path.join(tmpdir(), 'ja-ext-e2e-'));
     const headed = process.env.HEADED === '1';
     const context = await chromium.launchPersistentContext(userDataDir, {
@@ -151,16 +151,16 @@ export const test = base.extend<ExtensionFixtures>({
       },
     };
 
-    await use(harness);
+    await provide(harness);
 
     await context.close();
     await rm(userDataDir, { recursive: true, force: true });
   },
 
-  extPage: async ({ _harness }, use) => use(_harness.page),
-  openPanel: async ({ _harness }, use) => use(_harness.openPanel),
-  setMatchResponder: async ({ _harness }, use) => use(_harness.setMatchResponder),
-  lastAnalyzeBody: async ({ _harness }, use) => use(_harness.lastAnalyzeBody),
+  extPage: async ({ _harness }, provide) => provide(_harness.page),
+  openPanel: async ({ _harness }, provide) => provide(_harness.openPanel),
+  setMatchResponder: async ({ _harness }, provide) => provide(_harness.setMatchResponder),
+  lastAnalyzeBody: async ({ _harness }, provide) => provide(_harness.lastAnalyzeBody),
 });
 
 export { expect } from '@playwright/test';

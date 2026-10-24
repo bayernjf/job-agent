@@ -109,7 +109,7 @@ test.describe('report page SSR render', () => {
     context,
   }) => {
     const response = await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
-    const setCookie = (await response?.allHeaders())['set-cookie'] ?? '';
+    const setCookie = response ? ((await response.allHeaders())['set-cookie'] ?? '') : '';
     expect(setCookie).toContain('ja_sid=');
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('Max-Age=86400');

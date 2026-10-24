@@ -39,7 +39,7 @@ export async function runDigestTick(
   if (tick.status !== 200) {
     return { tickOk: false, tickStatus: tick.status, produced: 0, sent: 0, failed: 0 };
   }
-  let digests: DigestPayload[] = [];
+  let digests: DigestPayload[];
   try {
     const parsed = JSON.parse(tick.body) as { digests?: DigestPayload[] };
     digests = Array.isArray(parsed.digests) ? parsed.digests : [];

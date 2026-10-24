@@ -764,7 +764,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
         if (seq === gateSeqRef.current) setGateLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // gateVersion 已把「展开的这屏数据变没变」折叠进依赖；其余引用都是稳定 setter/fetcher。
   }, [gateOpen, selectedRunId, gateVersion, fetchGateExclusions]);
 
   /** 首屏：并行拉本人偏好与任务列表。 */
@@ -868,6 +868,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
     return () => {
       cancelled = true;
     };
+    // labels 由服务端下发、会话内不变，故不进依赖（进来了也只会多触发一次同样的请求）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRunId, apiBase, fetchRunView, fetchPending, fetchSubmissions]);
 
@@ -917,6 +918,7 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
         return null;
       }
     },
+    // labels 由服务端下发、会话内不变；其余引用已在依赖里。
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [apiBase, selectedRunId, fetchRunView, fetchPending, fetchSubmissions],
   );
@@ -936,24 +938,6 @@ export default function AgentWorkbench(props: AgentWorkbenchProps) {
       setRunsError(errorText(err, labels.errors.runs, labels.errors.code));
     } finally {
       if (seq === seqRef.current) setRunsLoading(false);
-    }
-  }, [apiBase, labels]);
-
-  const refreshPreferences = useCallback(async (): Promise<void> => {
-    const seq = ++seqRef.current;
-    setPrefsLoading(true);
-    try {
-      const res = await fetch(`${apiBase}/agent/preferences`, { credentials: 'include' });
-      if (!res.ok) throw await failure(res);
-      const body = (await res.json()) as { preferences?: JobPreferences[] };
-      if (seq !== seqRef.current) return;
-      setPreferences(body.preferences ?? []);
-      setPrefsError(null);
-    } catch (err) {
-      if (seq !== seqRef.current) return;
-      setPrefsError(errorText(err, labels.errors.preferences, labels.errors.code));
-    } finally {
-      if (seq === seqRef.current) setPrefsLoading(false);
     }
   }, [apiBase, labels]);
 

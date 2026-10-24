@@ -65,7 +65,7 @@ const KNOWN_PROVIDERS: Record<string, string> = {
 
 /** 由 base URL 推断稳定的 provider 标识（仅用于 provenance 展示，可被显式 provider 覆盖）。 */
 export function providerFromBaseUrl(baseUrl: string): string {
-  let host = '';
+  let host: string;
   try {
     host = new URL(baseUrl).host.toLowerCase();
   } catch {

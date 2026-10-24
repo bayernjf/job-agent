@@ -7,7 +7,6 @@
 import type { AbilityProfile } from '@jobagent/shared';
 import type { AnalyzerInput } from './input.js';
 import { assembleProfile, type AnalyzeOptions } from './profile.js';
-import { RULE_VERSION } from './rules.js';
 
 /** 单一入口：结构化数据 → 能力画像（纯函数，同输入同输出） */
 export function analyze(input: AnalyzerInput, options: AnalyzeOptions): AbilityProfile {

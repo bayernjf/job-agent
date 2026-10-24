@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredJobRunEvent,

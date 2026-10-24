@@ -1,4 +1,4 @@
-import type { AnalyzerInput, AnalyzerIssue, AnalyzerPullRequest, BehaviorEventSummary } from '@jobagent/shared';
+import type { AnalyzerInput, BehaviorEventSummary } from '@jobagent/shared';
 import type { EvidenceItem } from '@jobagent/shared';
 import type { Octokit } from 'octokit';
 import { BudgetTracker } from './budget.js';
@@ -139,7 +139,7 @@ export class GitHubSource {
           first: this.commitsPerRepo,
         });
         l1.commits.push(...parseRepoCommits(data, `${repo.ownerLogin}/${repo.name}`));
-      } catch (err) {
+      } catch {
         // GraphQL 失败回退 REST（带 ETag 条件请求）
         try {
           this.budget.recordRest();

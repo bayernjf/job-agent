@@ -78,11 +78,10 @@ export function pickClientIp(
 /** 从 Hono 上下文取客户端 IP（封装 node-server 的 socket 地址读取）。 */
 export function clientIp(c: Context, trustProxy: boolean): string | null {
   const xff = c.req.header('x-forwarded-for');
-  let remote: string | null | undefined;
   // @hono/node-server 下可拿到底层 Node req；其他运行时缺省 undefined
   const incoming = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)
     ?.incoming;
-  remote = incoming?.socket?.remoteAddress;
+  const remote = incoming?.socket?.remoteAddress;
   return pickClientIp(xff, trustProxy, remote);
 }
 

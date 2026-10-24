@@ -22,7 +22,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const pagePath = `/${locale}/recruit`;
   const fail = () => Response.redirect(new URL(`${pagePath}?declare_error=1`, request.url), 302);
 
-  let formConsent = '';
+  let formConsent: string;
   try {
     const form = await request.formData();
     formConsent = String(form.get('consent') ?? '');

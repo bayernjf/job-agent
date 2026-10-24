@@ -1,6 +1,6 @@
 import { AbilityProfileSchema } from '@jobagent/shared';
 import { analyze } from '@jobagent/analyzer-core';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { GiteeSource, GiteeSourceError } from './index.js';
 import type {
   GiteeCommitRaw,

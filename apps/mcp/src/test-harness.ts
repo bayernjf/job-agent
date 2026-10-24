@@ -1,7 +1,7 @@
 /** 测试夹具：内存 SQLite + createApp，灌一份带证据/面试题/岗位的画像，供 MCP 端到端测试用。 */
 import type { AbilityProfile, SkillTag } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
-import { createApp, type ApiDeps } from '@jobagent/api';
+import { createApp } from '@jobagent/api';
 
 // 相对"现在"：岗位推荐/匹配口按 `JOB_STALE_DAYS` 新鲜窗口排除已下架岗位，
 // 写死日期会让夹具在若干天后静默变空（看起来像 MCP 工具坏了）。

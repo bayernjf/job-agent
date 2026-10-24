@@ -116,9 +116,9 @@ const STATUS_ORDER: InterviewStatus[] = [
 const FORMAT_ORDER: InterviewFormat[] = ['onsite', 'phone', 'video'];
 const OUTCOME_ORDER: InterviewOutcome[] = ['strong_yes', 'yes', 'neutral', 'no'];
 /** 只有早期阶段投递能推进为面试（终态不回退，与 API 一致）。 */
-const BUILDABLE_STATUSES = new Set(['saved', 'applied', 'viewed']);
+export const BUILDABLE_STATUSES = new Set(['saved', 'applied', 'viewed']);
 
-function formatDateTime(iso: string, locale: string): string {
+export function formatDateTime(iso: string, locale: string): string {
   try {
     return new Date(iso).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
       month: 'short',
@@ -132,7 +132,7 @@ function formatDateTime(iso: string, locale: string): string {
 }
 
 /** datetime-local 输入值（本地时区，无时区后缀）转 UTC ISO8601。 */
-function localInputToIso(value: string): string {
+export function localInputToIso(value: string): string {
   return new Date(value).toISOString();
 }
 
@@ -236,6 +236,7 @@ export default function InterviewPlanner({ apiBase, locale, loginHref, labels }:
     return () => {
       cancelled = true;
     };
+    // load 只依赖 apiBase（组件内稳定），把它放进依赖会因函数重建反复拉取同一屏数据。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase]);
 

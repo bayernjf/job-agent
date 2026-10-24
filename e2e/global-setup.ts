@@ -262,7 +262,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     throw new Error(`[e2e] fixture profile ${FIXTURE_PROFILE_ID} not found after insert at ${DB_FILE}`);
   }
 
-  // eslint-disable-next-line no-console
+
   console.log(`[e2e] fixture DB ready at ${DB_FILE} (login=${record.snapshot?.subject.login})`);
 
   // 预热：astro dev 首次访问某路由时按需编译，且 lockfile 变更后会重跑 Vite 依赖优化。

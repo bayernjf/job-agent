@@ -145,14 +145,14 @@ describe('ExportableProfileSchema / parseExportableProfile', () => {
 
   it('rejects input missing a required field', () => {
     const out = toExportableProfile(fullProfile());
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     delete (out as any).profileId;
     expect(parseExportableProfile(out)).toBeNull();
   });
 
   it('rejects an unknown skill kind', () => {
     const out = toExportableProfile(fullProfile());
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (out.skills[0] as any).kind = 'hobby';
     expect(parseExportableProfile(out)).toBeNull();
   });

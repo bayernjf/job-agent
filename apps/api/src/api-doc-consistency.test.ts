@@ -19,8 +19,12 @@ const SOURCE = [readFileSync(resolve(__dirname, 'index.ts'), 'utf8'), ...routeSo
   '\n',
 );
 
-const METHODS = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] as const;
-type Endpoint = `${(typeof METHODS)[number]} ${string}`;
+type Endpoint =
+  | `GET ${string}`
+  | `POST ${string}`
+  | `PATCH ${string}`
+  | `PUT ${string}`
+  | `DELETE ${string}`;
 
 function documentedEndpoints(): Set<Endpoint> {
   const found = new Set<Endpoint>();

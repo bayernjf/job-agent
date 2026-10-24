@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { UNAUTHORIZED_NOTICE, type AbilityProfile } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
-import { createApp, type ApiDeps } from './index.js';
+import { createApp } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import { loadAuthConfig } from './auth-config.js';
 import type { OAuthProfile } from './auth-provider.js';

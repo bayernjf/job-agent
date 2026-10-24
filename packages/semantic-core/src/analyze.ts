@@ -138,7 +138,7 @@ function parsePyprojectDeps(content: string): string[] {
     for (const line of (m[1] ?? '').split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('[')) continue;
-      const name = trimmed.replace(/^["']/, '').split(/[<>=!~\[@]/)[0]?.trim();
+      const name = trimmed.replace(/^["']/, '').split(/[<>=!~[@]/)[0]?.trim();
       if (name) deps.push(name);
     }
   }
@@ -198,7 +198,7 @@ function parseRequirements(content: string): string[] {
   for (const line of content.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('-')) continue;
-    const name = trimmed.split(/[<>=!~\[]/)[0]?.trim();
+    const name = trimmed.split(/[<>=!~[]/)[0]?.trim();
     if (name) deps.push(name);
   }
   return deps;

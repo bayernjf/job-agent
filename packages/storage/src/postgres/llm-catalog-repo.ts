@@ -1,7 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
-  toLlmCatalogModelRow,
   toStoredLlmCatalogModel,
   type NewLlmCatalogModel,
   type StoredLlmCatalogModel,

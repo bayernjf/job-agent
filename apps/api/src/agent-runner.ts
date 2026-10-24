@@ -394,7 +394,7 @@ export async function advanceRunOnce(
 
   const preference = await repos.jobPreferences.getById(run.preferenceId);
   if (!preference) {
-    const failed = (await failRun(repos, run, 'preference_not_found', actor, nowIso)) ?? run;
+    await failRun(repos, run, 'preference_not_found', actor, nowIso);
     return {
       ok: false,
       status: 409,

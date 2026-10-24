@@ -16,7 +16,7 @@ import { actionLabel } from '../project-entries.js';
 import { resumeCopy } from '../i18n.js';
 
 function escapeMd(s: string): string {
-  return s.replace(/([\\`*_{}\[\]<>])/g, '\\$1');
+  return s.replace(/([\\`*_{}[\]<>])/g, '\\$1');
 }
 
 function formatDate(iso: string | undefined): string {

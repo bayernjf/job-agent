@@ -30,11 +30,9 @@ export const BUILTIN_CATALOG_DEFAULTS: readonly LlmCatalogModel[] = [
 export type BuiltinCatalogDefaults = readonly LlmCatalogModel[];
 
 /** admin 数据允许覆盖的白名单键（凭证字段结构上不在此列，也进不了合并）。 */
-const CATALOG_WHITELIST = ['enabled', 'isDefault', 'sortOrder', 'modalities'] as const;
-
 type WhitelistedCatalogPatch = Pick<
   LlmCatalogModel,
-  (typeof CATALOG_WHITELIST)[number]
+  'enabled' | 'isDefault' | 'sortOrder' | 'modalities'
 >;
 
 /** 白名单合并：`{...defaults, ...pick(adminRow, whitelist)}`（agent-world 不变量）。 */

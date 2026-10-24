@@ -94,7 +94,7 @@ function extractFirstHref(html: string): string | null {
   if (!/^https?:\/\//i.test(decoded)) return null;
   const canon = canonicalizeUrl(decoded);
   try {
-    // eslint-disable-next-line no-new
+
     new URL(canon);
     return canon;
   } catch {

@@ -6,10 +6,10 @@ import type { ColumnRequirement } from '../types.js';
  * 信息模式不含业务账本，手工重放的迁移也能如实反映。
  */
 export async function pgVerifyRequiredColumns(
-  client: { unsafe<T>(sql: string): Promise<unknown> },
+  client: { unsafe(sql: string): Promise<unknown> },
   requirements: ColumnRequirement[],
 ): Promise<string[]> {
-  const rows = (await client.unsafe<{ k: string }[]>(
+  const rows = (await client.unsafe(
     "SELECT table_name || '.' || column_name AS k FROM information_schema.columns WHERE table_schema = 'public'",
   )) as Array<{ k: string }>;
   const present = new Set(rows.map((r) => r.k));

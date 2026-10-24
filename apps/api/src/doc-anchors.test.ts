@@ -35,7 +35,7 @@ describe('doc anchors 可解析性', () => {
     });
 
   it('全仓活文档里的 path:line 都能解析到真实行', () => {
-    let stdout = '';
+    let stdout: string;
     try {
       stdout = run();
     } catch (err) {
@@ -43,6 +43,7 @@ describe('doc anchors 可解析性', () => {
       // 违例时脚本 exit 1 并逐条打印：把明细带进断言消息，否则 CI 里只看到一个红
       throw new Error(
         `文档锚点越界（exit ${e.status}）：\n${(e.stdout ?? '') + (e.stderr ?? '')}`,
+        { cause: err },
       );
     }
     expect(stdout).toContain('违例 0 处');

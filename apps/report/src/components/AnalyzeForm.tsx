@@ -95,8 +95,9 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
   const [errorText, setErrorText] = useState('');
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollStartedAtRef = useRef<number>(0);
-  /** 队列提示要能报出任务编号，并允许"继续等待"复用同一个任务 */
-  const pendingJobIdRef = useRef<string | null>(null);
+  /** 队列提示要能报出任务编号，并允许"继续等待"复用同一个任务。
+   *  必须是 state 而不是 ref：渲染期读取 ref 在并发渲染下不可靠（react-hooks/refs）。 */
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -107,7 +108,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
 
   const pollJob = useCallback(
     (jobId: string) => {
-      pendingJobIdRef.current = jobId;
+      setPendingJobId(jobId);
       const timer = setTimeout(async () => {
         // T25：轮询有界，不永久转圈。到点不谎报"服务不可用"——任务还在队列里，只是消费没到。
         if (Date.now() - pollStartedAtRef.current > POLL_TIMEOUT_MS) {
@@ -266,18 +267,17 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     setPhase('idle');
     setErrorText('');
     setStatusText('');
-    pendingJobIdRef.current = null;
+    setPendingJobId(null);
   }, [stopPolling]);
 
   /** 继续等待：复用同一个任务再给一轮轮询预算（重新提交也只会去重回它，没必要）。 */
   const handleKeepWaiting = useCallback(() => {
-    const jobId = pendingJobIdRef.current;
-    if (!jobId) return;
+    if (!pendingJobId) return;
     pollStartedAtRef.current = Date.now();
     setErrorText('');
     setPhase('polling');
-    pollJob(jobId);
-  }, [pollJob]);
+    pollJob(pendingJobId);
+  }, [pendingJobId, pollJob]);
 
   const isBusy = phase === 'creating' || phase === 'polling';
 
@@ -343,9 +343,9 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
         <div className="queue-notice" role="status" aria-live="polite" data-testid="queue-notice">
           <p className="queue-notice__title">{queueNoticeTitle}</p>
           <p className="queue-notice__body">{queueNoticeBody}</p>
-          {pendingJobIdRef.current && (
+          {pendingJobId && (
             <p className="queue-notice__ref">
-              {queueJobRefLabel.replace('{jobId}', pendingJobIdRef.current)}
+              {queueJobRefLabel.replace('{jobId}', pendingJobId)}
             </p>
           )}
           <div className="queue-notice__actions">

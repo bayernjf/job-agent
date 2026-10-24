@@ -3,7 +3,7 @@
  * fakes, so the drain/error semantics are verified without a network or a
  * deployed Worker.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { runCronTick, type CronEnv } from './tick.js';
 
 const env: CronEnv = {

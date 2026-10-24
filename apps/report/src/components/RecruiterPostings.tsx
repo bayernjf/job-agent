@@ -10,7 +10,7 @@
  *
  * 所有用户可见文案由 Astro 服务端通过 props 传入（组件不硬编码文案）。
  */
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
 interface Posting {
   id: string;
@@ -143,14 +143,14 @@ const STAGE_NEXT: Record<string, string[]> = {
 };
 
 /** 面试排期按读者语言环境格式化（服务端已给 UTC ISO8601，这里只做展示层转换）。 */
-function formatWhen(iso: string, locale: string): string {
+export function formatWhen(iso: string, locale: string): string {
   const when = new Date(iso);
   return Number.isNaN(when.getTime())
     ? iso
     : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(when);
 }
 
-function parseTags(raw: string): string[] {
+export function parseTags(raw: string): string[] {
   const seen = new Set<string>();
   for (const part of raw.split(',')) {
     const tag = part.trim();
@@ -178,7 +178,7 @@ export default function RecruiterPostings({ apiBase, reportBasePath, locale, lab
 
   const tagList = useMemo(() => parseTags(tags), [tags]);
 
-  async function loadList() {
+  const loadList = useCallback(async () => {
     setListError(null);
     try {
       const res = await fetch(`${apiBase}/job-postings/recruiter?limit=100`, {
@@ -192,12 +192,12 @@ export default function RecruiterPostings({ apiBase, reportBasePath, locale, lab
     } finally {
       setLoaded(true);
     }
-  }
+  }, [apiBase, labels.listError]);
 
   useEffect(() => {
     void loadList();
     // 只在挂载时取一次；后续刷新由发布/下线的成功分支直接更新 state
-  }, []);
+  }, [loadList]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();

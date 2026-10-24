@@ -8,7 +8,6 @@
  * 非法值直接抛错（不让配置错误静默降级成别的行为）。
  */
 
-import type { JdExtractor } from '@jobagent/agent-core';
 import type { LlmUsageObserver } from '@jobagent/llm';
 import type { JdInsight, UsageBillingSource } from '@jobagent/shared';
 import { JOB_DEFAULT_STALE_DAYS, parseStaleDays } from '@jobagent/job-source';
