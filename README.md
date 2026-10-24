@@ -37,7 +37,7 @@
 ### 2.1 本地跑起来（SQLite，最快路径）
 
 ```bash
-nvm use                       # Node 版本以 .nvmrc 为准（当前 24.0.0）
+nvm use                       # Node 版本以 .nvmrc 为准（当前 24.20.0）
 pnpm install                  # pnpm workspaces，不用 npm/yarn
 cp .env.example .env          # 环境变量权威模板（含注释与默认值）
 pnpm -r build                 # api 的 dev 与 worker 的 start 都跑 dist/，先构建一次
