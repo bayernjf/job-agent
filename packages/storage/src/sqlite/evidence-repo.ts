@@ -1,7 +1,13 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type { EvidenceItem } from '@jobagent/shared';
-import { toStoredEvidence, type NewEvidence, type StoredEvidence } from '../entities/index.js';
+import {
+  toStoredEvidence,
+  evidenceInsertValues,
+  toNewEvidence,
+  type NewEvidence,
+  type StoredEvidence,
+} from '../entities/index.js';
 import type { IEvidenceRepository } from '../repositories/evidence.js';
 import { evidence as evidenceTable } from './schema.js';
 
@@ -10,56 +16,20 @@ export class SqliteEvidenceRepository implements IEvidenceRepository {
   constructor(private readonly db: BetterSQLite3Database) {}
 
   async insert(ev: NewEvidence): Promise<void> {
-    this.db
-      .insert(evidenceTable)
-      .values({
-        id: ev.id,
-        profileId: ev.profileId,
-        sourcePlatform: ev.sourcePlatform ?? 'github',
-        sourceType: ev.sourceType,
-        url: ev.url,
-        occurredAt: ev.occurredAt ?? null,
-        layer: ev.layer,
-        claim: ev.claim,
-        rawRef: ev.rawRef,
-      })
-      .run();
+    this.db.insert(evidenceTable).values(evidenceInsertValues(ev)).run();
   }
 
   async insertBatch(evidence: NewEvidence[]): Promise<void> {
     if (evidence.length === 0) return;
     this.db.transaction((tx) => {
       for (const ev of evidence) {
-        tx.insert(evidenceTable)
-          .values({
-            id: ev.id,
-            profileId: ev.profileId,
-            sourcePlatform: ev.sourcePlatform ?? 'github',
-            sourceType: ev.sourceType,
-            url: ev.url,
-            occurredAt: ev.occurredAt ?? null,
-            layer: ev.layer,
-            claim: ev.claim,
-            rawRef: ev.rawRef,
-          })
-          .run();
+        tx.insert(evidenceTable).values(evidenceInsertValues(ev)).run();
       }
     });
   }
 
   async importFromProfile(profileId: string, items: EvidenceItem[]): Promise<void> {
-    const evidence: NewEvidence[] = items.map((item) => ({
-      id: item.evidenceId,
-      profileId,
-      sourcePlatform: item.sourcePlatform,
-      sourceType: item.sourceType,
-      url: item.url,
-      occurredAt: item.occurredAt ?? null,
-      layer: item.layer,
-      claim: item.claim,
-      rawRef: item.rawRef,
-    }));
-    await this.insertBatch(evidence);
+    await this.insertBatch(items.map((item) => toNewEvidence(profileId, item)));
   }
 
   async getById(profileId: string, id: string): Promise<StoredEvidence | undefined> {

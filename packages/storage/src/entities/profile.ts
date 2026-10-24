@@ -45,6 +45,26 @@ export interface NewProfile {
   removalRequestedAt?: string | null;
 }
 
+/**
+ * NewProfile → `profiles` 表的插入列值（两方言逐字相同：snapshot/analysisLayers 都以
+ * JSON 文本落库）。独立的 `insert()` 与原子发布 `publishWithEvidenceAndJob` 共用这一份。
+ */
+export function profileInsertValues(profile: NewProfile) {
+  return {
+    id: profile.id,
+    analyzerVersion: profile.analyzerVersion,
+    subjectPlatform: profile.subjectPlatform ?? 'github',
+    subjectLogin: profile.subjectLogin,
+    subjectClaimed: profile.subjectClaimed ?? false,
+    dataWindowSince: profile.dataWindowSince,
+    dataWindowUntil: profile.dataWindowUntil,
+    analysisLayers: JSON.stringify(profile.analysisLayers ?? ['L0', 'L1']),
+    status: profile.status ?? 'partial',
+    snapshot: JSON.stringify(profile.snapshot),
+    removalRequestedAt: profile.removalRequestedAt ?? null,
+  };
+}
+
 /** Drizzle 查询返回的原始行（camelCase），两方言结构一致 */
 export interface RawProfileRow {
   id: string;

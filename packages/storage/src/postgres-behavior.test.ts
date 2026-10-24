@@ -1069,6 +1069,101 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect((await s.evidence.listByProfile(profileId))).toHaveLength(2);
   });
 
+  pgIt('publishes profile, evidence and job success in one transaction', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const jobId = `job_pub_${suffix}`;
+    const profileId = `prof_pub_${suffix}`;
+    const snapshot = minimalSnapshot(`pg_${suffix}`);
+    // 刻意不走 claimNext：它按全表 FIFO 认领，库里有别的行时会认领到别人的任务
+    // （本文件既有 reclaim 用例也是因此改用 raw update 直接置 running）。
+    // publishWithEvidenceAndJob 只按 jobId 更新、不校验来源状态，故 queued 起步即可。
+    await s.jobs.create({ id: jobId, subjectLogin: snapshot.subject.login });
+
+    await s.profiles.publishWithEvidenceAndJob({
+      profile: {
+        id: profileId,
+        analyzerVersion: snapshot.analyzerVersion,
+        subjectLogin: snapshot.subject.login,
+        dataWindowSince: snapshot.dataWindow.since,
+        dataWindowUntil: snapshot.dataWindow.until,
+        status: 'complete',
+        snapshot,
+      },
+      evidence: [
+        {
+          evidenceId: `ev_${suffix}`,
+          sourcePlatform: 'github',
+          sourceType: 'commit',
+          url: 'https://x/1',
+          layer: 'L1',
+          claim: 'c',
+          rawRef: 'r',
+        },
+      ],
+      jobId,
+      budgetUsed: { graphqlPoints: 7 },
+      missing: [],
+    });
+
+    expect((await s.profiles.getById(profileId))?.status).toBe('complete');
+    expect(await s.evidence.countByProfile(profileId)).toBe(1);
+    const job = await s.jobs.getById(jobId);
+    expect(job?.status).toBe('succeeded');
+    expect(job?.stage).toBe('complete');
+    expect(job?.profileId).toBe(profileId);
+    expect(job?.budgetUsed).toEqual({ graphqlPoints: 7 });
+  });
+
+  pgIt('rolls the whole publication back when the evidence write raises 23505', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const jobId = `job_rb_${suffix}`;
+    const profileId = `prof_rb_${suffix}`;
+    const snapshot = minimalSnapshot(`pg_${suffix}`);
+    await s.jobs.create({ id: jobId, subjectLogin: snapshot.subject.login });
+    // Pre-occupy the (profile_id, id) primary key. On Postgres a constraint violation
+    // aborts the *whole* transaction (not just the statement), so this is the case where
+    // a missing SAVEPOINT would surface as a confusing 25P02 instead of a clean rollback.
+    await s.evidence.insertBatch([
+      { id: `ev_${suffix}`, profileId, sourceType: 'commit', url: 'https://x/0', layer: 'L1', claim: 'c0', rawRef: 'r0' },
+    ]);
+
+    await expect(
+      s.profiles.publishWithEvidenceAndJob({
+        profile: {
+          id: profileId,
+          analyzerVersion: snapshot.analyzerVersion,
+          subjectLogin: snapshot.subject.login,
+          dataWindowSince: snapshot.dataWindow.since,
+          dataWindowUntil: snapshot.dataWindow.until,
+          status: 'complete',
+          snapshot,
+        },
+        evidence: [
+          {
+            evidenceId: `ev_${suffix}`,
+            sourcePlatform: 'github',
+            sourceType: 'commit',
+            url: 'https://x/1',
+            layer: 'L1',
+            claim: 'c',
+            rawRef: 'r',
+          },
+        ],
+        jobId,
+      }),
+    ).rejects.toThrow();
+
+    // The profile insert ran first inside the transaction and must be gone: an orphan
+    // profile is visible to /candidates and a still-active job gets reclaimed and
+    // republished as a second profile row for the same login.
+    expect(await s.profiles.getById(profileId)).toBeUndefined();
+    const job = await s.jobs.getById(jobId);
+    // still exactly where it started — in particular NOT succeeded with a dangling profileId
+    expect(job?.status).toBe('queued');
+    expect(job?.profileId).toBeNull();
+    expect(await s.evidence.countByProfile(profileId)).toBe(1);
+  });
+
   pgIt('rejects duplicate waitlist email', async (s) => {
     const email = `pg_${randomUUID().slice(0, 8)}@example.com`;
     await s.waitlist.insert({ id: `wl_${randomUUID()}`, email });

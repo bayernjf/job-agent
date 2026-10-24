@@ -70,6 +70,27 @@ export function parseJson<T>(raw: string | null): T | null {
   }
 }
 
+/**
+ * `jobs.succeed` 的列值（两方言逐字相同：budgetUsed/missing 都以 JSON 文本落库）。
+ * 独立的 `succeed()` 与 profiles 的原子发布共用这一份，避免两处漂移。
+ */
+export function jobSucceedValues(
+  profileId: string,
+  now: string,
+  budgetUsed?: Record<string, number>,
+  missing?: string[],
+) {
+  return {
+    status: 'succeeded' as JobStatus,
+    stage: 'complete' as JobStage,
+    profileId,
+    budgetUsed: budgetUsed ? JSON.stringify(budgetUsed) : null,
+    missing: missing ? JSON.stringify(missing) : null,
+    finishedAt: now,
+    updatedAt: now,
+  };
+}
+
 export function toStoredJob(row: RawAnalysisJobRow): StoredAnalysisJob {
   return {
     id: row.id,

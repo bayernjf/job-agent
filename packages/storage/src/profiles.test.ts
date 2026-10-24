@@ -1,10 +1,12 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { type AbilityProfile } from '@jobagent/shared';
+import { type AbilityProfile, type EvidenceItem } from '@jobagent/shared';
 import { runMigrations } from './sqlite/migrator.js';
 import { openSqlite } from './sqlite/connection.js';
 import { SqliteProfilesRepository } from './sqlite/profiles-repo.js';
+import { SqliteEvidenceRepository } from './sqlite/evidence-repo.js';
+import { SqliteAnalysisJobsRepository } from './sqlite/analysis-jobs-repo.js';
 import type { NewProfile } from './entities/index.js';
 
 const MIGRATIONS_DIR = path.resolve(
@@ -114,5 +116,92 @@ describe('SqliteProfilesRepository', () => {
     const stored = await repo.getById(id);
     expect(stored!.snapshot).toBeNull();
     db.close();
+  });
+});
+
+describe('SqliteProfilesRepository.publishWithEvidenceAndJob', () => {
+  const EVIDENCE: EvidenceItem = {
+    evidenceId: 'ev-1',
+    sourcePlatform: 'github',
+    sourceType: 'commit',
+    url: 'https://github.com/a/b/commit/abc',
+    layer: 'L0',
+    claim: 'committed to a/b',
+    rawRef: 'repo:a/b#abc',
+  };
+
+  /** 三张表共用同一个连接，才能验证它们真的落在同一个事务里。 */
+  function freshPublication() {
+    const { client, db } = openSqlite(':memory:');
+    runMigrations(client, MIGRATIONS_DIR);
+    return {
+      client,
+      profiles: new SqliteProfilesRepository(db),
+      evidence: new SqliteEvidenceRepository(db),
+      jobs: new SqliteAnalysisJobsRepository(db),
+    };
+  }
+
+  it('writes the profile, its evidence rows and the job success together', async () => {
+    const s = freshPublication();
+    await s.jobs.create({ id: 'job-1', subjectLogin: 'linxiaoman' });
+    await s.jobs.claimNext('w1'); // -> running
+    const snap = sampleProfile();
+
+    await s.profiles.publishWithEvidenceAndJob({
+      profile: { ...newProfileRow(snap.profileId, snap), status: 'complete' },
+      evidence: [EVIDENCE],
+      jobId: 'job-1',
+      budgetUsed: { graphqlPoints: 10 },
+      missing: [],
+    });
+
+    expect((await s.profiles.getById(snap.profileId))!.status).toBe('complete');
+    const rows = await s.evidence.listByProfile(snap.profileId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.id).toBe('ev-1');
+    const job = (await s.jobs.getById('job-1'))!;
+    expect(job.status).toBe('succeeded');
+    expect(job.stage).toBe('complete');
+    expect(job.profileId).toBe(snap.profileId);
+    s.client.close();
+  });
+
+  it('rolls the whole publication back when the evidence write fails, leaving no orphan profile', async () => {
+    const s = freshPublication();
+    await s.jobs.create({ id: 'job-2', subjectLogin: 'linxiaoman' });
+    await s.jobs.claimNext('w1');
+    const snap = sampleProfile();
+    // Pre-occupy the (profile_id, id) primary key so the evidence insert *inside* the
+    // transaction is guaranteed to violate it — i.e. the second of the three writes fails
+    // after the first has already run.
+    await s.evidence.insert({
+      id: EVIDENCE.evidenceId,
+      profileId: snap.profileId,
+      sourceType: EVIDENCE.sourceType,
+      url: EVIDENCE.url,
+      layer: EVIDENCE.layer,
+      claim: EVIDENCE.claim,
+      rawRef: EVIDENCE.rawRef,
+    });
+
+    await expect(
+      s.profiles.publishWithEvidenceAndJob({
+        profile: newProfileRow(snap.profileId, snap),
+        evidence: [EVIDENCE],
+        jobId: 'job-2',
+      }),
+    ).rejects.toThrow();
+
+    // The profile insert ran first inside the transaction and must have been rolled back:
+    // an orphan profile is visible to /candidates, and a still-`running` job would be
+    // reclaimed and republished as a second profile row for the same login.
+    expect(await s.profiles.getById(snap.profileId)).toBeUndefined();
+    const job = (await s.jobs.getById('job-2'))!;
+    expect(job.status).toBe('running');
+    expect(job.profileId).toBeNull();
+    // the pre-existing evidence row is untouched (exactly one, not two)
+    expect(await s.evidence.listByProfile(snap.profileId)).toHaveLength(1);
+    s.client.close();
   });
 });
