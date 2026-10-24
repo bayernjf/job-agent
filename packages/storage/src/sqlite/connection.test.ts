@@ -51,4 +51,36 @@ describe('openSqlite', () => {
     client.close();
     rmSync(root, { recursive: true, force: true });
   });
+
+  it('puts a writable connection in WAL mode so a separate reader process is not blocked', () => {
+    const root = freshDir();
+    const dbPath = join(root, 'wal.db');
+    const { client } = openSqlite(dbPath);
+    const row = client.pragma('journal_mode', { simple: true });
+    expect(row).toBe('wal');
+    client.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('reads a WAL database over a readonly connection without erroring on the pragma', () => {
+    const root = freshDir();
+    const dbPath = join(root, 'wal-readonly.db');
+    const w = openSqlite(dbPath); // WAL, per the test above
+    w.client.exec('CREATE TABLE t (id TEXT PRIMARY KEY); INSERT INTO t VALUES (\'a\');');
+    // Writer stays open: under the rollback journal a second connection could not read
+    // concurrently; under WAL it can.
+    const { client } = openSqlite(dbPath, { readonly: true });
+    const row = client.prepare('SELECT COUNT(*) AS n FROM t').get() as { n: number };
+    expect(row.n).toBe(1);
+    client.close();
+    w.client.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('does not throw when asked for WAL on an in-memory database', () => {
+    const { client } = openSqlite(':memory:');
+    // SQLite silently keeps `memory` for :memory: databases rather than erroring.
+    expect(client.pragma('journal_mode', { simple: true })).toBe('memory');
+    client.close();
+  });
 });
