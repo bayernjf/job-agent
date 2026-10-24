@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lt } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredSearchRun,
@@ -95,6 +95,21 @@ export class SqliteSearchRunsRepository implements ISearchRunsRepository {
       .returning()
       .get();
     return row ? toStoredSearchRun(row) : undefined;
+  }
+
+  async reclaimStaleRunning(maxAgeMs: number, now: string): Promise<number> {
+    const cutoff = new Date(Date.parse(now) - maxAgeMs).toISOString();
+    const res = this.db
+      .update(t)
+      .set({
+        status: 'failed',
+        // 不退回 queued：重放等于把已付费的 Tavily 搜索再花一次（理由见接口契约）。
+        error: 'Reclaimed: search tick died mid-run; not retried because its paid queries were already spent',
+        updatedAt: now,
+      })
+      .where(and(eq(t.status, 'running'), lt(t.updatedAt, cutoff)))
+      .run();
+    return res.changes;
   }
 
   async delete(id: string): Promise<boolean> {

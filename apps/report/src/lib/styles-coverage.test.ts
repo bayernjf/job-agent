@@ -46,7 +46,7 @@ const PROJECT_CLASS =
 const used = new Map<string, string>();
 for (const file of sourceFiles) {
   const src = readFileSync(file, 'utf8');
-  for (const m of src.matchAll(/class(?:Name)?=\{?["'`]([a-zA-Z0-9_ \-]+)["'`]/g)) {
+  for (const m of src.matchAll(/class(?:Name)?=\{?["'`]([a-zA-Z0-9_ -]+)["'`]/g)) {
     for (const cls of m[1].split(/\s+/).filter(Boolean)) {
       if (PROJECT_CLASS.test(cls) && !used.has(cls)) {
         used.set(cls, relative(srcDir, file));

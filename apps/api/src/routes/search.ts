@@ -310,7 +310,7 @@ export function registerSearch(app: Hono<HonoEnv>, d: RouteDeps): void {
       await repos.cronHeartbeat.recordSuccess(
         'search-tick',
         started,
-        `advanced=${outcome.advanced},failed=${outcome.failed}`,
+        `advanced=${outcome.advanced},failed=${outcome.failed},reclaimed=${outcome.reclaimed}`,
       );
       return c.json({ ok: true, outcome });
     } catch (err) {

@@ -8,6 +8,7 @@
  *
  * 全部内存 SQLite + FakeAuthProvider（不打真实 GitHub/网络），Hono app.request。
  */
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createStorage, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
@@ -140,7 +141,7 @@ describe('POST /auth/extension-token/consume', () => {
   });
 
   it('returns 410 for an expired code', async () => {
-    const { repos, cookies } = await loginAs();
+    const { repos } = await loginAs();
     const app = await createApp({
       repos,
       authConfig: loadAuthConfig({}),
@@ -200,9 +201,15 @@ describe('POST /auth/extension-token/consume', () => {
     expect(me.login).toBe('alice');
     expect(me.accountId).toBeTruthy();
 
-    // 库中只存哈希：原始 token 不应出现在任何表里
+    // 库中只存哈希与末 4 位指纹：原始 token 不应出现在任何列里
     const accounts = await repos.accounts.getByProvider('github', '101');
     expect(accounts?.login).toBe('alice');
+    const stored = await repos.apiTokens.listActiveByAccount(accounts!.id, new Date().toISOString());
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.id).not.toBe(body.apiToken);
+    expect(stored[0]!.id).not.toContain(body.apiToken);
+    expect(stored[0]!.tokenHash).toBe(createHash('sha256').update(body.apiToken).digest('hex'));
+    expect(stored[0]!.tokenLast4).toBe(body.apiToken.slice(-4));
   });
 });
 
@@ -219,11 +226,12 @@ describe('GET/DELETE /auth/extension-tokens', () => {
       headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
     });
     const { code } = (await issued.json()) as { code: string };
-    await app.request('/auth/extension-token/consume', {
+    const consumed = await app.request('/auth/extension-token/consume', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
     });
+    const { apiToken: consumedToken } = (await consumed.json()) as { apiToken: string };
 
     const listRes = await app.request('/auth/extension-tokens', {
       headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
@@ -234,8 +242,13 @@ describe('GET/DELETE /auth/extension-tokens', () => {
     };
     expect(tokens.length).toBe(1);
     expect(tokens[0]!.fingerprint.length).toBe(4);
-    // 列表不得含明文 token 形态
-    expect(tokens[0]!.id.startsWith('tkn-')).toBe(true);
+    // 审查 P0-2 回归：id 是 UUID，绝不能是明文 token（旧实现把它当主键存了下来）
+    expect(tokens[0]!.id.startsWith('tkn-')).toBe(false);
+    expect(tokens[0]!.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    // fingerprint 是签发时截取的真实 token 尾 4 位
+    expect(tokens[0]!.fingerprint).toBe(consumedToken.slice(-4));
   });
 
   it('revokes a token and it stops authenticating immediately', async () => {

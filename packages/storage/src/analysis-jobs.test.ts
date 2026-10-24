@@ -205,6 +205,55 @@ describe('SqliteAnalysisJobsRepository', () => {
     expect(reclaimed!.startedAt).toBeNull();
   });
 
+  it('fails a stale running job whose retry budget is exhausted instead of requeueing it', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create(newJob('job_exhausted'));
+    await repo.claimNext('worker-1'); // running, attempts=1
+    db.prepare(
+      "UPDATE analysis_jobs SET started_at = datetime('now', '-10 minutes'), attempts = 3 " +
+        "WHERE id = 'job_exhausted'",
+    ).run();
+
+    expect(await repo.reclaimStaleRunning(60_000)).toBe(1);
+    const job = (await repo.getById('job_exhausted'))!;
+    // The whole point: NOT 'queued'. A queued row at attempts>=cap is filtered out by
+    // claimNext forever and never reaches a terminal state, so latestActiveBySubject
+    // keeps reporting it active and the client's poll never resolves.
+    expect(job.status).toBe('failed');
+    expect(job.errorMessage).toContain('retry budget is exhausted');
+    expect(job.finishedAt).not.toBeNull();
+    expect(job.claimedBy).toBeNull();
+    expect(await repo.latestActiveBySubject('github', 'dev-strong')).toBeUndefined();
+  });
+
+  it('self-heals a queued job already stranded at the attempts cap', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create(newJob('job_stranded'));
+    // Exactly the state the pre-fix reclaim could leave behind: queued but unclaimable.
+    db.prepare(
+      "UPDATE analysis_jobs SET attempts = 3, status = 'queued' WHERE id = 'job_stranded'",
+    ).run();
+    expect(await repo.claimNext('worker-1')).toBeNull();
+
+    expect(await repo.reclaimStaleRunning(60_000)).toBe(1);
+    const job = (await repo.getById('job_stranded'))!;
+    expect(job.status).toBe('failed');
+    expect(job.errorMessage).toContain('Retry budget exhausted while queued');
+  });
+
+  it('honors a caller-supplied maxAttempts instead of truncating it to 3', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create(newJob('job_cap5'));
+    db.prepare("UPDATE analysis_jobs SET attempts = 4 WHERE id = 'job_cap5'").run();
+
+    // default cap 3 => this row looks exhausted
+    expect(await repo.claimNext('worker-1')).toBeNull();
+    // a caller raising the cap must actually take effect (it used to be silently ignored)
+    const claimed = await repo.claimNext('worker-1', 5);
+    expect(claimed!.id).toBe('job_cap5');
+    expect(claimed!.attempts).toBe(5);
+  });
+
   it('defaults requester to public and persists demo requester columns', async () => {
     const { repo } = freshRepo();
     await repo.create(newJob('job_public'));

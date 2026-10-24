@@ -1,2 +1,3 @@
 pnpm -r typecheck
+pnpm lint
 git diff --cached --check

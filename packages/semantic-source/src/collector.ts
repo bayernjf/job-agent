@@ -10,7 +10,6 @@ import {
   L3_MISSING_KEYS,
   type L3MissingKey,
   type L3RepoFiles,
-  type L3SemanticInput,
 } from '@jobagent/shared';
 import { SemanticSourceError, type L3CollectedData, type SemanticSourceOptions } from './types.js';
 

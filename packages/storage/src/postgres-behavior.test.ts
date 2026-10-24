@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vitest';
@@ -10,7 +10,7 @@ import type { StorageContext } from './types.js';
 import type { NewApplication, NewJobRunEvent, NewSubmitIntent } from './entities/index.js';
 import type { FunnelEventRecord } from './entities/funnel-event.js';
 import { openPostgres } from './postgres/connection.js';
-import { listMigrationFiles } from './migrations-fs.js';
+import { listMigrationFiles, parseMigrationFile } from './migrations-fs.js';
 
 /**
  * Postgres 仓储行为测试——在真实 Postgres 上验证同一 I*Repository 契约
@@ -1069,6 +1069,199 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect((await s.evidence.listByProfile(profileId))).toHaveLength(2);
   });
 
+  pgIt('publishes profile, evidence and job success in one transaction', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const jobId = `job_pub_${suffix}`;
+    const profileId = `prof_pub_${suffix}`;
+    const snapshot = minimalSnapshot(`pg_${suffix}`);
+    // 刻意不走 claimNext：它按全表 FIFO 认领，库里有别的行时会认领到别人的任务
+    // （本文件既有 reclaim 用例也是因此改用 raw update 直接置 running）。
+    // publishWithEvidenceAndJob 只按 jobId 更新、不校验来源状态，故 queued 起步即可。
+    await s.jobs.create({ id: jobId, subjectLogin: snapshot.subject.login });
+
+    await s.profiles.publishWithEvidenceAndJob({
+      profile: {
+        id: profileId,
+        analyzerVersion: snapshot.analyzerVersion,
+        subjectLogin: snapshot.subject.login,
+        dataWindowSince: snapshot.dataWindow.since,
+        dataWindowUntil: snapshot.dataWindow.until,
+        status: 'complete',
+        snapshot,
+      },
+      evidence: [
+        {
+          evidenceId: `ev_${suffix}`,
+          sourcePlatform: 'github',
+          sourceType: 'commit',
+          url: 'https://x/1',
+          layer: 'L1',
+          claim: 'c',
+          rawRef: 'r',
+        },
+      ],
+      jobId,
+      budgetUsed: { graphqlPoints: 7 },
+      missing: [],
+    });
+
+    expect((await s.profiles.getById(profileId))?.status).toBe('complete');
+    expect(await s.evidence.countByProfile(profileId)).toBe(1);
+    const job = await s.jobs.getById(jobId);
+    expect(job?.status).toBe('succeeded');
+    expect(job?.stage).toBe('complete');
+    expect(job?.profileId).toBe(profileId);
+    expect(job?.budgetUsed).toEqual({ graphqlPoints: 7 });
+  });
+
+  pgIt('rolls the whole publication back when the evidence write raises 23505', async (s) => {
+    const suffix = randomUUID().slice(0, 8);
+    const jobId = `job_rb_${suffix}`;
+    const profileId = `prof_rb_${suffix}`;
+    const snapshot = minimalSnapshot(`pg_${suffix}`);
+    await s.jobs.create({ id: jobId, subjectLogin: snapshot.subject.login });
+    // Pre-occupy the (profile_id, id) primary key. On Postgres a constraint violation
+    // aborts the *whole* transaction (not just the statement), so this is the case where
+    // a missing SAVEPOINT would surface as a confusing 25P02 instead of a clean rollback.
+    await s.evidence.insertBatch([
+      { id: `ev_${suffix}`, profileId, sourceType: 'commit', url: 'https://x/0', layer: 'L1', claim: 'c0', rawRef: 'r0' },
+    ]);
+
+    await expect(
+      s.profiles.publishWithEvidenceAndJob({
+        profile: {
+          id: profileId,
+          analyzerVersion: snapshot.analyzerVersion,
+          subjectLogin: snapshot.subject.login,
+          dataWindowSince: snapshot.dataWindow.since,
+          dataWindowUntil: snapshot.dataWindow.until,
+          status: 'complete',
+          snapshot,
+        },
+        evidence: [
+          {
+            evidenceId: `ev_${suffix}`,
+            sourcePlatform: 'github',
+            sourceType: 'commit',
+            url: 'https://x/1',
+            layer: 'L1',
+            claim: 'c',
+            rawRef: 'r',
+          },
+        ],
+        jobId,
+      }),
+    ).rejects.toThrow();
+
+    // The profile insert ran first inside the transaction and must be gone: an orphan
+    // profile is visible to /candidates and a still-active job gets reclaimed and
+    // republished as a second profile row for the same login.
+    expect(await s.profiles.getById(profileId)).toBeUndefined();
+    const job = await s.jobs.getById(jobId);
+    // still exactly where it started — in particular NOT succeeded with a dangling profileId
+    expect(job?.status).toBe('queued');
+    expect(job?.profileId).toBeNull();
+    expect(await s.evidence.countByProfile(profileId)).toBe(1);
+  });
+
+  pgIt('fails an exhausted stale job instead of stranding it in queued', async (s) => {
+    if (!basePgUrl) throw new Error('PG url not initialized');
+    const suffix = randomUUID().slice(0, 8);
+    const exhaustedId = `job_exh_${suffix}`;
+    const retryableId = `job_ret_${suffix}`;
+    // 两条任务用**不同 login**：latestActiveBySubject 按 login 查，共用 login 时
+    // 被重新排队的那条会盖住断言，看不出"耗尽的那条已不再被当作活跃任务"。
+    const exhaustedLogin = `u_exh_${suffix}`;
+    const retryableLogin = `u_ret_${suffix}`;
+    await s.jobs.create({ id: exhaustedId, subjectLogin: exhaustedLogin });
+    await s.jobs.create({ id: retryableId, subjectLogin: retryableLogin });
+
+    const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+    const backdate = openPostgres(basePgUrl, { max: 2 });
+    try {
+      // attempts=3 == the default cap => must go terminal; attempts=1 => must be requeued.
+      await backdate.client.unsafe(
+        `update analysis_jobs set status='running', attempts=3, claimed_by='w', started_at=$1 where id=$2`,
+        [tenMinAgo, exhaustedId],
+      );
+      await backdate.client.unsafe(
+        `update analysis_jobs set status='running', attempts=1, claimed_by='w', started_at=$1 where id=$2`,
+        [tenMinAgo, retryableId],
+      );
+    } finally {
+      await backdate.client.end({ timeout: 5 });
+    }
+
+    const moved = await s.jobs.reclaimStaleRunning(5 * 60_000);
+    expect(moved).toBeGreaterThanOrEqual(2);
+    const exhausted = await s.jobs.getById(exhaustedId);
+    expect(exhausted?.status).toBe('failed');
+    expect(exhausted?.errorMessage).toContain('retry budget is exhausted');
+    // the retryable one is genuinely still in play
+    expect((await s.jobs.getById(retryableId))?.status).toBe('queued');
+    expect(await s.jobs.latestActiveBySubject('github', retryableLogin)).toBeDefined();
+    // the exhausted one is terminal, so it must no longer be reported as active —
+    // this is what stops the client's poll from spinning forever
+    expect(await s.jobs.latestActiveBySubject('github', exhaustedLogin)).toBeUndefined();
+  });
+
+  pgIt('reclaims stale search runs over text timestamps without 42883', async (s) => {
+    if (!basePgUrl) throw new Error('PG url not initialized');
+    const suffix = randomUUID().slice(0, 8);
+    const staleRun = `run_stale_${suffix}`;
+    const freshRun = `run_fresh_${suffix}`;
+    const conditions = {
+      queries: ['Berlin backend engineer'],
+      location: 'Berlin',
+      remote: false,
+      salaryMinUsd: null,
+      keywords: [],
+    };
+    const nowIso = new Date().toISOString();
+    for (const runId of [staleRun, freshRun]) {
+      await s.searchRuns.insert({
+        runId,
+        accountId: `acc_${suffix}`,
+        query: 'q',
+        conditions,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+      await s.searchRuns.claimNextQueued(nowIso);
+    }
+
+    const backdate = openPostgres(basePgUrl, { max: 2 });
+    try {
+      await backdate.client.unsafe(
+        `update search_runs set updated_at=$1 where run_id=$2`,
+        [new Date(Date.now() - 30 * 60_000).toISOString(), staleRun],
+      );
+    } finally {
+      await backdate.client.end({ timeout: 5 });
+    }
+
+    const moved = await s.searchRuns.reclaimStaleRunning(10 * 60_000, new Date().toISOString());
+    expect(moved).toBe(1);
+    // Terminal, and deliberately NOT requeued: replaying it would spend Tavily credits again.
+    const stale = await s.searchRuns.getById(staleRun);
+    expect(stale?.status).toBe('failed');
+    expect(stale?.error).toContain('not retried');
+    expect((await s.searchRuns.getById(freshRun))?.status).toBe('running');
+
+    // pooler 形态（prepare=false，Supabase 6543 同款）：tsLt 的 ::text 定型必须健康，
+    // 否则就是当年把 cron reclaim 打成 42883 的那个故障。
+    const pooled = openPostgres(basePgUrl, { max: 2, prepare: false });
+    try {
+      const rows = await pooled.client.unsafe(
+        `select run_id from search_runs where status='running' and updated_at < $1::text limit 5`,
+        [new Date(Date.now() - 10 * 60_000).toISOString()],
+      );
+      expect(Array.isArray(rows)).toBe(true);
+    } finally {
+      await pooled.client.end({ timeout: 5 });
+    }
+  });
+
   pgIt('rejects duplicate waitlist email', async (s) => {
     const email = `pg_${randomUUID().slice(0, 8)}@example.com`;
     await s.waitlist.insert({ id: `wl_${randomUUID()}`, email });
@@ -1468,6 +1661,44 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       } finally {
         await admin.client.end({ timeout: 5 });
       }
+    }
+  });
+
+  pgIt('migration 041 rewrites legacy plaintext api token ids without touching hashes', async () => {
+    if (!basePgUrl) throw new Error('PG url not initialized');
+    const schema = `mig041_${randomUUID().slice(0, 8)}`;
+    const admin = openPostgres(basePgUrl, { max: 1 });
+    const up = (file: string) =>
+      parseMigrationFile(readFileSync(resolve(POSTGRES_MIGRATIONS_DIR, file), 'utf8')).up;
+    try {
+      await admin.client.unsafe(`CREATE SCHEMA ${schema}`);
+      // max:1 把会话（含 search_path）固定在同一条连接上，隔离 schema 不碰公共表。
+      await admin.client.unsafe(`SET search_path TO ${schema}`);
+      await admin.client.unsafe(up('027_create_api_tokens.sql'));
+
+      const legacyId = `tkn-legacyPlaintextABCD`;
+      await admin.client.unsafe(
+        `INSERT INTO api_tokens (id, account_id, token_hash, name, expires_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [legacyId, 'acc-1', 'hash-legacy', 'browser extension', '2099-01-01T00:00:00.000Z'],
+      );
+
+      await admin.client.unsafe(up('041_update_api_tokens_id.sql'));
+
+      const rows = await admin.client<
+        Array<{ id: string; token_last4: string; token_hash: string }>
+      >`SELECT id, token_last4, token_hash FROM api_tokens`;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.id).not.toContain('tkn-');
+      expect(rows[0]!.id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      // 指纹取自旧明文 id 末 4 位；哈希原样保留 ⇒ 已签发 Bearer 继续可用
+      expect(rows[0]!.token_last4).toBe('ABCD');
+      expect(rows[0]!.token_hash).toBe('hash-legacy');
+    } finally {
+      await admin.client.unsafe(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => {});
+      await admin.client.end({ timeout: 5 });
     }
   });
 });

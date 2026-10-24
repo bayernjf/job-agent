@@ -144,7 +144,6 @@ function drawPara(page, font, text) {
 
 function drawTable(page, font, headers, rows) {
   let y = 660;
-  const colW = 130;
   page.drawText(headers.join('  |  '), { x: 50, y, size: 10, font, color: blue });
   y -= 16;
   for (const row of rows) {
@@ -159,18 +158,17 @@ async function buildPdf(sample) {
   doc.registerFontkit(fontkit); // 实例方法：嵌入自定义字体（中文）前必须注册
   const fontBytes = ensureFont();
   const cjkFont = await doc.embedFont(fontBytes);
-  const helv = await doc.embedFont(StandardFonts.Helvetica);
-  const helvBold = await doc.embedFont(StandardFonts.HelveticaBold);
+  await doc.embedFont(StandardFonts.Helvetica);
+  await doc.embedFont(StandardFonts.HelveticaBold);
   const page = doc.addPage([595.28, 841.89]); // A4
 
-  let y = 790;
   for (const block of sample.blocks) {
     if (block.kind === 'header') {
-      y = drawHeader(page, cjkFont, block.lines);
+      drawHeader(page, cjkFont, block.lines);
     } else if (block.kind === 'section') {
-      y = drawSection(page, cjkFont, block.title);
+      drawSection(page, cjkFont, block.title);
     } else if (block.kind === 'para') {
-      y = drawPara(page, cjkFont, block.text);
+      drawPara(page, cjkFont, block.text);
     } else if (block.kind === 'two-col') {
       // 双栏：左栏联系方式 + 右栏项目经历（页面分栏）
       let ly = 660;
@@ -191,9 +189,8 @@ async function buildPdf(sample) {
           ry -= 15;
         }
       }
-      y = Math.min(ly, ry) - 10;
     } else if (block.kind === 'table') {
-      y = drawTable(page, cjkFont, block.headers, block.rows);
+      drawTable(page, cjkFont, block.headers, block.rows);
     }
   }
 
@@ -207,7 +204,7 @@ async function main() {
   if (!existsSync(FIXTURES)) mkdirSync(FIXTURES, { recursive: true });
   const sources = [];
   for (const sample of SAMPLES) {
-    const out = await buildPdf(sample);
+    await buildPdf(sample);
     sources.push({
       id: sample.id,
       title: sample.title,

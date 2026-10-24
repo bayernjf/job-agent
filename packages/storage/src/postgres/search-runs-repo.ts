@@ -8,6 +8,7 @@ import {
 } from '../entities/index.js';
 import type { ISearchRunsRepository } from '../repositories/search-runs.js';
 import { searchRuns as t, type SearchRunInsert } from './schema.js';
+import { tsLt } from './time-text.js';
 
 /** search_runs 仓储的 Postgres 实现。 */
 export class PgSearchRunsRepository implements ISearchRunsRepository {
@@ -89,6 +90,24 @@ export class PgSearchRunsRepository implements ISearchRunsRepository {
       .where(and(eq(t.runId, id), eq(t.status, 'running')))
       .returning();
     return rows[0] ? toStoredSearchRun(rows[0]) : undefined;
+  }
+
+  async reclaimStaleRunning(maxAgeMs: number, now: string): Promise<number> {
+    const cutoff = new Date(Date.parse(now) - maxAgeMs).toISOString();
+    // tsLt 把绑定参数钉成 ::text：updated_at 是 TEXT 列，走事务池化连接时
+    // Postgres 会把它推成 timestamptz 而报 42883（见 time-text.ts）。
+    const reclaimed = await this.db
+      .update(t)
+      .set({
+        status: 'failed',
+        // 不退回 queued：重放等于把已付费的 Tavily 搜索再花一次（理由见接口契约）。
+        error:
+          'Reclaimed: search tick died mid-run; not retried because its paid queries were already spent',
+        updatedAt: now,
+      })
+      .where(and(eq(t.status, 'running'), tsLt(t.updatedAt, cutoff)))
+      .returning({ runId: t.runId });
+    return reclaimed.length;
   }
 
   async delete(id: string): Promise<boolean> {

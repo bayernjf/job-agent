@@ -39,6 +39,9 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   // 040 验证漏斗事件（design-funnel-analytics-20261015 §4）：recorder 同为 fail-open，
   // 缺表只进日志＝漏斗静默失盲，进守卫让深探活显式 503。
   { table: 'funnel_events', column: 'event' },
+  // 041 api_tokens 去明文（审查 P0-2，决策 #27）：列表直接读 token_last4，
+  // 缺列会让授权管理端点 500，进守卫让深探活先于用户点击暴露。
+  { table: 'api_tokens', column: 'token_last4' },
 ];
 
 export { REQUIRED_COLUMNS };

@@ -2,7 +2,6 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 import { preloadAstro } from './preload.js';
 import {
   FIXTURE_CLAIMED_PROFILE_ID,
-  FIXTURE_LOGIN,
   FIXTURE_SESSION_TOKEN,
 } from './fixtures/sample-profile.js';
 
@@ -104,9 +103,6 @@ const INTENT = {
   createdAt: '2026-10-02T08:30:00.000Z',
   updatedAt: '2026-10-02T08:30:00.000Z',
 };
-
-const APPROVE_MATCH = '**/agent/runs/*/approve';
-const REJECT_MATCH = '**/agent/runs/*/reject';
 
 /**
  * `GET /agent/runs/:id/gate-exclusions` 的夹具：内核只给原因码，

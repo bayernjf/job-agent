@@ -631,13 +631,16 @@ export type ExtensionAuthCodeInsert = typeof extensionAuthCodes.$inferInsert;
 export type ExtensionAuthCodeSelect = typeof extensionAuthCodes.$inferSelect;
 
 /**
- * api_tokens 表——扩展长期 Bearer 凭证（迁移 027，design-扩展登录态 §5）。
+ * api_tokens 表——扩展长期 Bearer 凭证（迁移 027，design-扩展登录态 §5；
+ * 迁移 041 起 id 为 UUID、新增 token_last4 供列表展示真实指纹，见审查 P0-2）。
  * Postgres 方言；只存 SHA-256 hex 摘要，明文仅签发响应返回一次。
  */
 export const apiTokens = pgTable(
   'api_tokens',
   {
     id: text('id').primaryKey(),
+    /** migration 041: real fingerprint (last 4 of the plaintext token); never reversible */
+    tokenLast4: text('token_last4').notNull().default(''),
     accountId: text('account_id').notNull(),
     tokenHash: text('token_hash').notNull().unique(),
     name: text('name').notNull().default('browser extension'),

@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Request } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { FIXTURE_PROFILE_ID } from './fixtures/sample-profile.js';
 
 /**

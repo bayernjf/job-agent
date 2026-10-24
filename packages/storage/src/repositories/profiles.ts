@@ -1,4 +1,4 @@
-import type { AbilityProfile } from '@jobagent/shared';
+import type { EvidenceItem } from '@jobagent/shared';
 import type {
   CandidateSearchQuery,
   CandidateSummary,
@@ -7,15 +7,35 @@ import type {
   StoredProfile,
 } from '../entities/index.js';
 
+/** `publishWithEvidenceAndJob` 的入参：一次分析的成功终态要落的全部内容。 */
+export interface ProfilePublication {
+  profile: NewProfile;
+  evidence: EvidenceItem[];
+  jobId: string;
+  budgetUsed?: Record<string, number>;
+  missing?: string[];
+}
+
 /**
  * profiles 仓储契约——业务模块只依赖此接口，不感知 SQLite/Postgres 方言。
  * 所有方法统一 async（Postgres 驱动为异步，SQLite 实现内部同步执行、对外同样返回 Promise）。
  *
- * 写入面刻意只有 `insert` 与 `updateStatus`：画像快照**不可变**（AGENTS 运行架构第 5 条），
- * T28 之后不再存在"同一 profileId 换一份快照"的升级路径，因此也刻意不提供快照 PATCH。
+ * 写入面刻意只有 `insert`、`updateStatus` 与原子发布 `publishWithEvidenceAndJob`：
+ * 画像快照**不可变**（AGENTS 运行架构第 5 条），T28 之后不再存在"同一 profileId 换一份
+ * 快照"的升级路径，因此也刻意不提供快照 PATCH。
  */
 export interface IProfilesRepository {
   insert(profile: NewProfile): Promise<void>;
+  /**
+   * 「写画像快照 + 导入证据 + 标记任务成功」一体化原子操作（worker 成功路径专用）。
+   *
+   * 三步在**同一事务**内完成，所以进程在中间被杀绝不会留下半成品。此前是三次独立写，
+   * 崩溃窗口有两个可见后果：① 有画像但任务仍 `running` → 被 reclaim 重跑再写**第二份**
+   * 画像；② 孤儿画像对 `/candidates`（直读 `profiles.searchCandidates`）是可见的，
+   * 招聘方会看到同一个 login 两次。两者都违背 AGENTS 运行架构第 3 条
+   * 「一次分析永远只发布一份可分享结论」的意图（虽不违背其字面——profileId 不同）。
+   */
+  publishWithEvidenceAndJob(input: ProfilePublication): Promise<void>;
   getById(id: string): Promise<StoredProfile | undefined>;
   listBySubject(
     subjectPlatform: string,

@@ -8,11 +8,8 @@
  * 退出码：所有源失败=1；部分源失败=0（stderr 告警）；成功=0。
  */
 
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 import { parseArgs } from 'node:util';
 import type { JobSource } from '@jobagent/shared';
-import { createStorage, type StorageContext } from '@jobagent/storage';
 import {
   createDefaultAdapters,
   createJobHttpClient,
@@ -23,6 +20,7 @@ import {
 } from '@jobagent/job-source';
 import type { JobSourceAdapter } from '@jobagent/job-source';
 import type { CliDeps } from './index.js';
+import { resolveCliStorage } from './storage-bootstrap.js';
 
 // hn_whoishiring 为月度源：默认 sync 不含它，需 --source hn_whoishiring 显式触发（每月一次）
 const ENABLED_SOURCES: JobSource[] = [
@@ -33,16 +31,6 @@ const ENABLED_SOURCES: JobSource[] = [
   'lever',
   'hn_whoishiring',
 ];
-
-function makeCliStorage(): Promise<StorageContext> | StorageContext {
-  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
-  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
-  return createStorage({ sqlitePath });
-}
-
-async function resolveStorage(deps: CliDeps): Promise<StorageContext> {
-  return deps.storage ?? (await makeCliStorage());
-}
 
 function parseSources(raw: string | undefined, logger: Pick<Console, 'error'>): JobSource[] | null {
   if (!raw) return undefined as unknown as JobSource[];
@@ -141,7 +129,7 @@ async function runSync(rest: string[], deps: CliDeps): Promise<number> {
     return 2;
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const adapters: JobSourceAdapter[] =
     deps.jobAdapters ?? createDefaultAdapters({ sources: sources ?? undefined, logger });
   const http = createJobHttpClient({ ...httpOptionsFromEnv(), logger });
@@ -223,7 +211,7 @@ async function runSearch(rest: string[], deps: CliDeps): Promise<number> {
     }
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const rows = await storage.jobPostings.search({
     keyword: values.keyword,
     remote: values.remote ? true : undefined,
@@ -249,7 +237,7 @@ async function runSearch(rest: string[], deps: CliDeps): Promise<number> {
 
 async function runStats(_rest: string[], deps: CliDeps): Promise<number> {
   const stdout = deps.stdout ?? process.stdout;
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const active = await storage.jobPostings.countBySource('active');
   const inactive = await storage.jobPostings.countBySource('inactive');
   // T30：与 API GET /job-postings/stats 对齐——status 列的 active 之外，增列"新鲜窗口内"
@@ -335,7 +323,7 @@ async function runMatch(rest: string[], deps: CliDeps): Promise<number> {
   const limit = parsePositive(values.limit, '--limit');
   if (limit === 2) return 2;
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const candidates = await storage.jobPostings.search({
     keyword: values.keyword,
     sources: sources ?? undefined,

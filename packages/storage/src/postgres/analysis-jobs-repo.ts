@@ -1,13 +1,17 @@
-import { and, asc, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lt, or, sql } from 'drizzle-orm';
 import type { RequesterKind } from '@jobagent/shared';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   toStoredJob,
+  jobSucceedValues,
   type JobStage,
   type NewAnalysisJob,
   type StoredAnalysisJob,
 } from '../entities/index.js';
-import type { IAnalysisJobsRepository } from '../repositories/analysis-jobs.js';
+import {
+  DEFAULT_JOB_MAX_ATTEMPTS,
+  type IAnalysisJobsRepository,
+} from '../repositories/analysis-jobs.js';
 import { analysisJobs } from './schema.js';
 import { tsLt } from './time-text.js';
 
@@ -39,9 +43,14 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
     return rows[0] ? toStoredJob(rows[0]) : undefined;
   }
 
-  async claimNext(workerId: string): Promise<StoredAnalysisJob | null> {
+  async claimNext(
+    workerId: string,
+    maxAttempts: number = DEFAULT_JOB_MAX_ATTEMPTS,
+  ): Promise<StoredAnalysisJob | null> {
     const now = new Date().toISOString();
     let claimedId: string | null = null;
+    // 与 reclaimStaleRunning 用同一个有效上限；下限理由见该方法与 SQLite 实现。
+    const cap = Math.max(1, maxAttempts);
 
     await this.db.transaction(async (tx) => {
       const oldest = await tx
@@ -50,7 +59,7 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
         .where(
           and(
             eq(analysisJobs.status, 'queued'),
-            lt(analysisJobs.attempts, 3),
+            lt(analysisJobs.attempts, cap),
           ),
         )
         // 正式（public/未来 user）优先于 demo，同级再按创建时间 FIFO
@@ -113,15 +122,7 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
     const now = new Date().toISOString();
     await this.db
       .update(analysisJobs)
-      .set({
-        status: 'succeeded',
-        stage: 'complete',
-        profileId,
-        budgetUsed: budgetUsed ? JSON.stringify(budgetUsed) : null,
-        missing: missing ? JSON.stringify(missing) : null,
-        finishedAt: now,
-        updatedAt: now,
-      })
+      .set(jobSucceedValues(profileId, now, budgetUsed, missing))
       .where(eq(analysisJobs.id, id));
   }
 
@@ -167,9 +168,14 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
     void note;
   }
 
-  async reclaimStaleRunning(maxAgeMs: number): Promise<number> {
+  async reclaimStaleRunning(
+    maxAgeMs: number,
+    maxAttempts: number = DEFAULT_JOB_MAX_ATTEMPTS,
+  ): Promise<number> {
     const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
     const now = new Date().toISOString();
+    // 下限 1：理由见 SQLite 实现（envPositiveInt 允许 MAX_RETRIES=0）。
+    const cap = Math.max(1, maxAttempts);
     const diag = process.env.JA_PG_DIAG === '1';
     if (diag) {
       // TEMPORARY production probe for the text-column vs timestamptz 42883
@@ -180,25 +186,64 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
       );
     }
     try {
-      const result = await this.db
-        .update(analysisJobs)
-        .set({
-          status: 'queued',
-          stage: null,
-          errorMessage: 'Reclaimed: worker likely crashed mid-job',
-          claimedBy: null,
-          startedAt: null,
-          finishedAt: null,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(analysisJobs.status, 'running'),
-            tsLt(analysisJobs.startedAt, cutoff),
-          ),
-        )
-        .returning({ id: analysisJobs.id });
-      return result.length;
+      let moved = 0;
+      await this.db.transaction(async (tx) => {
+        const stale = and(
+          eq(analysisJobs.status, 'running'),
+          tsLt(analysisJobs.startedAt, cutoff),
+        );
+
+        // 1. 重试预算已耗尽的僵尸任务 → 终态 failed。退回 queued 会让它既不可被
+        //    claimNext 认领、又永远不是终态（理由见接口契约与 SQLite 实现）。
+        const exhausted = await tx
+          .update(analysisJobs)
+          .set({
+            status: 'failed',
+            stage: null,
+            errorMessage:
+              'Reclaimed: worker likely crashed mid-job and the retry budget is exhausted',
+            claimedBy: null,
+            startedAt: null,
+            finishedAt: now,
+            updatedAt: now,
+          })
+          .where(and(stale, gte(analysisJobs.attempts, cap)))
+          .returning({ id: analysisJobs.id });
+        moved += exhausted.length;
+
+        // 2. 预算未耗尽 → 回 queued 等下一轮认领（原有行为）
+        const requeued = await tx
+          .update(analysisJobs)
+          .set({
+            status: 'queued',
+            stage: null,
+            errorMessage: 'Reclaimed: worker likely crashed mid-job',
+            claimedBy: null,
+            startedAt: null,
+            finishedAt: null,
+            updatedAt: now,
+          })
+          .where(and(stale, lt(analysisJobs.attempts, cap)))
+          .returning({ id: analysisJobs.id });
+        moved += requeued.length;
+
+        // 3. 自愈：已经停在「queued 且预算耗尽」的历史行（旧版 reclaim 的产物）也落终态，
+        //    既有积压因此无需数据迁移即可排干。
+        const stranded = await tx
+          .update(analysisJobs)
+          .set({
+            status: 'failed',
+            stage: null,
+            errorMessage:
+              'Retry budget exhausted while queued; marked failed by the reclaim sweep',
+            finishedAt: now,
+            updatedAt: now,
+          })
+          .where(and(eq(analysisJobs.status, 'queued'), gte(analysisJobs.attempts, cap)))
+          .returning({ id: analysisJobs.id });
+        moved += stranded.length;
+      });
+      return moved;
     } catch (err) {
       if (diag) {
         const e = err as Error & { code?: string };

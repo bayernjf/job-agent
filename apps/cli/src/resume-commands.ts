@@ -25,10 +25,11 @@ import {
   type LocalResumeFields,
   type ResumeLocale,
 } from '@jobagent/shared';
-import { createStorage, toEvidenceItems, type StorageContext } from '@jobagent/storage';
+import { toEvidenceItems, type StorageContext } from '@jobagent/storage';
 import { matchJobs } from '@jobagent/job-source';
 import { buildResume, renderHtml, renderMarkdown, fromJobMatch } from '@jobagent/resume-core';
 import type { CliDeps } from './index.js';
+import { resolveCliStorage } from './storage-bootstrap.js';
 
 function isExistingFile(p: string): boolean {
   try {
@@ -46,13 +47,6 @@ function readJson(file: string, label: string, logger: Pick<Console, 'error'>): 
     logger.error(`cannot read ${label} file ${file}: ${(err as Error).message}`);
     return null;
   }
-}
-
-async function resolveStorage(deps: CliDeps): Promise<StorageContext> {
-  if (deps.storage) return deps.storage;
-  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
-  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
-  return createStorage({ sqlitePath });
 }
 
 function loadProfile(raw: unknown): AbilityProfile | null {
@@ -102,7 +96,7 @@ async function runBuild(rest: string[], deps: CliDeps): Promise<number> {
   }
 
   // 1) 画像：文件优先，否则按本地库 profileId
-  let profile: AbilityProfile | null = null;
+  let profile: AbilityProfile | null;
   let storage: StorageContext | undefined;
   if (isExistingFile(values.profile)) {
     const raw = readJson(values.profile, 'profile', logger);
@@ -113,7 +107,7 @@ async function runBuild(rest: string[], deps: CliDeps): Promise<number> {
       return 1;
     }
   } else {
-    storage = await resolveStorage(deps);
+    storage = await resolveCliStorage(deps);
     const stored = await storage.profiles.getById(values.profile);
     if (!stored || !stored.snapshot) {
       logger.error(`profile '${values.profile}' not found in local DB (or has no snapshot)`);
@@ -123,7 +117,7 @@ async function runBuild(rest: string[], deps: CliDeps): Promise<number> {
   }
 
   // 2) 岗位：库模式 --job，离线模式 --job-file
-  let posting: JobPosting | null = null;
+  let posting: JobPosting | null;
   if (values['job-file']) {
     const raw = readJson(values['job-file'], 'job', logger);
     if (raw === null) return 1;
@@ -134,7 +128,7 @@ async function runBuild(rest: string[], deps: CliDeps): Promise<number> {
     }
     posting = parsed.data;
   } else if (values.job) {
-    storage = storage ?? (await resolveStorage(deps));
+    storage = storage ?? (await resolveCliStorage(deps));
     const row = await storage.jobPostings.getById(values.job);
     if (!row) {
       logger.error(`job posting '${values.job}' not found in local DB (try 'jobagent jobs search')`);
@@ -265,7 +259,7 @@ async function runBatch(rest: string[], deps: CliDeps): Promise<number> {
   const outDir = values['out-dir'] ?? 'resumes';
 
   // 画像：文件或本地库 id
-  let profile: AbilityProfile | null = null;
+  let profile: AbilityProfile | null;
   let storage: StorageContext | undefined;
   if (isExistingFile(values.profile)) {
     const raw = readJson(values.profile, 'profile', logger);
@@ -276,7 +270,7 @@ async function runBatch(rest: string[], deps: CliDeps): Promise<number> {
       return 1;
     }
   } else {
-    storage = await resolveStorage(deps);
+    storage = await resolveCliStorage(deps);
     const stored = await storage.profiles.getById(values.profile);
     if (!stored || !stored.snapshot) {
       logger.error(`profile '${values.profile}' not found in local DB (or has no snapshot)`);
@@ -286,7 +280,7 @@ async function runBatch(rest: string[], deps: CliDeps): Promise<number> {
   }
 
   // 证据：--evidence 文件 / 库模式 listByProfile / 空
-  let evidence: EvidenceItem[] = [];
+  let evidence: EvidenceItem[];
   if (values.evidence) {
     const raw = readJson(values.evidence, 'evidence', logger);
     if (raw === null) return 1;
@@ -297,7 +291,7 @@ async function runBatch(rest: string[], deps: CliDeps): Promise<number> {
     }
     evidence = list.data;
   } else {
-    storage = storage ?? (await resolveStorage(deps));
+    storage = storage ?? (await resolveCliStorage(deps));
     const rows = await storage.evidence.listByProfile(profile.profileId);
     evidence = toEvidenceItems(rows);
   }
@@ -315,7 +309,7 @@ async function runBatch(rest: string[], deps: CliDeps): Promise<number> {
   }
 
   // 选定岗位：显式 id 列表（逐岗，零命中也生成）或全库 top-N 匹配
-  storage = storage ?? (await resolveStorage(deps));
+  storage = storage ?? (await resolveCliStorage(deps));
   const skills = profile.skillTags.map((s) => s.name);
   interface BatchItem {
     posting: JobPosting;

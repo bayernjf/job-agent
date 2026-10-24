@@ -2,6 +2,7 @@
  * 账号认证路由（Q1 单文件拆分）：GitHub / Gitee OAuth web flow、会话、招聘方声明。
  * 决策 #1-A/#6-A、#4 海内外同步。
  */
+import { randomUUID } from 'node:crypto';
 import type { Context, Hono } from 'hono';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import {
@@ -293,8 +294,10 @@ export function registerAuth(app: Hono<HonoEnv>, d: RouteDeps): void {
     }
     const apiToken = generateApiToken();
     const expiresAt = new Date(Date.parse(now()) + API_TOKEN_TTL_MS).toISOString();
+    // id 是不透明 UUID（迁移 041）：明文 token 只进 hash 与末 4 位指纹，绝不落库。
     await repos.apiTokens.create({
-      id: apiToken,
+      id: randomUUID(),
+      tokenLast4: apiToken.slice(-4),
       accountId: existing.accountId,
       tokenHash: sha256Hex(apiToken),
       name: 'browser extension',
@@ -309,7 +312,7 @@ export function registerAuth(app: Hono<HonoEnv>, d: RouteDeps): void {
     return c.json(body, 200);
   });
 
-  // GET /auth/extension-tokens：授权管理列表（仅指纹尾 4 位，不可逆查明文）。
+  // GET /auth/extension-tokens：授权管理列表（id 为 UUID；fingerprint 是签发时保存的真实末 4 位）。
   app.get('/auth/extension-tokens', async (c) => {
     const principal = c.get('principal');
     if (principal.kind !== 'user') {
@@ -318,7 +321,7 @@ export function registerAuth(app: Hono<HonoEnv>, d: RouteDeps): void {
     const tokens = await repos.apiTokens.listActiveByAccount(principal.accountId, now());
     const summaries: ApiTokenSummary[] = tokens.map((t) => ({
       id: t.id,
-      fingerprint: t.id.slice(-4),
+      fingerprint: t.tokenLast4,
       name: t.name,
       createdAt: t.createdAt,
       lastSeenAt: t.lastSeenAt,

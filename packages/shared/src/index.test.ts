@@ -82,14 +82,14 @@ describe('AbilityProfileSchema', () => {
 
   it('rejects a profile missing a required field', () => {
     const bad = validProfile();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     delete (bad as any).profileId;
     expect(AbilityProfileSchema.safeParse(bad).success).toBe(false);
   });
 
   it('rejects an unknown authenticity status', () => {
     const bad = validProfile();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (bad.authenticity as any).status = '80%';
     expect(AbilityProfileSchema.safeParse(bad).success).toBe(false);
   });

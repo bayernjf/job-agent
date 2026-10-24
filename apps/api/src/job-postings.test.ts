@@ -7,7 +7,7 @@
  * 全部用内存 SQLite + 仓储注入，不启动服务器、不打网络。
  */
 import { describe, expect, it } from 'vitest';
-import type { AbilityProfile, JobPosting, JobSource } from '@jobagent/shared';
+import type { AbilityProfile, JobPosting } from '@jobagent/shared';
 import { createStorage, type NewJobPosting, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
 

@@ -113,7 +113,7 @@ export function aggregateContributionMonths(
 }
 
 /** 解析 L0 响应；账号不存在（user 为 null）返回 null，由调用方标注 not_found */
-export function parseL0Response(raw: L0GraphqlResponse, login: string): L0Data | null {
+export function parseL0Response(raw: L0GraphqlResponse, _login: string): L0Data | null {
   const user = raw.user;
   if (!user) return null;
 

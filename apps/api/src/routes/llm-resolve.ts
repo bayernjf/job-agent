@@ -20,6 +20,7 @@ import {
   type CoverLetterProvider,
   type MeteredResumePolishProvider,
 } from '@jobagent/llm';
+import { checkLlmEndpoint } from '../llm-endpoint-guard.js';
 import type { RouteDeps } from './context.js';
 
 export type LlmSource = 'byok' | 'builtin' | 'none';
@@ -38,7 +39,11 @@ export async function resolveTextLlm(c: Context, d: RouteDeps): Promise<Resolved
   // 1) BYOK 优先
   if (principal.kind === 'user' && d.llmEncKey) {
     const cfg = await d.repos.userLlmConfigs.getByAccountId(principal.accountId);
-    if (cfg) {
+    if (cfg && !checkLlmEndpoint(cfg.baseUrl).ok) {
+      // 决策 #26：已存配置也可能是在修复前落库的坏地址——按无 BYOK 处理并回落，
+      // 绝不把用户密文发往元数据/link-local。
+      console.warn('[llm] byok baseUrl blocked by SSRF guard; falling back');
+    } else if (cfg) {
       try {
         const apiKey = decryptApiKey(cfg.apiKeyEncrypted, d.llmEncKey);
         const client = new OpenAICompatibleClient({

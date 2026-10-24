@@ -75,7 +75,7 @@ async function withSourceBudget<T>(
   budgetMs: number,
   source: JobSource,
   http: JobHttpClient,
-  logger: SyncOnceDeps['logger'],
+  _logger: SyncOnceDeps['logger'],
 ): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<never>((_resolve, reject) => {

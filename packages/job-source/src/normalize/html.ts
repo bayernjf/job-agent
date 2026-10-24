@@ -63,7 +63,7 @@ export function stripHtml(input: unknown, maxLen = 8000): string | null {
   s = decodeEntities(s); // 文本里残留的实体（如 &amp;）
 
   // 常见 mojibake：UTF-8 被按 Latin-1 解读产生的 Â 与不换行空白
-  s = s.replace(/ /g, ' ').replace(/Â/g, '');
+  s = s.replace(/\u00a0/g, ' ').replace(/Â/g, '');
   s = s
     .replace(/[ \t\f\v]+/g, ' ')
     .replace(/ *\n */g, '\n')

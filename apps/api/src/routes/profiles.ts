@@ -12,10 +12,8 @@ import {
   toExportableProfile,
   type ClaimResult,
   type JobSource,
-  type SkillTag,
   type UnclaimResult,
 } from '@jobagent/shared';
-import type { StoredEvidence } from '@jobagent/storage';
 import { excludeAndMergeMatches, matchJobs, staleCutoffIso } from '@jobagent/job-source';
 import { oneHourAgo } from '../demo-config.js';
 import {

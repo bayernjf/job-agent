@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=24.15.0"
   },
   "packageManager": "pnpm@10.12.1",
   "scripts": {
@@ -21,27 +21,37 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "e2e:agent": "pnpm --filter @jobagent/api... build && playwright test -c playwright.agent.config.ts",
-    "e2e:extension": "pnpm --filter @jobagent/extension build && playwright test -c playwright.extension.config.ts"
+    "e2e:extension": "pnpm --filter @jobagent/extension build && playwright test -c playwright.extension.config.ts",
+    "lint": "eslint ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@jobagent/shared": "workspace:*",
     "@jobagent/storage": "workspace:*",
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.5",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
     "husky": "^9.1.7",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.11"
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^4.1.12"
   },
   "pnpm": {
     "overrides": {
       "devalue": ">=5.9.3",
-      "fast-uri": ">=3.1.8",
+      "fast-uri": ">=3.1.9",
       "http-cache-semantics": ">=4.3.0",
       "@vercel/routing-utils>path-to-regexp": "^6.3.0",
       "sharp": ">=0.35.5",
       "source-map-js": "^1.2.2",
       "smol-toml": "^1.9.0",
-      "undici": "7.30.0"
+      "undici": "7.30.1",
+      "body-parser": ">=2.4.0",
+      "ip-address": ">=10.7.4",
+      "@vercel/cli-config>zod": ">=4.6.6",
+      "vite": "^8.3.3"
     }
   }
 }

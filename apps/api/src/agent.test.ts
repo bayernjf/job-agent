@@ -289,7 +289,7 @@ describe('agent workbench — auth and ownership', () => {
 
 describe('agent workbench — stage 1 loop', () => {
   it('creates a run, scans once and lands on the human approval gate with prepared tickets', async () => {
-    const { repos, app, json } = await harness();
+    const { repos, json } = await harness();
     await insertProfile(repos, 'p-1', ALICE.login);
     const claim = await json('/profiles/p-1/claim', { method: 'POST' });
     expect(claim.status).toBe(200);
@@ -1640,7 +1640,7 @@ describe('agent workbench — gate exclusions are visible', () => {
     });
 
     it('stops at the same auth and ownership gates as every other agent surface', async () => {
-      const { app, repos, json, created } = await harness([CHOSEN, BELOW_TIER]);
+      const { app, repos, created } = await harness([CHOSEN, BELOW_TIER]);
       const anonymous = await app.request(`/agent/runs/${created.run.runId}/gate-override`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

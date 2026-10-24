@@ -8,20 +8,8 @@
  */
 
 import { parseArgs } from 'node:util';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { createStorage, type StorageContext } from '@jobagent/storage';
 import type { CliDeps } from './index.js';
-
-async function makeCliStorage(): Promise<StorageContext> {
-  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
-  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
-  return createStorage({ sqlitePath });
-}
-
-async function resolveStorage(deps: CliDeps): Promise<StorageContext> {
-  return deps.storage ?? (await makeCliStorage());
-}
+import { resolveCliStorage } from './storage-bootstrap.js';
 
 async function runDelete(rest: string[], deps: CliDeps): Promise<number> {
   const logger = deps.logger ?? console;
@@ -36,7 +24,7 @@ async function runDelete(rest: string[], deps: CliDeps): Promise<number> {
     return 2;
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const existed = await storage.profiles.deleteById(profileId);
   if (!existed) {
     logger.error(`profile not found: ${profileId}`);

@@ -94,7 +94,7 @@ interface JobRecommendationsProps {
 
 const MAX_DISPLAY = 10;
 
-function formatDate(iso: string | undefined, locale: string): string {
+export function formatDate(iso: string | undefined, locale: string): string {
   if (!iso) return '';
   try {
     return new Date(iso).toLocaleDateString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
@@ -108,22 +108,22 @@ function formatDate(iso: string | undefined, locale: string): string {
 }
 
 /** 匹配分→语义色 class（分档逻辑用 shared.matchScoreTier 相对比例，与扩展一致，不新增色） */
-function scoreClass(score: number, matchedSkillCount: number): string {
+export function scoreClass(score: number, matchedSkillCount: number): string {
   return `rec-score--${matchScoreTier(score, matchedSkillCount)}`;
 }
 
 /** 运行时填充 {count} 占位（模板来自服务端 i18n，组件不持有文案）。 */
-function fillCount(template: string, count: number): string {
+export function fillCount(template: string, count: number): string {
   return template.replace(/\{count\}/g, String(count));
 }
 
 /** 再上架文案要同时填 `{count}` 与 `{date}`；日期已在服务端按 locale 格式化好传进来。 */
-function fillRepost(template: string, count: number, date: string): string {
+export function fillRepost(template: string, count: number, date: string): string {
   return fillCount(template, count).split('{date}').join(date);
 }
 
 /** 收集一条匹配命中技能引用到的、且在证据字典中存在的证据（按引用顺序去重）。 */
-function collectMatchEvidence(
+export function collectMatchEvidence(
   reasons: SkillReason[] | undefined,
   dict: Record<string, EvidenceBrief> | undefined,
 ): EvidenceBrief[] {

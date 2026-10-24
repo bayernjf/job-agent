@@ -10,25 +10,12 @@
  */
 
 import { parseArgs } from 'node:util';
-import type { StorageContext } from '@jobagent/storage';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { createStorage } from '@jobagent/storage';
 import type { CliDeps } from './index.js';
+import { resolveCliStorage } from './storage-bootstrap.js';
 
 interface PresetLogin {
   platform: 'github' | 'gitee';
   login: string;
-}
-
-async function makeCliStorage(): Promise<StorageContext> {
-  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
-  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
-  return createStorage({ sqlitePath });
-}
-
-async function resolveStorage(deps: CliDeps): Promise<StorageContext> {
-  return deps.storage ?? (await makeCliStorage());
 }
 
 /** 解析 `github:alice,gitee:bob`；非法条目返回 null（调用方报错退出）。缺省回退 DEMO_PRESET_LOGINS。 */
@@ -69,7 +56,7 @@ async function runSeed(rest: string[], deps: CliDeps): Promise<number> {
     return 2;
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   let ready = 0;
   let missing = 0;
   for (const preset of presets) {
@@ -105,7 +92,7 @@ async function runCleanup(rest: string[], deps: CliDeps): Promise<number> {
     return 2;
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const now = deps.now?.() ?? new Date().toISOString();
   const retainMs = Math.round(retainHours * 60 * 60 * 1000);
   const sessions = await storage.demoSessions.purgeExpired(now, retainMs);

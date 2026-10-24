@@ -14,7 +14,7 @@ import {
   InterviewPatchSchema,
   type AuthenticityStatus,
 } from '@jobagent/shared';
-import type { ApplicationStatus, ApplicationStage, CandidateSearchQuery, CandidateSummary } from '@jobagent/storage';
+import type { ApplicationStatus, CandidateSearchQuery, CandidateSummary } from '@jobagent/storage';
 import { isAllowedStageTransition } from '@jobagent/storage';
 import { z } from 'zod';
 import { oneHourAgo } from '../demo-config.js';

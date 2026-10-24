@@ -9,7 +9,7 @@
  * 纯函数 + 依赖注入，测试用 fake LLM（AGENTS：测试不调真实 LLM）。
  */
 import { SearchConditionsSchema, type SearchConditions } from '@jobagent/shared';
-import type { LlmClient, LlmResponseError } from '@jobagent/llm';
+import type { LlmClient } from '@jobagent/llm';
 
 export interface IntentParserOptions {
   /** 可选：内置/BYOK LLM 客户端（由 API 侧从目录解析后注入；缺省走规则回落） */

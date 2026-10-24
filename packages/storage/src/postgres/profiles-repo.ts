@@ -3,14 +3,22 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import {
   toStoredProfile,
   searchCandidates as searchCandidatesPure,
+  evidenceInsertValues,
+  jobSucceedValues,
+  profileInsertValues,
+  toNewEvidence,
   type CandidateSearchQuery,
   type CandidateSummary,
   type NewProfile,
   type ProfileStatus,
   type StoredProfile,
 } from '../entities/index.js';
-import type { IProfilesRepository } from '../repositories/profiles.js';
-import { profiles as profilesTable } from './schema.js';
+import type { IProfilesRepository, ProfilePublication } from '../repositories/profiles.js';
+import {
+  analysisJobs as analysisJobsTable,
+  evidence as evidenceTable,
+  profiles as profilesTable,
+} from './schema.js';
 
 /** 人才检索扫描上限：只取最近的 complete 画像在内存中精细过滤（MVP 画像量级可接受）。 */
 const CANDIDATE_SCAN_CAP = 1000;
@@ -19,22 +27,25 @@ const CANDIDATE_SCAN_CAP = 1000;
 export class PgProfilesRepository implements IProfilesRepository {
   constructor(private readonly db: PostgresJsDatabase) {}
 
+  async publishWithEvidenceAndJob(input: ProfilePublication): Promise<void> {
+    const now = new Date().toISOString();
+    // 单事务三步：画像快照 → 证据行 → 任务成功终态（理由见 IProfilesRepository 契约）。
+    await this.db.transaction(async (tx) => {
+      await tx.insert(profilesTable).values(profileInsertValues(input.profile));
+      for (const item of input.evidence) {
+        await tx
+          .insert(evidenceTable)
+          .values(evidenceInsertValues(toNewEvidence(input.profile.id, item)));
+      }
+      await tx
+        .update(analysisJobsTable)
+        .set(jobSucceedValues(input.profile.id, now, input.budgetUsed, input.missing))
+        .where(eq(analysisJobsTable.id, input.jobId));
+    });
+  }
+
   async insert(profile: NewProfile): Promise<void> {
-    await this.db
-      .insert(profilesTable)
-      .values({
-        id: profile.id,
-        analyzerVersion: profile.analyzerVersion,
-        subjectPlatform: profile.subjectPlatform ?? 'github',
-        subjectLogin: profile.subjectLogin,
-        subjectClaimed: profile.subjectClaimed ?? false,
-        dataWindowSince: profile.dataWindowSince,
-        dataWindowUntil: profile.dataWindowUntil,
-        analysisLayers: JSON.stringify(profile.analysisLayers ?? ['L0', 'L1']),
-        status: profile.status ?? 'partial',
-        snapshot: JSON.stringify(profile.snapshot),
-        removalRequestedAt: profile.removalRequestedAt ?? null,
-      });
+    await this.db.insert(profilesTable).values(profileInsertValues(profile));
   }
 
   async getById(id: string): Promise<StoredProfile | undefined> {

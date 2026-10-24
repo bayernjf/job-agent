@@ -1,7 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
-  toLlmCatalogModelRow,
   toStoredLlmCatalogModel,
   type NewLlmCatalogModel,
   type StoredLlmCatalogModel,

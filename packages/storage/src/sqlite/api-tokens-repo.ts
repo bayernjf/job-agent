@@ -17,6 +17,7 @@ export class SqliteApiTokensRepository implements IApiTokensRepository {
       .insert(t)
       .values({
         id: token.id,
+        tokenLast4: token.tokenLast4,
         accountId: token.accountId,
         tokenHash: token.tokenHash,
         name: token.name,

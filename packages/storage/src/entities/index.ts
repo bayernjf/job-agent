@@ -4,7 +4,7 @@ export type {
   NewProfile,
   RawProfileRow,
 } from './profile.js';
-export { PROFILE_STATUSES, toStoredProfile } from './profile.js';
+export { PROFILE_STATUSES, toStoredProfile, profileInsertValues } from './profile.js';
 
 export type {
   JobStatus,
@@ -13,10 +13,16 @@ export type {
   NewAnalysisJob,
   RawAnalysisJobRow,
 } from './analysis-job.js';
-export { JOB_STATUSES, JOB_STAGES, toStoredJob, parseJson } from './analysis-job.js';
+export { JOB_STATUSES, JOB_STAGES, toStoredJob, parseJson, jobSucceedValues } from './analysis-job.js';
 
 export type { StoredEvidence, NewEvidence, RawEvidenceRow } from './evidence.js';
-export { toStoredEvidence, toEvidenceItem, toEvidenceItems } from './evidence.js';
+export {
+  toStoredEvidence,
+  toEvidenceItem,
+  toEvidenceItems,
+  toNewEvidence,
+  evidenceInsertValues,
+} from './evidence.js';
 
 export type {
   WaitlistStatus,

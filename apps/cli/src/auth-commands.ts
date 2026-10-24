@@ -9,25 +9,13 @@
  */
 
 import { parseArgs } from 'node:util';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { createStorage, type StorageContext } from '@jobagent/storage';
 import type { CliDeps } from './index.js';
+import { resolveCliStorage } from './storage-bootstrap.js';
 
 /** 会话清理默认保留窗口：过期/撤销后再留 24h（与 demo cleanup 默认一致）。 */
 const DEFAULT_SESSION_RETAIN_HOURS = 24;
 /** 未认领账号默认保留窗口：30 天，避免删掉刚登录尚未认领的用户。 */
 const DEFAULT_ACCOUNT_RETAIN_HOURS = 24 * 30;
-
-async function makeCliStorage(): Promise<StorageContext> {
-  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
-  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
-  return createStorage({ sqlitePath });
-}
-
-async function resolveStorage(deps: CliDeps): Promise<StorageContext> {
-  return deps.storage ?? (await makeCliStorage());
-}
 
 function parseNonNegativeHours(raw: string | undefined, fallback: number): number | null {
   if (raw === undefined) return fallback;
@@ -64,7 +52,7 @@ async function runCleanup(rest: string[], deps: CliDeps): Promise<number> {
     return 2;
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const now = deps.now?.() ?? new Date().toISOString();
   const sessionRetainMs = Math.round(sessionRetainHours * 60 * 60 * 1000);
   const accountRetainMs = Math.round(accountRetainHours * 60 * 60 * 1000);

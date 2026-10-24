@@ -398,7 +398,7 @@ describe('interviews linked to a recruiter posting', () => {
   }
 
   it('links an interview to my own posting and filters by it', async () => {
-    const { repos, app, rick } = await seeded();
+    const { app, rick } = await seeded();
     const postingId = (await jsonAs<PostingJson>(await publish(app, rick, JD))).id;
 
     const created = await app.request('/interviews', {

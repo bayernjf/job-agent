@@ -7,7 +7,7 @@
  * 全部内存 SQLite + FakeAuthProvider（不打网络），Hono app.request。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createStorage, type StorageContext } from '@jobagent/storage';
+import { createStorage } from '@jobagent/storage';
 import { createApp, type ApiDeps } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';

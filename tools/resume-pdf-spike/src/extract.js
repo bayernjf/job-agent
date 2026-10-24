@@ -84,7 +84,7 @@ async function main() {
     const sourceText = src.sourceLines.join('\n');
     const coverage = charCoverage(sourceText, text);
     // 字段命中：expectFields 的每个值都应出现在抽取文本中（姓名/邮箱/电话）
-    for (const [k, v] of Object.entries(src.expectFields)) {
+    for (const [, v] of Object.entries(src.expectFields)) {
       fieldTotal += 1;
       if (v && text.includes(v)) fieldHits += 1;
     }

@@ -67,7 +67,7 @@ export interface PanelHandle {
 }
 
 function initialLocale(): Locale {
-  let stored: string | null = null;
+  let stored: string | null;
   try {
     stored = localStorage.getItem(LOCALE_STORAGE_KEY);
   } catch {

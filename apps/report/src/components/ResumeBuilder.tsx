@@ -159,12 +159,12 @@ function persistLocal(fields: LocalProfileFields): void {
 }
 
 /** canonical → 简历请求字段；全空时返回 undefined（请求不带 local）。 */
-function toResumeRequest(fields: LocalProfileFields): LocalResumeFields | undefined {
+export function toResumeRequest(fields: LocalProfileFields): LocalResumeFields | undefined {
   const projected = localProfileToResumeFields(fields);
   return Object.values(projected).some((v) => v !== undefined) ? projected : undefined;
 }
 
-function slug(s: string): string {
+export function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'resume';
 }
 

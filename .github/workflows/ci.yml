@@ -72,6 +72,12 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
+      - name: Lint
+        # Review action #7: ESLint was absent, so every existing
+        # eslint-disable comment was dead text. Non-type-aware recommended
+        # rules + react-hooks only (see eslint.config.js).
+        run: pnpm lint
+
       - name: Check migrations
         # Static naming/numbering/header alignment guard for both dialects;
         # runs before the unit tests so a broken migration fails early.

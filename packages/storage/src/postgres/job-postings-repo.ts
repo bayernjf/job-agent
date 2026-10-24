@@ -4,7 +4,6 @@ import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { tsGte, tsLt } from './time-text.js';
 import {
   dedupePostingsById,
-  jobPostingSignature,
   makeJobPostingId,
   toJobPostingSighting,
   toStoredJobPosting,

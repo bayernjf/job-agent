@@ -1,13 +1,17 @@
-import { and, asc, desc, eq, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lt, or, sql } from 'drizzle-orm';
 import type { RequesterKind } from '@jobagent/shared';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   toStoredJob,
+  jobSucceedValues,
   type JobStage,
   type NewAnalysisJob,
   type StoredAnalysisJob,
 } from '../entities/index.js';
-import type { IAnalysisJobsRepository } from '../repositories/analysis-jobs.js';
+import {
+  DEFAULT_JOB_MAX_ATTEMPTS,
+  type IAnalysisJobsRepository,
+} from '../repositories/analysis-jobs.js';
 import { analysisJobs } from './schema.js';
 
 /** 正式（非 demo）任务优先认领的排序表达式：demo 排后，同级再按创建时间 FIFO */
@@ -40,9 +44,15 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
     return row ? toStoredJob(row) : undefined;
   }
 
-  async claimNext(workerId: string): Promise<StoredAnalysisJob | null> {
+  async claimNext(
+    workerId: string,
+    maxAttempts: number = DEFAULT_JOB_MAX_ATTEMPTS,
+  ): Promise<StoredAnalysisJob | null> {
     const now = new Date().toISOString();
     let claimedId: string | null = null;
+    // 与 reclaimStaleRunning 用同一个有效上限：两边不一致就会出现「reclaim 判死、
+    // 但 claimNext 本来还愿意认领」的行（反之亦然）。下限理由见 reclaimStaleRunning。
+    const cap = Math.max(1, maxAttempts);
 
     // SQLite 事务内读写原子（串行化隔离），两步法保证只认领最老的一行：
     // 1. SELECT 最老的 queued id；2. UPDATE 该特定 id（WHERE id + status 双重校验）
@@ -53,7 +63,7 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
         .where(
           and(
             eq(analysisJobs.status, 'queued'),
-            lt(analysisJobs.attempts, 3), // 避免无限重试
+            lt(analysisJobs.attempts, cap), // 避免无限重试
           ),
         )
         // 正式（public/未来 user）优先于 demo，同级再按创建时间 FIFO
@@ -122,15 +132,7 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
     const now = new Date().toISOString();
     this.db
       .update(analysisJobs)
-      .set({
-        status: 'succeeded',
-        stage: 'complete',
-        profileId,
-        budgetUsed: budgetUsed ? JSON.stringify(budgetUsed) : null,
-        missing: missing ? JSON.stringify(missing) : null,
-        finishedAt: now,
-        updatedAt: now,
-      })
+      .set(jobSucceedValues(profileId, now, budgetUsed, missing))
       .where(eq(analysisJobs.id, id))
       .run();
   }
@@ -186,28 +188,74 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
     void note;
   }
 
-  async reclaimStaleRunning(maxAgeMs: number): Promise<number> {
+  async reclaimStaleRunning(
+    maxAgeMs: number,
+    maxAttempts: number = DEFAULT_JOB_MAX_ATTEMPTS,
+  ): Promise<number> {
     const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
     const now = new Date().toISOString();
-    const result = this.db
-      .update(analysisJobs)
-      .set({
-        status: 'queued',
-        stage: null,
-        errorMessage: 'Reclaimed: worker likely crashed mid-job',
-        claimedBy: null,
-        startedAt: null,
-        finishedAt: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(analysisJobs.status, 'running'),
-          lt(analysisJobs.startedAt, cutoff),
-        ),
-      )
-      .run();
-    return result.changes ?? 0;
+    // 下限 1：envPositiveInt 允许 MAX_RETRIES=0，而「至多认领 0 次」不是可用的队列配置
+    // （create() 落库即 attempts=0，cap 0 会让整条队列既不可认领又被下面的自愈判死）。
+    const cap = Math.max(1, maxAttempts);
+    let moved = 0;
+
+    this.db.transaction((tx) => {
+      const stale = and(eq(analysisJobs.status, 'running'), lt(analysisJobs.startedAt, cutoff));
+
+      // 1. 重试预算已耗尽的僵尸任务 → 终态 failed。
+      //    退回 queued 会让它既不可被 claimNext 认领（attempts >= cap 被过滤掉）、又永远
+      //    不是终态：latestActiveBySubject 会一直把它当活跃任务返回，前端轮询永不收敛。
+      const exhausted = tx
+        .update(analysisJobs)
+        .set({
+          status: 'failed',
+          stage: null,
+          errorMessage:
+            'Reclaimed: worker likely crashed mid-job and the retry budget is exhausted',
+          claimedBy: null,
+          startedAt: null,
+          finishedAt: now,
+          updatedAt: now,
+        })
+        .where(and(stale, gte(analysisJobs.attempts, cap)))
+        .run();
+      moved += exhausted.changes ?? 0;
+
+      // 2. 预算未耗尽的僵尸任务 → 回 queued 等下一轮认领（原有行为）
+      const requeued = tx
+        .update(analysisJobs)
+        .set({
+          status: 'queued',
+          stage: null,
+          errorMessage: 'Reclaimed: worker likely crashed mid-job',
+          claimedBy: null,
+          startedAt: null,
+          finishedAt: null,
+          updatedAt: now,
+        })
+        .where(and(stale, lt(analysisJobs.attempts, cap)))
+        .run();
+      moved += requeued.changes ?? 0;
+
+      // 3. 自愈：已经停在「queued 且预算耗尽」的历史行（旧版 reclaim 的产物）也落终态，
+      //    既有积压因此无需数据迁移即可排干。这种行只可能由旧版 reclaim 产生——
+      //    handleJobFailure 只在 attempts < cap 时才 resetToQueued，deferToQueued 会抵消
+      //    本次认领的 +1，create() 落库即 attempts=0。
+      const stranded = tx
+        .update(analysisJobs)
+        .set({
+          status: 'failed',
+          stage: null,
+          errorMessage: 'Retry budget exhausted while queued; marked failed by the reclaim sweep',
+          finishedAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(analysisJobs.status, 'queued'), gte(analysisJobs.attempts, cap)))
+        .run();
+      moved += stranded.changes ?? 0;
+    });
+
+    return moved;
   }
 
   async listBySubject(

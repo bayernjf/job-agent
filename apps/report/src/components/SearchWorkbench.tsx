@@ -170,6 +170,41 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
     return () => clearPoll();
   }, [loadPresets, clearPoll]);
 
+  const pollRun = useCallback(
+    (runId: string) => {
+      const tick = async () => {
+        try {
+          const res = await fetch(`${apiBase}/agent/search/${encodeURIComponent(runId)}`, {
+            credentials: 'include',
+          });
+          if (!res.ok) {
+            const data = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new Error(data.error ?? `HTTP ${res.status}`);
+          }
+          const data = (await res.json()) as { run: SearchRunStatusView };
+          setRun(data.run);
+          if (TERMINAL.has(data.run.status)) {
+            const rr = await fetch(
+              `${apiBase}/agent/search/${encodeURIComponent(runId)}/results`,
+              { credentials: 'include' },
+            );
+            if (rr.ok) {
+              const rd = (await rr.json()) as { postings: SearchResultPosting[] };
+              setResults(rd.postings);
+            }
+            return;
+          }
+          pollRef.current = setTimeout(() => void tick(), 2500);
+        } catch (err) {
+          setError((err as Error).message);
+          setStarted(false);
+        }
+      };
+      void tick();
+    },
+    [apiBase],
+  );
+
   /** 轮询任务直到终态，然后拉取本次结果。 */
   const startSearch = useCallback(
     async (presetId?: string) => {
@@ -209,42 +244,7 @@ export default function SearchWorkbench(props: SearchWorkbenchProps) {
         setStarted(false);
       }
     },
-    [apiBase, query, location, remote, salaryMinUsd, clearPoll],
-  );
-
-  const pollRun = useCallback(
-    (runId: string) => {
-      const tick = async () => {
-        try {
-          const res = await fetch(`${apiBase}/agent/search/${encodeURIComponent(runId)}`, {
-            credentials: 'include',
-          });
-          if (!res.ok) {
-            const data = (await res.json().catch(() => ({}))) as { error?: string };
-            throw new Error(data.error ?? `HTTP ${res.status}`);
-          }
-          const data = (await res.json()) as { run: SearchRunStatusView };
-          setRun(data.run);
-          if (TERMINAL.has(data.run.status)) {
-            const rr = await fetch(
-              `${apiBase}/agent/search/${encodeURIComponent(runId)}/results`,
-              { credentials: 'include' },
-            );
-            if (rr.ok) {
-              const rd = (await rr.json()) as { postings: SearchResultPosting[] };
-              setResults(rd.postings);
-            }
-            return;
-          }
-          pollRef.current = setTimeout(() => void tick(), 2500);
-        } catch (err) {
-          setError((err as Error).message);
-          setStarted(false);
-        }
-      };
-      void tick();
-    },
-    [apiBase],
+    [apiBase, query, location, remote, salaryMinUsd, clearPoll, pollRun],
   );
 
   const savePreset = useCallback(async () => {

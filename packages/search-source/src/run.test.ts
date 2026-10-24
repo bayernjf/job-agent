@@ -42,6 +42,18 @@ function makeRepos(initial: RunRow[]): any {
         runs[idx] = { ...runs[idx]!, ...patch };
         return { ...runs[idx]! };
       },
+      reclaimStaleRunning: async () => {
+        // 刻意不复制 maxAgeMs 的时间判断：阈值语义属于仓储（在 storage 的
+        // search-runs 测试里对真 SQL 验证），这里只验证 tick 会调用它并如实上报条数。
+        let n = 0;
+        for (const r of runs) {
+          if (r.status === 'running') {
+            r.status = 'failed';
+            n += 1;
+          }
+        }
+        return n;
+      },
       _rows: runs,
     },
     jobPostings: {
@@ -166,6 +178,30 @@ describe('runSearchTick', () => {
     expect(outcome.advanced).toBe(2);
     expect(outcome.failed).toBe(0);
     expect(repos.searchRuns._rows.every((r: RunRow) => r.status === 'done')).toBe(true);
+  });
+
+  it('fails a stranded running run instead of leaving it stuck forever', async () => {
+    const repos = makeRepos([
+      // A serverless tick cut off mid-run leaves this row `running` with nobody working
+      // on it, and claimNextQueued only ever picks up `queued` rows.
+      { runId: 'stuck', accountId: 'a1', query: 'q0', conditions: COND, status: 'running', executedQueries: [], resultsCount: 0, newCount: 0, error: null },
+      { runId: 'fresh', accountId: 'a1', query: 'q1', conditions: COND, status: 'queued', executedQueries: [], resultsCount: 0, newCount: 0, error: null },
+    ]);
+    const outcome = await runSearchTick({
+      searchRuns: repos.searchRuns,
+      jobPostings: repos.jobPostings,
+      searchClient: searchClient([
+        { title: 'Engineer at Acme', url: 'https://acme.com/jobs/1', content: 'Hiring', score: 0.9 },
+      ]),
+    });
+
+    expect(outcome.reclaimed).toBe(1);
+    expect(outcome.advanced).toBe(1);
+    const rows = repos.searchRuns._rows as RunRow[];
+    // Terminal, and deliberately NOT requeued: replaying it would spend Tavily
+    // credits a second time for a search that was already paid for.
+    expect(rows.find((r) => r.runId === 'stuck')!.status).toBe('failed');
+    expect(rows.find((r) => r.runId === 'fresh')!.status).toBe('done');
   });
 });
 
