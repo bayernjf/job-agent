@@ -14,6 +14,7 @@ import { createApp, type ApiDeps } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';
 import { loadAuthConfig } from './auth-config.js';
+import { loadDemoConfig } from './demo-config.js';
 
 const ADMIN: OAuthProfile = {
   platform: 'github',
@@ -490,6 +491,82 @@ describe('POST /account/llm-config/validate（最小真实请求，stub fetch）
     });
     expect(res.status).toBe(400);
   });
+
+  it('SSRF 守卫：元数据/链路本地地址在发请求前就被 400 拒绝', async () => {
+    const { app, headers } = await bobApp();
+    let upstreamCalls = 0;
+    vi.stubGlobal('fetch', async () => {
+      upstreamCalls += 1;
+      return new Response('{}', { status: 200 });
+    });
+
+    for (const baseUrl of [
+      'http://169.254.169.254/v1',
+      'http://[::ffff:169.254.169.254]/v1',
+      'http://metadata.google.internal/v1',
+    ]) {
+      const res = await app.request('/account/llm-config/validate', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ baseUrl, model: 'm', apiKey: 'sk-x' }),
+      });
+      expect(res.status, baseUrl).toBe(400);
+      expect(((await res.json()) as { code: string }).code).toBe('LLM_ENDPOINT_BLOCKED');
+    }
+    // 正控：一次上游请求都没发出去
+    expect(upstreamCalls).toBe(0);
+  });
+
+  it('SSRF 守卫：PUT 也不允许把元数据地址存进库', async () => {
+    const { app, headers } = await bobApp();
+    const res = await app.request('/account/llm-config', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        provider: 'custom',
+        baseUrl: 'http://169.254.169.254/latest',
+        model: 'm',
+        apiKey: 'sk-x',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('LLM_ENDPOINT_BLOCKED');
+    const get = await app.request('/account/llm-config', { headers });
+    expect(((await get.json()) as { configured: boolean }).configured).toBe(false);
+  });
+
+  it('validate 按 IP 限频：第 21 次返回 429', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      demoConfig: { ...loadDemoConfig(), trustProxy: true, ipSalt: 'llm-validate-test' },
+    });
+    const cookies = await loginAs(BOB, repos, app);
+    const headers = {
+      Cookie: cookieHeader(cookies, 'jobagent_session'),
+      'content-type': 'application/json',
+      'x-forwarded-for': '203.0.113.55',
+    };
+    for (let i = 0; i < 20; i += 1) {
+      const res = await app.request('/account/llm-config/validate', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({}),
+      });
+      expect(res.status, `attempt ${i + 1}`).toBe(400); // 没配置 → 400，但计入滑窗
+    }
+    const blocked = await app.request('/account/llm-config/validate', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+    expect(blocked.status).toBe(429);
+    expect(((await blocked.json()) as { code: string }).code).toBe('LLM_VALIDATE_RATE_LIMITED');
+  });
 });
 
 describe('ADMIN_ACCOUNT_LOGINS 白名单（登录自动置位）', () => {
@@ -560,7 +637,7 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
   let fetchStub: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchStub = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    fetchStub = vi.fn(async (_url: string | URL, _init?: RequestInit) => {
       const body = JSON.stringify({
         choices: [
           {

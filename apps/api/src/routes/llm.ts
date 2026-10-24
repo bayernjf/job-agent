@@ -27,15 +27,21 @@ import {
   maskApiKey,
   OpenAICompatibleClient,
 } from '@jobagent/llm';
+import { oneHourAgo } from '../demo-config.js';
+import { checkLlmEndpoint } from '../llm-endpoint-guard.js';
 import type { RouteDeps } from './context.js';
 import type { HonoEnv } from './types.js';
 
 const AUTH_REQUIRED = 'AUTH_REQUIRED';
 const FORBIDDEN = 'FORBIDDEN';
 const ENCRYPTION_NOT_CONFIGURED = 'ENCRYPTION_NOT_CONFIGURED';
-const NOT_FOUND = 'NOT_FOUND';
 const LLM_VALIDATION_FAILED = 'LLM_VALIDATION_FAILED';
+const LLM_ENDPOINT_BLOCKED = 'LLM_ENDPOINT_BLOCKED';
+const LLM_VALIDATE_RATE_LIMITED = 'LLM_VALIDATE_RATE_LIMITED';
 const BAD_REQUEST = 'BAD_REQUEST';
+/** /validate 的 IP 滑窗上限（次/小时）：该端点会替用户向任意地址发一次真实请求，
+ *  不加限频就是一个端口扫描原语（审查 P0-3）。固定值、非产品旋钮，故不走 env。 */
+const LLM_VALIDATE_RATE_PER_HOUR = 20;
 
 /** 守卫结果：ok=true 携带 accountId；ok=false 携带已写入的 Response。 */
 export type GuardResult = { ok: true; accountId: string } | { ok: false; response: Response };
@@ -163,6 +169,11 @@ export function registerLlmRoutes(app: Hono<HonoEnv>, d: RouteDeps): void {
       c.status(503);
       return c.json({ error: 'encryption key not configured on the server', code: ENCRYPTION_NOT_CONFIGURED });
     }
+    // 决策 #26：保存前就挡住云元数据/link-local，避免把坏地址落库后再由调用点兜底。
+    if (!checkLlmEndpoint(body.data.baseUrl).ok) {
+      c.status(400);
+      return c.json({ error: 'baseUrl is not an allowed LLM endpoint', code: LLM_ENDPOINT_BLOCKED });
+    }
     const existing = await d.repos.userLlmConfigs.getByAccountId(guard.accountId);
     const apiKey = body.data.apiKey ?? (existing ? decryptApiKey(existing.apiKeyEncrypted, d.llmEncKey) : null);
     if (!apiKey) {
@@ -194,6 +205,28 @@ export function registerLlmRoutes(app: Hono<HonoEnv>, d: RouteDeps): void {
   app.post('/account/llm-config/validate', async (c) => {
     const guard = await requireUser(c, d);
     if (!guard.ok) return guard.response;
+    // 限频放在最前：校验失败/404 也计入，避免用错误请求探测。
+    const ipHash = d.ipHashOf(c);
+    if (ipHash) {
+      const rateNow = d.now();
+      const recent = await d.repos.demoSessions.countRateEvents(
+        ipHash,
+        'llm-validate',
+        oneHourAgo(rateNow),
+      );
+      if (recent >= LLM_VALIDATE_RATE_PER_HOUR) {
+        c.status(429);
+        return c.json(
+          {
+            error: 'too many validation attempts',
+            code: LLM_VALIDATE_RATE_LIMITED,
+            retryAfterSeconds: 3600,
+          },
+          429,
+        );
+      }
+      await d.repos.demoSessions.insertRateEvent(ipHash, 'llm-validate', rateNow);
+    }
     const body = UserLlmConfigValidateSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) {
       c.status(400);
@@ -226,9 +259,14 @@ export function registerLlmRoutes(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'apiKey is required when no config exists yet', code: BAD_REQUEST });
     }
 
+    // 决策 #26：新地址与已存地址都过同一道守卫（已存配置可能早于本次修复落库）。
+    if (!checkLlmEndpoint(target.baseUrl).ok) {
+      c.status(400);
+      return c.json({ error: 'baseUrl is not an allowed LLM endpoint', code: LLM_ENDPOINT_BLOCKED });
+    }
+
     try {
-      // 最小验证：max_tokens=1 的真实请求（用户自己的 key 打用户自己的端点；
-      // SSRF 面记录在 design §7 风险表，MVP 接受：该请求只携带用户自己提供的凭证）
+      // 最小验证：max_tokens=1 的真实请求（用户自己的 key 打用户自己的端点）
       const client = new OpenAICompatibleClient({
         baseUrl: target.baseUrl,
         apiKey: target.apiKey,
