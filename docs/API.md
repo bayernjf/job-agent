@@ -1687,6 +1687,11 @@ apiKey 以 AES-256-GCM 密文落库，明文只存在于请求处理瞬间。
 不允许拿已保存的 key 去打一个还没保存的新地址，那是替用户做一次他没确认过的凭据外发。
 无已保存配置且没带 key 同样 `400`。
 
+**SSRF 守卫（审查 P0-3 / 决策 #26）**：`baseUrl` 指向云元数据或 link-local
+（`169.254.0.0/16`、`100.100.100.200`、`fd00:ec2::254`、已知元数据主机名）→ `400
+LLM_ENDPOINT_BLOCKED`，且不会发起上游请求；localhost 与 RFC1918 私网刻意放行（自建网关）。
+按 IP 滑窗限频 20 次/小时，超限 `429 LLM_VALIDATE_RATE_LIMITED`。
+
 ---
 
 ## 3.10 扩展登录态（决策 #22）
@@ -1726,10 +1731,12 @@ token 90 天滑动续期、可撤销。
 
 ### `GET /auth/extension-tokens`
 
-授权管理列表（需登录）：返回本账号未撤销 token 的摘要，**仅指纹尾 4 位、不可逆查明文**：
+授权管理列表（需登录）：返回本账号未撤销 token 的摘要。**迁移 041 起 `id` 是不透明 UUID
+（不再是明文 token），`fingerprint` 是签发时保存的真实末 4 位**；库内只有哈希与这 4 位，
+不可逆查明文：
 
 ```json
-{ "tokens": [{ "id": "tkn-<…>", "fingerprint": "<last4>", "name": "browser extension",
+{ "tokens": [{ "id": "<uuid>", "fingerprint": "<last4>", "name": "browser extension",
                "createdAt": "…", "lastSeenAt": "…", "expiresAt": "…" }] }
 ```
 

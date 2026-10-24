@@ -31,8 +31,12 @@ const SKIP_DIRS = new Set([
  * 其中的行号描述的是当天的代码，回改等于篡改历史，因此排除在断言范围外。
  * 受约束的是活文档：AGENTS、README、handoff、docs 下的 API 文档、PRD、design 系列、
  * deferred 登记表与本审计报告。
+ *
+ * 评审类的前缀是 `评审-`（不限 MVP 系列）：判据是"某日评审"这个**文档类型**，不是它评的是
+ * 哪个阶段。MVP 期之后仍有评审（如 `评审-全面代码审查-20261024.md`），它们同样是冻结记录，
+ * 修复落地后行号必然失效，而回改等于篡改当天的结论。
  */
-const EXCLUDED = [/^docs\/handoff-archive-/, /^docs\/评审-MVP-/];
+const EXCLUDED = [/^docs\/handoff-archive-/, /^docs\/评审-/];
 
 const REF_RE = /([A-Za-z0-9_@./-]+\.(?:ts|tsx|astro|mts|cts|js|json|sql|ya?ml|css|md|sh|py)):(\d+)(?:-(\d+))?/g;
 
