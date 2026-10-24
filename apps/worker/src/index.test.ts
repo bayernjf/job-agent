@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalyzerInput } from '@jobagent/analyzer-core';
-import type { AbilityProfile, EvidenceItem, RecordUsageInput } from '@jobagent/shared';
+import type { EvidenceItem, RecordUsageInput } from '@jobagent/shared';
 import type { GitHubCollectedData } from '@jobagent/github-source';
 import type { GiteeCollectedData } from '@jobagent/gitee-source';
 import { createStorage, type StorageContext, type UsageRecorder } from '@jobagent/storage';
@@ -26,34 +26,6 @@ import {
 
 async function freshRepos(): Promise<StorageContext> {
   return createStorage({ sqlitePath: ':memory:' });
-}
-
-function sampleProfile(overrides: Partial<AbilityProfile> = {}): AbilityProfile {
-  return {
-    profileId: randomUUID(),
-    analyzerVersion: 'schema-0.1-engine-0.1.0',
-    generatedAt: '2026-09-11T00:00:00.000Z',
-    dataWindow: { since: '2025-09-11T00:00:00.000Z', until: '2026-09-11T00:00:00.000Z' },
-    analysisLayers: ['L0', 'L1'],
-    subject: {
-      platform: 'github',
-      login: 'test-user',
-      profileUrl: 'https://github.com/test-user',
-      claimed: false,
-    },
-    summary: { headline: 'Test developer' },
-    skillTags: [{ name: 'TypeScript', kind: 'language', depth: 'proficient', confidence: 0.8, evidenceRefs: [] }],
-    activity: { longevityMonths: 12 },
-    collaboration: { evidenceRefs: [] },
-    authenticity: {
-      status: 'likely_authentic',
-      confidence: 0.75,
-      signals: [],
-    },
-    interviewQuestions: [],
-    caveats: [],
-    ...overrides,
-  };
 }
 
 function sampleEvidence(login: string): EvidenceItem {
@@ -261,6 +233,7 @@ describe('processJob', () => {
     const jobId = await createQueuedJob(repos);
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeStagedFakeSource();
+    const publishes = vi.spyOn(repos.profiles, 'publishWithEvidenceAndJob');
     const inserts = vi.spyOn(repos.profiles, 'insert');
 
     const result = await processJob(job, repos, asSources(source));
@@ -270,8 +243,10 @@ describe('processJob', () => {
     expect(source.collectStagedL1).toHaveBeenCalledWith('test-user', { login: 'test-user' });
 
     // 核心不变量：**一次分析只发布一份可分享结论**（批次 6 曾先落 partial:L0 再升级同一 id）
-    expect(inserts).toHaveBeenCalledTimes(1);
-    expect(inserts.mock.calls[0]?.[0]).toMatchObject({ status: 'complete' });
+    expect(publishes).toHaveBeenCalledTimes(1);
+    expect(publishes.mock.calls[0]?.[0]).toMatchObject({ profile: { status: 'complete' } });
+    // 发布只走原子路径：不得再有绕过事务的裸 insert（那正是孤儿画像的来源）
+    expect(inserts).not.toHaveBeenCalled();
 
     // 最终画像 complete、双层、证据落库（L1 全量）
     const profile = await repos.profiles.getById(result.profileId);
@@ -294,13 +269,13 @@ describe('processJob', () => {
     const jobId = await createQueuedJob(repos);
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeStagedFakeSource({ l1Missing: ['l1_failed'] });
-    const inserts = vi.spyOn(repos.profiles, 'insert');
+    const publishes = vi.spyOn(repos.profiles, 'publishWithEvidenceAndJob');
 
     const result = await processJob(job, repos, asSources(source));
 
     expect(result.missing).toEqual(['l1_failed']);
     // 降级是**终态**：仍然只发布一次，之后不再被改写
-    expect(inserts).toHaveBeenCalledTimes(1);
+    expect(publishes).toHaveBeenCalledTimes(1);
     const profile = await repos.profiles.getById(result.profileId);
     expect(profile!.status).toBe('partial');
     expect(profile!.analysisLayers).toEqual(['L0']);
@@ -312,11 +287,11 @@ describe('processJob', () => {
     const jobId = await createQueuedJob(repos);
     const job = (await repos.jobs.claimNext('test-worker'))!;
     const source = makeStagedFakeSource({ l1Throws: true });
-    const inserts = vi.spyOn(repos.profiles, 'insert');
+    const publishes = vi.spyOn(repos.profiles, 'publishWithEvidenceAndJob');
 
     const result = await processJob(job, repos, asSources(source));
 
-    expect(inserts).toHaveBeenCalledTimes(1);
+    expect(publishes).toHaveBeenCalledTimes(1);
     expect(result.missing).toEqual(['l1_failed']);
     const profile = await repos.profiles.getById(result.profileId);
     expect(profile!.status).toBe('partial');
@@ -943,6 +918,36 @@ describe('claimAndProcessOne (serverless cron entry)', () => {
     expect(outcome.kind).toBe('failed');
     if (outcome.kind === 'failed') expect(outcome.permanent).toBe(true);
     expect((await repos.jobs.getById(jobId))!.status).toBe('failed');
+  });
+
+  it('does not strand the job when makeSources() throws after the claim', async () => {
+    const repos = await freshRepos();
+    const jobId = await createQueuedJob(repos, 'no-token');
+    const savedToken = process.env.GITHUB_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    try {
+      // No `sources` injected and no GITHUB_TOKEN, so makeSources() throws — but only
+      // *after* claimNext has already flipped this job to running with attempts=1.
+      // The throw must still reach handleJobFailure; if it escapes claimAndProcessOne
+      // the job is left `running` and every reclaim burns one more attempt until it is
+      // permanently unclaimable.
+      const outcome = await claimAndProcessOne({
+        repos,
+        workerId: 'cron',
+        maxRetries: 3,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      });
+
+      expect(outcome.kind).toBe('failed');
+      const job = (await repos.jobs.getById(jobId))!;
+      expect(job.status).not.toBe('running');
+      // attempts 1 < maxRetries 3 => requeued for another try, not terminal
+      expect(job.status).toBe('queued');
+      expect(job.errorMessage).toContain('GITHUB_TOKEN');
+    } finally {
+      if (savedToken === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = savedToken;
+    }
   });
 });
 

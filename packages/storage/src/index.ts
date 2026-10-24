@@ -21,6 +21,7 @@ export type {
 // 仓储接口（业务侧依赖类型，不依赖具体实现）
 export type { IProfilesRepository, ProfilePublication } from './repositories/profiles.js';
 export type { IAnalysisJobsRepository } from './repositories/analysis-jobs.js';
+export { DEFAULT_JOB_MAX_ATTEMPTS } from './repositories/analysis-jobs.js';
 export type { IEvidenceRepository } from './repositories/evidence.js';
 export type { IWaitlistRepository } from './repositories/waitlist.js';
 export type {

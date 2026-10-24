@@ -35,6 +35,7 @@ import {
   createNullUsageRecorder,
   createStorage,
   createUsageRecorder,
+  DEFAULT_JOB_MAX_ATTEMPTS,
   type IAnalysisJobsRepository,
   type IEvidenceRepository,
   type IProfilesRepository,
@@ -373,30 +374,34 @@ export async function processJob(
       `(confidence=${profile.authenticity.confidence}), ${profile.skillTags.length} skill tags`,
   );
 
-  // 4. 写入不可变画像快照。
+  // 4–6. 一次事务里发布「画像快照 + 证据行 + 任务成功终态」。
   //    融合画像在检索键列存 'all'（与单源隔离），snapshot 内 subject.platform 仍为主源 github。
+  //    必须是单事务：分成三次独立写时，进程在中间被杀会留下"有画像但任务仍 running"，
+  //    reclaim 重跑就会再写第二份画像；而孤儿画像对 /candidates 是可见的（招聘方看到
+  //    同一 login 两次），违背"一次分析永远只发布一份可分享结论"。
   const persistStart = Date.now();
-  await repos.profiles.insert({
-    id: profileId,
-    analyzerVersion: profile.analyzerVersion,
-    subjectPlatform: persistPlatform,
-    subjectLogin: profile.subject.login,
-    subjectClaimed: profile.subject.claimed,
-    dataWindowSince: profile.dataWindow.since,
-    dataWindowUntil: profile.dataWindow.until,
-    analysisLayers: profile.analysisLayers,
-    // T25 失败显式化：有 missing 的画像落库为 partial（报告页标注"部分数据"），
-    // 不再硬编 complete——NFR-6 与 PRD F2 验收 3 的降级路径真实可达。
-    status: missing.length > 0 ? 'partial' : 'complete',
-    snapshot: profile,
+  await repos.profiles.publishWithEvidenceAndJob({
+    profile: {
+      id: profileId,
+      analyzerVersion: profile.analyzerVersion,
+      subjectPlatform: persistPlatform,
+      subjectLogin: profile.subject.login,
+      subjectClaimed: profile.subject.claimed,
+      dataWindowSince: profile.dataWindow.since,
+      dataWindowUntil: profile.dataWindow.until,
+      analysisLayers: profile.analysisLayers,
+      // T25 失败显式化：有 missing 的画像落库为 partial（报告页标注"部分数据"），
+      // 不再硬编 complete——NFR-6 与 PRD F2 验收 3 的降级路径真实可达。
+      status: missing.length > 0 ? 'partial' : 'complete',
+      snapshot: profile,
+    },
+    // 证据行让报告页能渲染来源外链、招聘方能逐条追溯结论。
+    // analyzerInput.evidence 与来源无关（platform=all 时已跨源去重）。
+    evidence: analyzerInput.evidence,
+    jobId: job.id,
+    budgetUsed,
+    missing,
   });
-
-  // 5. Persist evidence rows so report pages can render source links and recruiters can
-  //    trace every claim. analyzerInput.evidence is source-agnostic (fusion-deduped for all).
-  await repos.evidence.importFromProfile(profileId, analyzerInput.evidence);
-
-  // 6. 标记任务成功
-  await repos.jobs.succeed(job.id, profileId, budgetUsed, missing);
   const persistMs = Date.now() - persistStart;
   const totalMs = Date.now() - t0;
   const budgetSummary = Object.entries(budgetUsed)
@@ -522,7 +527,7 @@ export interface ClaimOneDeps {
 export async function claimAndProcessOne(deps: ClaimOneDeps = {}): Promise<ClaimOneResult> {
   const logger = deps.logger ?? console;
   const workerId = deps.workerId ?? `worker-${randomUUID().slice(0, 8)}`;
-  const maxRetries = deps.maxRetries ?? 3;
+  const maxRetries = deps.maxRetries ?? DEFAULT_JOB_MAX_ATTEMPTS;
   const demoMaxConcurrent =
     deps.demoMaxConcurrent ?? envPositiveInt(process.env.DEMO_MAX_CONCURRENT) ?? 1;
 
@@ -537,13 +542,15 @@ export async function claimAndProcessOne(deps: ClaimOneDeps = {}): Promise<Claim
   // serverless cron 没有"启动回收"环节：每次触发先回收 >阈值仍 running 的僵尸任务
   // （函数超时/实例被回收会留下 running；常驻 Worker 在 runWorker 启动时只回收一次）。
   if (deps.reclaimStaleMs != null) {
-    const reclaimed = await repos.jobs.reclaimStaleRunning(deps.reclaimStaleMs);
+    const reclaimed = await repos.jobs.reclaimStaleRunning(deps.reclaimStaleMs, maxRetries);
     if (reclaimed > 0) {
       logger.warn(`[worker] reclaimed ${reclaimed} stale running job(s) before cron claim`);
     }
   }
 
-  const job = await repos.jobs.claimNext(workerId);
+  // 传 maxRetries：认领闸与失败判定必须用同一个上限，否则会出现「handleJobFailure
+  // 认为还能重试、claimNext 却已不再认领」的悬挂任务（见 reclaimStaleRunning 契约）。
+  const job = await repos.jobs.claimNext(workerId, maxRetries);
   if (!job) return { kind: 'idle' };
 
   // 演示并发闸：只约束 demo 任务（正式任务不限，claimNext 已让正式任务优先）。
@@ -561,9 +568,13 @@ export async function claimAndProcessOne(deps: ClaimOneDeps = {}): Promise<Claim
   // 延迟到确认确有任务要处理时才构造 source（含 GITHUB_TOKEN 校验）：空队列 idle 与
   // demo 超闸 deferred 都不需要凭证，serverless cron 在无任务/未配 token 的空窗期也能
   // 正常返回，而不是在认领前就因缺 token 抛 500。常驻 runWorker 仍在启动时 fail-fast。
-  const sources = deps.sources ?? makeSources(deps);
-
+  //
+  // 但构造必须发生在 try 内：走到这里任务**已被认领**（running、attempts+1），
+  // 缺 token 抛出的错也得经 handleJobFailure 落终态或回队。放在 try 外的话异常直接
+  // 逃出本函数，任务既不 failed 也不 queued，只能等 reclaim 回收——而 reclaim 每回收
+  // 一次就烧掉一次 attempts，三次后任务永久停在 queued 且再无人认领。
   try {
+    const sources = deps.sources ?? makeSources(deps);
     const result = await processJob(job, repos, sources, logger, usageRecorder);
     return { kind: 'processed', jobId: job.id, profileId: result.profileId };
   } catch (err) {
@@ -587,7 +598,7 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
   const logger = deps.logger ?? console;
   const workerId = deps.workerId ?? `worker-${randomUUID().slice(0, 8)}`;
   const pollIntervalMs = deps.pollIntervalMs ?? 5000;
-  const maxRetries = deps.maxRetries ?? 3;
+  const maxRetries = deps.maxRetries ?? DEFAULT_JOB_MAX_ATTEMPTS;
   const demoMaxConcurrent =
     deps.demoMaxConcurrent ?? envPositiveInt(process.env.DEMO_MAX_CONCURRENT) ?? 1;
   const demoBackoffMs =
@@ -610,7 +621,7 @@ export async function runWorker(deps: WorkerDeps = {}): Promise<void> {
 
   // Reclaim running jobs left by a crashed worker before the previous shutdown.
   // A job running for >5 minutes is almost certainly orphaned (single analysis takes <1 min).
-  const reclaimed = await repos.jobs.reclaimStaleRunning(5 * 60 * 1000);
+  const reclaimed = await repos.jobs.reclaimStaleRunning(5 * 60 * 1000, maxRetries);
   if (reclaimed > 0) {
     logger.warn(`[worker] reclaimed ${reclaimed} stale running job(s) from a crashed worker`);
   }

@@ -1164,6 +1164,47 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect(await s.evidence.countByProfile(profileId)).toBe(1);
   });
 
+  pgIt('fails an exhausted stale job instead of stranding it in queued', async (s) => {
+    if (!basePgUrl) throw new Error('PG url not initialized');
+    const suffix = randomUUID().slice(0, 8);
+    const exhaustedId = `job_exh_${suffix}`;
+    const retryableId = `job_ret_${suffix}`;
+    // 两条任务用**不同 login**：latestActiveBySubject 按 login 查，共用 login 时
+    // 被重新排队的那条会盖住断言，看不出"耗尽的那条已不再被当作活跃任务"。
+    const exhaustedLogin = `u_exh_${suffix}`;
+    const retryableLogin = `u_ret_${suffix}`;
+    await s.jobs.create({ id: exhaustedId, subjectLogin: exhaustedLogin });
+    await s.jobs.create({ id: retryableId, subjectLogin: retryableLogin });
+
+    const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+    const backdate = openPostgres(basePgUrl, { max: 2 });
+    try {
+      // attempts=3 == the default cap => must go terminal; attempts=1 => must be requeued.
+      await backdate.client.unsafe(
+        `update analysis_jobs set status='running', attempts=3, claimed_by='w', started_at=$1 where id=$2`,
+        [tenMinAgo, exhaustedId],
+      );
+      await backdate.client.unsafe(
+        `update analysis_jobs set status='running', attempts=1, claimed_by='w', started_at=$1 where id=$2`,
+        [tenMinAgo, retryableId],
+      );
+    } finally {
+      await backdate.client.end({ timeout: 5 });
+    }
+
+    const moved = await s.jobs.reclaimStaleRunning(5 * 60_000);
+    expect(moved).toBeGreaterThanOrEqual(2);
+    const exhausted = await s.jobs.getById(exhaustedId);
+    expect(exhausted?.status).toBe('failed');
+    expect(exhausted?.errorMessage).toContain('retry budget is exhausted');
+    // the retryable one is genuinely still in play
+    expect((await s.jobs.getById(retryableId))?.status).toBe('queued');
+    expect(await s.jobs.latestActiveBySubject('github', retryableLogin)).toBeDefined();
+    // the exhausted one is terminal, so it must no longer be reported as active —
+    // this is what stops the client's poll from spinning forever
+    expect(await s.jobs.latestActiveBySubject('github', exhaustedLogin)).toBeUndefined();
+  });
+
   pgIt('rejects duplicate waitlist email', async (s) => {
     const email = `pg_${randomUUID().slice(0, 8)}@example.com`;
     await s.waitlist.insert({ id: `wl_${randomUUID()}`, email });
