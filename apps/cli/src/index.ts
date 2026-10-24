@@ -26,9 +26,10 @@ import { analyzeSemantic } from '@jobagent/semantic-core';
 import { GitHubSource, type GitHubCollectedData } from '@jobagent/github-source';
 import { GiteeSource, type GiteeCollectedData } from '@jobagent/gitee-source';
 import type { SupportedPlatform } from '@jobagent/shared';
-import { createStorage, WAITLIST_STATUSES } from '@jobagent/storage';
+import { WAITLIST_STATUSES } from '@jobagent/storage';
 import type { StorageContext, WaitlistStatus } from '@jobagent/storage';
 import { toHtml, toMarkdown } from './report-format.js';
+import { resolveCliStorage } from './storage-bootstrap.js';
 import type { JobSourceAdapter } from '@jobagent/job-source';
 import { runJobs } from './jobs-commands.js';
 import { runDemo } from './demo-commands.js';
@@ -93,14 +94,6 @@ function makeSource(
     );
   }
   return new GitHubSource({ token, log: deps.logger ?? console });
-}
-
-/** waitlist 子命令的持久化上下文（测试注入；生产默认 SQLite data/job-agent.db） */
-async function makeStorage(deps: CliDeps): Promise<StorageContext> {
-  if (deps.storage) return deps.storage;
-  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
-  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
-  return createStorage({ sqlitePath }); // 非只读 autoMigrate=true
 }
 
 class CliError extends Error {
@@ -320,7 +313,7 @@ export async function run(argv: string[], deps: CliDeps): Promise<number> {
       }
     }
     try {
-      const storage = await makeStorage(deps);
+      const storage = await resolveCliStorage(deps);
       if (values.count || values.status === undefined) {
         // 默认/--count：按状态计数
         const counts = await storage.waitlist.countByStatus();

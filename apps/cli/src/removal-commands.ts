@@ -14,21 +14,9 @@
  */
 
 import { parseArgs } from 'node:util';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { createStorage, type StorageContext } from '@jobagent/storage';
 import type { RemovalRequestStatus } from '@jobagent/storage';
 import type { CliDeps } from './index.js';
-
-async function makeCliStorage(): Promise<StorageContext> {
-  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
-  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
-  return createStorage({ sqlitePath });
-}
-
-async function resolveStorage(deps: CliDeps): Promise<StorageContext> {
-  return deps.storage ?? (await makeCliStorage());
-}
+import { resolveCliStorage } from './storage-bootstrap.js';
 
 const VALID_STATUSES: readonly RemovalRequestStatus[] = ['pending', 'approved', 'rejected'];
 
@@ -57,7 +45,7 @@ async function runList(rest: string[], deps: CliDeps): Promise<number> {
     limit = parsed;
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const rows = await storage.profileRemovalRequests.listByStatus(status, limit);
   if (rows.length === 0) {
     stdout.write(`(no ${status} removal requests)\n`);
@@ -85,7 +73,7 @@ async function runApprove(rest: string[], deps: CliDeps): Promise<number> {
     return 2;
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const now = deps.now?.() ?? new Date().toISOString();
   const request = await storage.profileRemovalRequests.getById(requestId);
   if (!request) {
@@ -134,7 +122,7 @@ async function runReject(rest: string[], deps: CliDeps): Promise<number> {
     return 2;
   }
 
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const now = deps.now?.() ?? new Date().toISOString();
   const request = await storage.profileRemovalRequests.getById(requestId);
   if (!request) {

@@ -11,9 +11,6 @@
  */
 
 import { parseArgs } from 'node:util';
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { createStorage, type StorageContext } from '@jobagent/storage';
 import {
   UsageSummaryQuerySchema,
   type UsageDailyRow,
@@ -21,16 +18,7 @@ import {
   type UsageSummaryRow,
 } from '@jobagent/shared';
 import type { CliDeps } from './index.js';
-
-async function makeCliStorage(): Promise<StorageContext> {
-  const sqlitePath = process.env.DB_PATH ?? 'data/job-agent.db';
-  mkdirSync(path.dirname(path.resolve(sqlitePath)), { recursive: true });
-  return createStorage({ sqlitePath });
-}
-
-async function resolveStorage(deps: CliDeps): Promise<StorageContext> {
-  return deps.storage ?? (await makeCliStorage());
-}
+import { resolveCliStorage } from './storage-bootstrap.js';
 
 type Format = 'json' | 'table';
 
@@ -98,7 +86,7 @@ async function runSummary(rest: string[], deps: CliDeps): Promise<number> {
   const parsed = parseWindowArgs(rest, deps);
   if (!parsed) return 2;
   const stdout = deps.stdout ?? process.stdout;
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const rows = await storage.usageEvents.summarize(parsed.query);
   if (parsed.format === 'json') {
     stdout.write(`${JSON.stringify({ summary: rows }, null, 2)}\n`);
@@ -114,7 +102,7 @@ async function runDaily(rest: string[], deps: CliDeps): Promise<number> {
   const parsed = parseWindowArgs(rest, deps);
   if (!parsed) return 2;
   const stdout = deps.stdout ?? process.stdout;
-  const storage = await resolveStorage(deps);
+  const storage = await resolveCliStorage(deps);
   const rows = await storage.usageEvents.summarizeDaily(parsed.query);
   if (parsed.format === 'json') {
     stdout.write(`${JSON.stringify({ daily: rows }, null, 2)}\n`);
