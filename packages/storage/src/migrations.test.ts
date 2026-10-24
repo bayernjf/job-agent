@@ -453,6 +453,19 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 041（api_tokens 去掉 token_last4；id 重写本身不可逆，见审查 P0-2 / 决策 #27）
+    const tokenColsBefore41 = db.prepare('PRAGMA table_info(api_tokens)').all() as Array<{
+      name: string;
+    }>;
+    expect(tokenColsBefore41.map((c) => c.name)).toContain('token_last4');
+    const result41 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result41.version).toBe('041');
+    const tokenColsAfter41 = db.prepare('PRAGMA table_info(api_tokens)').all() as Array<{
+      name: string;
+    }>;
+    expect(tokenColsAfter41.map((c) => c.name)).not.toContain('token_last4');
+    expect(tokenColsAfter41.map((c) => c.name)).toContain('token_hash'); // 只丢列，不丢表
+
     // 回滚 040（funnel_events 验证漏斗匿名事件表，design-funnel-analytics-20261015）
     const feBefore40 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='funnel_events'")
@@ -805,7 +818,7 @@ describe('migrations', () => {
       .filter((c) => c.pk > 0)
       .map((c) => c.name);
     expect(pkAfter14).toEqual(['id']);
-    let evidenceAfter14 = db
+    const evidenceAfter14 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
       .all() as Array<{ name: string }>;
     expect(evidenceAfter14.map((t) => t.name)).toContain('evidence'); // 只换主键，不丢表
@@ -817,7 +830,7 @@ describe('migrations', () => {
     expect(result13.version).toBe('013');
     const colsAfter13 = db.prepare('PRAGMA table_info(applications)').all() as Array<{ name: string }>;
     expect(colsAfter13.map((c) => c.name)).not.toContain('created_by_account_id');
-    let tablesAfter13 = db
+    const tablesAfter13 = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
       .all() as Array<{ name: string }>;
     expect(tablesAfter13.map((t) => t.name)).toContain('applications'); // 只丢列，不丢表
@@ -852,7 +865,7 @@ describe('migrations', () => {
     // 第零步 0：回滚 009（applications）
     const result9 = rollbackLatestMigration(db, MIGRATIONS_DIR);
     expect(result9.version).toBe('009');
-    let appTables = db
+    const appTables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
       .all() as Array<{ name: string }>;
     expect(appTables.map((t) => t.name)).not.toContain('applications');
