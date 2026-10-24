@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, type TestContext } from 'vitest';
@@ -10,7 +10,7 @@ import type { StorageContext } from './types.js';
 import type { NewApplication, NewJobRunEvent, NewSubmitIntent } from './entities/index.js';
 import type { FunnelEventRecord } from './entities/funnel-event.js';
 import { openPostgres } from './postgres/connection.js';
-import { listMigrationFiles } from './migrations-fs.js';
+import { listMigrationFiles, parseMigrationFile } from './migrations-fs.js';
 
 /**
  * Postgres 仓储行为测试——在真实 Postgres 上验证同一 I*Repository 契约
@@ -1661,6 +1661,44 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
       } finally {
         await admin.client.end({ timeout: 5 });
       }
+    }
+  });
+
+  pgIt('migration 041 rewrites legacy plaintext api token ids without touching hashes', async () => {
+    if (!basePgUrl) throw new Error('PG url not initialized');
+    const schema = `mig041_${randomUUID().slice(0, 8)}`;
+    const admin = openPostgres(basePgUrl, { max: 1 });
+    const up = (file: string) =>
+      parseMigrationFile(readFileSync(resolve(POSTGRES_MIGRATIONS_DIR, file), 'utf8')).up;
+    try {
+      await admin.client.unsafe(`CREATE SCHEMA ${schema}`);
+      // max:1 把会话（含 search_path）固定在同一条连接上，隔离 schema 不碰公共表。
+      await admin.client.unsafe(`SET search_path TO ${schema}`);
+      await admin.client.unsafe(up('027_create_api_tokens.sql'));
+
+      const legacyId = `tkn-legacyPlaintextABCD`;
+      await admin.client.unsafe(
+        `INSERT INTO api_tokens (id, account_id, token_hash, name, expires_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [legacyId, 'acc-1', 'hash-legacy', 'browser extension', '2099-01-01T00:00:00.000Z'],
+      );
+
+      await admin.client.unsafe(up('041_update_api_tokens_id.sql'));
+
+      const rows = await admin.client<
+        Array<{ id: string; token_last4: string; token_hash: string }>
+      >`SELECT id, token_last4, token_hash FROM api_tokens`;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.id).not.toContain('tkn-');
+      expect(rows[0]!.id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      // 指纹取自旧明文 id 末 4 位；哈希原样保留 ⇒ 已签发 Bearer 继续可用
+      expect(rows[0]!.token_last4).toBe('ABCD');
+      expect(rows[0]!.token_hash).toBe('hash-legacy');
+    } finally {
+      await admin.client.unsafe(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => {});
+      await admin.client.end({ timeout: 5 });
     }
   });
 });

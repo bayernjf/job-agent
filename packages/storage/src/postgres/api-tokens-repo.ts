@@ -16,6 +16,7 @@ export class PgApiTokensRepository implements IApiTokensRepository {
   async create(token: NewApiToken): Promise<void> {
     await this.db.insert(t).values({
       id: token.id,
+      tokenLast4: token.tokenLast4,
       accountId: token.accountId,
       tokenHash: token.tokenHash,
       name: token.name,

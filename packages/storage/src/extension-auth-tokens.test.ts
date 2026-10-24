@@ -1,7 +1,8 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { runMigrations } from './sqlite/migrator.js';
+import { parseMigrationFile, runMigrations } from './sqlite/migrator.js';
 import { openSqlite } from './sqlite/connection.js';
 import { SqliteExtensionAuthCodesRepository } from './sqlite/extension-auth-codes-repo.js';
 import { SqliteApiTokensRepository } from './sqlite/api-tokens-repo.js';
@@ -99,6 +100,7 @@ describe('SqliteApiTokensRepository', () => {
     try {
       await s.tokens.create({
         id: 'tkn-aaa',
+        tokenLast4: 'aaab',
         accountId: 'acc-1',
         tokenHash: 'hash-aaa',
         name: 'browser extension',
@@ -117,6 +119,7 @@ describe('SqliteApiTokensRepository', () => {
     try {
       await s.tokens.create({
         id: 'tkn-bbb',
+        tokenLast4: 'bbbc',
         accountId: 'acc-1',
         tokenHash: 'hash-bbb',
         name: 'browser extension',
@@ -124,6 +127,7 @@ describe('SqliteApiTokensRepository', () => {
       });
       await s.tokens.create({
         id: 'tkn-ccc',
+        tokenLast4: 'cccd',
         accountId: 'acc-1',
         tokenHash: 'hash-ccc',
         name: 'browser extension',
@@ -144,6 +148,7 @@ describe('SqliteApiTokensRepository', () => {
     try {
       await s.tokens.create({
         id: 'tkn-slide',
+        tokenLast4: 'slid',
         accountId: 'acc-1',
         tokenHash: 'hash-slide',
         name: 'browser extension',
@@ -163,6 +168,7 @@ describe('SqliteApiTokensRepository', () => {
     try {
       await s.tokens.create({
         id: 'tkn-l1',
+        tokenLast4: 'l111',
         accountId: 'acc-1',
         tokenHash: 'hash-l1',
         name: 'browser extension',
@@ -170,6 +176,7 @@ describe('SqliteApiTokensRepository', () => {
       });
       await s.tokens.create({
         id: 'tkn-l2',
+        tokenLast4: 'l222',
         accountId: 'acc-1',
         tokenHash: 'hash-l2',
         name: 'browser extension',
@@ -177,6 +184,7 @@ describe('SqliteApiTokensRepository', () => {
       });
       await s.tokens.create({
         id: 'tkn-l3',
+        tokenLast4: 'l333',
         accountId: 'acc-2',
         tokenHash: 'hash-l3',
         name: 'browser extension',
@@ -186,6 +194,7 @@ describe('SqliteApiTokensRepository', () => {
 
       const list = await s.tokens.listActiveByAccount('acc-1', NOW);
       expect(list.map((t) => t.id).sort()).toEqual(['tkn-l1']);
+      expect(list[0]!.tokenLast4).toBe('l111');
     } finally {
       s.close();
     }
@@ -196,6 +205,7 @@ describe('SqliteApiTokensRepository', () => {
     try {
       await s.tokens.create({
         id: 'tkn-p1',
+        tokenLast4: 'p111',
         accountId: 'acc-1',
         tokenHash: 'hash-p1',
         name: 'browser extension',
@@ -204,6 +214,7 @@ describe('SqliteApiTokensRepository', () => {
       await s.tokens.revoke('tkn-p1', PAST);
       await s.tokens.create({
         id: 'tkn-p2',
+        tokenLast4: 'p222',
         accountId: 'acc-1',
         tokenHash: 'hash-p2',
         name: 'browser extension',
@@ -211,6 +222,7 @@ describe('SqliteApiTokensRepository', () => {
       });
       await s.tokens.create({
         id: 'tkn-p3',
+        tokenLast4: 'p333',
         accountId: 'acc-1',
         tokenHash: 'hash-p3',
         name: 'browser extension',
@@ -222,6 +234,48 @@ describe('SqliteApiTokensRepository', () => {
       expect(await s.tokens.getActiveByHash('hash-p3', NOW)).toBeDefined();
     } finally {
       s.close();
+    }
+  });
+});
+
+describe('migration 041 (api_tokens id rewrite)', () => {
+  const readMigration = (file: string) => fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+  const up041 = parseMigrationFile(readMigration('041_update_api_tokens_id.sql')).up;
+
+  it('rewrites legacy plaintext ids, backfills the real fingerprint and keeps hashes', async () => {
+    const { client, db } = openSqlite(':memory:');
+    try {
+      client.exec(parseMigrationFile(readMigration('027_create_api_tokens.sql')).up);
+      client.exec(
+        `INSERT INTO api_tokens (id, account_id, token_hash, name, expires_at)
+         VALUES ('tkn-legacyPlaintextABCD', 'acc-1', 'hash-legacy', 'browser extension', '${FUTURE}')`,
+      );
+
+      client.exec(up041);
+
+      const row = client
+        .prepare('SELECT id, token_last4, token_hash FROM api_tokens')
+        .get() as { id: string; token_last4: string; token_hash: string };
+      // id 不再是明文 token，而是随机 UUID
+      expect(row.id).not.toMatch(/^tkn-/);
+      expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      // 指纹来自旧明文 id 的末 4 位（真实的 token 尾），哈希原样保留
+      expect(row.token_last4).toBe('ABCD');
+      expect(row.token_hash).toBe('hash-legacy');
+
+      // 已签发 token 继续可用：鉴权只认 token_hash
+      const repo = new SqliteApiTokensRepository(db);
+      expect((await repo.getActiveByHash('hash-legacy', NOW))?.id).toBe(row.id);
+
+      // 幂等：重跑两条 DML 不会再次改写 UUID id
+      client.exec(
+        `UPDATE api_tokens SET token_last4 = substr(id, -4) WHERE token_last4 = '';
+         UPDATE api_tokens SET id = lower(hex(randomblob(4))) WHERE id LIKE 'tkn-%';`,
+      );
+      const again = client.prepare('SELECT id FROM api_tokens').get() as { id: string };
+      expect(again.id).toBe(row.id);
+    } finally {
+      client.close();
     }
   });
 });
