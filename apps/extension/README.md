@@ -39,5 +39,5 @@ pnpm --filter @jobagent/cli dev analyze <你的GitHub用户名>
 ## 已知限制
 
 - **Workday**：求职端岗位详情页普遍外链官网或仅渲染导航壳（实测 NVIDIA/GM/Walmart/FMC 四家均无法取得可填表单），字段定位已支持 shadow DOM，待找到直接渲染表单的租户页再端到端验证。
-- **Greenhouse/Lever 自定义问题**：summary→question_* 映射已落地（`findLabeledQuestion` + 关键词表，含动机类问题）；cover_letter 为 file input 时自动跳过、改走问题文本字段；真实公司问题措辞不在词表内、薪资/授权类字段刻意不填仍是预期边界。
+- **Greenhouse/Lever 自定义问题**：summary→自定义问题映射已落地（Greenhouse `question_*` / Lever 新版 `cards[<uuid>][fieldN]`，`findLabeledQuestion` + `findLeverSummaryCard` + 关键词表，含动机类问题）；cover_letter 为 file input 时自动跳过、改走问题文本字段；真实公司问题措辞不在词表内、薪资/授权类字段刻意不填仍是预期边界。
 - 填充命中依赖画像与表单字段语义匹配；本地补填字段未配置时对应表单项留空，请手动补充。

@@ -21,7 +21,7 @@ ATS 是招聘方用来管理「岗位发布 → 申请收集 → 筛选 → 面�
 | ATS | 类型 | 实现状态 | 能力边界 |
 | --- | --- | --- | --- |
 | **Greenhouse** | 现代 SaaS | ✅ 完整 + 真机验证 | 7 类标准字段 + 动机问题（why_company/why_role）识别；真实 Vercel Greenhouse 岗位页端到端实测通过（item114，2026-10-04） |
-| **Lever** | 现代 SaaS | ✅ 完整 + 真机验证 | name 直填 + `questions[]` 数组（含 how_did_you_hear 语义防误填，2026-10-04 修正） |
+| **Lever** | 现代 SaaS | ✅ 完整 + 真机验证 | name 直填 + `questions[]` 数组（含 how_did_you_hear 语义防误填，2026-10-04 修正）；**2026-10-27 修复新版 `cards[<uuid>][fieldN]` 自定义问题/求职信定位**（`findLeverSummaryCard` 读可见的 `.application-label .text` + `SUMMARY_HINTS` 命中即写，排除 "around your answer" 次级说明框防 `additional` hint 误写） |
 | **Ashby** | 现代 SaaS | ✅ 完整 + 真机验证 | 2026-10-10 落地：系统字段 id 前缀 `_systemfield_`（name/email/resume 等）；GitHub/LinkedIn/Portfolio 等 URL 槽在不同公司被配置为**自定义问题**（Linear/Supabase 实测），按 label 文本定位（新增通用 `findFieldsByLabel`）；求职信只写动机/自我介绍类自定义问题（UUID id + label 命中 SUMMARY_HINTS），不写引流/国家/授权类；location 类字段暂不填（宁缺毋滥） |
 | **Workday** | 大企业套件（招聘模块） | ✅ 完整 + 真机验证 | 2026-10-10 落地：字段定位键改用 **`data-automation-id`**（`legal-name-section_firstName`/`lastName`/`email`/`phoneNumber` 等；`index.ts findFields` 匹配源已加该属性）；Western 名/姓、邮箱、电话、地点、求职信按关键词匹配；**显式排除**中文名槽（`firstNameLocal`/`lastNameLocal`，EXCLUDE_LOCAL_NAME）与 country/type/extension 邻居，不自动上传简历、不勾 consent、不点提交（决策 #15/#20 硬边界）。真机验证：真实 GDIT guest 表单（`gdit.wd5.myworkdayjobs.com introduceYourself`）FAB 注入 + 加载画像 + 一键填充，`legal-name-section_firstName/lastName` 写入 "Demo"/"Dev"、中文名槽未误写。已知边界：Intel 等租户走账号制（Create Account，非 guest 可填表单）、NVIDIA/Tesla/Starbucks/Zoom/Adobe 跳 community.workday.com 死路——非本适配器缺陷，属租户配置差异 |
 
@@ -52,7 +52,7 @@ iCIMS、Oracle Taleo、SAP SuccessFactors、BambooHR（HR 套件内置招聘模�
 
 ## 4. 已知记录（不重复展开）
 
-- **真实 DOM 回归（2026-10-15 落地）**：`tests/fixtures/ats/` 存 4 份真实申请页样本（Greenhouse embed SSR / Lever `/apply` SSR ×2 租户 / Ashby SPA 渲染；Workday 因账号门槛维持 fake-doc 覆盖），`apps/extension/src/ats/real-dom-regression.test.ts` 在样本上钉 detect 归属 + 关键字段落值 + 防误写；重抓样本＝`node tools/capture-ats-samples.mjs`（刻意行为，须审阅测试断言是否同步）。day-one 即抓出并修复 detect 顺序 bug（见 §2 补记）；Lever `cards[<uuid>][fieldN]` letter 漂移钉住未修，修复入口见 [deferred-items](deferred-items.md) 平台与工程线。
+- **真实 DOM 回归（2026-10-15 落地）**：`tests/fixtures/ats/` 存 4 份真实申请页样本（Greenhouse embed SSR / Lever `/apply` SSR ×2 租户 / Ashby SPA 渲染；Workday 因账号门槛维持 fake-doc 覆盖），`apps/extension/src/ats/real-dom-regression.test.ts` 在样本上钉 detect 归属 + 关键字段落值 + 防误写；重抓样本＝`node tools/capture-ats-samples.mjs`（刻意行为，须审阅测试断言是否同步）。day-one 即抓出并修复 detect 顺序 bug（见 §2 补记）；Lever `cards[<uuid>][fieldN]` letter 漂移**已于 2026-10-27 修复**（`findLeverSummaryCard` 读 `.application-label .text`，动机类 card 写入由 `ats.test.ts` 合成 JSDOM 用例覆盖，真实样本三道 card 均非动机类故仍空），[deferred-items](deferred-items.md) 该条已标 ✅。
 - 扩展真机安装/试用/跨端同步：`apps/extension/INSTALL.md` + `apps/extension/README.md`（handoff item46）；
 - Workday 真人验证法、CWS 上架素材：handoff「已知限制 / 待核实」；
 - 扩展 E2E 机制与 ATS 模拟页：`design-extension-e2e-20260914.md`；
