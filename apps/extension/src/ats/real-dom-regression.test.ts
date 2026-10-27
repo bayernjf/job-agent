@@ -171,9 +171,10 @@ describe('真实 ATS DOM 回归（tests/fixtures/ats）', () => {
     expect(val('location')).toBe(LOCAL.location);
     expect(val('urls[LinkedIn]')).toBe(LOCAL.linkedinUrl);
 
-    // 钉住已知漂移（deferred：Lever 自定义问题已从 questions[<uuid>] 改名 cards[<uuid>][fieldN]，
-    // letter 匹配落空）：修复 lever.ts 的 letter 匹配前，cards 自由文本必须保持空；
-    // 修复后应把此处改为断言命中 SUMMARY_HINTS 的 card 被写入。
+    // 钉住 Lever 新版 cards[<uuid>][fieldN] 结构：定位已支持（findLeverSummaryCard，见 lever.ts），
+    // 但 sonarsource 样本的三道 card（office/sponsorship/notice period）均非动机类、
+    // 不命中 SUMMARY_HINTS，故仍须保持空；动机类 card 的写入由 ats.test.ts 的合成 JSDOM
+    // 用例覆盖（真实样本无法覆盖该分支）。
     const cards = Array.from(doc.querySelectorAll('textarea[name^="cards["]'));
     expect(cards.length).toBeGreaterThan(0);
     for (const el of cards) expectEmpty(el, `textarea ${el.getAttribute('name')}`);

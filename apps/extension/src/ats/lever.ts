@@ -6,7 +6,31 @@
  */
 import type { ExportableProfile } from '@jobagent/shared';
 import type { AtsAdapter, FillValue, LocalFields } from './index.js';
-import { findFields, findLabeledQuestion, toFillValues, valueFor } from './index.js';
+import { findFields, findLabeledQuestion, norm, SUMMARY_HINTS, toFillValues, valueFor } from './index.js';
+
+/**
+ * 定位 Lever 新版自定义问题卡片（2026 起 `questions[<uuid>]` 改名 `cards[<uuid>][fieldN]`）。
+ * 问题文本不再用 `<label>`，而是可见渲染在 `.application-question` 容器内的
+ * `.application-label .text`（textarea 无 id/for 关联）；命中 SUMMARY_HINTS 才返回。
+ * 只匹配 `textarea[name^="cards["]`，天然排除 baseTemplate（那是 hidden input，非 textarea）。
+ */
+function findLeverSummaryCard(doc: Document): HTMLTextAreaElement | null {
+  for (const el of Array.from(doc.querySelectorAll('textarea[name^="cards["]'))) {
+    const container = el.closest('.application-question');
+    const label =
+      container?.querySelector('.application-label .text') ??
+      container?.querySelector('.application-label');
+    const text = label?.textContent ?? '';
+    // Lever 的次级说明框（"If you have additional details around your answer, please
+    // share below."）是对上一个确认/是非题的补充，不是动机/自我介绍；它的 "additional"
+    // 会命中 SUMMARY_HINTS 造成误写（2026-10 sonarsource 真实样本 field1），先排除。
+    if (/around your answer/i.test(text)) continue;
+    if (SUMMARY_HINTS.some((hint) => norm(text).includes(hint))) {
+      return el as HTMLTextAreaElement;
+    }
+  }
+  return null;
+}
 
 export const leverAdapter: AtsAdapter = {
   id: 'lever',
@@ -53,7 +77,8 @@ export const leverAdapter: AtsAdapter = {
     const letter = valueFor(values, 'cover_letter') ?? valueFor(values, 'summary');
     if (letter) {
       const named = findFields(doc, ['cover_letter'])[0] ?? null;
-      const question = findLabeledQuestion(doc, /questions\[|question_/i);
+      const question =
+        findLabeledQuestion(doc, /questions\[|question_/i) ?? findLeverSummaryCard(doc);
       for (const el of new Set([named, question].filter((x): x is HTMLInputElement | HTMLTextAreaElement => !!x))) {
         el.value = letter;
         el.dispatchEvent(new Event('input', { bubbles: true }));
