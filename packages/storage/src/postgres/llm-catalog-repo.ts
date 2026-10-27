@@ -30,6 +30,9 @@ export class PgLlmCatalogRepository implements ILlmCatalogRepository {
           isDefault: model.isDefault,
           sortOrder: model.sortOrder,
           modalities: JSON.stringify(model.modalities),
+          source: model.source ?? 'builtin',
+          revision: model.revision ?? null,
+          assignmentId: model.assignmentId ?? null,
           createdAt: model.createdAt,
           updatedAt: model.updatedAt,
         });
