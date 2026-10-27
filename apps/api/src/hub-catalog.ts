@@ -17,6 +17,7 @@ import {
   type ModelKit,
   type ResolvedModel,
   type TestResult,
+  postUsage,
 } from '@model-hub/model-kit';
 import {
   LlmCoverLetterProvider,
@@ -72,6 +73,18 @@ export interface HubCatalog {
     alias: string,
     opts?: { deep?: boolean },
   ): ReturnType<ModelKit['testConnection']>;
+  /**
+   * 把内置面一次成功调用的用量上报到 hub（POST /pub/v1/usage，含
+   * assignment_id）。fire-and-forget：解析/上报失败绝不影响主链路。
+   */
+  reportUsage(input: HubUsageInput): Promise<void>;
+}
+
+export interface HubUsageInput {
+  feature: string;
+  assignmentId: string;
+  promptTokens?: number | undefined;
+  completionTokens?: number | undefined;
 }
 
 /** 投影文本模型 → 本地目录行（纯元数据；凭证不进表）。 */
@@ -196,6 +209,22 @@ export async function createHubCatalog(
     return { revision, pulled: textModels.length, synced: rows.length };
   };
 
+  const reportUsage = async (input: HubUsageInput): Promise<void> => {
+    const model = kit
+      .list('text')
+      .find((m) => m.assignmentId === input.assignmentId);
+    if (!model) return;
+    await postUsage(config.hubUrl, config.token, config.fetchImpl ?? fetch, {
+      project: 'job-agent',
+      feature: input.feature,
+      billingSource: 'builtin',
+      model,
+      inputTokens: input.promptTokens,
+      outputTokens: input.completionTokens,
+      httpStatus: 200,
+    });
+  };
+
   const resolveBuiltin = async (): Promise<ResolvedBuiltin | null> => {
     let primary: ResolvedModel;
     try {
@@ -223,5 +252,6 @@ export async function createHubCatalog(
     ping: () => kit.pingHub(),
     test: (alias, opts) =>
       kit.testConnection(alias, { deep: opts?.deep, driverFactory }),
+    reportUsage,
   };
 }

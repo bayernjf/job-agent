@@ -832,6 +832,7 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
         }),
         ping: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['ping']>,
         test: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['test']>,
+        reportUsage: async () => {},
       };
       const deps: ApiDeps = {
         repos,

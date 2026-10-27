@@ -159,6 +159,15 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
             completionTokens: usageHolder.current?.completionTokens ?? null,
             quantity: null,
           });
+          // hub 模式：内置面用量同步到 hub（含 assignment_id）；BYOK 不上报。
+          if (llm.assignmentId && llm.source === 'builtin') {
+            await d.hubCatalog?.reportUsage({
+              feature: 'resume_polish',
+              assignmentId: llm.assignmentId,
+              promptTokens: usageHolder.current?.promptTokens ?? undefined,
+              completionTokens: usageHolder.current?.completionTokens ?? undefined,
+            });
+          }
         }
       }
     }
@@ -286,6 +295,15 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
         completionTokens: usageHolder.current?.completionTokens ?? null,
         quantity: null,
       });
+      // hub 模式：内置面用量同步到 hub（含 assignment_id）；BYOK 不上报。
+      if (llm.assignmentId && llm.source === 'builtin') {
+        await d.hubCatalog?.reportUsage({
+          feature: 'cover_letter',
+          assignmentId: llm.assignmentId,
+          promptTokens: usageHolder.current?.promptTokens ?? undefined,
+          completionTokens: usageHolder.current?.completionTokens ?? undefined,
+        });
+      }
       return c.json({
         subject: out.subject,
         // E1 决策 #20-4：固定 AI 辅助投递披露，模型无法省略。

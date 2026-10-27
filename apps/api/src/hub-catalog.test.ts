@@ -82,11 +82,14 @@ const catalog: CatalogResponse = {
   ],
 };
 
-/** 假 fetch：hub models 走 304（有 ETag 时）/ 200；厂商 chat 回最小 completion。 */
-function fakeFetch(fetchCalls: Array<{ url: string }>): typeof fetch {
+/** 假 fetch：hub models 走 304（有 ETag 时）/ 200；usage 204；厂商 chat 回最小 completion。 */
+function fakeFetch(
+  fetchCalls: Array<{ url: string; body?: string }>,
+): typeof fetch {
   return (async (input, init) => {
     const url = String(input);
-    fetchCalls.push({ url });
+    const body = typeof init?.body === 'string' ? init.body : undefined;
+    fetchCalls.push({ url, body });
     if (url.includes('/pub/v1/models')) {
       const headers = (init?.headers as Record<string, string> | undefined) ?? {};
       if (headers['If-None-Match']) return new Response(null, { status: 304 });
@@ -94,6 +97,9 @@ function fakeFetch(fetchCalls: Array<{ url: string }>): typeof fetch {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+    if (url.includes('/pub/v1/usage')) {
+      return new Response(null, { status: 202 });
     }
     return new Response(
       JSON.stringify({
@@ -108,7 +114,7 @@ function fakeFetch(fetchCalls: Array<{ url: string }>): typeof fetch {
 }
 
 let dir: string;
-let fetchCalls: Array<{ url: string }>;
+let fetchCalls: Array<{ url: string; body?: string }>;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'hub-catalog-'));
@@ -213,5 +219,36 @@ describe('hub catalog sync', () => {
     expect(builtin?.model.assignmentId).toBe('asn_0001noul');
     expect(builtin?.cover).not.toBeNull();
     expect(builtin?.polish).not.toBeNull();
+  });
+
+  it('reports built-in usage to the hub with assignment_id', async () => {
+    const { hub } = await setup();
+    await hub.sync();
+    await hub.reportUsage({
+      feature: 'cover_letter',
+      assignmentId: 'asn_0001noul',
+      promptTokens: 12,
+      completionTokens: 34,
+    });
+    const usageCall = fetchCalls.find((c) => c.url.includes('/pub/v1/usage'));
+    expect(usageCall).not.toBeUndefined();
+    const body = JSON.parse(usageCall?.body ?? '{}') as Record<string, unknown>;
+    expect(body).toMatchObject({
+      feature: 'cover_letter',
+      billing_source: 'builtin',
+      assignment_id: 'asn_0001noul',
+      input_tokens: 12,
+      output_tokens: 34,
+    });
+  });
+
+  it('does not report usage for an unknown assignment', async () => {
+    const { hub } = await setup();
+    await hub.sync();
+    await hub.reportUsage({
+      feature: 'cover_letter',
+      assignmentId: 'asn_does_not_exist',
+    });
+    expect(fetchCalls.some((c) => c.url.includes('/pub/v1/usage'))).toBe(false);
   });
 });
