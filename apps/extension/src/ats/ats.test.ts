@@ -3,6 +3,7 @@
  * 不依赖真实浏览器 DOM，用最小 fake Document。
  */
 import { describe, expect, it } from 'vitest';
+import { JSDOM } from 'jsdom';
 import type { ExportableProfile } from '@jobagent/shared';
 import { detectAts, findFields, findFieldsByLabel, listAdapters, toFillValues, valueFor } from './index.js';
 
@@ -561,6 +562,46 @@ describe('lever summary → questions[*] mapping', () => {
     expect(written).toBe(1);
     expect((why as unknown as { value: string }).value).toBe('Summary body.');
     expect((salary as unknown as { value: string }).value).toBe('');
+  });
+
+  // Lever 2026 改版：自定义问题从 questions[<uuid>] 改为 cards[<uuid>][fieldN]，
+  // 问题文本可见渲染在 .application-label .text（非 <label>）。用 JSDOM 构造合成
+  // card 结构验证 findLeverSummaryCard 命中 SUMMARY_HINTS 后写入（真实样本
+  // sonarsource/alluxio 的三道 card 均非动机类，无法在样本上覆盖此分支）。
+  it('writes summary into cards[<uuid>][fieldN] custom question (2026 Lever rename)', () => {
+    const dom = new JSDOM(`
+      <form id="job-application-form">
+        <div class="application-question">
+          <div class="application-label"><div class="text">Why do you want to work here?</div></div>
+          <div class="application-field"><textarea name="cards[uuid-why][field0]"></textarea></div>
+        </div>
+        <div class="application-question">
+          <div class="application-label"><div class="text">What is your salary expectation?</div></div>
+          <div class="application-field"><textarea name="cards[uuid-salary][field0]"></textarea></div>
+        </div>
+      </form>
+    `);
+    const doc = dom.window.document as unknown as Document;
+    // lever.fill 用 `new Event(...)` 派发 input/change，需要 JSDOM 的 Event；
+    // 保存并恢复全局 Event，避免破坏同文件内依赖 Node 全局 Event 的其他用例。
+    const g = globalThis as Record<string, unknown>;
+    const prevEvent = g.Event;
+    g.Event = dom.window.Event;
+    try {
+      const values = [{ key: 'summary' as const, value: 'TypeScript 后端工程师，开源维护者。' }];
+      const written = leverAdapter.fill(doc, values);
+      expect(written).toBe(1);
+      expect(
+        (doc.querySelector('textarea[name="cards[uuid-why][field0]"]') as HTMLTextAreaElement).value,
+      ).toBe('TypeScript 后端工程师，开源维护者。');
+      expect(
+        (doc.querySelector('textarea[name="cards[uuid-salary][field0]"]') as HTMLTextAreaElement)
+          .value,
+      ).toBe('');
+    } finally {
+      if (prevEvent === undefined) Reflect.deleteProperty(g, 'Event');
+      else g.Event = prevEvent;
+    }
   });
 });
 
