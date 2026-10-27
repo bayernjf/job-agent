@@ -8,9 +8,16 @@
  * - ADMIN_ACCOUNT_LOGINS 白名单：登录自动置 is_admin，/auth/me 回 canManageLlmCatalog
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeLlmClient, LlmCoverLetterProvider, createCatalogCache } from '@jobagent/llm';
+import {
+  FakeLlmClient,
+  LlmCoverLetterProvider,
+  LlmResumePolishProvider,
+  createCatalogCache,
+} from '@jobagent/llm';
 import { createStorage, type StorageContext } from '@jobagent/storage';
+import type { ResolvedModel } from '@model-hub/model-kit';
 import { createApp, type ApiDeps } from './index.js';
+import type { HubCatalog } from './hub-catalog.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';
 import { loadAuthConfig } from './auth-config.js';
@@ -796,6 +803,51 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
       const body = (await res.json()) as { provenance: { provider: string } };
       expect(body.provenance.provider).toBe('fake');
       expect(fetchStub).not.toHaveBeenCalled();
+    } finally {
+      if (prevAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
+      else process.env.ADMIN_ACCOUNT_LOGINS = prevAdmin;
+    }
+  });
+
+  it('hub 分配即授权：非白名单用户经 hub 内置面成功（无需白名单）', async () => {
+    // bob is NOT in ADMIN_ACCOUNT_LOGINS, but hub authorization replaces the
+    // allow-list: any signed-in user with a projected text model is authorized.
+    const prevAdmin = process.env.ADMIN_ACCOUNT_LOGINS;
+    process.env.ADMIN_ACCOUNT_LOGINS = 'someone-else';
+    try {
+      const repos = await createStorage({ sqlitePath: ':memory:' });
+      const jobRowId = await seedResume(repos);
+      const fakeClient = new FakeLlmClient(() => ({
+        subject: 'Re: role',
+        body: 'Hub draft body.',
+      }));
+      const model = { assignmentId: 'asn_0001noul', alias: 'noul' } as unknown as ResolvedModel;
+      const hubCatalog: HubCatalog = {
+        kit: { revision: 42 } as unknown as HubCatalog['kit'],
+        sync: async () => ({ revision: 42, pulled: 1, synced: 1 }),
+        resolveBuiltin: async () => ({
+          cover: new LlmCoverLetterProvider(fakeClient),
+          polish: new LlmResumePolishProvider(fakeClient),
+          model,
+        }),
+        ping: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['ping']>,
+        test: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['test']>,
+      };
+      const deps: ApiDeps = {
+        repos,
+        authConfig: loadAuthConfig({}),
+        githubAuthProvider: new FakeAuthProvider(BOB),
+        llmCatalogCache: createCatalogCache(),
+        llmEncKey: ENC_KEY,
+        hubCatalog,
+      };
+      const app = await createApp(deps);
+      const cookies = await loginAs(BOB, repos, app);
+
+      const res = await postCoverLetter(app, cookies, jobRowId);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { provenance: { provider: string } };
+      expect(body.provenance.provider).toBe('fake');
     } finally {
       if (prevAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
       else process.env.ADMIN_ACCOUNT_LOGINS = prevAdmin;

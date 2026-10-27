@@ -13,10 +13,22 @@
  */
 import {
   initModelKit,
+  type DriverFactory,
   type ModelKit,
   type ResolvedModel,
+  type TestResult,
 } from '@model-hub/model-kit';
-import { providerFromBaseUrl, type CatalogCache } from '@jobagent/llm';
+import {
+  LlmCoverLetterProvider,
+  LlmResumePolishProvider,
+  OpenAICompatibleClient,
+  providerFromBaseUrl,
+  type CatalogCache,
+  type CoverLetterProvider,
+  type LlmFetch,
+  type MeteredResumePolishProvider,
+} from '@jobagent/llm';
+import { LlmResponseError } from '@jobagent/llm';
 import type { NewLlmCatalogModel } from '@jobagent/storage';
 import type { LlmCatalogModel } from '@jobagent/shared';
 import type { ApiRepos } from './routes/types.js';
@@ -37,10 +49,22 @@ export interface HubSyncResult {
   synced: number;
 }
 
+export interface ResolvedBuiltin {
+  cover: CoverLetterProvider;
+  polish: MeteredResumePolishProvider;
+  /** 解析到的 hub 投影模型（含 assignmentId/定价，供用量上报）。 */
+  model: ResolvedModel;
+}
+
 export interface HubCatalog {
   readonly kit: ModelKit;
   /** 拉取最新投影并同步到本地表 + 刷新缓存。 */
   sync(): Promise<HubSyncResult>;
+  /**
+   * 解析内置面 provider：取 hub 投影的主文本模型（凭证来自 kit 缓存），
+   * 构造 cover/polish。无文本模型时返回 null（调用方按 none 处理）。
+   */
+  resolveBuiltin(): Promise<ResolvedBuiltin | null>;
   /** L3：验证 token 与清单可达。 */
   ping(): ReturnType<ModelKit['pingHub']>;
   /** L4：按 alias 解析并跑最小真实调用。 */
@@ -91,6 +115,57 @@ function projectToRows(
   });
 }
 
+/** 把 LlmClient 失败映射为 L4 结果错误码。 */
+function mapClientError(err: unknown): TestResult['error'] {
+  if (err instanceof LlmResponseError) {
+    const status = err.detail?.status;
+    if (status === 401) return { code: 'unauthorized' };
+    if (status === 403) return { code: 'forbidden' };
+    if (status === 404) return { code: 'model_not_found' };
+    if (status === 429) return { code: 'rate_limited' };
+    if (err.detail?.kind === 'timeout') return { code: 'network', hint: 'timed out' };
+    return { code: 'server_error', detail: err.message };
+  }
+  return { code: 'network', detail: err instanceof Error ? err.message : String(err) };
+}
+
+/**
+ * L4 driver factory：用 job-agent 自己的 LlmClient（OpenAICompatibleClient）
+ * 跑最小 JSON 调用，验证模型能完成 job-agent 实际需要的 JSON 任务，而不是
+ * 走 model-kit 的通用 probe。fetchImpl 透传（测试用假 fetch，生产用真实 fetch）。
+ */
+function createLlmDriverFactory(fetchImpl?: LlmFetch): DriverFactory {
+  return (model: ResolvedModel) => ({
+    probe: async () => {
+      const start = Date.now();
+      const client = new OpenAICompatibleClient({
+        baseUrl: model.baseUrl,
+        apiKey: model.apiKey,
+        model: model.model,
+        provider: providerFromBaseUrl(model.baseUrl),
+        ...(fetchImpl ? { fetchImpl } : {}),
+      });
+      try {
+        await client.generateJson({
+          messages: [
+            { role: 'system', content: 'Reply with a JSON object.' },
+            { role: 'user', content: 'Return {"ok":true}' },
+          ],
+          temperature: 0,
+        });
+        return { ok: true, latency_ms: Date.now() - start, scope: 'L4' };
+      } catch (err) {
+        return {
+          ok: false,
+          latency_ms: Date.now() - start,
+          scope: 'L4',
+          error: mapClientError(err),
+        };
+      }
+    },
+  });
+}
+
 /**
  * 构建 hub 目录同步服务：初始化 model-kit（拉取 + 缓存兜底），但不立即写库
  * （首次写库由 sync() 触发，通常在启动后或 admin 手动同步时）。
@@ -100,6 +175,8 @@ export async function createHubCatalog(
   repos: ApiRepos,
   catalogCache: CatalogCache,
 ): Promise<HubCatalog> {
+  const driverFactory = createLlmDriverFactory(config.fetchImpl as LlmFetch | undefined);
+
   const kit = await initModelKit({
     hubUrl: config.hubUrl,
     token: config.token,
@@ -119,10 +196,32 @@ export async function createHubCatalog(
     return { revision, pulled: textModels.length, synced: rows.length };
   };
 
+  const resolveBuiltin = async (): Promise<ResolvedBuiltin | null> => {
+    let primary: ResolvedModel;
+    try {
+      primary = kit.primary('text');
+    } catch {
+      return null;
+    }
+    const client = new OpenAICompatibleClient({
+      baseUrl: primary.baseUrl,
+      apiKey: primary.apiKey,
+      model: primary.model,
+      provider: providerFromBaseUrl(primary.baseUrl),
+    });
+    return {
+      cover: new LlmCoverLetterProvider(client),
+      polish: new LlmResumePolishProvider(client),
+      model: primary,
+    };
+  };
+
   return {
     kit,
     sync,
+    resolveBuiltin,
     ping: () => kit.pingHub(),
-    test: (alias, opts) => kit.testConnection(alias, { deep: opts?.deep }),
+    test: (alias, opts) =>
+      kit.testConnection(alias, { deep: opts?.deep, driverFactory }),
   };
 }

@@ -97,7 +97,9 @@ function fakeFetch(fetchCalls: Array<{ url: string }>): typeof fetch {
     }
     return new Response(
       JSON.stringify({
-        choices: [{ message: { content: 'pong' } }],
+        // L4 runs through the LlmClient, which requires a JSON object body.
+        choices: [{ message: { content: '{"ok":true}' } }],
+        usage: { prompt_tokens: 3, completion_tokens: 1 },
         model: 'ark-code-latest',
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -201,5 +203,15 @@ describe('hub catalog sync', () => {
     const test = await hub.test('noul');
     expect(test.ok).toBe(true);
     expect(test.scope).toBe('L4');
+  });
+
+  it('resolves the built-in providers from the primary text model', async () => {
+    const { hub } = await setup();
+    const builtin = await hub.resolveBuiltin();
+    expect(builtin).not.toBeNull();
+    expect(builtin?.model.alias).toBe('noul');
+    expect(builtin?.model.assignmentId).toBe('asn_0001noul');
+    expect(builtin?.cover).not.toBeNull();
+    expect(builtin?.polish).not.toBeNull();
   });
 });
