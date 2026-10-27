@@ -41,6 +41,7 @@ import type { CatalogCache, CoverLetterProvider } from '@jobagent/llm';
 import type { ClaimOneResult } from '@jobagent/worker';
 import type { MaintenanceTask } from '../cron-jobs.js';
 import type { AgentConfig } from '../agent-config.js';
+import type { HubCatalog } from '../hub-catalog.js';
 
 export interface ApiRepos {
   jobs: IAnalysisJobsRepository;
@@ -142,6 +143,12 @@ export interface ApiDeps {
    * 测试注入固定缓存避免读库。
    */
   llmCatalogCache?: CatalogCache;
+  /**
+   * model-hub 目录同步服务（W5-1）。
+   * 不传（undefined）= 按 MODEL_HUB_URL/TOKEN 自动创建（未配置则为 null）；
+   * 显式注入 = 测试用 fake hub；显式 null = 强制不启用 hub。
+   */
+  hubCatalog?: HubCatalog | null;
   /**
    * BYOK 密钥加密钥（LLM_ENC_KEY）。不传 = 读环境变量；显式传 null = 强制禁用
    * BYOK 保存（503 ENCRYPTION_NOT_CONFIGURED）。

@@ -48,6 +48,8 @@ import { GiteeAuthProvider } from './gitee-auth.js';
 import { configureOutboundProxy } from './proxy-bootstrap.js';
 import { runStartupSchemaCheck, formatSchemaWarning } from './startup-check.js';
 import { loadAgentConfig } from './agent-config.js';
+import { createHubCatalog } from './hub-catalog.js';
+import type { HubCatalog } from './hub-catalog.js';
 import {
   clientIp,
   hashIp,
@@ -240,6 +242,47 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
       console.warn('[llm] catalog preload failed, using code defaults:', describeError(err));
     }
   }
+  // model-hub 目录同步（W5-1）：未注入时按 MODEL_HUB_URL/TOKEN 自动装配；
+  // 配置齐全且未置 kill switch 时创建同步服务并在启动时同步一次。未配置则为 null，
+  // 内置面维持 LLM_* env（迁移期兜底）。初始化或同步失败均不致命：kit 有缓存兜底，
+  // admin 可手动重试。
+  let hubCatalog: HubCatalog | null;
+  if (deps.hubCatalog !== undefined) {
+    hubCatalog = deps.hubCatalog;
+  } else {
+    const hubUrl = (process.env.MODEL_HUB_URL ?? '').trim();
+    const hubToken = (process.env.MODEL_HUB_TOKEN ?? '').trim();
+    const hubDisabled = ['1', 'true'].includes(
+      (process.env.MODEL_HUB_DISABLED ?? '').trim().toLowerCase(),
+    );
+    if (hubUrl && hubToken && !hubDisabled) {
+      const cachePath =
+        (process.env.MODEL_HUB_CACHE_PATH ?? '').trim() ||
+        './data/model-hub-cache.json';
+      try {
+        const hub = await createHubCatalog(
+          { hubUrl, token: hubToken, cachePath },
+          repos,
+          catalogCache,
+        );
+        try {
+          const result = await hub.sync();
+          console.log(
+            `[hub] catalog synced: revision=${result.revision}, ${result.synced} text model(s)`,
+          );
+        } catch (err) {
+          console.warn('[hub] initial catalog sync failed:', describeError(err));
+        }
+        hubCatalog = hub;
+      } catch (err) {
+        console.warn('[hub] failed to initialize catalog sync:', describeError(err));
+        hubCatalog = null;
+      }
+    } else {
+      hubCatalog = null;
+    }
+  }
+
   const llmEncKey = deps.llmEncKey ?? process.env.LLM_ENC_KEY ?? null;
   // 用量计量 recorder（决策 #25 ④ Wave A）：fail-open 薄壳，埋点失败只进日志；
   // 测试可注入 fake 断言埋点或 null recorder 显式关闭。
@@ -259,6 +302,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     githubProvider,
     giteeProvider,
     catalogCache,
+    hubCatalog,
     llmEncKey,
     polishProvider,
     coverLetterProvider,

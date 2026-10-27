@@ -13,6 +13,7 @@ import type { AuthConfig } from '../auth-config.js';
 import type { DemoConfig } from '../demo-config.js';
 import type { ApiDeps, ApiRepos } from './types.js';
 import type { FunnelRecorder, UsageRecorder } from '@jobagent/storage';
+import type { HubCatalog } from '../hub-catalog.js';
 
 export interface RouteDeps {
   /** 全部仓储（生产 createStorage / 测试内存库） */
@@ -36,6 +37,8 @@ export interface RouteDeps {
   coverLetterProvider: CoverLetterProvider | null;
   /** 内置模型目录缓存（LLM 供给 P0；启动加载一次 + admin 写后显式刷新） */
   catalogCache: CatalogCache;
+  /** model-hub 目录同步（W5-1；未配置为 null，维持 env 内置面） */
+  hubCatalog: HubCatalog | null;
   /** BYOK 密钥加密钥（LLM_ENC_KEY env；null=未配置，BYOK 保存端点 503） */
   llmEncKey: string | null;
   /** OAuth state 签名密钥（AUTH_STATE_SECRET 或进程随机） */
