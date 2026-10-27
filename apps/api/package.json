@@ -29,6 +29,7 @@
     "@jobagent/shared": "workspace:*",
     "@jobagent/storage": "workspace:*",
     "@jobagent/worker": "workspace:*",
+    "@model-hub/model-kit": "file:../../../model-hub/packages/model-kit",
     "hono": "^4.13.11",
     "undici": "^7.30.1",
     "web-push": "^3.6.7",
