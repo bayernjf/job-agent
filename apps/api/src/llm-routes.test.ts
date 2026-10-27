@@ -778,6 +778,58 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer sk-byok-key'); // gitleaks:allow
   });
 
+  it('回归：hub 模式下 BYOK 仍优先于 hub 内置面', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    // A hub that would otherwise provide a built-in provider.
+    const builtinClient = new FakeLlmClient(() => ({
+      subject: 'built-in',
+      body: 'should not be used',
+    }));
+    const hubCatalog: HubCatalog = {
+      kit: { revision: 42 } as unknown as HubCatalog['kit'],
+      sync: async () => ({ revision: 42, pulled: 1, synced: 1 }),
+      resolveBuiltin: async () => ({
+        cover: new LlmCoverLetterProvider(builtinClient),
+        polish: new LlmResumePolishProvider(builtinClient),
+        model: { assignmentId: 'asn_hub', alias: 'hub' } as unknown as ResolvedModel,
+      }),
+      ping: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['ping']>,
+      test: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['test']>,
+      reportUsage: async () => {},
+    };
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      hubCatalog,
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
+    // User saves their own BYOK.
+    await app.request('/account/llm-config', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: cookieHeader(cookies, 'jobagent_session'),
+      },
+      body: JSON.stringify({
+        baseUrl: 'https://byok.example.com/v1',
+        model: 'byok-model',
+        apiKey: 'sk-byok-key', // gitleaks:allow
+      }),
+    });
+
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provenance: { provider: string; model: string } };
+    // BYOK wins over the hub built-in face.
+    expect(body.provenance.provider).toBe('custom');
+    expect(body.provenance.model).toBe('byok-model');
+  });
+
   it('内置回落：未配 BYOK → 用服务端内置 provider（注入 fake；内置仅白名单账号可用）', async () => {
     const prevAdmin = process.env.ADMIN_ACCOUNT_LOGINS;
     process.env.ADMIN_ACCOUNT_LOGINS = 'bob';
