@@ -8,6 +8,7 @@ import {
   preferenceToMatchCriteria,
   selectCandidatesWithReasonsForPreference,
   type ExcludedCandidate,
+  type PlannedIntent,
 } from '@jobagent/agent-core';
 import {
   buildCoverLetter,
@@ -37,6 +38,7 @@ import type { LlmTokenUsage } from '@jobagent/llm';
 import type {
   AbilityProfile,
   CoverLetterDraft,
+  EvidenceItem,
   JobPosting,
   MatchReport,
   MatchScoreTier,
@@ -648,6 +650,123 @@ export async function overrideGateCandidate(
   return { ok: true, view: await loadRunView(repos, gated), intentId };
 }
 
+/**
+ * 「generated」闸：真的把工件装配一遍（no-fabrication / Schema.parse 出口校验都在里面），
+ * 装配不出来的候选不写进票据——避免用户点开才发现简历生成失败。
+ * 装配成功的留下，失败/岗位消失的跳过并计入 skipped（与 overrideGateCandidate 的闸同一道校验）。
+ */
+function filterReadyIntents(
+  planned: readonly PlannedIntent[],
+  selected: readonly RunCandidate[],
+  profile: AbilityProfile,
+  evidence: EvidenceItem[],
+): { ready: PlannedIntent[]; skipped: number } {
+  const ready: PlannedIntent[] = [];
+  let skipped = 0;
+  for (const item of planned) {
+    try {
+      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting;
+      if (!posting) throw new Error('candidate posting vanished');
+      const match = resumeMatchFromReport(item.report);
+      buildResume({ profile, evidence, posting, match, options: { locale: 'zh-CN' } });
+      buildCoverLetter({ profile, evidence, posting, match, options: { locale: 'zh-CN' } });
+      ready.push(item);
+    } catch {
+      skipped += 1;
+    }
+  }
+  return { ready, skipped };
+}
+
+/** 本轮扫描的统计量：候选/匹配/跳过口径与 AgentScanStats 注释一致。 */
+function buildScanStats(
+  derivation: DerivedCandidates,
+  readyCount: number,
+  skipped: number,
+): AgentScanStats {
+  return {
+    poolSize: derivation.poolSize,
+    matchedCount: derivation.matchedCount,
+    candidateCount: readyCount,
+    excludedCount: derivation.matchedCount - derivation.selected.length,
+    skippedCount: skipped,
+  };
+}
+
+/**
+ * C1 语义增强（阶段 3，设计 §3.2/§10 C1）：LLM 从 JD 正文提取岗位侧要求，再由纯函数
+ * 合并进报告，不打分、不造画像事实；任何失败/返回 null 都 fail-closed 保留纯规则报告。
+ * 双预算约束：本阶段墙钟 jdLlmBudgetMs 与整轮 tick 共享截止时刻，每条调用前都检查，
+ * 预算耗尽后剩余候选保持纯规则、票据照常写出（单次在途调用另有 LLM_TIMEOUT_MS，
+ * 最坏超支 ≤ 一次调用）。onUsage 观察者在抽取成功后立即回采 token（失败路径不记）。
+ */
+async function enrichReadyIntentsWithJd(opts: {
+  cfg: AgentConfig;
+  ready: PlannedIntent[];
+  selected: readonly RunCandidate[];
+  profileSkills: readonly string[];
+  accountId: string;
+  tick?: TickContext;
+  usage?: UsageRecorder;
+}): Promise<void> {
+  const { cfg, ready, selected, profileSkills, accountId, tick, usage } = opts;
+  if (!cfg.jdExtractor) return;
+  const enrichStartedAt = Date.now();
+  for (const item of ready) {
+    if (Date.now() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
+    if (tick?.deadlineAt !== undefined && Date.now() >= tick.deadlineAt) break;
+    const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting;
+    const description = posting?.description;
+    if (!description) continue;
+    // 成本回采（决策 #25 ④ Wave B）：onUsage 观察者回采 token，缺失记 null；
+    // provider/model/billingSource 由装配处经 jdExtractorMeta 给出（cron 只走
+    // 内置 env，故生产恒 'builtin'）。抽取成功（不抛错）后立即记录一次可计费调用；
+    // 失败路径 onUsage 本就不触发、token 不可得、不记。recorder 本身 fail-open。
+    const usageHolder: { current: LlmTokenUsage | null } = { current: null };
+    try {
+      const insight = await cfg.jdExtractor(item.job.title, description, (u) => {
+        usageHolder.current = u;
+      });
+      await usage?.record({
+        accountId,
+        category: 'llm',
+        feature: 'jd_extraction',
+        billingSource: cfg.jdExtractorMeta?.billingSource ?? 'builtin',
+        provider: cfg.jdExtractorMeta?.provider ?? null,
+        model: cfg.jdExtractorMeta?.model ?? null,
+        promptTokens: usageHolder.current?.promptTokens ?? null,
+        completionTokens: usageHolder.current?.completionTokens ?? null,
+        quantity: null,
+      });
+      if (insight) {
+        item.report = enhanceMatchReportWithJd(item.report, insight, profileSkills);
+      }
+    } catch {
+      // LLM 超时/HTTP/校验失败：保持纯规则报告，不影响票据写入。
+    }
+  }
+}
+
+/** 把 ready 候选投影成 publishGeneratedIntents 接受的票据行（pending 占位）。 */
+function buildIntentRows(ready: readonly PlannedIntent[], run: StoredJobRun, nowIso: string) {
+  const createdAt = nowIso;
+  return ready.map((item) => ({
+    id: `intent-${randomUUID()}`,
+    runId: run.id,
+    accountId: run.accountId,
+    profileId: run.profileId,
+    jobId: item.job.jobId,
+    jobSource: item.job.source,
+    job: item.job,
+    matchScore: item.matchScore,
+    matchTier: item.matchTier,
+    report: item.report,
+    status: 'pending' as const,
+    createdAt,
+    updatedAt: createdAt,
+  }));
+}
+
 async function scanOnce(
   repos: AgentRepos,
   cfg: AgentConfig,
@@ -671,38 +790,17 @@ async function scanOnce(
   const profileSkills = derivation.profileSkills;
 
   const planned = planIntents(selected, { profileSkills });
-
   const evidence = toEvidenceItems(await repos.evidence.listByProfile(run.profileId));
-
-  // 「generated」闸：真的把工件装配一遍（no-fabrication / Schema.parse 出口校验都在里面），
-  // 装配不出来的候选不写进票据——避免用户点开才发现简历生成失败。
-  const ready: typeof planned = [];
-  let skipped = 0;
-  for (const item of planned) {
-    try {
-      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting;
-      if (!posting) throw new Error('candidate posting vanished');
-      const match = resumeMatchFromReport(item.report);
-      buildResume({ profile, evidence, posting, match, options: { locale: 'zh-CN' } });
-      buildCoverLetter({ profile, evidence, posting, match, options: { locale: 'zh-CN' } });
-      ready.push(item);
-    } catch {
-      skipped += 1;
-    }
-  }
-
-  const stats: AgentScanStats = {
-    poolSize: derivation.poolSize,
-    matchedCount: derivation.matchedCount,
-    candidateCount: ready.length,
-    excludedCount: derivation.matchedCount - selected.length,
-    skippedCount: skipped,
-  };
+  const { ready, skipped } = filterReadyIntents(planned, selected, profile, evidence);
+  const stats = buildScanStats(derivation, ready.length, skipped);
 
   if (ready.length === 0) {
     // 本轮没扫到合格岗位：留在 watching 等下一轮（不是失败，也不是"看似成功"）
     const updated =
-      (await applyRunEvent(repos, run, 'rescan', 'agent', nowIso, { lastScanAt: nowIso, lastError: null })) ?? run;
+      (await applyRunEvent(repos, run, 'rescan', 'agent', nowIso, {
+        lastScanAt: nowIso,
+        lastError: null,
+      })) ?? run;
     const view = await loadRunView(repos, updated);
     return { ok: true, view, scan: stats };
   }
@@ -718,69 +816,22 @@ async function scanOnce(
     return { ok: true, view, scan: stats };
   }
 
-  // C1 语义增强（阶段 3，设计 §3.2/§10 C1）放在 CAS 占位成功**之后**：只有抢到
-  // watching → recommending 的那个 run 才花 LLM，输家直接返回、零 LLM 花费。
-  // LLM 从 JD 正文提取岗位侧要求，再由纯函数合并进报告，不打分、不造画像事实；
-  // 任何失败/返回 null 都 fail-closed 保留纯规则报告。双预算约束：本阶段墙钟
-  // jdLlmBudgetMs 与整轮 tick 共享截止时刻，每条调用前都检查，预算耗尽后剩余候选
-  // 保持纯规则、票据照常写出（单次在途调用另有 LLM_TIMEOUT_MS，最坏超支 ≤ 一次调用）。
-  if (cfg.jdExtractor) {
-    const enrichStartedAt = Date.now();
-    for (const item of ready) {
-      if (Date.now() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
-      if (tick?.deadlineAt !== undefined && Date.now() >= tick.deadlineAt) break;
-      const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting;
-      const description = posting?.description;
-      if (!description) continue;
-      // 成本回采（决策 #25 ④ Wave B）：onUsage 观察者回采 token，缺失记 null；
-      // provider/model/billingSource 由装配处经 jdExtractorMeta 给出（cron 只走
-      // 内置 env，故生产恒 'builtin'）。抽取成功（不抛错）后立即记录一次可计费
-      // 调用；失败路径 onUsage 本就不触发、token 不可得、不记。recorder 本身
-      // fail-open，不包额外 try/catch（外层 catch 只兜主链路）。
-      const usageHolder: { current: LlmTokenUsage | null } = { current: null };
-      try {
-        const insight = await cfg.jdExtractor(item.job.title, description, (u) => {
-          usageHolder.current = u;
-        });
-        await usage?.record({
-          accountId: run.accountId,
-          category: 'llm',
-          feature: 'jd_extraction',
-          billingSource: cfg.jdExtractorMeta?.billingSource ?? 'builtin',
-          provider: cfg.jdExtractorMeta?.provider ?? null,
-          model: cfg.jdExtractorMeta?.model ?? null,
-          promptTokens: usageHolder.current?.promptTokens ?? null,
-          completionTokens: usageHolder.current?.completionTokens ?? null,
-          quantity: null,
-        });
-        if (insight) {
-          item.report = enhanceMatchReportWithJd(item.report, insight, profileSkills);
-        }
-      } catch {
-        // LLM 超时/HTTP/校验失败：保持纯规则报告，不影响票据写入。
-      }
-    }
-  }
+  // C1 语义增强放在 CAS 占位成功**之后**：只有抢到 watching → recommending 的那个 run 才花 LLM，
+  // 输家直接返回、零 LLM 花费。
+  await enrichReadyIntentsWithJd({
+    cfg,
+    ready,
+    selected,
+    profileSkills,
+    accountId: run.accountId,
+    tick,
+    usage,
+  });
 
   // 三表原子收尾：recommending → awaiting_approval 的 CAS 闸 + 票据批量 + generated 事件
   // 同一事务提交。CAS 输家（如滞留已被 tick 回收回 watching）零票据、零事件，
   // 不会留下「run 已回 watching、孤儿票据却永不再生成」的中间态。
-  const createdAt = nowIso;
-  const intents = ready.map((item) => ({
-    id: `intent-${randomUUID()}`,
-    runId: run.id,
-    accountId: run.accountId,
-    profileId: run.profileId,
-    jobId: item.job.jobId,
-    jobSource: item.job.source,
-    job: item.job,
-    matchScore: item.matchScore,
-    matchTier: item.matchTier,
-    report: item.report,
-    status: 'pending' as const,
-    createdAt,
-    updatedAt: createdAt,
-  }));
+  const intents = buildIntentRows(ready, run, nowIso);
   const plan = planTransition(recommending.status, 'generated');
   // plan 在状态机上必然成立（recommending 刚由 candidates_ready 迁来），不成立则按输家回落
   const gated = plan.ok
