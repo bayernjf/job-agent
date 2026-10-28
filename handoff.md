@@ -294,6 +294,13 @@ JobAgent 当前状态，截至 2026-10-16。
 > 剩余推进项**除 item166 外**均卡外部条件 / 真人参与（生产上线收尾 J1–J8 人工 smoke、CWS 开发者账号上架、Workday 直渲染租户端到端验证、扩展真人试用、生产 `LLM_*` 与 LLM 厂商配置），详见「已知限制 / 待核实」与 [docs/deferred-items.md](docs/deferred-items.md)。**item166 已全部闭环**（含 P0-2 迁移 041、P0-3 SSRF 守卫、ESLint、shared 拆分、report helpers、scanOnce 长函数拆分 `05e0f1f`），本清单无在推进条目。
 
 ## 最近变更
+- 2026-10-28（**dev↔main 分叉排查 + pr-helper 状态核实，纯文档/只读操作，零代码改动**）：
+  - **分叉实测（`git fetch origin` 后）**：`origin/main..origin/dev` = **1**（dev 领先 main 1 个 commit），`origin/dev..origin/main` = **14**（main 领先 dev 14 个 commit）。此前 handoff 记的「main 仅落后 dev 2 commit」已过时。
+  - **dev 上未进 main 的 1 个 commit**：`d8727e0 docs(handoff): log telemetry healthcheck and db backup completion`——纯 handoff.md 运维记录（埋点体检闭环、675px 确认已修、备份补做、生产快照），零产品代码改动。**是否应发布到 main？属文档同步问题，不影响生产代码；由 owner 决定是否开 dev→main PR 把它带上。**
+  - **origin/main 上 dev 没有的 14 个 commit**：全部是 `--no-ff` merge commit（PR #174~#187，均为 dev→main 合并）。这些 merge commit 只存在于 main 分支上，其携带的实际代码变更早已在 dev 分支上。
+  - **实际代码内容差异**：`git diff origin/dev origin/main` 仅 **5 行差异**（handoff.md 上 dev 独有的那 5 行运维记录）。产品代码两分支完全一致。**该分叉是 `--no-ff` 合并工作流的正常历史形态，不是代码分叉。**
+  - **pr-helper 是否停摆？** 否。pr-helper 的 `Reconcile PR Helper monitoring` GitHub Actions 定时作业持续运行（最新 run 2026-10-28T08:51:15Z，全部 success），Vercel 端点正常。**job-agent 从未被配置进 pr-helper 的监控流程**——pr-helper 仓库的 handoff/current-state/docs 全文检索无 `job-agent` / `job_agent` 字样。它不是"该开 PR 却没开"，而是"根本没被配置来管 job-agent"。无需修复。
+  - **结论**：分叉正常、无需紧急处理。待 owner 决策：(a) 是否开 dev→main PR 将那 1 个文档 commit 同步到 main；(b) 是否要把 job-agent 加入 pr-helper 自动化监控范围。
 - 2026-10-28（**Tier0.5 可自主推进项闭环：埋点体检 + 备份补做 + 675px 确认已修，纯运维/文档，零产品代码改动**）：
   - **埋点"0 条"观察项闭环**：直查生产（`DATABASE_URL` 只读查询）——`funnel_events` **13 条**（analyze_enqueued 6 / report_viewed 4 / share_clicked 2 / analyze_cache_hit 1，最近 `2026-10-19T13:55Z`）、`usage_events` **6 条**（最近 `13:57Z`）。**写点机制正常**：10-19 新用户 E2E 实测的 analyze/report_viewed 已成功落库；10-19 后无新事件＝流量真空（该日后无新 job run、无新实测动作），非 bug。10-17 体检的"funnel/usage 持续 0"正式闭环。
   - **675px 溢出确认已修（当日闭环）**：10-19 发现的报告页 ~675px 横向溢出实由当天 `874bead fix(report): polish narrow-screen report UX` 修复（`.metric` 加 `min-width:0`、`.metric-value` 加 `overflow-wrap:anywhere`，并新增 675px 视口 E2E 守卫 + AnalyzeForm 错误字段透出），清单状态区建议项闭环，无需再补。
