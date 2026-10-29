@@ -129,6 +129,11 @@ const tocItems: { id: string; label: string }[] = [
   { id: 'section-authenticity', label: t('report.authenticity.title') },
   ...(profile.skillTags.length > 0 ? [{ id: 'section-skills', label: t('report.skills.title') }] : []),
   ...(profile.semantic ? [{ id: 'section-semantic', label: t('report.semantic.title') }] : []),
+  ...(!isRecruiter &&
+  (profile.skillTags.some((tag) => resolveEvidence(tag.evidenceRefs).length > 0) ||
+    profile.authenticity.signals.some((s) => resolveEvidence(s.evidenceRefs).length > 0))
+    ? [{ id: 'section-evidence', label: t('report.evidence.title') }]
+    : []),
   ...(!isRecruiter
     ? [
         { id: 'section-activity', label: t('report.activity.title') },
@@ -408,7 +413,18 @@ const tocItems: { id: string; label: string }[] = [
     <section class="ja-card" id="section-summary">
       <h2>{t('report.summary.title')}</h2>
       <p class="headline">{headline}</p>
-      <p class="ja-alert ja-alert--verifiable">{t('report.verifiability.banner')}</p>
+      <p class="ja-alert ja-alert--verifiable">
+        {t('report.verifiability.banner')}
+        {
+          /* 第一优先①（2026-10-29）：把「可复核」从纯文字变成 C 端显性入口——
+             banner 锚点直达证据溯源区，对抗 GitHub Skills 轻量徽章「不可点开核验」的心智 */
+          !isRecruiter && (
+            <a class="ja-link verifiability-cta" href="#section-evidence" data-testid="verifiability-cta">
+              {t('report.verifiability.cta')}
+            </a>
+          )
+        }
+      </p>
     </section>
 
     <!-- 真实性评估 -->
@@ -454,6 +470,48 @@ const tocItems: { id: string; label: string }[] = [
         }
       </div>
     </section>
+
+    <!-- 证据溯源（第一优先①，2026-10-29）：
+         非招聘方也能点开每条结论背后的原始记录。此前证据外链只锁在招聘方视图
+         （skill-evidence / 信号证据），C 端求职者只能看到一句「可复核」文字——
+         恰是对抗 GitHub Skills 轻量徽章「不可点开核验」心智所需的显性入口。
+         数据复用 resolveEvidence（画像快照 evidenceId → 完整外链），零新接口。 -->
+    {
+      !isRecruiter &&
+        (profile.skillTags.some((tag) => resolveEvidence(tag.evidenceRefs).length > 0) ||
+          profile.authenticity.signals.some((s) => resolveEvidence(s.evidenceRefs).length > 0)) && (
+          <section class="ja-card" id="section-evidence" data-testid="evidence-section">
+            <h2>{t('report.evidence.title')}</h2>
+            <p class="ja-muted">{t('report.evidence.lead')}</p>
+            <ul class="ja-stack-2 evidence-section-list">
+              {
+                profile.skillTags.flatMap((tag) =>
+                  resolveEvidence(tag.evidenceRefs).map((ev) => (
+                    <li class="evidence-section-row" data-testid="evidence-row">
+                      <span class="evidence-section-tag">{tag.name}</span>
+                      <a class="ja-link" href={ev.url} target="_blank" rel="noopener noreferrer">
+                        {ev.claim} ↗
+                      </a>
+                    </li>
+                  )),
+                )
+              }
+              {
+                profile.authenticity.signals.flatMap((signal) =>
+                  resolveEvidence(signal.evidenceRefs).map((ev) => (
+                    <li class="evidence-section-row" data-testid="evidence-row">
+                      <span class="evidence-section-tag">{t('report.evidence.viewOriginal')}</span>
+                      <a class="ja-link" href={ev.url} target="_blank" rel="noopener noreferrer">
+                        {ev.claim} ↗
+                      </a>
+                    </li>
+                  )),
+                )
+              }
+            </ul>
+          </section>
+        )
+    }
 
     <!-- 能力标签 -->
     {
