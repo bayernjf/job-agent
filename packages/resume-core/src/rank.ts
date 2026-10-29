@@ -13,11 +13,13 @@ export function normalizeName(s: string): string {
 
 const DEPTH_RANK: Record<SkillTag['depth'], number> = { proficient: 1, used: 0 };
 
-/** 证据强度权重：外部贡献 > PR > Issue > 文件 > commit > 仓库元信息 */
+/** 证据强度权重：外部贡献 > PR > Issue > 徽章 > 文件 > commit > 仓库元信息。
+ *  badge（官方成就徽章，2026-10-29）：官方背书但偏社区活跃度，故低于 issue、高于 file。 */
 const EVIDENCE_STRENGTH: Record<EvidenceSourceType, number> = {
   contribution: 5,
   pr: 4,
   issue: 3,
+  badge: 2,
   file: 2,
   commit: 1,
   repo: 0,
