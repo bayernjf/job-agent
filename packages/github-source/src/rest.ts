@@ -7,6 +7,7 @@
 
 import type { AnalyzerCommit, BehaviorEventSummary } from '@jobagent/shared';
 import type { Octokit } from 'octokit';
+import type { ProfileBadge } from './types.js';
 
 export interface RestCommitRow {
   sha: string;
@@ -167,4 +168,66 @@ export async function fetchRepoCommitsCached(
     }
     throw err;
   }
+}
+
+/**
+ * 抓取 GitHub 官方成就徽章（Achievements）。
+ *
+ * 背景（2026-10-29 实测）：GitHub REST API 无 skills/badges/achievements 端点，
+ * profile 页徽章是唯一公开入口 —— `https://github.com/{login}?tab=achievements`
+ * 返回的 HTML 含 `<img ... alt="Achievement: {name}" class="achievement-badge-sidebar" />`
+ * 与 tier 标签（`achievement-tier-label--gold ... x4`）。
+ *
+ * 诚实边界：这是「官方成就徽章」而非 GitHub Skills 技能验证徽章（后者无公开
+ * 数据通道、官方公告未证实 —— 不造数据）。徽章作为 L0 辅助证据源，与官方
+ * 徽章共存而非对抗。
+ *
+ * 走自定义 fetch（测试注入用），不消耗 octokit 配额；失败返回 []（静默降级，
+ * collector 以 missing 标注），绝不 throw 中断主采集。
+ */
+export async function fetchProfileBadges(
+  fetchImpl: typeof fetch,
+  login: string,
+  timeoutMs = 10_000,
+): Promise<ProfileBadge[]> {
+  const url = `https://github.com/${encodeURIComponent(login)}?tab=achievements`;
+  let html: string;
+  try {
+    const res = await fetchImpl(url, {
+      headers: { accept: 'text/html' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return [];
+    html = await res.text();
+  } catch {
+    return [];
+  }
+
+  // 徽章条目：<a href="/{login}?achievement={slug}&tab=achievements" ...>
+  //   <img ... alt="Achievement: {name}" class="achievement-badge-sidebar" />
+  //   [<span ... achievement-tier-label--{level} ...>x{n}</span>]
+  // </a>
+  const out: ProfileBadge[] = [];
+  const seen = new Set<string>();
+  let idx = 0;
+  for (const img of html.matchAll(/alt="Achievement: ([^"]+)"[^>]*class="achievement-badge-sidebar"/g)) {
+    const name = img[1]?.trim();
+    if (!name) continue;
+    if (seen.has(name)) continue; // profile 侧栏与主区重复渲染，去重
+    seen.add(name);
+    // tier 就近匹配：徽章图后的 span（x\d+）
+    const after = html.slice(img.index ?? 0, (img.index ?? 0) + 400);
+    const tierMatch = after.match(/achievement-tier-label--(\w+)[^>]*>\s*(x\d+)/);
+    const tier = tierMatch ? `${tierMatch[1]} (${tierMatch[2]})` : undefined;
+    out.push({
+      name,
+      url: `https://github.com/${encodeURIComponent(login)}?achievement=${encodeURIComponent(
+        name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+      )}&tab=achievements`,
+      tier,
+    });
+    idx += 1;
+    if (idx >= 50) break; // 防御：单页徽章数上限
+  }
+  return out;
 }
