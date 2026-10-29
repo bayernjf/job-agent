@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { Octokit } from 'octokit';
 import {
+  fetchProfileBadges,
   fetchPublicEventsRest,
   fetchRepoCommitsCached,
   HttpCache,
@@ -112,5 +113,45 @@ describe('fetchRepoCommitsCached', () => {
     await expect(
       fetchRepoCommitsCached(octokit, new HttpCache(), 'dev-strong', 'web-platform'),
     ).rejects.toThrow('network down');
+  });
+});
+
+describe('fetchProfileBadges', () => {
+  const html = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../tests/fixtures/github/octocat-achievements.html'),
+    'utf8',
+  );
+
+  function stubFetch(): typeof fetch {
+    return (async (_input: Parameters<typeof fetch>[0], _init?: RequestInit) =>
+      new Response(html, { status: 200, headers: { 'content-type': 'text/html' } })) as typeof fetch;
+  }
+
+  it('parses achievement badges with names and detail URLs', async () => {
+    const badges = await fetchProfileBadges(stubFetch(), 'octocat');
+    expect(badges.length).toBeGreaterThan(0);
+    const names = badges.map((b) => b.name);
+    expect(names).toContain('Pair Extraordinaire');
+    expect(names).toContain('Starstruck');
+    // 去重：profile 侧栏与主区重复渲染，同名徽章只出现一次
+    expect(names.filter((n) => n === 'Pair Extraordinaire')).toHaveLength(1);
+    for (const b of badges) {
+      expect(b.url).toContain('github.com/octocat');
+      expect(b.url).toContain('tab=achievements');
+    }
+  });
+
+  it('returns [] for a non-OK response', async () => {
+    const fetch404 = (async () => new Response('nope', { status: 404 })) as typeof fetch;
+    const badges = await fetchProfileBadges(fetch404, 'octocat');
+    expect(badges).toEqual([]);
+  });
+
+  it('returns [] when the fetch throws (network)', async () => {
+    const fetchThrow = (async () => {
+      throw new Error('network down');
+    }) as typeof fetch;
+    const badges = await fetchProfileBadges(fetchThrow, 'octocat');
+    expect(badges).toEqual([]);
   });
 });
