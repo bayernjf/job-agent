@@ -288,6 +288,39 @@
   font-weight: 600;
 }
 
+/* 第一优先①（2026-10-29）：证据溯源区——C 端「可复核」显性入口。
+   复用 ja-link / ja-stack-* 基础样式；列表行与招聘方 skill-evidence 同构但独立 class，
+   避免非招聘方渲染依赖招聘方视图的 .skill-evidence 定义。 */
+.verifiability-cta {
+  display: inline-block;
+  margin-left: var(--ja-space-2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.evidence-section-list {
+  list-style: none;
+  margin-top: var(--ja-space-2);
+}
+
+.evidence-section-row {
+  display: flex;
+  gap: var(--ja-space-2);
+  align-items: baseline;
+  font-size: var(--ja-text-sm);
+  padding: var(--ja-space-1) 0;
+}
+
+.evidence-section-tag {
+  flex: none;
+  min-width: 6rem;
+  font-weight: 600;
+}
+
+.evidence-section-row .ja-link {
+  overflow-wrap: anywhere;
+}
+
 .interview-kit-link {
   padding: var(--ja-space-1) var(--ja-space-3);
   font-size: var(--ja-text-sm);
