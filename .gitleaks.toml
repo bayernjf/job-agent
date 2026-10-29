@@ -40,12 +40,17 @@ useDefault = true
 #    prefix), a Rollbar `post_client_item` token, a Dropbox Chooser app key,
 #    Greenhouse's location-service key, and a GCP API key Greenhouse embeds in
 #    its public job-board pages. None of them is a credential of this project.
+# 4) a GitHub achievements-page click HMAC captured in the github fixture
+#    (commit c11f6a2) — a per-request anti-abuse token GitHub ships inside its
+#    own public HTML, not a credential of this project. The slimming commit
+#    657ba64 removed it from the file, but gitleaks scans the commit range, so
+#    the historical addition is what trips the `generic-api-key` rule.
 #
 #    They are pinned as exact values, not shape regexes, on purpose: reCAPTCHA
 #    *secret* keys share the `6L…` shape with site keys, and Rollbar
 #    *server* tokens share the 32-hex shape with client tokens, so any
 #    shape-based entry would silently hide real secrets.
-description = "Public extension manifest key, fake test-fixture API keys, and public client keys in captured ATS fixtures"
+description = "Public extension manifest key, fake test-fixture API keys, and public client keys in captured ATS/GitHub fixtures"
 regexes = [
   '^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A[A-Za-z0-9+/]+={0,2}$',
   '^sk-(bob-secret-9876|byok-key|secret-1234|abcdef1234|test-key-1234567890abcdef1234567890abcdef|x)$',
@@ -61,4 +66,5 @@ regexes = [
   '^fb557f59a5a84ab788801dd742eacf34$',
   '^e33f87f8-88ec-4e1a-9a13-df9bbb1d8120$',
   '^6a247c6ff13012d02fde17377f0b857b$',
+  '^5dccbd5a7b5b760c47b85c725c40c6fea92aad9189df71d8e04818fa175f89b6$',
 ]

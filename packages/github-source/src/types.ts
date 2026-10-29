@@ -58,3 +58,18 @@ export interface L1Data {
   pullRequests: AnalyzerInput['pullRequests'];
   issues: AnalyzerInput['issues'];
 }
+
+/**
+ * GitHub 官方成就徽章（profile 页公开可解析；GitHub 无公开 API 返回徽章，
+ * 走页面抓取 —— 见 rest.ts fetchProfileBadges）。
+ * 注意：这不是 GitHub Skills 技能验证徽章（后者无公开数据通道、官方未证实），
+ * 是「官方成就徽章」（Achievements）—— 同为官方徽章信号，可作辅助证据。
+ */
+export interface ProfileBadge {
+  /** 徽章名，如 'Pair Extraordinaire' */
+  name: string;
+  /** 徽章详情 URL（GitHub 官方 hovercard 页） */
+  url: string;
+  /** 达到次数（如 x4）；无 tier 时为 undefined */
+  tier: string | undefined;
+}

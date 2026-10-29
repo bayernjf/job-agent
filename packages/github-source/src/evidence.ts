@@ -5,6 +5,21 @@
 
 import type { AnalyzerInput } from '@jobagent/shared';
 import type { EvidenceItem } from '@jobagent/shared';
+import type { ProfileBadge } from './types.js';
+
+/** 官方成就徽章 → L0 辅助证据（sourceType 'badge'；url 指 GitHub 官方徽章锚点）。 */
+export function buildBadgeEvidence(badge: ProfileBadge, login: string): EvidenceItem {
+  return {
+    evidenceId: `badge:${login}:${badge.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    sourcePlatform: 'github',
+    sourceType: 'badge',
+    url: badge.url,
+    occurredAt: undefined,
+    layer: 'L0',
+    claim: `GitHub official achievement badge: ${badge.name}${badge.tier ? ` (tier ${badge.tier})` : ''}`,
+    rawRef: login,
+  };
+}
 
 export function buildSubjectEvidence(
   subject: AnalyzerInput['subject'],

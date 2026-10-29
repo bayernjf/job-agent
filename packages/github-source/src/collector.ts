@@ -4,6 +4,7 @@ import type { Octokit } from 'octokit';
 import { BudgetTracker } from './budget.js';
 import { createOctokit, DEFAULT_BUDGET } from './client.js';
 import {
+  buildBadgeEvidence,
   buildCommitEvidence,
   buildIssueEvidence,
   buildPullRequestEvidence,
@@ -25,6 +26,7 @@ import {
   type RepoCommitsResponse,
 } from './graphql.js';
 import {
+  fetchProfileBadges,
   fetchPublicEventsRest,
   fetchRepoCommitsCached,
   fetchUserEmailRest,
@@ -51,10 +53,12 @@ export class GitHubSource {
   private readonly log: Pick<Console, 'info' | 'warn' | 'error'>;
   private readonly maxCommitsRepos = 10;
   private readonly commitsPerRepo = 30;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(options: GitHubSourceOptions) {
     this.log = options.log ?? console;
     this.budget = new BudgetTracker({ ...DEFAULT_BUDGET, ...(options.budget ?? {}) });
+    this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.octokit = createOctokit({
       token: options.token,
       budget: options.budget,
@@ -187,6 +191,19 @@ export class GitHubSource {
 
     const { l1, evidence: l1Evidence, missing } = await this.collectL1(login, l0);
 
+    // 官方成就徽章（L0 辅助证据；2026-10-29 实测 GitHub 无公开 API，走页面抓取；
+    // 辅助信号：失败静默降级，不进 missing（missing 只记核心数据缺失），不中断主采集；
+    // 不消耗 octokit 配额）
+    let badgeEvidence: EvidenceItem[] = [];
+    try {
+      this.budget.recordRest();
+      badgeEvidence = (await fetchProfileBadges(this.fetchImpl, login)).map((b) =>
+        buildBadgeEvidence(b, login),
+      );
+    } catch (err) {
+      this.log.warn(`[github-source] badges failed for ${login}: ${(err as Error).message}`);
+    }
+
     // 方案 B-1：单次取 public events 第 1 页并聚合行为流摘要（REST +1；失败只记缺失，不阻塞）
     let behaviorEvents: BehaviorEventSummary | undefined;
     try {
@@ -207,14 +224,14 @@ export class GitHubSource {
       issues: l1.issues,
       contributions: l0.contributions,
       ...(behaviorEvents ? { behaviorEvents } : {}),
-      evidence: [...l0Evidence, ...l1Evidence],
+      evidence: [...l0Evidence, ...l1Evidence, ...badgeEvidence],
       missing,
       collectedAt: new Date().toISOString(),
     };
 
     return {
       input,
-      evidence: [...l0Evidence, ...l1Evidence],
+      evidence: [...l0Evidence, ...l1Evidence, ...badgeEvidence],
       meta: {
         budgetUsed: this.budget.used,
         missing,

@@ -11,6 +11,7 @@ export const EvidenceSourceTypeSchema = z.enum([
   'repo',
   'contribution',
   'file',
+  'badge', // 官方平台徽章（如 GitHub Achievements；2026-10-29 新增）
 ]);
 export type EvidenceSourceType = z.infer<typeof EvidenceSourceTypeSchema>;
 
