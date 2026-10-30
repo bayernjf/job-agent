@@ -8,6 +8,7 @@
  */
 import Layout from '../../../layouts/Layout.astro';
 import ShareButton from '../../../components/ShareButton.tsx';
+import ProofCard from '../../../components/ProofCard.tsx';
 import ClaimProfile from '../../../components/ClaimProfile.tsx';
 import UnclaimProfile from '../../../components/UnclaimProfile.tsx';
 import RemovalRequest from '../../../components/RemovalRequest.tsx';
@@ -153,7 +154,14 @@ const tocItems: { id: string; label: string }[] = [
 ];
 ---
 
-<Layout locale={locale} title={profile.subject.login}>
+<Layout
+  locale={locale}
+  title={profile.subject.login}
+  ogTitle={`${profile.subject.login} · ${t(authLabelKey)} — ${t('app.name')}`}
+  ogDescription={[headline, profile.skillTags.slice(0, 4).map((tag) => tag.name).join(' · '), t('report.proof.verifyLine')].filter(Boolean).join(' | ')}
+  ogImage={new URL('/og-card.png', Astro.url.origin).href}
+  ogUrl={shareUrl}
+>
   <div class="ja-container report-layout">
     <div class="report-main">
     <!-- T25：采集/分析有缺失（partial）时顶部显式标注，不冒充完整画像（NFR-6） -->
@@ -254,6 +262,32 @@ const tocItems: { id: string; label: string }[] = [
           copiedLabel={t('report.shareCopied')}
           apiBase={apiBase}
           profileId={pageData.profileRecord.id}
+        />
+      </div>
+      {
+        /* 能力证明卡（design-share-proof-card-20261030）：分享工具面板，
+           只渲染快照已有结论；不进 TOC（是工具，不是报告章节）。 */
+      }
+      <div class="ja-card proof-card-panel" id="proof-card">
+        <h2>{t('report.proof.title')}</h2>
+        <p class="ja-muted">{t('report.proof.desc')}</p>
+        <ProofCard
+          client:load
+          apiBase={apiBase}
+          profileId={pageData.profileRecord.id}
+          login={profile.subject.login}
+          platform={profile.subject.platform}
+          authLabel={t(authLabelKey)}
+          authClass={authClass}
+          confidenceLabel={formatPercent(profile.authenticity.confidence, locale)}
+          tags={profile.skillTags.slice(0, 6).map((tag) => tag.name)}
+          verifyLine={t('report.proof.verifyLine')}
+          generatedOn={t('report.proof.generatedOn', { date: generatedAt })}
+          domain={new URL(shareUrl).host}
+          brandName={t('app.name')}
+          downloadLabel={t('report.proof.download')}
+          downloadingLabel={t('report.proof.downloading')}
+          downloadFailedLabel={t('report.proof.downloadFailed')}
         />
       </div>
       {
