@@ -108,9 +108,11 @@ cannot be closed by code alone.
 7. **CWS metadata prepared**: category Productivity; single-purpose statement
    (one-click ATS autofill from a verified profile); permission justifications
    for `storage` and the host patterns — copy-ready text in
-   [Permission justifications](#permission-justifications) below (the broad
-   `*/*careers*`、`*/*jobs*` globs exist to catch customer-hosted ATS pages —
-   expect a review question); privacy practices (no collection of personal data
+   [Permission justifications](#permission-justifications) below (the manifest
+   grants only the four ATS provider wildcard domains plus the production
+   origin — the broad `*/*careers*`、`*/*jobs*` globs were removed on
+   2026-10-30, so no justification for them is needed anymore); privacy
+   practices (no collection of personal data
    by the extension; email/phone/LinkedIn stay local; passwords never touched)
    and the privacy-policy URL. The hosted policy page ships in the report app at
    `/en/privacy` and `/zh-CN/privacy` (canonical source
@@ -139,9 +141,9 @@ cannot be closed by code alone.
 > 1. Generate your free JobAgent profile. We analyze public commits, pull
 >    requests and issues — no repository cloning, no private data — and rank
 >    every skill with a confidence level and a link back to the public evidence.
-> 2. Open a supported application page (Greenhouse, Lever or Workday). The
->    extension lists openings ranked by skill match and explains each score with
->    a title/tags/description breakdown and the exact skills and repositories
+> 2. Open a supported application page (Greenhouse, Lever, Workday or Ashby).
+>    The extension lists openings ranked by skill match and explains each score
+>    with a title/tags/description breakdown and the exact skills and repositories
 >    behind it.
 > 3. Enter your name, email and contact details locally, then click once to
 >    populate the application form, including a tailored self-statement for
@@ -176,9 +178,9 @@ cannot be closed by code alone.
 > 1. 免费生成你的 JobAgent 画像：我们只分析公开的 commit、Pull Request 与
 >    Issue（不 clone 仓库、不触碰私有数据），每项技能都给出置信度，并链接回
 >    可公开核验的证据。
-> 2. 打开受支持的招聘页面（Greenhouse、Lever 或 Workday）：扩展会按技能匹配度
->    为岗位排序，并通过标题/标签/描述的打分拆解，说明每个分数背后的确切技能与
->    仓库。
+> 2. 打开受支持的招聘页面（Greenhouse、Lever、Workday 或 Ashby）：扩展会按技能
+>    匹配度为岗位排序，并通过标题/标签/描述的打分拆解，说明每个分数背后的确切
+>    技能与仓库。
 > 3. 在本地填写姓名、邮箱与联系方式，点击一次即可填充申请表，并为动机类问题
 >    生成贴合岗位的自我陈述。
 >
@@ -211,24 +213,21 @@ component that talks to the JobAgent API.
   所在地）与面板偏好，用于填写申请表。这些数据不会离开你的设备、绝不上传，
   你可随时清除扩展本地数据。
 
-**Host permissions / content scripts — Greenhouse, Lever, Workday and
-`*/*careers*`、`*/*jobs*` patterns**
+**Host permissions / content scripts — Greenhouse, Lever, Workday and Ashby
+provider domains**
 
 - EN: Required to (1) detect supported application pages, (2) read the job
   description on that page for skill matching, and (3) fill the form only when
-  you click the autofill button. Greenhouse, Lever and Workday are hosted on
-  each company's own subdomain (for example `boards.greenhouse.io/<company>`,
-  `jobs.lever.co/<company>`, `<tenant>.myworkdayjobs.com`, plus company-hosted
-  `careers.`/`jobs.` pages), so the domains cannot be enumerated in advance; the
-  URL patterns are the narrowest practical way to match them. The extension
-  activates only on career/job pages, reads no other browsing activity, and
-  never reads password, payment, salary or demographic fields.
+  you click the autofill button. The extension activates only on the four
+  supported applicant-tracking providers' pages (`*.greenhouse.io`,
+  `*.lever.co`, `*.myworkdayjobs.com`, `*.ashbyhq.com` — companies host their
+  application forms on the provider's own domain), reads no other browsing
+  activity, and never reads password, payment, salary or demographic fields.
 - 中文：用于（1）识别受支持的招聘申请页，（2）读取该页岗位描述以做技能匹配，
-  （3）仅在你点击一键填充时填写表单。Greenhouse、Lever、Workday 托管在各公司
-  自有子域（如 `boards.greenhouse.io/<公司>`、`jobs.lever.co/<公司>`、
-  `<租户>.myworkdayjobs.com`，以及企业自建的 `careers.`/`jobs.` 页面），无法
-  预先枚举域名，URL 模式是实践中最小的匹配方式。扩展只在招聘/岗位页激活，
-  不读取任何其他浏览活动，也绝不读取密码、支付、薪资或人口统计字段。
+  （3）仅在你点击一键填充时填写表单。扩展只在四家受支持招聘系统服务商的页面
+  激活（`*.greenhouse.io`、`*.lever.co`、`*.myworkdayjobs.com`、
+  `*.ashbyhq.com`——企业把申请表托管在服务商自有域名上），不读取任何其他浏览
+  活动，也绝不读取密码、支付、薪资或人口统计字段。
 
 **`externally_connectable` / network access to the JobAgent service**
 
