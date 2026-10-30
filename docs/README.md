@@ -71,6 +71,7 @@
 | 配置 LLM 模型（内置模型＝**Admin UI 管理**（参考 agent-world model-catalog：admin 管目录、env 管凭证）/ BYOK＝用户自由设置 OpenAI 兼容 key；方向与细节已拍板 2026-10-03（决策 #21，P0 已落地：迁移 023–025 + admin/BYOK 端点 + report 面板 + 请求路由 BYOK 优先→内置回落）） | [design-llm-model-provisioning-20261003.md](design-llm-model-provisioning-20261003.md) ★ |
 | 问「哪个功能在烧 token / 在花钱」——用量计量（usage_events 事件日志、LLM/分析作业/websearch 三面埋点、`/account/usage` 与 `/admin/usage` 读侧、CLI `usage summary|daily`；✅ 决策 #25 ④ 于 2026-10-14 全波落地） | [design-cost-metering-20261014.md](design-cost-metering-20261014.md)（迁移 038；记原始单位不记金额、计量 fail-open）+ [API.md](API.md) §3.12 + handoff item163 |
 | 问「验证漏斗转化怎么样 / 多少人从分析走到分享」——验证漏斗埋点（funnel_events 四事件、`ja_sid` 24h cookie 串联不 join 账号/IP、`POST /funnel/events` 只收分享点击、CLI `funnel summary|daily` 读口；✅ 2026-10-15 落地） | [design-funnel-analytics-20261015.md](design-funnel-analytics-20261015.md)（迁移 040；全链 fail-open、PRD §11.2）+ [API.md](API.md) §3.13 + handoff item165 |
+| 问「报告怎么传播 / 对位 GitHub Skills 徽章」——可分享证明卡（报告页 OG meta + 静态品牌卡 og-card.png + 页面证明卡下载 PNG；决策 #29 ✅ 2026-10-30 落地；卡面信息层级与不做清单见文档） | [design-share-proof-card-20261030.md](design-share-proof-card-20261030.md)（生成脚本 `tools/gen-og-card.mjs`；share_clicked 复用漏斗埋点） |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 看扩展一键填充覆盖哪些 ATS、为什么 Workday 是骨架、下一步扩哪个（Ashby 优先） | [design-ats-support-20261010.md](design-ats-support-20261010.md) ★ |
