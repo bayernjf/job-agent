@@ -738,6 +738,51 @@ h4 { font-size: var(--ja-text-lg); }
   color: var(--ja-color-success);
 }
 
+/* 分享菜单（决策 #30：只走平台官方 intent 入口 + Web Share API） */
+.share-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.share-menu__panel {
+  position: absolute;
+  top: calc(100% + var(--ja-space-2));
+  right: 0;
+  z-index: 20;
+  min-width: 12rem;
+  padding: var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  box-shadow: var(--ja-shadow-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.share-menu__item {
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 0;
+  border-radius: var(--ja-radius-sm);
+  background: transparent;
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.share-menu__item:hover {
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+}
+
+.share-menu__hint {
+  padding: var(--ja-space-2) var(--ja-space-3) 0;
+  border-top: 1px solid var(--ja-color-border);
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
+}
+
 /* ─── Skill tag chips (SSR profile + JobRecommendations island) ─────
    Must be global: these classes are rendered inside client:load React islands,
    whose DOM does not carry Astro scoped attributes, so scoped styles would not apply. */

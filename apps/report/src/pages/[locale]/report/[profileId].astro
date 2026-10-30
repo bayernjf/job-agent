@@ -262,6 +262,14 @@ const tocItems: { id: string; label: string }[] = [
           copiedLabel={t('report.shareCopied')}
           apiBase={apiBase}
           profileId={pageData.profileRecord.id}
+          shareText={t('report.share.shareText', { login: profile.subject.login })}
+          systemShareLabel={t('report.share.systemShare')}
+          xLabel={t('report.share.toX')}
+          linkedinLabel={t('report.share.toLinkedin')}
+          redditLabel={t('report.share.toReddit')}
+          telegramLabel={t('report.share.toTelegram')}
+          weiboLabel={t('report.share.toWeibo')}
+          wechatHint={t('report.share.wechatHint')}
         />
       </div>
       {
