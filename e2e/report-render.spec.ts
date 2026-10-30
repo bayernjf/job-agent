@@ -50,6 +50,22 @@ test.describe('report page SSR render', () => {
     await expect(dispute).toHaveAttribute('href', /^mailto:dispute@job-agent\.bayjf\.com\?subject=.*profe2efixture/);
   });
 
+  test('exposes OG share meta and the proof card panel (design-share-proof-card-20261030)', async ({ page }) => {
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+
+    const ogTitle = await page.locator('meta[property="og:title"]').getAttribute('content');
+    expect(ogTitle).toContain(FIXTURE_LOGIN);
+    // og:image 必须是绝对地址（爬虫要求），指向静态品牌卡
+    const ogImage = await page.locator('meta[property="og:image"]').getAttribute('content');
+    expect(ogImage).toMatch(/^https?:\/\/.+\/og-card\.png$/);
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute(
+      'content',
+      'summary_large_image',
+    );
+    // 证明卡面板渲染（分享工具，不进 TOC）
+    await expect(page.getByTestId('proof-card')).toBeVisible();
+  });
+
   test('renders the same fixture under Chinese route', async ({ page }) => {
     await page.goto(`/zh-CN/report/${FIXTURE_PROFILE_ID}`);
     await expect(page).toHaveURL(new RegExp(`/zh-CN/report/${FIXTURE_PROFILE_ID}`));
