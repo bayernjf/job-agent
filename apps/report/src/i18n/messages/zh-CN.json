@@ -8,6 +8,7 @@
   "home.subtitle": "分析公开的 commit、PR、Issue 等行为痕迹，产出带证据的能力报告",
   "home.placeholder": "用户名，如 torvalds",
   "home.analyze": "生成画像",
+  "home.analyzeDisabledHint": "输入 GitHub 或 Gitee 用户名后即可生成画像。",
   "home.waitHint": "提交后由每 5 分钟一次的定时任务开始分析，采集与计算还需数分钟；你可以先离开本页，稍后到「我的」查看进度与报告链接。",
   "home.visitorHint": "无需注册即可查看公开画像；登录并认领后，可管理自己的画像、生成定向简历并记录投递。",
   "home.extension.title": "Chrome 扩展：一键填充 ATS",

@@ -11,6 +11,8 @@ interface AnalyzeFormProps {
   apiBase: string;
   placeholder: string;
   analyzeLabel: string;
+  /** 提交按钮因输入为空而禁用时的原因说明（Tier0 UIUX 评审 2026-10-30 P0）；未提供则不渲染 */
+  disabledHint?: string;
   /** 提交**之前**就说清等待形态：排队由定时器消费，人可以离开这一页 */
   waitHint: string;
   analyzingLabel: string;
@@ -64,6 +66,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     apiBase,
     placeholder,
     analyzeLabel,
+    disabledHint,
     waitHint,
     analyzingLabel,
     invalidLabel,
@@ -280,6 +283,10 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
   }, [pendingJobId, pollJob]);
 
   const isBusy = phase === 'creating' || phase === 'polling';
+  // 输入为空时提交按钮禁用：把禁用原因写在按钮旁边并用 aria-describedby 关联，
+  // 避免"看起来能点、点了没反应"（Tier0 UIUX 评审 2026-10-30 P0：禁用态不可辨）。
+  const emptyInput = username.trim().length === 0;
+  const showDisabledHint = !isBusy && emptyInput && Boolean(disabledHint);
 
   return (
     <form onSubmit={handleSubmit} className="analyze-form">
@@ -321,10 +328,25 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
           spellCheck={false}
           aria-label="username"
         />
-        <button type="submit" className="ja-btn" disabled={isBusy || username.trim().length === 0}>
+        <button
+          type="submit"
+          className="ja-btn"
+          disabled={isBusy || emptyInput}
+          aria-describedby={showDisabledHint ? 'analyze-disabled-hint' : undefined}
+        >
           {isBusy ? analyzingLabel : analyzeLabel}
         </button>
       </div>
+
+      {showDisabledHint && (
+        <p
+          className="home-wait-hint ja-muted"
+          data-testid="analyze-disabled-hint"
+          id="analyze-disabled-hint"
+        >
+          {disabledHint}
+        </p>
+      )}
 
       {!isBusy && waitHint && (
         <p className="home-wait-hint ja-muted" data-testid="home-wait-hint">
