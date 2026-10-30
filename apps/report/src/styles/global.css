@@ -640,6 +640,27 @@ h4 { font-size: var(--ja-text-lg); }
   to { transform: rotate(360deg); }
 }
 
+/* 首屏骨架占位：客户端 React island 在水合后异步拉取数据，加载期间用骨架预留
+   与真实内容等大的空间，避免 return null 造成的冷加载空白与布局位移（CLS）。
+   Tier0 UIUX 评审 2026-10-30 P1（首屏水合竞态）。 */
+@keyframes ja-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.ja-skeleton {
+  display: inline-block;
+  background: var(--ja-color-surface-muted);
+  border-radius: var(--ja-radius-sm);
+  animation: ja-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ja-skeleton {
+    animation: none;
+  }
+}
+
 .analyze-form .error-box {
   display: flex;
   align-items: center;
@@ -715,6 +736,51 @@ h4 { font-size: var(--ja-text-lg); }
 .share-btn--copied {
   border-color: var(--ja-color-success);
   color: var(--ja-color-success);
+}
+
+/* 分享菜单（决策 #30：只走平台官方 intent 入口 + Web Share API） */
+.share-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.share-menu__panel {
+  position: absolute;
+  top: calc(100% + var(--ja-space-2));
+  right: 0;
+  z-index: 20;
+  min-width: 12rem;
+  padding: var(--ja-space-2);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+  background: var(--ja-color-surface);
+  box-shadow: var(--ja-shadow-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.share-menu__item {
+  padding: var(--ja-space-2) var(--ja-space-3);
+  border: 0;
+  border-radius: var(--ja-radius-sm);
+  background: transparent;
+  color: var(--ja-color-fg);
+  font-size: var(--ja-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.share-menu__item:hover {
+  background: var(--ja-color-accent-subtle);
+  color: var(--ja-color-accent);
+}
+
+.share-menu__hint {
+  padding: var(--ja-space-2) var(--ja-space-3) 0;
+  border-top: 1px solid var(--ja-color-border);
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-xs);
 }
 
 /* ─── Skill tag chips (SSR profile + JobRecommendations island) ─────

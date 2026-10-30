@@ -16,9 +16,18 @@ interface Props {
   title?: string;
   /** robots 指令；招聘方视图等内部页传 noindex,nofollow */
   robots?: string;
+  /**
+   * Open Graph / Twitter 卡（design-share-proof-card-20261030 §1.1）。
+   * 仅分享门面页（报告页）传入；不传则完全不渲染 og/twitter 标签，
+   * 其余页面 head 零回归。ogImage 必须是绝对地址（爬虫要求）。
+   */
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  ogUrl?: string;
 }
 
-const { locale, titleKey, title, robots = 'index,follow' } = Astro.props;
+const { locale, titleKey, title, robots = 'index,follow', ogTitle, ogDescription, ogImage, ogUrl } = Astro.props;
 const t = createTranslator(locale);
 const otherLocale: Locale = locale === 'zh-CN' ? 'en' : 'zh-CN';
 
@@ -47,6 +56,12 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     <meta name="robots" content={robots} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{pageTitle}</title>
+    {ogTitle && <meta property="og:title" content={ogTitle} />}
+    {ogDescription && <meta property="og:description" content={ogDescription} />}
+    {ogUrl && <meta property="og:url" content={ogUrl} />}
+    {ogImage && <meta property="og:image" content={ogImage} />}
+    {ogTitle && <meta property="og:type" content="profile" />}
+    {ogImage && <meta name="twitter:card" content="summary_large_image" />}
   </head>
   <body>
     <DemoBanner

@@ -12,15 +12,23 @@
 import { createApp } from '@jobagent/api';
 import { stripApiPrefix } from './api-prefix';
 
-type JobAgentApp = Awaited<ReturnType<typeof createApp>>;
+/** Minimal backend surface the forwarder actually depends on (Hono satisfies this). */
+export interface ForwardableApp {
+  fetch: (request: Request) => Response | Promise<Response>;
+}
 
-let appPromise: Promise<JobAgentApp> | null = null;
+let appPromise: Promise<ForwardableApp> | null = null;
 
-export function getInternalApp(): Promise<JobAgentApp> {
+export function getInternalApp(): Promise<ForwardableApp> {
   if (!appPromise) {
     appPromise = createApp();
   }
   return appPromise;
+}
+
+/** Test-only hook: override the cached backend (pass null to restore lazy createApp). */
+export function setInternalAppForTest(app: ForwardableApp | null): void {
+  appPromise = app === null ? null : Promise.resolve(app);
 }
 
 /** 把请求改写为 Hono 期望的路径后交给 Hono，返回标准 Web Response。 */

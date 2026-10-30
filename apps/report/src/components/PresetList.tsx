@@ -64,23 +64,73 @@ const linkStyle: CSSProperties = {
   color: 'var(--ja-color-accent)',
 };
 
+/** 加载态骨架块：尺寸与真实条目接近，预留空间，避免数据到达时布局位移。 */
+const skeletonLine = (width: string): CSSProperties => ({
+  height: '14px',
+  width,
+});
+
+function PresetSkeleton() {
+  return (
+    <div style={listStyle} aria-hidden="true">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="demo-preset-item" style={itemStyle}>
+          <div style={metaStyle}>
+            <span className="ja-skeleton" style={skeletonLine('96px')} />
+            <span className="ja-skeleton" style={{ ...skeletonLine('120px'), height: '12px' }} />
+          </div>
+          <span
+            className="ja-skeleton"
+            style={{ ...skeletonLine('44px'), height: '16px', flexShrink: 0 }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function PresetList({ locale, apiBase, title, viewLabel, authLabels, hintLabel }: PresetListProps) {
   const [presets, setPresets] = useState<DemoPreset[]>([]);
+  // 加载态：首屏水合后 fetch 完成前展示骨架，而不是 return null（消除空白与 CLS）。
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     fetch(`${apiBase}/demo/presets`, { credentials: 'include' })
       .then((r) => r.json())
       .then((data: DemoPreset[]) => {
-        if (!cancelled) setPresets(data.filter((p) => p.ready && p.profileId));
+        if (!cancelled) {
+          setPresets(data.filter((p) => p.ready && p.profileId));
+          setLoading(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setPresets([]);
+        if (!cancelled) {
+          setPresets([]);
+          setLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [apiBase]);
+
+  // 加载中：渲染带标题的骨架区域（aria-busy），AX tree 首屏即有可识别节点。
+  if (loading) {
+    return (
+      <div
+        className="demo-presets"
+        style={wrapStyle}
+        aria-busy="true"
+        aria-live="polite"
+        data-testid="preset-list-loading"
+      >
+        <h2 style={{ fontSize: 'var(--ja-text-base)', textAlign: 'center' }}>{title}</h2>
+        <p className="demo-presets-hint" style={mutedStyle}>{hintLabel}</p>
+        <PresetSkeleton />
+      </div>
+    );
+  }
 
   if (presets.length === 0) return null;
 
