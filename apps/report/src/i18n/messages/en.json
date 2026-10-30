@@ -8,6 +8,7 @@
   "home.subtitle": "Analyzes public commits, PRs, issues and other behavioral traces to produce an evidence-backed report",
   "home.placeholder": "username, e.g. torvalds",
   "home.analyze": "Generate Profile",
+  "home.analyzeDisabledHint": "Enter a GitHub or Gitee username to generate a profile.",
   "home.waitHint": "A scheduled task picks up your request within about 5 minutes, and collection takes a few more. You can leave this page and check progress later under My profiles.",
   "home.visitorHint": "No sign-up needed to view public profiles. After signing in and claiming a profile you can manage it, build targeted resumes and track applications.",
   "home.extension.title": "Chrome extension: one-click ATS filling",

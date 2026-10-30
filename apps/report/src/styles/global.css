@@ -382,8 +382,11 @@ h4 { font-size: var(--ja-text-lg); }
   text-decoration: none;
 }
 
+/* 禁用态（Tier0 UIUX 评审 2026-10-30 P0）：半透明的饱和主色仍像可点的主按钮，
+   用户会去点然后以为坏了。改用低饱和的中性表面色 + 弱化前景，一眼可辨"不可用"。 */
 .ja-btn:disabled {
-  opacity: 0.6;
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg-muted);
   cursor: not-allowed;
 }
 
@@ -401,6 +404,13 @@ h4 { font-size: var(--ja-text-lg); }
 }
 .ja-btn--danger:hover {
   background: var(--ja-color-red-600);
+}
+/* 变体规则在源码顺序上更靠后，禁用态须在变体之后再次声明，
+   否则悬停会把已禁用的主色/危险按钮重新染回饱和色。 */
+.ja-btn--primary:disabled,
+.ja-btn--danger:disabled {
+  background: var(--ja-color-surface-muted);
+  color: var(--ja-color-fg-muted);
 }
 .ja-btn--sm {
   padding: var(--ja-space-1) var(--ja-space-3);
