@@ -294,6 +294,7 @@ JobAgent 当前状态，截至 2026-10-16。
 > 剩余推进项**除 item166 外**均卡外部条件 / 真人参与（生产上线收尾 J1–J8 人工 smoke、CWS 开发者账号上架、Workday 直渲染租户端到端验证、扩展真人试用、生产 `LLM_*` 与 LLM 厂商配置），详见「已知限制 / 待核实」与 [docs/deferred-items.md](docs/deferred-items.md)。**item166 已全部闭环**（含 P0-2 迁移 041、P0-3 SSRF 守卫、ESLint、shared 拆分、report helpers、scanOnce 长函数拆分 `05e0f1f`），本清单无在推进条目。
 
 ## 最近变更
+- 2026-10-30（**首屏骨架加载态：AccountMenu/PresetList 不再 `return null`**，report 包）：Tier0 UIUX 评审（2026-10-30）P1「首屏水合竞态」落地——`AccountMenu` 在 `/auth/me` 解析前渲染 `aria-busy` 骨架占位（原 return null 造成头部导航高度跳动），`PresetList` 在 `/demo/presets` 返回前渲染带标题的三行骨架；`ja-skeleton` 类新增进 global.css（`prefers-reduced-motion` 降级为静态、颜色走 `--ja-color-surface-muted` 零 hex）；配套组件测试 5 例（含永不 resolve 的挂起 fetch，断言加载态稳定）。验证：report 全包 284/284、report tsc、eslint、`git diff --check` 全绿；零 API/契约改动，等 `dev → main` 部署后生产生效。
 - 2026-10-28（**Tier0.5 可自主推进项闭环：埋点体检 + 备份补做 + 675px 确认已修，纯运维/文档，零产品代码改动**）：
   - **埋点"0 条"观察项闭环**：直查生产（`DATABASE_URL` 只读查询）——`funnel_events` **13 条**（analyze_enqueued 6 / report_viewed 4 / share_clicked 2 / analyze_cache_hit 1，最近 `2026-10-19T13:55Z`）、`usage_events` **6 条**（最近 `13:57Z`）。**写点机制正常**：10-19 新用户 E2E 实测的 analyze/report_viewed 已成功落库；10-19 后无新事件＝流量真空（该日后无新 job run、无新实测动作），非 bug。10-17 体检的"funnel/usage 持续 0"正式闭环。
   - **675px 溢出确认已修（当日闭环）**：10-19 发现的报告页 ~675px 横向溢出实由当天 `874bead fix(report): polish narrow-screen report UX` 修复（`.metric` 加 `min-width:0`、`.metric-value` 加 `overflow-wrap:anywhere`，并新增 675px 视口 E2E 守卫 + AnalyzeForm 错误字段透出），清单状态区建议项闭环，无需再补。
