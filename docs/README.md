@@ -73,6 +73,7 @@
 | 问「验证漏斗转化怎么样 / 多少人从分析走到分享」——验证漏斗埋点（funnel_events 四事件、`ja_sid` 24h cookie 串联不 join 账号/IP、`POST /funnel/events` 只收分享点击、CLI `funnel summary|daily` 读口；✅ 2026-10-15 落地） | [design-funnel-analytics-20261015.md](design-funnel-analytics-20261015.md)（迁移 040；全链 fail-open、PRD §11.2）+ [API.md](API.md) §3.13 + handoff item165 |
 | 问「报告怎么传播 / 对位 GitHub Skills 徽章」——可分享证明卡（报告页 OG meta + 静态品牌卡 og-card.png + 页面证明卡下载 PNG；决策 #29 ✅ 2026-10-30 落地；卡面信息层级与不做清单见文档） | [design-share-proof-card-20261030.md](design-share-proof-card-20261030.md)（生成脚本 `tools/gen-og-card.mjs`；share_clicked 复用漏斗埋点） |
 | 问「怎么把报告分享到 X/LinkedIn/微博」——分享菜单（ShareButton 升级：复制/系统分享/五平台官方 intent 入口；决策 #30 ✅ 2026-10-30 落地；**API 代发永久禁止**，发布动作永远由用户本人完成） | [design-share-sheet-20261030.md](design-share-sheet-20261030.md)（合规边界表 + 不做清单；微信走 OG 卡片无 intent） |
+| 问「CWS 上架具体怎么操作」——照着填执行单（注册 $5 → 上传 release zip → listing/Privacy/Distribution 逐字段 → 审核预期 → 升级流程；2026-10-30 就绪，唯一卡点＝账号持有人操作） | [CWS上架执行单-20261030.md](CWS上架执行单-20261030.md)（listing/申辩文案权威源 [../apps/extension/store-assets/README.md](../apps/extension/store-assets/README.md)） |
 | 改扩展面板的岗位匹配展示（top5 列表/匹配依据/证据外链/四态/i18n） | [design-extension-match-ui-20260914.md](design-extension-match-ui-20260914.md) ★ |
 | 给扩展写浏览器级 E2E（加载 MV3 / content script 注入 / 面板渲染回归） | [design-extension-e2e-20260914.md](design-extension-e2e-20260914.md) ★ |
 | 看扩展一键填充覆盖哪些 ATS、为什么 Workday 是骨架、下一步扩哪个（Ashby 优先） | [design-ats-support-20261010.md](design-ats-support-20261010.md) ★ |
