@@ -10,6 +10,7 @@ function makeProps() {
     apiBase: 'https://api.example',
     placeholder: 'GitHub username',
     analyzeLabel: 'Analyze',
+    disabledHint: 'Enter a GitHub or Gitee username to generate a profile.',
     waitHint: 'A scheduled task picks up your request within about 5 minutes.',
     analyzingLabel: 'Analyzing…',
     invalidLabel: 'Invalid username',
@@ -50,6 +51,37 @@ describe('AnalyzeForm', () => {
   it('keeps the submit button disabled while the input is empty', () => {
     render(<AnalyzeForm {...makeProps()} />);
     expect(screen.getByRole('button', { name: 'Analyze' })).toBeDisabled();
+  });
+
+  it('explains why the submit button is disabled while the input is empty', () => {
+    render(<AnalyzeForm {...makeProps()} />);
+    const button = screen.getByRole('button', { name: 'Analyze' });
+    expect(button).toBeDisabled();
+    // Tier0 UIUX 评审 2026-10-30 P0：禁用原因必须可感知，且与按钮程序化关联
+    expect(screen.getByTestId('analyze-disabled-hint')).toHaveTextContent(
+      'Enter a GitHub or Gitee username',
+    );
+    expect(button).toHaveAttribute('aria-describedby', 'analyze-disabled-hint');
+  });
+
+  it('hides the disabled reason and enables the submit button once a username is entered', async () => {
+    render(<AnalyzeForm {...makeProps()} />);
+    await userEvent.type(screen.getByLabelText('username'), 'alice');
+
+    expect(screen.queryByTestId('analyze-disabled-hint')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Analyze' })).not.toHaveAttribute(
+      'aria-describedby',
+    );
+  });
+
+  it('omits the disabled hint when no reason text is provided', () => {
+    render(<AnalyzeForm {...makeProps()} disabledHint={undefined} />);
+    expect(screen.queryByTestId('analyze-disabled-hint')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Analyze' })).not.toHaveAttribute(
+      'aria-describedby',
+    );
   });
 
   it('states the wait expectation before the user submits', () => {
