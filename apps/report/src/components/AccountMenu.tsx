@@ -132,8 +132,15 @@ export default function AccountMenu({
       });
   };
 
-  // 首次加载前不渲染，避免闪现登录按钮
-  if (!me) return null;
+  // 首次加载前用骨架占位（而非 return null）：保持头部导航高度稳定、消除布局位移，
+  // aria-busy 让 AX tree 首屏即有可识别的加载节点。
+  if (!me) {
+    return (
+      <div className="account-menu" aria-busy="true" data-testid="account-menu-loading">
+        <span className="ja-skeleton" aria-hidden="true" style={{ height: '34px', width: '80px' }} />
+      </div>
+    );
+  }
 
   if (me.kind !== 'user') {
     // 匿名 / 演示身份：仅展示已配置平台的登录入口，登录后回跳当前页

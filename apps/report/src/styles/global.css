@@ -640,6 +640,27 @@ h4 { font-size: var(--ja-text-lg); }
   to { transform: rotate(360deg); }
 }
 
+/* 首屏骨架占位：客户端 React island 在水合后异步拉取数据，加载期间用骨架预留
+   与真实内容等大的空间，避免 return null 造成的冷加载空白与布局位移（CLS）。
+   Tier0 UIUX 评审 2026-10-30 P1（首屏水合竞态）。 */
+@keyframes ja-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.ja-skeleton {
+  display: inline-block;
+  background: var(--ja-color-surface-muted);
+  border-radius: var(--ja-radius-sm);
+  animation: ja-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ja-skeleton {
+    animation: none;
+  }
+}
+
 .analyze-form .error-box {
   display: flex;
   align-items: center;
