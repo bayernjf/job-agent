@@ -98,6 +98,14 @@ function fakeFetch(
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    if (url.includes('/pub/v1/usage/summary')) {
+      // model-kit v0.2.0 polls the budget readout (GET, no body) alongside
+      // the catalog; an empty summary governs nothing.
+      return new Response(JSON.stringify({ models: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     if (url.includes('/pub/v1/usage')) {
       return new Response(null, { status: 202 });
     }
@@ -230,7 +238,7 @@ describe('hub catalog sync', () => {
       promptTokens: 12,
       completionTokens: 34,
     });
-    const usageCall = fetchCalls.find((c) => c.url.includes('/pub/v1/usage'));
+    const usageCall = fetchCalls.find((c) => c.url.endsWith('/pub/v1/usage'));
     expect(usageCall).not.toBeUndefined();
     const body = JSON.parse(usageCall?.body ?? '{}') as Record<string, unknown>;
     expect(body).toMatchObject({
@@ -249,6 +257,6 @@ describe('hub catalog sync', () => {
       feature: 'cover_letter',
       assignmentId: 'asn_does_not_exist',
     });
-    expect(fetchCalls.some((c) => c.url.includes('/pub/v1/usage'))).toBe(false);
+    expect(fetchCalls.some((c) => c.url.endsWith('/pub/v1/usage'))).toBe(false);
   });
 });
