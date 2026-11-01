@@ -17,7 +17,7 @@ import type {
 import type { DemoConfig } from '../demo-config.js';
 import type { AuthConfig } from '../auth-config.js';
 
-export function formatJob(job: StoredAnalysisJob) {
+export function formatJob(job: StoredAnalysisJob, queuePosition?: number) {
   return {
     id: job.id,
     subject: {
@@ -29,6 +29,8 @@ export function formatJob(job: StoredAnalysisJob) {
     status: job.status,
     stage: job.stage,
     attempts: job.attempts,
+    // Queue position is meaningful only while queued; omit it for other states.
+    queuePosition: job.status === 'queued' ? queuePosition : undefined,
     profileId: job.profileId,
     error: job.errorMessage,
     budgetUsed: job.budgetUsed,

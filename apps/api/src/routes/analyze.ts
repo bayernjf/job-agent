@@ -255,6 +255,11 @@ export function registerAnalyze(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'job not found' }, 404);
     }
 
-    return c.json(formatJob(job));
+    const queuePosition =
+      job.status === 'queued'
+        ? await repos.jobs.countQueuedBefore(job.id)
+        : undefined;
+
+    return c.json(formatJob(job, queuePosition));
   });
 }
