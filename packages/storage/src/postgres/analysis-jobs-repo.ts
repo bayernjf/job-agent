@@ -62,8 +62,9 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
             lt(analysisJobs.attempts, cap),
           ),
         )
-        // 正式（public/未来 user）优先于 demo，同级再按创建时间 FIFO
-        .orderBy(formalFirst, asc(analysisJobs.createdAt))
+        // 正式（public/未来 user）优先于 demo，同级按创建时间 FIFO，
+        // 同秒再用 id 给出确定性顺序（与 countQueuedBefore 完全对齐）
+        .orderBy(formalFirst, asc(analysisJobs.createdAt), asc(analysisJobs.id))
         .limit(1);
 
       if (oldest.length === 0) return;
@@ -308,6 +309,50 @@ export class PgAnalysisJobsRepository implements IAnalysisJobsRepository {
       .orderBy(asc(analysisJobs.createdAt))
       .limit(limit);
     return rows.map(toStoredJob);
+  }
+
+  async countQueuedBefore(
+    jobId: string,
+    maxAttempts: number = DEFAULT_JOB_MAX_ATTEMPTS,
+  ): Promise<number> {
+    const cap = Math.max(1, maxAttempts);
+    const target = await this.db
+      .select({
+        status: analysisJobs.status,
+        requesterKind: analysisJobs.requesterKind,
+        createdAt: analysisJobs.createdAt,
+      })
+      .from(analysisJobs)
+      .where(eq(analysisJobs.id, jobId))
+      .limit(1);
+
+    const targetRow = target[0];
+    if (!targetRow || targetRow.status !== 'queued') return 0;
+
+    const targetFormal = targetRow.requesterKind === 'demo' ? 1 : 0;
+    const rows = await this.db
+      .select({ count: sql<string>`count(*)` })
+      .from(analysisJobs)
+      .where(
+        and(
+          eq(analysisJobs.status, 'queued'),
+          lt(analysisJobs.attempts, cap),
+          or(
+            sql`${formalFirst} < ${targetFormal}`,
+            and(
+              sql`${formalFirst} = ${targetFormal}`,
+              tsLt(analysisJobs.createdAt, targetRow.createdAt),
+            ),
+            and(
+              sql`${formalFirst} = ${targetFormal}`,
+              eq(analysisJobs.createdAt, targetRow.createdAt),
+              lt(analysisJobs.id, jobId),
+            ),
+          ),
+        ),
+      );
+
+    return Number(rows[0]?.count ?? 0);
   }
 
   async countByStatus(): Promise<Record<string, number>> {
