@@ -480,6 +480,8 @@ describe('GET /jobs/:id', () => {
     expect(body.attempts).toBe(0);
     expect(body.profileId).toBeNull();
     expect(body.createdAt).toBeTruthy();
+    // Only queued job in the queue: it is next to be claimed (position 0).
+    expect(body.queuePosition).toBe(0);
   });
 
   it('returns updated status after job is claimed and succeeds', async () => {
@@ -502,6 +504,8 @@ describe('GET /jobs/:id', () => {
     expect(body.stage).toBe('L0');
     expect(body.attempts).toBe(1);
     expect(body.startedAt).toBeTruthy();
+    // Queue position is reported only while queued.
+    expect(body.queuePosition).toBeUndefined();
 
     // 更新阶段
     await repos.jobs.updateStage(jobId, 'L1');
