@@ -38,6 +38,7 @@
   "job.retry": "Retry",
   "job.error": "Analysis error: {message}",
   "job.attempts": "Attempt {current}/{max}",
+  "job.queuePosition": "jobs ahead: {count}",
   "job.stillQueued.title": "Your job is still queued — nothing was dropped",
   "job.stillQueued.body": "This deployment drains the analysis queue with a scheduled task every 5 minutes (since 2026-10-06; it used to be hourly, and in practice hourly runs were often delayed by several hours). You can close this page; resubmitting the same username later returns to this very job, and the share link opens as soon as the report is ready. If it has not finished after a day, the drain itself is broken — report it with the job ID below.",
   "job.stillQueued.ref": "Job ID {jobId}",
