@@ -211,6 +211,37 @@ describe('AnalyzeForm', () => {
     expect(alert).toHaveTextContent('Quota used up');
   });
 
+  it('shows the queue position while the job is queued', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi
+        .fn()
+        .mockResolvedValueOnce(okJson({ jobId: 'job-pos', status: 'queued' }))
+        .mockResolvedValue(
+          okJson({ status: 'queued', stage: null, queuePosition: 2 }),
+        );
+
+      render(
+        <AnalyzeForm
+          {...makeProps()}
+          queuePositionLabel="前面还有 {count} 个任务"
+        />,
+      );
+      fireEvent.change(screen.getByLabelText('username'), {
+        target: { value: 'alice' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Analyze' }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+
+      expect(screen.getByRole('status')).toHaveTextContent('前面还有 2 个任务');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('turns an exhausted poll budget into a queue notice, not an error', async () => {
     vi.useFakeTimers();
     try {

@@ -66,8 +66,9 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
             lt(analysisJobs.attempts, cap), // 避免无限重试
           ),
         )
-        // 正式（public/未来 user）优先于 demo，同级再按创建时间 FIFO
-        .orderBy(formalFirst, asc(analysisJobs.createdAt))
+        // 正式（public/未来 user）优先于 demo，同级按创建时间 FIFO，
+        // 同秒再用 id 给出确定性顺序（与 countQueuedBefore 完全对齐）
+        .orderBy(formalFirst, asc(analysisJobs.createdAt), asc(analysisJobs.id))
         .limit(1)
         .get();
 
@@ -307,6 +308,50 @@ export class SqliteAnalysisJobsRepository implements IAnalysisJobsRepository {
       .limit(limit)
       .all();
     return rows.map(toStoredJob);
+  }
+
+  async countQueuedBefore(
+    jobId: string,
+    maxAttempts: number = DEFAULT_JOB_MAX_ATTEMPTS,
+  ): Promise<number> {
+    const cap = Math.max(1, maxAttempts);
+    const target = this.db
+      .select({
+        status: analysisJobs.status,
+        requesterKind: analysisJobs.requesterKind,
+        createdAt: analysisJobs.createdAt,
+      })
+      .from(analysisJobs)
+      .where(eq(analysisJobs.id, jobId))
+      .get();
+
+    if (!target || target.status !== 'queued') return 0;
+
+    const targetFormal = target.requesterKind === 'demo' ? 1 : 0;
+    const row = this.db
+      .select({ count: sql<number>`count(*)` })
+      .from(analysisJobs)
+      .where(
+        and(
+          eq(analysisJobs.status, 'queued'),
+          lt(analysisJobs.attempts, cap),
+          or(
+            sql`${formalFirst} < ${targetFormal}`,
+            and(
+              sql`${formalFirst} = ${targetFormal}`,
+              lt(analysisJobs.createdAt, target.createdAt),
+            ),
+            and(
+              sql`${formalFirst} = ${targetFormal}`,
+              eq(analysisJobs.createdAt, target.createdAt),
+              lt(analysisJobs.id, jobId),
+            ),
+          ),
+        ),
+      )
+      .get();
+
+    return Number(row?.count ?? 0);
   }
 
   async countByStatus(): Promise<Record<string, number>> {

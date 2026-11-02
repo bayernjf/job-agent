@@ -15,6 +15,8 @@ interface AnalyzeFormProps {
   disabledHint?: string;
   /** 提交**之前**就说清等待形态：排队由定时器消费，人可以离开这一页 */
   waitHint: string;
+  /** 排队中报告"前面还有 N 个任务"（含 {count} 占位）；未提供则不显示位置 */
+  queuePositionLabel?: string;
   analyzingLabel: string;
   invalidLabel: string;
   queuedLabel: string;
@@ -68,6 +70,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
     analyzeLabel,
     disabledHint,
     waitHint,
+    queuePositionLabel,
     analyzingLabel,
     invalidLabel,
     queuedLabel,
@@ -127,6 +130,8 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
             status: string;
             stage?: string | null;
             profileId?: string | null;
+            /** 队列位置（仅 queued 时返回）：0 表示下一个被认领 */
+            queuePosition?: number | null;
             /** API 返回字段为 error（errorMessage 是组件侧早期拼写，双读兼容） */
             error?: string | null;
             errorMessage?: string | null;
@@ -162,7 +167,13 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
             job.attempts && job.attempts > 1
               ? `（${attemptsLabel.replace('{current}', String(job.attempts)).replace('{max}', '3')}）`
               : '';
-          setStatusText(`${pollingLabel} ${stageText}${attemptsText}`);
+          const positionText =
+            job.status === 'queued' &&
+            typeof job.queuePosition === 'number' &&
+            queuePositionLabel
+              ? ` · ${queuePositionLabel.replace('{count}', String(job.queuePosition))}`
+              : '';
+          setStatusText(`${pollingLabel} ${stageText}${positionText}${attemptsText}`);
           pollJob(jobId);
         } catch (err) {
           setPhase('error');
@@ -171,7 +182,7 @@ export default function AnalyzeForm(props: AnalyzeFormProps) {
       }, POLL_INTERVAL_MS);
       pollTimerRef.current = timer;
     },
-    [apiBase, locale, pollingLabel, queuedLabel, runningLabel, stageL0Label, stageL1Label, attemptsLabel, failedLabel, notFoundLabel],
+    [apiBase, locale, pollingLabel, queuedLabel, runningLabel, stageL0Label, stageL1Label, attemptsLabel, failedLabel, notFoundLabel, queuePositionLabel],
   );
 
   const handleSubmit = useCallback(

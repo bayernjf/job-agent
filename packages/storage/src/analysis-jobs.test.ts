@@ -44,10 +44,14 @@ describe('SqliteAnalysisJobsRepository', () => {
   });
 
   it('claims the oldest queued job atomically', async () => {
-    const { repo } = freshRepo();
-    // 插入两个任务，第二个更新（内存库中插入顺序即时间顺序）
+    const { repo, db } = freshRepo();
+    // 插入两个任务，第二个更新
     await repo.create(newJob('job_old'));
     await repo.create(newJob('job_new'));
+    // 显式错开 created_at：默认时间戳精度为秒，同秒任务改由 id 决胜，
+    // 这里要验证 FIFO，故固定创建时间
+    db.prepare('UPDATE analysis_jobs SET created_at = ? WHERE id = ?').run('2026-09-10T00:00:00.000Z', 'job_old');
+    db.prepare('UPDATE analysis_jobs SET created_at = ? WHERE id = ?').run('2026-09-10T01:00:00.000Z', 'job_new');
 
     const claimed = await repo.claimNext('worker-1');
     expect(claimed).not.toBeNull();
@@ -347,6 +351,75 @@ describe('SqliteAnalysisJobsRepository', () => {
     // 仍可被认领（未被 attempts<3 条件永久排除）
     const final = await repo.claimNext('worker-1');
     expect(final!.id).toBe('job_defer');
+  });
+
+  it('counts queued jobs ahead in FIFO order for formal jobs', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create(newJob('job_001'));
+    await repo.create(newJob('job_002'));
+    await repo.create(newJob('job_003'));
+    // 固定 created_at，避免同毫秒插入造成顺序不确定
+    db.prepare('UPDATE analysis_jobs SET created_at = ? WHERE id = ?').run('2026-09-10T00:00:00.000Z', 'job_001');
+    db.prepare('UPDATE analysis_jobs SET created_at = ? WHERE id = ?').run('2026-09-10T01:00:00.000Z', 'job_002');
+    db.prepare('UPDATE analysis_jobs SET created_at = ? WHERE id = ?').run('2026-09-10T02:00:00.000Z', 'job_003');
+
+    expect(await repo.countQueuedBefore('job_001')).toBe(0);
+    expect(await repo.countQueuedBefore('job_002')).toBe(1);
+    expect(await repo.countQueuedBefore('job_003')).toBe(2);
+  });
+
+  it('breaks same-second ties by id, matching claimNext order', async () => {
+    const { repo, db } = freshRepo();
+    // 同秒创建：默认时间戳精度为秒，此时由 id 字典序给出确定性顺序
+    await repo.create(newJob('job_z'));
+    await repo.create(newJob('job_a'));
+    await repo.create(newJob('job_m'));
+    db.prepare('UPDATE analysis_jobs SET created_at = ?').run('2026-09-10T00:00:00.000Z');
+
+    // id 字典序：job_a < job_m < job_z
+    expect(await repo.countQueuedBefore('job_a')).toBe(0);
+    expect(await repo.countQueuedBefore('job_m')).toBe(1);
+    expect(await repo.countQueuedBefore('job_z')).toBe(2);
+
+    // claimNext 必须按同一顺序认领，位置与实际认领严格一致
+    expect((await repo.claimNext('w'))!.id).toBe('job_a');
+    expect((await repo.claimNext('w'))!.id).toBe('job_m');
+    expect((await repo.claimNext('w'))!.id).toBe('job_z');
+  });
+
+  it('counts formal jobs ahead of demo jobs per formal-first ordering', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create({
+      id: 'job_demo',
+      subjectLogin: 'a',
+      requesterKind: 'demo',
+      demoSessionId: 's1',
+    });
+    await repo.create({ id: 'job_formal', subjectLogin: 'b' });
+    // demo 更早入队，但 formal 仍应排在前面
+    db.prepare('UPDATE analysis_jobs SET created_at = ? WHERE id = ?').run('2026-09-10T00:00:00.000Z', 'job_demo');
+    db.prepare('UPDATE analysis_jobs SET created_at = ? WHERE id = ?').run('2026-09-10T01:00:00.000Z', 'job_formal');
+
+    expect(await repo.countQueuedBefore('job_formal')).toBe(0);
+    expect(await repo.countQueuedBefore('job_demo')).toBe(1);
+  });
+
+  it('returns zero for missing, running, and cap-exhausted jobs', async () => {
+    const { repo, db } = freshRepo();
+    await repo.create(newJob('job_001'));
+    await repo.create(newJob('job_002'));
+    await repo.create(newJob('job_003'));
+
+    // 不存在的 job
+    expect(await repo.countQueuedBefore('nope')).toBe(0);
+
+    // running 不再是 queued
+    await repo.claimNext('worker-1'); // job_001 -> running
+    expect(await repo.countQueuedBefore('job_001')).toBe(0);
+
+    // attempts 达 cap 的 queued job 不可被认领，不计入其他 job 的位置
+    db.prepare('UPDATE analysis_jobs SET attempts = 3, status = ? WHERE id = ?').run('queued', 'job_002');
+    expect(await repo.countQueuedBefore('job_003')).toBe(0);
   });
 
   it('migration 002 creates analysis_jobs table with expected columns', () => {

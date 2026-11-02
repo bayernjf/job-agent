@@ -56,6 +56,13 @@ export interface IAnalysisJobsRepository {
     subjectLogin: string,
   ): Promise<StoredAnalysisJob | undefined>;
   listQueued(limit?: number): Promise<StoredAnalysisJob[]>;
+  /**
+   * Number of queued jobs that `claimNext` would pick before `jobId`, using the
+   * same formal-first, createdAt FIFO order and the same retry cap. Reports the
+   * caller's queue position (0 = next to be claimed); returns 0 for a job that
+   * is not queued.
+   */
+  countQueuedBefore(jobId: string, maxAttempts?: number): Promise<number>;
   countByStatus(): Promise<Record<JobStatus, number>>;
   /**
    * Reclaim jobs stuck in `running` for longer than maxAgeMs (worker crashed mid-job).

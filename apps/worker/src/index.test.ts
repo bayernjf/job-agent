@@ -828,8 +828,13 @@ describe('claimAndProcessOne (serverless cron entry)', () => {
 
   it('processes exactly one queued job and reports its profileId', async () => {
     const repos = await freshRepos();
-    const jobId = await createQueuedJob(repos, 'one-shot');
-    await createQueuedJob(repos, 'still-queued'); // 第二个任务本轮不应被处理
+    // createdAt is second-precision: both rows share a timestamp, so claimNext's
+    // explicit id tiebreaker decides the order. Use deterministic ids whose
+    // lexicographic order matches the intended FIFO sequence instead of relying
+    // on random ids or the old implicit SQLite rowid order.
+    const jobId = 'job-first';
+    await repos.jobs.create({ id: jobId, subjectLogin: 'one-shot' });
+    await repos.jobs.create({ id: 'job-second', subjectLogin: 'still-queued' });
     const source = makeFakeSource();
 
     const outcome = await claimAndProcessOne({
