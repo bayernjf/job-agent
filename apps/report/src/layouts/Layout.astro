@@ -185,6 +185,13 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     border: 1px solid var(--ja-color-border);
     border-radius: var(--ja-radius-md);
     white-space: nowrap;
+    /* 显式覆盖全局 a 的 accent 绿：绿色对小字号文本对比度不足
+       （实测 3.30:1，WCAG AA 需 ≥4.5:1），与主导航同用 fg-muted。 */
+    color: var(--ja-color-fg-muted);
+  }
+
+  .lang-switch:hover {
+    color: var(--ja-color-accent);
   }
 
   /* 移动端：第一行 logo + 账号操作区，第二行主导航换行（2026-10-12 生产 360px 走查修复延续） */
