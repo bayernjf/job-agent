@@ -934,3 +934,29 @@ export const funnelEvents = sqliteTable(
 
 export type FunnelEventInsert = typeof funnelEvents.$inferInsert;
 export type FunnelEventSelect = typeof funnelEvents.$inferSelect;
+
+/**
+ * profile_events（迁移 043，评审 P1-1 修复）：画像归属/破坏性操作审计日志。
+ * 只追加、不回改；与 funnel_events 的匿名口径相反——审计必须可追责，故记
+ * actor_account_id；profile_id 无外键（画像行删除后事件保留）；值域由应用层守门。
+ */
+export const profileEvents = sqliteTable(
+  'profile_events',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    event: text('event').notNull(),
+    actorAccountId: text('actor_account_id'),
+    detailJson: text('detail_json'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (table) => [
+    index('idx_profile_events_profile_created').on(table.profileId, table.createdAt),
+    index('idx_profile_events_event_created').on(table.event, table.createdAt),
+  ],
+);
+
+export type ProfileEventInsert = typeof profileEvents.$inferInsert;
+export type ProfileEventSelect = typeof profileEvents.$inferSelect;

@@ -97,12 +97,15 @@ export class SqliteProfilesRepository implements IProfilesRepository {
       .run();
   }
 
-  async markClaimed(id: string): Promise<void> {
-    this.db
+  async markClaimed(id: string): Promise<boolean> {
+    // 条件更新（评审 P1-1）：仅在尚未被认领时翻牌。已被认领/不存在返回 false，
+    // 由调用方（claim 路由）据此返回 409 冲突，避免第二账号抢夺同一画像。
+    const info = this.db
       .update(profilesTable)
       .set({ subjectClaimed: true, updatedAt: new Date().toISOString() })
-      .where(eq(profilesTable.id, id))
+      .where(and(eq(profilesTable.id, id), eq(profilesTable.subjectClaimed, false)))
       .run();
+    return Number(info.changes) > 0;
   }
 
   async unmarkClaimed(id: string): Promise<void> {

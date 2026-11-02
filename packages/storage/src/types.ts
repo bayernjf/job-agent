@@ -25,6 +25,7 @@ import type {
   INotificationSubscriptionsRepository,
   IUsageEventsRepository,
   IFunnelEventsRepository,
+  IProfileEventsRepository,
 } from './repositories/index.js';
 import type { RunMigrationsResult } from './migrations-fs.js';
 
@@ -101,6 +102,8 @@ export interface StorageContext {
   usageEvents: IUsageEventsRepository;
   /** 产品验证漏斗匿名事件（迁移 040；只追加，recorder 写、聚合口读，不记个人数据） */
   funnelEvents: IFunnelEventsRepository;
+  /** 画像归属/破坏性操作审计（评审 P1-1，迁移 043；只追加，删除级联前留痕） */
+  profileEvents: IProfileEventsRepository;
   /** 按序应用未执行迁移，返回本次新应用列表 */
   migrate(): Promise<RunMigrationsResult>;
   /**

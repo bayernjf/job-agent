@@ -245,3 +245,5 @@ export { toUsageEventRecord } from './usage-event.js';
 
 export type { FunnelEventRecord, RawFunnelEventRow } from './funnel-event.js';
 export { toFunnelEventRecord } from './funnel-event.js';
+export type { ProfileEventRecord, RawProfileEventRow } from './profile-event.js';
+export { toProfileEventRecord } from './profile-event.js';

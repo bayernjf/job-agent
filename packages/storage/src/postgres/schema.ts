@@ -877,3 +877,28 @@ export const funnelEvents = pgTable(
 
 export type FunnelEventInsert = typeof funnelEvents.$inferInsert;
 export type FunnelEventSelect = typeof funnelEvents.$inferSelect;
+
+/**
+ * profile_events（迁移 043，评审 P1-1 修复）：画像归属/破坏性操作审计日志。
+ * 列集与索引名与 SQLite 方言逐一对应（migrations-parity 测试守护）。
+ */
+export const profileEvents = pgTable(
+  'profile_events',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id').notNull(),
+    event: text('event').notNull(),
+    actorAccountId: text('actor_account_id'),
+    detailJson: text('detail_json'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index('idx_profile_events_profile_created').on(table.profileId, table.createdAt),
+    index('idx_profile_events_event_created').on(table.event, table.createdAt),
+  ],
+);
+
+export type ProfileEventInsert = typeof profileEvents.$inferInsert;
+export type ProfileEventSelect = typeof profileEvents.$inferSelect;

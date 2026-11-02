@@ -453,6 +453,22 @@ describe('migrations', () => {
     const db = freshDb();
     runMigrations(db, MIGRATIONS_DIR);
 
+    // 回滚 043（profile_events 画像审计事件表，评审 P1-1）
+    const peBefore43 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='profile_events'")
+      .all() as Array<{ name: string }>;
+    expect(peBefore43.map((t) => t.name)).toContain('profile_events');
+    const result43 = rollbackLatestMigration(db, MIGRATIONS_DIR);
+    expect(result43.version).toBe('043');
+    const peAfter43 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='profile_events'")
+      .all() as Array<{ name: string }>;
+    expect(peAfter43.map((t) => t.name)).not.toContain('profile_events');
+    const peIdxAfter43 = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_profile_events_%'")
+      .all() as Array<{ name: string }>;
+    expect(peIdxAfter43).toHaveLength(0);
+
     // 回滚 042（llm_catalog_models 去掉 hub 投影字段，W5-1）
     const catalogColsBefore42 = db
       .prepare('PRAGMA table_info(llm_catalog_models)')

@@ -288,18 +288,21 @@ describe('SqliteAccountsRepository.deleteUnclaimed', () => {
 });
 
 describe('SqliteProfilesRepository.markClaimed', () => {
-  it('flips subject_claimed to true (idempotent) and leaves unknown ids as a no-op', async () => {
+  it('flips subject_claimed to true once, then reports conflict (评审 P1-1 条件更新)', async () => {
     const ctx = fresh();
     insertMinimalProfile(ctx.client, 'prof-1', 'alice');
     expect(claimedValue(ctx.client, 'prof-1')).toBe(0);
 
-    await ctx.profiles.markClaimed('prof-1');
+    // 首次翻牌成功
+    await expect(ctx.profiles.markClaimed('prof-1')).resolves.toBe(true);
     expect(claimedValue(ctx.client, 'prof-1')).toBe(1);
 
-    await ctx.profiles.markClaimed('prof-1'); // 幂等，不报错
+    // 已被认领：返回 false 且不报错（调用方据此 409，拒绝第二账号抢夺）
+    await expect(ctx.profiles.markClaimed('prof-1')).resolves.toBe(false);
     expect(claimedValue(ctx.client, 'prof-1')).toBe(1);
 
-    await ctx.profiles.markClaimed('does-not-exist'); // 静默无操作
+    // 不存在的 id：false，静默无操作
+    await expect(ctx.profiles.markClaimed('does-not-exist')).resolves.toBe(false);
     ctx.close();
   });
 });

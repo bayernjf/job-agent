@@ -28,6 +28,7 @@ import { SqliteCronHeartbeatRepository } from './sqlite/cron-heartbeat-repo.js';
 import { SqliteNotificationSubscriptionsRepository } from './sqlite/notification-subscriptions-repo.js';
 import { SqliteUsageEventsRepository } from './sqlite/usage-events-repo.js';
 import { SqliteFunnelEventsRepository } from './sqlite/funnel-events-repo.js';
+import { SqliteProfileEventsRepository } from './sqlite/profile-events-repo.js';
 import { SqliteUserLlmConfigsRepository } from './sqlite/user-llm-configs-repo.js';
 import { sqliteVerifyRequiredColumns } from './sqlite/verify-required-columns.js';
 import { openPostgres } from './postgres/connection.js';
@@ -57,6 +58,7 @@ import { PgCronHeartbeatRepository } from './postgres/cron-heartbeat-repo.js';
 import { PgNotificationSubscriptionsRepository } from './postgres/notification-subscriptions-repo.js';
 import { PgUsageEventsRepository } from './postgres/usage-events-repo.js';
 import { PgFunnelEventsRepository } from './postgres/funnel-events-repo.js';
+import { PgProfileEventsRepository } from './postgres/profile-events-repo.js';
 import { PgUserLlmConfigsRepository } from './postgres/user-llm-configs-repo.js';
 import { pgVerifyRequiredColumns } from './postgres/verify-required-columns.js';
 import type { StorageConfig, StorageContext, StorageDriver } from './types.js';
@@ -164,6 +166,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
       notificationSubscriptions: new PgNotificationSubscriptionsRepository(db),
       usageEvents: new PgUsageEventsRepository(db),
       funnelEvents: new PgFunnelEventsRepository(db),
+      profileEvents: new PgProfileEventsRepository(db),
       searchPresets: new PgSearchPresetsRepository(db),
       searchRuns: new PgSearchRunsRepository(db),
       migrate: async () => runPgMigrations(client, resolveExistingMigrationsDir(migrationsDir, 'postgres')),
@@ -211,6 +214,7 @@ export async function createStorage(config: StorageConfig = {}): Promise<Storage
     notificationSubscriptions: new SqliteNotificationSubscriptionsRepository(db),
     usageEvents: new SqliteUsageEventsRepository(db),
     funnelEvents: new SqliteFunnelEventsRepository(db),
+    profileEvents: new SqliteProfileEventsRepository(db),
     searchPresets: new SqliteSearchPresetsRepository(db),
     searchRuns: new SqliteSearchRunsRepository(db),
     migrate: async () => runMigrations(client, resolveExistingMigrationsDir(migrationsDir, 'sqlite')),

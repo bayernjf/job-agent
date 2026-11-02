@@ -49,8 +49,12 @@ export interface IProfilesRepository {
   updateStatus(id: string, status: ProfileStatus): Promise<void>;
   /** 物理删除画像（T26 删除/解绑）；返回是否存在并被删除 */
   deleteById(id: string): Promise<boolean>;
-  /** 把画像标记为本人已认领（subject_claimed=true，幂等）；不存在时静默无操作 */
-  markClaimed(id: string): Promise<void>;
+  /**
+   * 把画像标记为本人已认领（subject_claimed=true）。
+   * 条件更新：仅当当前未认领时才翻牌并返回 true；已被认领或画像不存在返回 false
+   * （评审 P1-1：认领冲突由调用方返回 409，拒绝第二账号抢夺/覆盖归属）。
+   */
+  markClaimed(id: string): Promise<boolean>;
   /**
    * 解除本人认领（subject_claimed=false，幂等）；不存在时静默无操作。
    * 与 deleteById 不同：只翻认领标记，不删画像/证据/投递/面试，分享链接继续有效。
