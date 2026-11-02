@@ -390,6 +390,7 @@ export const AUTH_ERROR_CODES = {
   exchangeFailed: 'AUTH_EXCHANGE_FAILED', // 502：用授权码换 token / 取用户资料失败
   profileNotFound: 'AUTH_PROFILE_NOT_FOUND', // 404：认领的画像不存在
   notProfileOwner: 'AUTH_NOT_PROFILE_OWNER', // 403：画像主体 platform/login 与登录账号不一致
+  profileAlreadyClaimed: 'AUTH_PROFILE_ALREADY_CLAIMED', // 409：画像已被认领，拒绝抢夺（评审 P1-1）
   recruiterRequired: 'RECRUITER_DECLARATION_REQUIRED', // 403：已登录但未做招聘方声明（F10，#17 第一期）
 } as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CODES];
