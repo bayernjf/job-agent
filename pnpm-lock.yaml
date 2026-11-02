@@ -91,6 +91,9 @@ importers:
       '@jobagent/worker':
         specifier: workspace:*
         version: link:../worker
+      '@model-hub/model-kit':
+        specifier: file:../../../model-hub/packages/model-kit
+        version: file:../model-hub/packages/model-kit
       hono:
         specifier: ^4.13.11
         version: 4.13.13
@@ -1491,6 +1494,10 @@ packages:
     resolution: {integrity: sha512-uwPAhccfFJlsfCxMYTwOdVfOz3xqyj8xYL3zJj8f0pb30tLohnnFPhLuqp4/qoEz8sNxe4SESZedcBojRefIzg==}
     engines: {node: '>=18'}
     hasBin: true
+
+  '@model-hub/model-kit@file:../model-hub/packages/model-kit':
+    resolution: {directory: ../model-hub/packages/model-kit, type: directory}
+    engines: {node: '>=22.0.0'}
 
   '@modelcontextprotocol/sdk@1.32.2':
     resolution: {integrity: sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw==}
@@ -5560,6 +5567,8 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
+
+  '@model-hub/model-kit@file:../model-hub/packages/model-kit': {}
 
   '@modelcontextprotocol/sdk@1.32.2(zod@4.6.7)':
     dependencies:

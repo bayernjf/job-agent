@@ -1522,13 +1522,26 @@ export const UserLlmConfigGetResponseSchema = z.discriminatedUnion('configured',
 export type UserLlmConfigGetResponse = z.infer<typeof UserLlmConfigGetResponseSchema>;
 
 /**
- * GET /admin/llm-catalog 响应体（决策 #21-0）：合并后目录 + env 凭证配置态。
- * 目录本身不含任何凭证字段；envConfigured 告知管理员内置通道是否可用
- * （LLM_API_KEY 已配置）。不包含任何 key 内容。
+ * admin 目录行视图（W5-1）：在目录元数据上附加来源投影字段。
+ * source='hub' 时 revision/assignmentId 有值；本地行 revision/assignmentId 为 null。
+ */
+export const AdminCatalogModelViewSchema = LlmCatalogModelSchema.extend({
+  source: z.enum(['builtin', 'hub']),
+  revision: z.number().int().nullable(),
+  assignmentId: z.string().nullable(),
+});
+export type AdminCatalogModelView = z.infer<typeof AdminCatalogModelViewSchema>;
+
+/**
+ * GET /admin/llm-catalog 响应体（决策 #21-0；W5-1 扩展）：目录 + 凭证/同步状态。
+ * 目录本身不含任何凭证字段；envConfigured 告知 env 内置通道是否可用，
+ * hubConfigured 告知是否由 model-hub 同步，revision 为当前 hub 修订号。
  */
 export const AdminLlmCatalogViewSchema = z.object({
-  models: z.array(LlmCatalogModelSchema),
+  models: z.array(AdminCatalogModelViewSchema),
   envConfigured: z.boolean(),
+  hubConfigured: z.boolean(),
+  revision: z.number().int().nullable(),
 });
 export type AdminLlmCatalogView = z.infer<typeof AdminLlmCatalogViewSchema>;
 

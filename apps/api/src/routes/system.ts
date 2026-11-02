@@ -42,6 +42,9 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   // 041 api_tokens 去明文（审查 P0-2，决策 #27）：列表直接读 token_last4，
   // 缺列会让授权管理端点 500，进守卫让深探活先于用户点击暴露。
   { table: 'api_tokens', column: 'token_last4' },
+  // 042 内置目录改 hub 投影：同步服务读取 source/revision/assignment_id，
+  // 缺列会让同步与只读目录视图失效，进守卫显式暴露。
+  { table: 'llm_catalog_models', column: 'source' },
 ];
 
 export { REQUIRED_COLUMNS };

@@ -18,7 +18,7 @@ import {
   UserLlmConfigValidateSchema,
   UserLlmConfigGetResponseSchema,
   UserLlmConfigViewSchema,
-  type LlmCatalogModel,
+  type AdminCatalogModelView,
   type StoredUserLlmConfig,
 } from '@jobagent/shared';
 import {
@@ -39,6 +39,9 @@ const LLM_VALIDATION_FAILED = 'LLM_VALIDATION_FAILED';
 const LLM_ENDPOINT_BLOCKED = 'LLM_ENDPOINT_BLOCKED';
 const LLM_VALIDATE_RATE_LIMITED = 'LLM_VALIDATE_RATE_LIMITED';
 const BAD_REQUEST = 'BAD_REQUEST';
+const CATALOG_SYNCED_FROM_HUB = 'CATALOG_SYNCED_FROM_HUB';
+const HUB_NOT_CONFIGURED = 'HUB_NOT_CONFIGURED';
+const HUB_SYNC_FAILED = 'HUB_SYNC_FAILED';
 /** /validate 的 IP 滑窗上限（次/小时）：该端点会替用户向任意地址发一次真实请求，
  *  不加限频就是一个端口扫描原语（审查 P0-3）。固定值、非产品旋钮，故不走 env。 */
 const LLM_VALIDATE_RATE_PER_HOUR = 20;
@@ -70,12 +73,45 @@ export async function requireAdmin(c: Context, d: RouteDeps): Promise<GuardResul
   return { ok: true, accountId: user.accountId };
 }
 
-/** 目录行 → admin 视图（白名单字段已在合并层保证；凭证字段结构上不存在）。 */
-function toCatalogView(d: RouteDeps): { models: LlmCatalogModel[]; envConfigured: boolean } {
+/** 目录行 → admin 视图（含来源投影字段；凭证字段结构上不存在）。 */
+async function toCatalogView(d: RouteDeps) {
+  const hubConfigured = d.hubCatalog !== null;
+  const stored = await d.repos.llmCatalog.listAll();
+  let models: AdminCatalogModelView[];
+  if (stored.length === 0) {
+    // 空表：本地模式回退代码默认（builtin）；hub 模式下空表即未分配（空）。
+    if (hubConfigured) {
+      models = [];
+    } else {
+      models = d.catalogCache.get().map((m) => ({
+        ...m,
+        source: 'builtin' as const,
+        revision: null,
+        assignmentId: null,
+      }));
+    }
+  } else {
+    // listAll orders sortOrder desc; the view (and catalogCache) uses asc.
+    const ordered = [...stored].sort((a, b) => a.sortOrder - b.sortOrder);
+    models = ordered.map((m) => ({
+      id: m.id,
+      provider: m.provider,
+      model: m.model,
+      enabled: m.enabled,
+      isDefault: m.isDefault,
+      sortOrder: m.sortOrder,
+      modalities: m.modalities,
+      source: m.source,
+      revision: m.revision,
+      assignmentId: m.assignmentId,
+    }));
+  }
   return {
-    models: [...d.catalogCache.get()],
+    models,
     // 只回"内置凭证是否已配置"，绝不回显任何 key 内容
     envConfigured: Boolean(process.env.LLM_API_KEY?.trim()),
+    hubConfigured,
+    revision: d.hubCatalog?.kit.revision ?? null,
   };
 }
 
@@ -102,13 +138,22 @@ export function registerLlmRoutes(app: Hono<HonoEnv>, d: RouteDeps): void {
   app.get('/admin/llm-catalog', async (c) => {
     const guard = await requireAdmin(c, d);
     if (!guard.ok) return guard.response;
-    const view = AdminLlmCatalogViewSchema.parse(toCatalogView(d));
+    const view = AdminLlmCatalogViewSchema.parse(await toCatalogView(d));
     return c.json(view);
   });
 
+  // 当 hub 启用时，目录由 model-hub 投影同步，手工 PUT 一律拒绝（409）；
+  // hub 未配置（迁移期）时保留本地整体替换语义。
   app.put('/admin/llm-catalog', async (c) => {
     const guard = await requireAdmin(c, d);
     if (!guard.ok) return guard.response;
+    if (d.hubCatalog) {
+      c.status(409);
+      return c.json({
+        error: 'catalog is synced from model-hub and is read-only',
+        code: CATALOG_SYNCED_FROM_HUB,
+      });
+    }
     const body = LlmCatalogUpsertSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) {
       c.status(400);
@@ -125,17 +170,57 @@ export function registerLlmRoutes(app: Hono<HonoEnv>, d: RouteDeps): void {
       guard.accountId,
       body.data.models.map((m) => m.id),
     );
-    return c.json(AdminLlmCatalogViewSchema.parse(toCatalogView(d)));
+    return c.json(AdminLlmCatalogViewSchema.parse(await toCatalogView(d)));
   });
 
+  // 手动触发一次 hub 同步（拉投影 → 写表 → 刷新缓存）。
+  app.post('/admin/llm-catalog/sync', async (c) => {
+    const guard = await requireAdmin(c, d);
+    if (!guard.ok) return guard.response;
+    if (!d.hubCatalog) {
+      c.status(409);
+      return c.json({ error: 'model-hub is not configured', code: HUB_NOT_CONFIGURED });
+    }
+    try {
+      const result = await d.hubCatalog.sync();
+      logAdminAction('catalog_sync', guard.accountId, []);
+      return c.json({
+        ...AdminLlmCatalogViewSchema.parse(await toCatalogView(d)),
+        sync: result,
+      });
+    } catch (err) {
+      c.status(502);
+      return c.json({
+        error: 'hub sync failed',
+        code: HUB_SYNC_FAILED,
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  // refresh：hub 启用时等价于一次 hub sync；否则保留本地重读仓储语义
+  // （例如外部 DDL 直改）。
   app.post('/admin/llm-catalog/refresh', async (c) => {
     const guard = await requireAdmin(c, d);
     if (!guard.ok) return guard.response;
-    // 显式重读仓储（例如外部 DDL 直改）：写后刷新缓存即生效，无需重启
+    if (d.hubCatalog) {
+      try {
+        await d.hubCatalog.sync();
+      } catch (err) {
+        c.status(502);
+        return c.json({
+          error: 'hub sync failed',
+          code: HUB_SYNC_FAILED,
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+      logAdminAction('catalog_sync', guard.accountId, []);
+      return c.json(AdminLlmCatalogViewSchema.parse(await toCatalogView(d)));
+    }
     const rows = await d.repos.llmCatalog.listAll();
     d.catalogCache.refresh(rows);
     logAdminAction('catalog_refresh', guard.accountId, rows.map((r) => r.id));
-    return c.json(AdminLlmCatalogViewSchema.parse(toCatalogView(d)));
+    return c.json(AdminLlmCatalogViewSchema.parse(await toCatalogView(d)));
   });
 
   // ── BYOK（登录用户，迁移 025）──────────────────────────────────────────────

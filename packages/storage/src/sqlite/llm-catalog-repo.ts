@@ -32,6 +32,9 @@ export class SqliteLlmCatalogRepository implements ILlmCatalogRepository {
             isDefault: model.isDefault ? 1 : 0,
             sortOrder: model.sortOrder,
             modalities: JSON.stringify(model.modalities),
+            source: model.source ?? 'builtin',
+            revision: model.revision ?? null,
+            assignmentId: model.assignmentId ?? null,
             createdAt: model.createdAt,
             updatedAt: model.updatedAt,
           })

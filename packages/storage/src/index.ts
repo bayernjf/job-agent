@@ -115,6 +115,11 @@ export type {
   ClaimVerdict,
 } from './entities/claim-verification.js';
 export type {
+  StoredLlmCatalogModel,
+  NewLlmCatalogModel,
+  LlmCatalogSource,
+} from './entities/llm-catalog-model.js';
+export type {
   StoredAccount,
   ProviderIdentity,
   NewAccount,

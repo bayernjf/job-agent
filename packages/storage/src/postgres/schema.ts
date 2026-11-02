@@ -569,6 +569,10 @@ export const llmCatalogModels = pgTable(
     isDefault: boolean('is_default').notNull().default(false),
     sortOrder: integer('sort_order').notNull().default(0),
     modalities: text('modalities').notNull().default('["text"]'),
+    // Hub projection fields (migration 042).
+    source: text('source').notNull().default('builtin'),
+    revision: integer('revision'),
+    assignmentId: text('assignment_id'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
