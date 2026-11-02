@@ -243,7 +243,7 @@ describe('POST /profiles/:id/claim', () => {
     expect(account?.claimedProfileId).toBe('prof-alice');
   });
 
-  it('lets either source claim a fused platform=all profile with the same login (T19)', async () => {
+  it('fused platform=all profiles are claimable only via the primary-source GitHub account (T19, P1-1)', async () => {
     const { repos, cookies } = await loginAs();
     await insertProfile(repos, 'prof-fused', 'alice', 'all');
     const app = await createApp({
@@ -259,13 +259,16 @@ describe('POST /profiles/:id/claim', () => {
     const body = (await ok.json()) as { subject?: { platform: string } };
     expect(body.subject?.platform).toBe('all');
 
-    // Gitee 登录用户（辅源，同 login 'bob'）→ 200
+    // Gitee 登录用户（辅源，同 login 'bob'）→ 403（评审 P1-1：跨平台同名不可作为身份依据，
+    // 同名账号可能是另一个自然人；融合画像只认主源 GitHub 的 OAuth 已验证账号）
     const { repos: giteeRepos, cookies: giteeCookies } = await loginAsGitee();
     await insertProfile(giteeRepos, 'prof-fused-bob', 'bob', 'all');
     const giteeApp = await makeGiteeApp(giteeRepos);
     const giteeAuth = { Cookie: cookieHeader(giteeCookies, 'jobagent_session') };
-    const okGitee = await giteeApp.request('/profiles/prof-fused-bob/claim', { method: 'POST', headers: giteeAuth });
-    expect(okGitee.status).toBe(200);
+    const deniedGitee = await giteeApp.request('/profiles/prof-fused-bob/claim', { method: 'POST', headers: giteeAuth });
+    expect(deniedGitee.status).toBe(403);
+    expect((await deniedGitee.json() as { code: string }).code).toBe('AUTH_NOT_PROFILE_OWNER');
+    expect((await giteeRepos.profiles.getById('prof-fused-bob'))?.subjectClaimed).toBe(false);
 
     // 不同 login → 403（bob 认领 alice/all，同一 app+repos 内身份判定）
     await insertProfile(giteeRepos, 'prof-fused-alice', 'alice', 'all');
