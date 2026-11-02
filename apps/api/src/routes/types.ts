@@ -30,6 +30,7 @@ import type {
   IUsageEventsRepository,
   UsageRecorder,
   IFunnelEventsRepository,
+  IProfileEventsRepository,
   FunnelRecorder,
 } from '@jobagent/storage';
 import type { Principal } from '@jobagent/shared';
@@ -85,6 +86,8 @@ export interface ApiRepos {
   usageEvents: IUsageEventsRepository;
   /** 验证漏斗匿名事件（design-funnel-analytics-20261015，迁移 040；写口只经 FunnelRecorder） */
   funnelEvents: IFunnelEventsRepository;
+  /** 画像归属/破坏性操作审计（评审 P1-1，迁移 043；DELETE 级联前落 deleted 事件） */
+  profileEvents: IProfileEventsRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
   /** 迁移漂移守卫（deferred「迁移漂移守卫」）：核对实际 schema 关键列，返回缺失列表 */

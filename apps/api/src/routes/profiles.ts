@@ -22,7 +22,7 @@ import {
   repostObservations,
   skillTagMap,
 } from '../match-explain.js';
-import { formatProfileForViewer, isProfileOwner } from './helpers.js';
+import { formatProfileForViewer, isProfileOwner, principalOwnsProfile } from './helpers.js';
 import {
   ProfileIdParamSchema,
   RemovalRequestBodySchema,
@@ -122,7 +122,10 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
     return c.json(toExportableProfile(profile.snapshot));
   });
 
-  // POST /profiles/:id/claim：登录用户认领"平台登录名与自己一致"的画像（决策 #1-A/#6-A）
+  // POST /profiles/:id/claim：登录用户认领画像（决策 #1-A/#6-A；评审 P1-1 收紧）。
+  // 身份依据只有 principal.platform+login（OAuth 回包，不可伪造）：单源画像要求
+  // 平台+登录名双一致；融合画像（subjectPlatform='all'）只认融合主源 GitHub 同名账号——
+  // "同 login 即同一人"无法跨平台验证，Gitee 同名账号可能是另一个人（冒名认领路径）。
   app.post('/profiles/:id/claim', async (c) => {
     const principal = c.get('principal');
     if (principal.kind !== 'user') {
@@ -138,16 +141,11 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (!profile) {
       return c.json({ error: 'profile not found', code: AUTH_ERROR_CODES.profileNotFound }, 404);
     }
-    // 融合画像（subjectPlatform='all'，按同一 login 双采 GitHub/Gitee）：
-    // 任一源命中即可认领——GitHub 或 Gitee 登录用户，login 与主源一致即放行。
-    const subjectMatches =
-      profile.subjectPlatform === 'all'
-        ? profile.subjectLogin === principal.login
-        : profile.subjectPlatform === principal.platform && profile.subjectLogin === principal.login;
-    if (!subjectMatches) {
+    if (!principalOwnsProfile(profile, principal)) {
       return c.json(
         {
-          error: 'profile does not belong to the authenticated account',
+          error:
+            'profile does not belong to the authenticated account; fused profiles can only be claimed via the primary-source (GitHub) account',
           code: AUTH_ERROR_CODES.notProfileOwner,
           subject: { platform: profile.subjectPlatform, login: profile.subjectLogin },
         },
@@ -155,7 +153,22 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
       );
     }
 
-    await repos.profiles.markClaimed(profile.id);
+    // 冲突检查（条件更新，并发安全）：已被认领的画像拒绝抢夺/覆盖。
+    // 本人重复认领（账号指针已指向该画像）保持幂等成功；其余一律 409 并指向申诉通道。
+    const flipped = await repos.profiles.markClaimed(profile.id);
+    if (!flipped) {
+      const self = await repos.accounts.getById(principal.accountId);
+      if (self?.claimedProfileId !== profile.id) {
+        return c.json(
+          {
+            error:
+              'profile already claimed by another account; if it is yours, appeal via POST /profiles/:id/removal-request',
+            code: AUTH_ERROR_CODES.profileAlreadyClaimed,
+          },
+          409,
+        );
+      }
+    }
     const account = await repos.accounts.setClaimedProfile(principal.accountId, profile.id);
     // subjectPlatform 存储层为 string；语义上只可能是 github/gitee/all，此处收窄供契约使用
     const subjectPlatform = profile.subjectPlatform as 'github' | 'gitee' | 'all';
@@ -171,7 +184,7 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
   // POST /profiles/:id/unclaim：登录用户解除本人画像认领（PRD F8「可解绑」的非破坏版本）。
   // 与 DELETE 不同：只把 subject_claimed 翻回 false、清空账号 claimed_profile_id，
   // 画像/证据/投递/面试与分享链接全部保留，画像退回公开只读态；再次 claim 即可恢复。
-  // 归属判定与 claim 同口径：融合画像任一源 login 一致即放行。
+  // 归属判定与 claim 端点同口径（principalOwnsProfile：融合画像只认 GitHub 主源）。
   app.post('/profiles/:id/unclaim', async (c) => {
     const principal = c.get('principal');
     if (principal.kind !== 'user') {
@@ -187,11 +200,7 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (!profile) {
       return c.json({ error: 'profile not found', code: AUTH_ERROR_CODES.profileNotFound }, 404);
     }
-    const subjectMatches =
-      profile.subjectPlatform === 'all'
-        ? profile.subjectLogin === principal.login
-        : profile.subjectPlatform === principal.platform && profile.subjectLogin === principal.login;
-    if (!subjectMatches) {
+    if (!principalOwnsProfile(profile, principal)) {
       return c.json(
         {
           error: 'profile does not belong to the authenticated account',
@@ -251,12 +260,8 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
         403,
       );
     }
-    // 归属判定与 claim 端点同口径：融合画像任一源 login 一致即放行
-    const subjectMatches =
-      profile.subjectPlatform === 'all'
-        ? profile.subjectLogin === principal.login
-        : profile.subjectPlatform === principal.platform && profile.subjectLogin === principal.login;
-    if (!subjectMatches) {
+    // 归属判定与 claim 端点同口径（principalOwnsProfile：融合画像只认 GitHub 主源）
+    if (!principalOwnsProfile(profile, principal)) {
       return c.json(
         {
           error: 'not the profile owner',
@@ -266,6 +271,31 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
         403,
       );
     }
+
+    // 审计留痕（评审 P1-1）：级联删除前先落一条不可变事件，记录操作者、
+    // 主体标识与将被清空的数据量——删除本身保持物理删除，但不再"无声无息"，
+    // 误操作/争议可凭 profile_events 回溯。
+    const [evidenceRows, applicationRows, interviewRows] = await Promise.all([
+      repos.evidence.listByProfile(profile.id),
+      repos.applications.listByProfile(profile.id),
+      repos.interviews.listByOwner(principal.accountId),
+    ]);
+    await repos.profileEvents.insert({
+      id: `pev-${randomUUID()}`,
+      profileId: profile.id,
+      event: 'deleted',
+      actorAccountId: principal.accountId,
+      detailJson: JSON.stringify({
+        subjectPlatform: profile.subjectPlatform,
+        subjectLogin: profile.subjectLogin,
+        cascade: {
+          evidence: evidenceRows.length,
+          applications: applicationRows.length,
+          interviews: interviewRows.filter((iv) => iv.profileId === profile.id).length,
+        },
+      }),
+      createdAt: now(),
+    });
 
     // 先删子表（证据/投递/面试），再撤销认领，最后删主表——分享链与「我的」页归属一并失效
     await repos.evidence.deleteByProfile(profile.id);
