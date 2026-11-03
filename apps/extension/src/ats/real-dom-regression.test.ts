@@ -97,8 +97,20 @@ virtualConsole.on('jsdomError', (e) => {
   console.error(e);
 });
 
+/**
+ * 样本是整页 HTML，两个 Lever 样本各带 ~700KB 内联 <style>。本套件只用 DOM 结构
+ * （选择器 / label / 字段值），从不读取 CSSOM；jsdom 构建这些样式表占单样本解析耗时的
+ * ~95%（2026-11-03 实测 1030ms → 52ms）。高负载下 `pnpm -r test` 并发时正是这部分
+ * CPU 开销把 Lever 用例推过 15s 预算（评审 P2-3 的根因）。
+ * 这里清空 <style> 的文本内容但保留元素本身，DOM 结构与表单字段不变，只去掉无用的
+ * CSSOM 构建；断言口径不因此放宽。
+ */
+function stripStyleSheetBodies(html: string): string {
+  return html.replace(/(<style[\s\S]*?>)[\s\S]*?(<\/style>)/gi, '$1$2');
+}
+
 function loadSample(meta: SampleMeta): Document {
-  const html = readFileSync(path.join(FIXTURES, meta.file), 'utf8');
+  const html = stripStyleSheetBodies(readFileSync(path.join(FIXTURES, meta.file), 'utf8'));
   const dom = new JSDOM(html, { url: meta.finalUrl, virtualConsole });
   // 适配器运行期依赖两个页面全局：Event（fill 派发 input/change）与
   // location.hostname（ashby/workday detect）。用样本自己的 window 提供，afterEach 恢复。
