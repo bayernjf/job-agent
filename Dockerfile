@@ -13,6 +13,14 @@ WORKDIR /app
 # ---- Install all workspace dependencies ----
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# apps/api's file: dependency @model-hub/model-kit lives in the model-hub
+# checkout inside the workspace (gitignored locally, checked out by CI).
+# .dockerignore strips **/dist and **/node_modules, so build the kit in place
+# before pnpm install packs it.
+COPY model-hub/packages/model-kit model-hub/packages/model-kit
+RUN cd model-hub/packages/model-kit \
+  && npm install --workspaces=false --no-audit --no-fund \
+  && npm run build
 COPY packages/shared/package.json packages/shared/
 COPY packages/storage/package.json packages/storage/
 COPY packages/github-source/package.json packages/github-source/
