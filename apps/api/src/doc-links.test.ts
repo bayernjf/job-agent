@@ -26,6 +26,9 @@ const SKIP_DIRS = new Set([
   'release',
   'data',
   'coverage',
+  // The in-workspace model-hub checkout (CI path for apps/api's file:
+  // dependency) is a foreign repo — its docs and links are not ours to guard.
+  'model-hub',
 ]);
 
 function markdownFiles(dir: string, out: string[] = []): string[] {
