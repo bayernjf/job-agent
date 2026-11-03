@@ -19,6 +19,10 @@ export default tseslint.config(
       '**/build/**',
       'apps/extension/dist/**',
       'data/**',
+      // The in-workspace model-hub checkout (CI path for apps/api's file:
+      // dependency) is a foreign repo with its own tsconfigs; linting it
+      // breaks the parser with "multiple candidate TSConfigRootDirs".
+      'model-hub/**',
     ],
   },
   js.configs.recommended,
