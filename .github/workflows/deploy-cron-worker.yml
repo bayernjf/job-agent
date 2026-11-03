@@ -70,6 +70,22 @@ jobs:
             exit 1
           fi
 
+      # apps/api's file: dependency @model-hub/model-kit resolves at
+      # model-hub/packages/model-kit inside the workspace; pnpm install fails
+      # without it, so check out the public sibling repo and build the kit
+      # first (same layout as ci.yml).
+      - name: Checkout model-hub (local model-kit dependency)
+        uses: actions/checkout@v7
+        with:
+          repository: bayernjf/model-hub
+          path: model-hub
+
+      - name: Build model-kit from model-hub
+        working-directory: model-hub/packages/model-kit
+        run: |
+          npm install --workspaces=false --no-audit --no-fund
+          npm run build
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
