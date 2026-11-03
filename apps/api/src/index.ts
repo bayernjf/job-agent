@@ -94,6 +94,7 @@ export type { ApiDeps, ApiRepos, HonoEnv } from './routes/types.js';
 export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   const repos: ApiRepos = deps.repos ?? (await createStorage());
   const now = deps.now ?? (() => new Date().toISOString());
+  const nowMs = deps.nowMs ?? Date.now;
   const cfg = deps.demoConfig ?? loadDemoConfig();
   // T27 生产启动闸：上线开关必须显式配置，缺了启动即失败（而不是运行时静默降级成 fail-open）。
   //  - CRON_SECRET 未配时 cron 端点会信任 x-vercel-cron 头（该端点能触发物理删除）；
@@ -296,6 +297,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   const routeDeps: RouteDeps = {
     repos,
     now,
+    nowMs,
     jobStaleDays,
     cfg,
     authCfg,

@@ -99,6 +99,11 @@ export interface ApiDeps {
   repos?: ApiRepos;
   /** 注入"现在"（测试确定性） */
   now?: () => string;
+  /**
+   * 注入单调时钟（epoch ms），用于墙钟预算（JD LLM 预算 / tick 截止时刻）。
+   * 默认 Date.now；测试注入可控时钟后预算判断不再依赖真实耗时与机器负载。
+   */
+  nowMs?: () => number;
   /** 注入演示配置（测试用；默认从环境变量加载） */
   demoConfig?: DemoConfig;
   /** 注入账号/OAuth 配置（测试用；默认从环境变量加载） */

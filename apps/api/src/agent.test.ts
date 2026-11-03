@@ -1164,7 +1164,12 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
   async function harnessWithJd(
     jdExtractor: MeteredJdExtractor,
     configOverride: Partial<ReturnType<typeof loadAgentConfig>> = {},
-    extras: { usageRecorder?: UsageRecorder; jdExtractorMeta?: JdExtractorMeta } = {},
+    extras: {
+      usageRecorder?: UsageRecorder;
+      jdExtractorMeta?: JdExtractorMeta;
+      /** 注入单调时钟：墙钟预算按它判断，不读真实耗时 */
+      nowMs?: () => number;
+    } = {},
   ) {
     const repos = await createStorage({ sqlitePath: ':memory:' });
     const { Cookie } = await loginUser(repos, ALICE);
@@ -1173,6 +1178,7 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
       authConfig: loadAuthConfig({}),
       githubAuthProvider: new FakeAuthProvider(ALICE),
       usageRecorder: extras.usageRecorder,
+      ...(extras.nowMs ? { nowMs: extras.nowMs } : {}),
       agentConfig: {
         ...loadAgentConfig(),
         ...configOverride,
@@ -1266,14 +1272,21 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
 
   it('spends at most the JD LLM wall-clock budget and still writes intents for all ready candidates', async () => {
     const seen: string[] = [];
-    // 每条调用耗时 60ms；预算 100ms ⇒ 第 1、2 条调用（t≈0/60）放行，第 3 条在 t≈120
-    // 被预算挡住。3 条候选都必须写出票据，只是最后一条没有 jdInsight。
+    // 可控时钟：每次抽取推进 60ms，预算 100ms ⇒ 第 1、2 条调用（t=0/60）放行，
+    // 第 3 条在 t=120 被预算挡住。3 条候选都必须写出票据，只是最后一条没有 jdInsight。
+    // 回归位：旧实现读真实 Date.now，而本用例零真实等待（t≈0），会把 3 条全部放行、
+    // seen 变 3；注入时钟后断言与机器负载无关，高并发下也不再假红（评审 P2-3）。
+    let clockMs = 0;
     const extractor: JdExtractor = async (title) => {
       seen.push(title);
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      clockMs += 60;
       return { responsibilities: [], requiredSkills: ['Rust'], qualifications: [] };
     };
-    const { repos, json } = await harnessWithJd(extractor, { jdLlmBudgetMs: 100 });
+    const { repos, json } = await harnessWithJd(
+      extractor,
+      { jdLlmBudgetMs: 100 },
+      { nowMs: () => clockMs },
+    );
     await insertProfile(repos, 'p-c1', ALICE.login);
     expect((await json('/profiles/p-c1/claim', { method: 'POST' })).status).toBe(200);
     await repos.jobPostings.upsertBatch(
