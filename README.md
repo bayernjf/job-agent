@@ -37,7 +37,7 @@
 ### 2.1 本地跑起来（SQLite，最快路径）
 
 ```bash
-nvm use                       # Node 版本以 .nvmrc 为准（当前 24.20.0）
+nvm use                       # Node 版本以 .nvmrc 为准（当前 24.22.2）
 # 前置：apps/api 依赖 file: 依赖 @model-hub/model-kit（评审 P2-2）——
 # 需把 github.com/bayernjf/model-hub 克隆到本仓根目录下的 model-hub/（已被
 # .gitignore 忽略；CI 也按同一路径 checkout）并先构建：
