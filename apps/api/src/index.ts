@@ -147,7 +147,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
       // 形态 B（跨子域直连）时求职偏好用 PUT/DELETE、投递与面试用 PATCH：
       // 这三个方法原先不在允许列表里，只有同域（形态 C）能调到；这里一并放开。
       allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type'],
+      // 跨子域直连时扩展用 Authorization: Bearer <tkn->（见下方 principal 解析）；
+      // 浏览器把 Authorization 视为非简单头，预检必须显式允许，否则 token 登录被挡在
+      // 预检阶段。其余客户端头只有 content-type，不额外放开。
+      allowHeaders: ['Content-Type', 'Authorization'],
       ...(allowOrigins.length > 0 ? { credentials: true } : {}),
     }),
   );

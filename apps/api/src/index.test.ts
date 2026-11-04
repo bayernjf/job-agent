@@ -146,6 +146,28 @@ describe('GET /health', () => {
   });
 });
 
+describe('CORS preflight', () => {
+  it('allows the Authorization header used by extension API tokens', async () => {
+    const app = await createApp({
+      repos: await freshRepos(),
+      demoConfig: { ...loadDemoConfig(), corsAllowOrigins: ['https://app.example.com'] },
+    });
+    const res = await app.request('/health', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://app.example.com',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'authorization,content-type',
+      },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example.com');
+    // 扩展与 web 客户端用 tkn- API token 走 Authorization；预检必须放行该头，
+    // 否则跨子域直连在 OPTIONS 阶段就被浏览器拒掉。
+    expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('authorization');
+  });
+});
+
 describe('POST /analyze', () => {
   it('creates a new analysis job and returns jobId', async () => {
     const repos = await freshRepos();
