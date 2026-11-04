@@ -47,7 +47,7 @@ import {
 } from '../agent-view.js';
 import { aiAssistedDisclosure, renderHtml } from '@jobagent/resume-core';
 import { resolveTextLlm } from './llm-resolve.js';
-import { describeError } from './helpers.js';
+import { describeError, principalOwnsProfile } from './helpers.js';
 import { sendWebPush } from '../web-push.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
@@ -215,12 +215,11 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     }
     const profile = await repos.profiles.getById(parsed.data.profileId);
     if (!profile) return c.json({ error: 'profile not found' }, 404);
-    // 求职任务必须挂在**本人已认领**的画像上：Agent 会读写该画像的证据与简历
-    if (
-      !profile.subjectClaimed ||
-      profile.subjectPlatform !== user.platform ||
-      profile.subjectLogin !== user.login
-    ) {
+    // 求职任务必须挂在**本人已认领**的画像上：Agent 会读写该画像的证据与简历。
+    // 归属占用 claim/recruiting 同一谓词：融合画像（subjectPlatform='all'）归一为主源
+    // GitHub，只有已验证的 GitHub 同名账号能过；不是把 'all' 当通配。此前这里直接
+    // 比较 subjectPlatform，导致融合画像连主源本人也被 403（过严，见 deferred-items）。
+    if (!profile.subjectClaimed || !principalOwnsProfile(profile, user)) {
       return c.json(
         {
           error: 'profile must be claimed by the signed-in account',

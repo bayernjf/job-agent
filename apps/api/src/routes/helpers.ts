@@ -120,7 +120,7 @@ export function oauthBaseOrigin(c: Context, cfg: AuthConfig): string {
  */
 export function principalOwnsProfile(
   profile: Pick<StoredProfile, 'subjectPlatform' | 'subjectLogin'>,
-  principal: Extract<Principal, { kind: 'user' }>,
+  principal: Pick<Extract<Principal, { kind: 'user' }>, 'platform' | 'login'>,
 ): boolean {
   const subjectPlatform = profile.subjectPlatform === 'all' ? 'github' : profile.subjectPlatform;
   return subjectPlatform === principal.platform && profile.subjectLogin === principal.login;
