@@ -65,8 +65,63 @@
 | `DEMO_*`（配额/TTL/并发） | 用默认或决策值 | 数值未决策前是建议默认；`DEMO_FUSION_QUOTA_COST` 默认 2 |
 | `JOB_HTTP_PROXY` | 视网络 | 服务端换 OAuth token / 岗位采集走代理；也回退 `HTTPS_PROXY/HTTP_PROXY` |
 | `LLM_*` | 可选 | 不填=纯规则简历；填了才启用润色 |
+| `MODEL_HUB_URL` / `MODEL_HUB_TOKEN` | 可选 | 启用 model-hub 目录投影（内置模型来源）；两者齐备且未设 `MODEL_HUB_DISABLED` 时，启动即同步一次；token 是 hub 的 project token，只放服务端 |
+| `MODEL_HUB_CACHE_PATH` | 可选 | model-kit 投影缓存路径，默认 `./data/model-hub-cache.json`（`data/` 已被 gitignore，文件权限 0600） |
 | `PUBLIC_API_BASE` | **构建期**变量 | 见 §4，极易踩坑：它在 `docker build` 时固化，不是运行时；**形态 C 不用设**（自动回退同域 `/api`） |
 | `CRON_SECRET` | 形态 C **生产必需** | serverless 内部 cron 端点（`/api/internal/cron/*`）的共享密钥；配了之后**只接受** `Authorization: Bearer <值>`（平台注入与 Actions 轮询都发这个头，常量时间比较）；历史形态 `?token=<值>` 已于 2026-10-05 停用。不配则仅信任 Vercel 的 `x-vercel-cron` 头。生成：`openssl rand -hex 32` |
+
+### 3.1 模型目录来源与合规提示（2026-11-05）
+
+**来源与数据流**
+
+`llm_catalog_models` 不是手工维护目录，而是 model-hub 投影的**本地缓存表**：
+
+1. 启动时（或 admin 手动触发）`@model-hub/model-kit` 拉取 `GET /pub/v1/models`；
+2. 只保留 `modalities` 含 `text` 的投影；
+3. `projectToCatalog` / `projectToRows` 映射为本地行，事务内整体替换；
+4. 三列语义：`source='hub'`、`revision` = hub 的 `catalog_revision`、`assignment_id` = hub 的 `asn_*`。
+
+凭证纪律：hub 投影里的 `api_key` **不落本地表**，只留在 model-kit 的 0600 缓存中，运行时由 hub 解析。
+
+**代码位置**（job-agent 侧）
+
+| 行为 | 位置 |
+| --- | --- |
+| 投影映射（`id = alias ?? assignmentId`，`role='primary'` 取默认） | `apps/api/src/hub-catalog.ts:91-107` |
+| 落库行（写 `source/revision/assignmentId`） | `apps/api/src/hub-catalog.ts:110-129` |
+| 唯一写入点 `replaceAll` + `catalogCache.refresh` | `apps/api/src/hub-catalog.ts:200-210` |
+| 启动自动同步（`MODEL_HUB_URL/TOKEN` 齐备且未禁用） | `apps/api/src/index.ts:249-288` |
+| admin 手动同步 `POST /admin/llm-catalog/sync`（登录 + `is_admin`） | `apps/api/src/routes/llm.ts:177-201` |
+| hub 模式下 `PUT /admin/llm-catalog` 返回 409 只读 | `apps/api/src/routes/llm.ts:147-175` |
+
+**alias / role 取值依据**
+
+job-agent 代码不依赖固定用途槽名（不存在 `cover`/`polish` 之类硬编码 alias）：
+
+- `alias` 仅作为稳定 id（`hub-catalog.ts:98`），并供 `kit.testConnection(alias)` 按 alias 解析（model-kit `resolveByAlias`）；
+- `role` 只接受 `primary` / `fallback`（model-hub 仓库 `apps/hub/src/repositories/assignments.ts` 的 `ROLES`）；`primary` 决定 `is_default`（`hub-catalog.ts:94-96`）与 `kit.primary('text')` 的选取（model-kit `primaryFor`）。
+
+本次实例：alias 取模型名 `ark-code-latest`，role 取 `primary`（当前只有这一个文本模型，作为默认模型）。
+
+**安装方式（已落地）**
+
+- hub project：`job-agent`（`prj_6bbe584def1840c3348149bdd825be64`）；
+- project token：`****8798`（明文仅签发响应返回一次，只写进本机 `.env`，不入 Git）；
+- assignment：`asn_4b1867bb2c25e19416e15120b8c2b8e8`，model `mdl_6008b68bfbe5719f61d401af9262be45`（`ark-code-latest`），role `primary`；
+- 同步结果：hub `catalog_revision=35`，本地 1 行，`source='hub'`、`revision=35`、`assignment_id=asn_4b1867bb2c25e19416e15120b8c2b8e8`。
+
+**合规提示（重要）**
+
+当前唯一的文本模型挂在 provider `Ark Plan`（`https://ark.cn-beijing.volces.com/api/plan/v3`，`billing_type=subscription`）。这是**套餐/订阅端点**，官方条款面向交互式编码助手等场景，**不适合作为产品后端批量调用**——本次仅作临时可用。
+
+上线对外前应替换为按量付费的商业 API（Ark 标准按量端点或自建 OpenAI 兼容端点）：在 hub 上更新 provider/model/assignment，`revision` 自增后 job-agent 下次同步会自动跟随；本地表无需手工改。
+
+**运维要点**
+
+- 同步失败不致命：启动日志打印 `[hub] initial catalog sync failed`，可稍后调 admin sync 重试；
+- 停止同步：设 `MODEL_HUB_DISABLED=1` 或清空 `MODEL_HUB_URL/TOKEN`（此时 hub 模式关闭，空表会回退代码默认目录）；
+- token 轮换：hub `POST /api/admin/projects/:id/rotate-token`，旧 token 立即失效，需同步更新部署环境变量；
+- 不要把 token/`api_key` 写进 issue、日志、文档或前端变量。
 
 ## 4. 两种部署形态（A/B 未决策，并列给出）
 
