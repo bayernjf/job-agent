@@ -24,7 +24,7 @@ import {
 } from '@jobagent/resume-core';
 import type { LlmTokenUsage, MeteredResumePolishProvider } from '@jobagent/llm';
 import type { RouteDeps } from './context.js';
-import { enforceBuiltinLlmQuota, resolveTextLlm } from './llm-resolve.js';
+import { enforceBuiltinLlmQuota, byokUnreadableResponse, resolveTextLlm } from './llm-resolve.js';
 import { describeError } from './helpers.js';
 import { CoverLetterRequestSchema, ResumeBuildRequestSchema } from './schemas.js';
 import type { HonoEnv } from './types.js';
@@ -109,6 +109,7 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (req.polish === true) {
       polish = { requested: true, applied: false };
       const llm = await resolveTextLlm(c, d);
+      if (llm.failure) return byokUnreadableResponse(c);
       if (llm.source === 'none') {
         polish.reason = 'not_configured';
       } else {
@@ -217,6 +218,7 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     const req = parsed.data;
     // LLM 供给（决策 #21）：BYOK 优先 → 内置回落；两者都无 → 如实 LLM_NOT_CONFIGURED。
     const llm = await resolveTextLlm(c, d);
+    if (llm.failure) return byokUnreadableResponse(c);
     if (!llm.cover) {
       return c.json(
         { error: 'LLM is not configured on the server', code: 'LLM_NOT_CONFIGURED' },
@@ -224,14 +226,16 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
       );
     }
     const coverLetterProvider = llm.cover;
-    // 决策 #29：内置调用计入账号配额；超限/存储故障显式返回。
-    const limited = await enforceBuiltinLlmQuota(c, d, llm);
-    if (limited) return limited;
 
     const storedProfile = await repos.profiles.getById(req.profileId);
     if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
     if (!storedProfile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
     const profile: AbilityProfile = storedProfile.snapshot;
+
+    // 决策 #29：内置调用计入账号配额；超限/存储故障显式返回。
+    // 放在画像校验之后：404 请求没有真正调用 LLM，不应消耗配额。
+    const limited = await enforceBuiltinLlmQuota(c, d, llm);
+    if (limited) return limited;
 
     let posting: JobPosting;
     if (req.posting) {

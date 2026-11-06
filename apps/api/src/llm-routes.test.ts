@@ -578,60 +578,47 @@ describe('POST /account/llm-config/validate（最小真实请求，stub fetch）
 
 describe('ADMIN_ACCOUNT_LOGINS 白名单（登录自动置位）', () => {
   it('白名单内的 login 登录后 is_admin=true，/auth/me 回 canManageLlmCatalog=true', async () => {
-    const prev = process.env.ADMIN_ACCOUNT_LOGINS;
-    process.env.ADMIN_ACCOUNT_LOGINS = 'admin1';
-    try {
-      const repos = await createStorage({ sqlitePath: ':memory:' });
-      const deps: ApiDeps = {
-        repos,
-        authConfig: loadAuthConfig({}),
-        githubAuthProvider: new FakeAuthProvider(ADMIN),
-        llmCatalogCache: createCatalogCache(),
-        llmEncKey: ENC_KEY,
-      };
-      const app = await createApp(deps);
-      const cookies = await loginAs(ADMIN, repos, app);
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const deps: ApiDeps = {
+      repos,
+      // 资格由登录时按配置写入 accounts.is_admin（不再在请求期读 env）。
+      authConfig: loadAuthConfig({ ADMIN_ACCOUNT_LOGINS: 'admin1' }),
+      githubAuthProvider: new FakeAuthProvider(ADMIN),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(ADMIN, repos, app);
 
-      const me = await app.request('/auth/me', {
-        headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
-      });
-      const meBody = (await me.json()) as { accountId: string; canManageLlmCatalog?: boolean };
-      expect(meBody.canManageLlmCatalog).toBe(true);
+    const me = await app.request('/auth/me', {
+      headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
+    });
+    const meBody = (await me.json()) as { accountId: string; canManageLlmCatalog?: boolean };
+    expect(meBody.canManageLlmCatalog).toBe(true);
 
-      // 置位生效的强证明：admin 端点不再 403
-      const catalogRes = await app.request('/admin/llm-catalog', {
-        headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
-      });
-      expect(catalogRes.status).toBe(200);
-    } finally {
-      if (prev === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
-      else process.env.ADMIN_ACCOUNT_LOGINS = prev;
-    }
+    // 置位生效的强证明：admin 端点不再 403
+    const catalogRes = await app.request('/admin/llm-catalog', {
+      headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
+    });
+    expect(catalogRes.status).toBe(200);
   });
 
   it('白名单外 login → is_admin 保持 false', async () => {
-    const prev = process.env.ADMIN_ACCOUNT_LOGINS;
-    process.env.ADMIN_ACCOUNT_LOGINS = 'someone-else';
-    try {
-      const repos = await createStorage({ sqlitePath: ':memory:' });
-      const deps: ApiDeps = {
-        repos,
-        authConfig: loadAuthConfig({}),
-        githubAuthProvider: new FakeAuthProvider(BOB),
-        llmCatalogCache: createCatalogCache(),
-        llmEncKey: ENC_KEY,
-      };
-      const app = await createApp(deps);
-      const cookies = await loginAs(BOB, repos, app);
-      const me = await app.request('/auth/me', {
-        headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
-      });
-      const meBody = (await me.json()) as { accountId: string; canManageLlmCatalog?: boolean };
-      expect(meBody.canManageLlmCatalog).toBe(false);
-    } finally {
-      if (prev === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
-      else process.env.ADMIN_ACCOUNT_LOGINS = prev;
-    }
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({ ADMIN_ACCOUNT_LOGINS: 'someone-else' }),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
+    const me = await app.request('/auth/me', {
+      headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
+    });
+    const meBody = (await me.json()) as { accountId: string; canManageLlmCatalog?: boolean };
+    expect(meBody.canManageLlmCatalog).toBe(false);
   });
 });
 
@@ -831,80 +818,67 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
   });
 
   it('内置回落：未配 BYOK → 用服务端内置 provider（注入 fake；内置仅白名单账号可用）', async () => {
-    const prevAdmin = process.env.ADMIN_ACCOUNT_LOGINS;
-    process.env.ADMIN_ACCOUNT_LOGINS = 'bob';
-    try {
-      const repos = await createStorage({ sqlitePath: ':memory:' });
-      const jobRowId = await seedResume(repos);
-      const deps: ApiDeps = {
-        repos,
-        authConfig: loadAuthConfig({}),
-        githubAuthProvider: new FakeAuthProvider(BOB),
-        llmCatalogCache: createCatalogCache(),
-        llmEncKey: ENC_KEY,
-        coverLetter: new LlmCoverLetterProvider(new FakeLlmClient(() => ({
-          subject: 'Re: role',
-          body: 'Builtin draft body.',
-        }))),
-      };
-      const app = await createApp(deps);
-      const cookies = await loginAs(BOB, repos, app);
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const deps: ApiDeps = {
+      repos,
+      // 管理员资格由登录时按白名单写入 accounts.is_admin（不再在请求期读 env）。
+      authConfig: loadAuthConfig({ ADMIN_ACCOUNT_LOGINS: 'bob' }),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      coverLetter: new LlmCoverLetterProvider(new FakeLlmClient(() => ({
+        subject: 'Re: role',
+        body: 'Builtin draft body.',
+      }))),
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
 
-      const res = await postCoverLetter(app, cookies, jobRowId);
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { provenance: { provider: string } };
-      expect(body.provenance.provider).toBe('fake');
-      expect(fetchStub).not.toHaveBeenCalled();
-    } finally {
-      if (prevAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
-      else process.env.ADMIN_ACCOUNT_LOGINS = prevAdmin;
-    }
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provenance: { provider: string } };
+    expect(body.provenance.provider).toBe('fake');
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 
   it('hub 分配即授权：非白名单用户经 hub 内置面成功（无需白名单）', async () => {
     // bob is NOT in ADMIN_ACCOUNT_LOGINS, but hub authorization replaces the
     // allow-list: any signed-in user with a projected text model is authorized.
-    const prevAdmin = process.env.ADMIN_ACCOUNT_LOGINS;
-    process.env.ADMIN_ACCOUNT_LOGINS = 'someone-else';
-    try {
-      const repos = await createStorage({ sqlitePath: ':memory:' });
-      const jobRowId = await seedResume(repos);
-      const fakeClient = new FakeLlmClient(() => ({
-        subject: 'Re: role',
-        body: 'Hub draft body.',
-      }));
-      const model = { assignmentId: 'asn_0001noul', alias: 'noul' } as unknown as ResolvedModel;
-      const hubCatalog: HubCatalog = {
-        kit: { revision: 42 } as unknown as HubCatalog['kit'],
-        sync: async () => ({ revision: 42, pulled: 1, synced: 1 }),
-        resolveBuiltin: async () => ({
-          cover: new LlmCoverLetterProvider(fakeClient),
-          polish: new LlmResumePolishProvider(fakeClient),
-          model,
-        }),
-        ping: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['ping']>,
-        test: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['test']>,
-        reportUsage: async () => {},
-      };
-      const deps: ApiDeps = {
-        repos,
-        authConfig: loadAuthConfig({}),
-        githubAuthProvider: new FakeAuthProvider(BOB),
-        llmCatalogCache: createCatalogCache(),
-        llmEncKey: ENC_KEY,
-        hubCatalog,
-      };
-      const app = await createApp(deps);
-      const cookies = await loginAs(BOB, repos, app);
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const fakeClient = new FakeLlmClient(() => ({
+      subject: 'Re: role',
+      body: 'Hub draft body.',
+    }));
+    const model = { assignmentId: 'asn_0001noul', alias: 'noul' } as unknown as ResolvedModel;
+    const hubCatalog: HubCatalog = {
+      kit: { revision: 42 } as unknown as HubCatalog['kit'],
+      sync: async () => ({ revision: 42, pulled: 1, synced: 1 }),
+      resolveBuiltin: async () => ({
+        cover: new LlmCoverLetterProvider(fakeClient),
+        polish: new LlmResumePolishProvider(fakeClient),
+        model,
+      }),
+      ping: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['ping']>,
+      test: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['test']>,
+      reportUsage: async () => {},
+    };
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({ ADMIN_ACCOUNT_LOGINS: 'someone-else' }),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      hubCatalog,
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
 
-      const res = await postCoverLetter(app, cookies, jobRowId);
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { provenance: { provider: string } };
-      expect(body.provenance.provider).toBe('fake');
-    } finally {
-      if (prevAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
-      else process.env.ADMIN_ACCOUNT_LOGINS = prevAdmin;
-    }
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provenance: { provider: string } };
+    expect(body.provenance.provider).toBe('fake');
   });
 
   /** 决策 #29：构造一个可解析内置文本模型的 hub 目录。 */
@@ -1032,34 +1006,142 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
     ).toBe(1);
   });
 
-  it('内置被白名单拦截：非白名单用户未配 BYOK → 503 LLM_NOT_CONFIGURED', async () => {
-    const prevAdmin = process.env.ADMIN_ACCOUNT_LOGINS;
-    process.env.ADMIN_ACCOUNT_LOGINS = 'someone-else';
-    try {
-      const repos = await createStorage({ sqlitePath: ':memory:' });
-      const jobRowId = await seedResume(repos);
-      const deps: ApiDeps = {
-        repos,
-        authConfig: loadAuthConfig({}),
-        githubAuthProvider: new FakeAuthProvider(BOB),
-        llmCatalogCache: createCatalogCache(),
-        llmEncKey: ENC_KEY,
-        coverLetter: new LlmCoverLetterProvider(new FakeLlmClient(() => ({
-          subject: 'Re: role',
-          body: 'Builtin draft body.',
-        }))),
-      };
-      const app = await createApp(deps);
-      const cookies = await loginAs(BOB, repos, app);
+  it('BYOK 密文损坏：cover-letter fail-closed 503 LLM_BYOK_UNREADABLE，日志不含密文/密钥', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const hubCatalog = makeHubCatalog(
+      new FakeLlmClient(() => ({ subject: 'built-in', body: 'should not be used' })),
+    );
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      hubCatalog,
+    });
+    const cookies = await loginAs(BOB, repos, app);
+    const accountId = await currentAccountId(app, cookies);
+    const corrupted = 'corrupted-ciphertext';
+    await repos.userLlmConfigs.upsert({
+      accountId,
+      provider: 'custom',
+      baseUrl: 'https://byok.example.com/v1',
+      model: 'byok-model',
+      apiKeyEncrypted: corrupted,
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-01T00:00:00.000Z',
+    });
 
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
       const res = await postCoverLetter(app, cookies, jobRowId);
       expect(res.status).toBe(503);
-      expect(await res.json()).toMatchObject({ code: 'LLM_NOT_CONFIGURED' });
+      expect(await res.json()).toMatchObject({ code: 'LLM_BYOK_UNREADABLE' });
+      // 不得静默回落内置供应商
       expect(fetchStub).not.toHaveBeenCalled();
+
+      const logs = warn.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(logs).toContain('byok unusable');
+      expect(logs).toContain(accountId);
+      expect(logs).not.toContain(corrupted);
+      expect(logs).not.toContain('sk-');
     } finally {
-      if (prevAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
-      else process.env.ADMIN_ACCOUNT_LOGINS = prevAdmin;
+      warn.mockRestore();
     }
+  });
+
+  it('BYOK 密文损坏：resumes/build polish fail-closed 503，不静默降级规则版', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+    });
+    const cookies = await loginAs(BOB, repos, app);
+    const accountId = await currentAccountId(app, cookies);
+    await repos.userLlmConfigs.upsert({
+      accountId,
+      provider: 'custom',
+      baseUrl: 'https://byok.example.com/v1',
+      model: 'byok-model',
+      apiKeyEncrypted: 'corrupted-ciphertext',
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-01T00:00:00.000Z',
+    });
+
+    const res = await app.request('/resumes/build', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: cookieHeader(cookies, 'jobagent_session'),
+      },
+      body: JSON.stringify({ profileId: 'p-route', jobId: jobRowId, polish: true }),
+    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'LLM_BYOK_UNREADABLE' });
+  });
+
+  it('画像不存在：cover-letter 返回 404 且不消耗配额', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const hubCatalog = makeHubCatalog(
+      new FakeLlmClient(() => ({ subject: 'Re: role', body: 'Hub draft body.' })),
+    );
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      hubCatalog,
+      llmQuota: { accountRatePerHour: 1 },
+    });
+    const cookies = await loginAs(BOB, repos, app);
+    const accountId = await currentAccountId(app, cookies);
+
+    const res = await app.request('/resumes/cover-letter', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: cookieHeader(cookies, 'jobagent_session'),
+      },
+      body: JSON.stringify({ profileId: 'missing-profile', jobId: jobRowId }),
+    });
+    expect(res.status).toBe(404);
+    expect(
+      await repos.demoSessions.countRateEvents(
+        accountId,
+        'llm-account',
+        '2000-01-01T00:00:00.000Z',
+      ),
+    ).toBe(0);
+  });
+
+  it('内置被白名单拦截：非白名单用户未配 BYOK → 503 LLM_NOT_CONFIGURED', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({ ADMIN_ACCOUNT_LOGINS: 'someone-else' }),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      coverLetter: new LlmCoverLetterProvider(new FakeLlmClient(() => ({
+        subject: 'Re: role',
+        body: 'Builtin draft body.',
+      }))),
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
+
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'LLM_NOT_CONFIGURED' });
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 
   it('两者都无 → 503 LLM_NOT_CONFIGURED（不伪造求职信）', async () => {
