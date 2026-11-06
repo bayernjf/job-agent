@@ -8,9 +8,16 @@
  * - ADMIN_ACCOUNT_LOGINS 白名单：登录自动置 is_admin，/auth/me 回 canManageLlmCatalog
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeLlmClient, LlmCoverLetterProvider, createCatalogCache } from '@jobagent/llm';
+import {
+  FakeLlmClient,
+  LlmCoverLetterProvider,
+  LlmResumePolishProvider,
+  createCatalogCache,
+} from '@jobagent/llm';
 import { createStorage, type StorageContext } from '@jobagent/storage';
+import type { ResolvedModel } from '@model-hub/model-kit';
 import { createApp, type ApiDeps } from './index.js';
+import type { HubCatalog } from './hub-catalog.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';
 import { loadAuthConfig } from './auth-config.js';
@@ -771,6 +778,58 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer sk-byok-key'); // gitleaks:allow
   });
 
+  it('回归：hub 模式下 BYOK 仍优先于 hub 内置面', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    // A hub that would otherwise provide a built-in provider.
+    const builtinClient = new FakeLlmClient(() => ({
+      subject: 'built-in',
+      body: 'should not be used',
+    }));
+    const hubCatalog: HubCatalog = {
+      kit: { revision: 42 } as unknown as HubCatalog['kit'],
+      sync: async () => ({ revision: 42, pulled: 1, synced: 1 }),
+      resolveBuiltin: async () => ({
+        cover: new LlmCoverLetterProvider(builtinClient),
+        polish: new LlmResumePolishProvider(builtinClient),
+        model: { assignmentId: 'asn_hub', alias: 'hub' } as unknown as ResolvedModel,
+      }),
+      ping: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['ping']>,
+      test: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['test']>,
+      reportUsage: async () => {},
+    };
+    const deps: ApiDeps = {
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      hubCatalog,
+    };
+    const app = await createApp(deps);
+    const cookies = await loginAs(BOB, repos, app);
+    // User saves their own BYOK.
+    await app.request('/account/llm-config', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: cookieHeader(cookies, 'jobagent_session'),
+      },
+      body: JSON.stringify({
+        baseUrl: 'https://byok.example.com/v1',
+        model: 'byok-model',
+        apiKey: 'sk-byok-key', // gitleaks:allow
+      }),
+    });
+
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { provenance: { provider: string; model: string } };
+    // BYOK wins over the hub built-in face.
+    expect(body.provenance.provider).toBe('custom');
+    expect(body.provenance.model).toBe('byok-model');
+  });
+
   it('内置回落：未配 BYOK → 用服务端内置 provider（注入 fake；内置仅白名单账号可用）', async () => {
     const prevAdmin = process.env.ADMIN_ACCOUNT_LOGINS;
     process.env.ADMIN_ACCOUNT_LOGINS = 'bob';
@@ -800,6 +859,177 @@ describe('LLM 请求路由（BYOK 优先 → 内置回落）', () => {
       if (prevAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
       else process.env.ADMIN_ACCOUNT_LOGINS = prevAdmin;
     }
+  });
+
+  it('hub 分配即授权：非白名单用户经 hub 内置面成功（无需白名单）', async () => {
+    // bob is NOT in ADMIN_ACCOUNT_LOGINS, but hub authorization replaces the
+    // allow-list: any signed-in user with a projected text model is authorized.
+    const prevAdmin = process.env.ADMIN_ACCOUNT_LOGINS;
+    process.env.ADMIN_ACCOUNT_LOGINS = 'someone-else';
+    try {
+      const repos = await createStorage({ sqlitePath: ':memory:' });
+      const jobRowId = await seedResume(repos);
+      const fakeClient = new FakeLlmClient(() => ({
+        subject: 'Re: role',
+        body: 'Hub draft body.',
+      }));
+      const model = { assignmentId: 'asn_0001noul', alias: 'noul' } as unknown as ResolvedModel;
+      const hubCatalog: HubCatalog = {
+        kit: { revision: 42 } as unknown as HubCatalog['kit'],
+        sync: async () => ({ revision: 42, pulled: 1, synced: 1 }),
+        resolveBuiltin: async () => ({
+          cover: new LlmCoverLetterProvider(fakeClient),
+          polish: new LlmResumePolishProvider(fakeClient),
+          model,
+        }),
+        ping: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['ping']>,
+        test: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['test']>,
+        reportUsage: async () => {},
+      };
+      const deps: ApiDeps = {
+        repos,
+        authConfig: loadAuthConfig({}),
+        githubAuthProvider: new FakeAuthProvider(BOB),
+        llmCatalogCache: createCatalogCache(),
+        llmEncKey: ENC_KEY,
+        hubCatalog,
+      };
+      const app = await createApp(deps);
+      const cookies = await loginAs(BOB, repos, app);
+
+      const res = await postCoverLetter(app, cookies, jobRowId);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { provenance: { provider: string } };
+      expect(body.provenance.provider).toBe('fake');
+    } finally {
+      if (prevAdmin === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
+      else process.env.ADMIN_ACCOUNT_LOGINS = prevAdmin;
+    }
+  });
+
+  /** 决策 #29：构造一个可解析内置文本模型的 hub 目录。 */
+  function makeHubCatalog(client: FakeLlmClient): HubCatalog {
+    const model = { assignmentId: 'asn_quota', alias: 'quota' } as unknown as ResolvedModel;
+    return {
+      kit: { revision: 42 } as unknown as HubCatalog['kit'],
+      sync: async () => ({ revision: 42, pulled: 1, synced: 1 }),
+      resolveBuiltin: async () => ({
+        cover: new LlmCoverLetterProvider(client),
+        polish: new LlmResumePolishProvider(client),
+        model,
+      }),
+      ping: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['ping']>,
+      test: async () => ({ ok: true }) as unknown as ReturnType<HubCatalog['test']>,
+      reportUsage: async () => {},
+    };
+  }
+
+  async function currentAccountId(
+    app: Awaited<ReturnType<typeof createApp>>,
+    cookies: Record<string, string>,
+  ): Promise<string> {
+    const me = await app.request('/auth/me', {
+      headers: { Cookie: cookieHeader(cookies, 'jobagent_session') },
+    });
+    return ((await me.json()) as { accountId: string }).accountId;
+  }
+
+  it('builtin 超限：账号配额用尽后返回 429 LLM_ACCOUNT_RATE_LIMITED', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const hubCatalog = makeHubCatalog(
+      new FakeLlmClient(() => ({ subject: 'Re: role', body: 'Hub draft body.' })),
+    );
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      hubCatalog,
+      llmQuota: { accountRatePerHour: 1 },
+    });
+    const cookies = await loginAs(BOB, repos, app);
+
+    expect((await postCoverLetter(app, cookies, jobRowId)).status).toBe(200);
+    const res = await postCoverLetter(app, cookies, jobRowId);
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('3600');
+    expect(await res.json()).toMatchObject({
+      code: 'LLM_ACCOUNT_RATE_LIMITED',
+      limitPerHour: 1,
+      retryAfterSeconds: 3600,
+    });
+  });
+
+  it('BYOK 完全不计数：配额为 1 时连续两次 BYOK 仍成功且无 llm-account 记录', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const hubCatalog = makeHubCatalog(
+      new FakeLlmClient(() => ({ subject: 'built-in', body: 'should not be used' })),
+    );
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      hubCatalog,
+      llmQuota: { accountRatePerHour: 1 },
+    });
+    const cookies = await loginAs(BOB, repos, app);
+    await app.request('/account/llm-config', {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        Cookie: cookieHeader(cookies, 'jobagent_session'),
+      },
+      body: JSON.stringify({
+        baseUrl: 'https://byok.example.com/v1',
+        model: 'byok-model',
+        apiKey: 'sk-byok-key', // gitleaks:allow
+      }),
+    });
+    const accountId = await currentAccountId(app, cookies);
+
+    expect((await postCoverLetter(app, cookies, jobRowId)).status).toBe(200);
+    expect((await postCoverLetter(app, cookies, jobRowId)).status).toBe(200);
+    expect(fetchStub).toHaveBeenCalledTimes(2);
+    expect(
+      await repos.demoSessions.countRateEvents(
+        accountId,
+        'llm-account',
+        '2000-01-01T00:00:00.000Z',
+      ),
+    ).toBe(0);
+  });
+
+  it('未超限：单次成功且账号计数递增为 1', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    const jobRowId = await seedResume(repos);
+    const hubCatalog = makeHubCatalog(
+      new FakeLlmClient(() => ({ subject: 'Re: role', body: 'Hub draft body.' })),
+    );
+    const app = await createApp({
+      repos,
+      authConfig: loadAuthConfig({}),
+      githubAuthProvider: new FakeAuthProvider(BOB),
+      llmCatalogCache: createCatalogCache(),
+      llmEncKey: ENC_KEY,
+      hubCatalog,
+      llmQuota: { accountRatePerHour: 20 },
+    });
+    const cookies = await loginAs(BOB, repos, app);
+    const accountId = await currentAccountId(app, cookies);
+
+    expect((await postCoverLetter(app, cookies, jobRowId)).status).toBe(200);
+    expect(
+      await repos.demoSessions.countRateEvents(
+        accountId,
+        'llm-account',
+        '2000-01-01T00:00:00.000Z',
+      ),
+    ).toBe(1);
   });
 
   it('内置被白名单拦截：非白名单用户未配 BYOK → 503 LLM_NOT_CONFIGURED', async () => {

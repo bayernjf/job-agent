@@ -31,3 +31,4 @@ export type {
 } from './notification-subscriptions.js';
 export type { IUsageEventsRepository } from './usage-events.js';
 export type { IFunnelEventsRepository } from './funnel-events.js';
+export type { IProfileEventsRepository } from './profile-events.js';

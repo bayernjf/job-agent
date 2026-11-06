@@ -55,3 +55,8 @@ e2e/.tmp-agent/
 # local database dumps (produced by `bash tools/backup-db.sh`) — contain PII
 backups/
 .pnpm-store/
+
+# model-hub sibling repo cloned inside the workspace (apps/api's file:
+# dependency); a local checkout or symlink, never committed. No trailing
+# slash so the pattern also matches a symlink.
+/model-hub

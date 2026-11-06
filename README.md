@@ -37,7 +37,12 @@
 ### 2.1 本地跑起来（SQLite，最快路径）
 
 ```bash
-nvm use                       # Node 版本以 .nvmrc 为准（当前 24.20.0）
+nvm use                       # Node 版本以 .nvmrc 为准（当前 24.22.2）
+# apps/api 依赖 vendor/model-hub-model-kit-<version>.tgz（@model-hub/model-kit
+# 的 dist 构建产物，已入库），无需再克隆 model-hub。升级 model-kit 时在
+# model-hub 仓 `npm pack --pack-destination <本仓>/vendor`，再同步
+# apps/api/package.json 与 pnpm-lock.yaml；本地有 model-hub/ 时可用
+# `pnpm check:model-kit-vendor` 校验仓内 tgz 是否与源码一致。
 pnpm install                  # pnpm workspaces，不用 npm/yarn
 cp .env.example .env          # 环境变量权威模板（含注释与默认值）
 pnpm -r build                 # api 的 dev 与 worker 的 start 都跑 dist/，先构建一次
@@ -66,7 +71,7 @@ DB_DRIVER=postgres DATABASE_URL='postgresql://…?sslmode=no-verify' pnpm migrat
 DB_DRIVER=postgres DATABASE_URL='postgresql://…?sslmode=no-verify' pnpm migrate:pg:up
 ```
 
-结构变更只走 `db/migrations/{sqlite,postgres}/NNN_verb_snake_case.sql` 对称目录（当前 37 对），规范见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。**上线形态 C（Vercel + Supabase + Cloudflare DNS）的照勾步骤**在 [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md)，通用 runbook 见 [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md)。队列消费由 `apps/cron-worker`（Cloudflare Worker Cron，`*/5` 档）驱动，部署用 `pnpm --filter @jobagent/cron-worker deploy`（wrangler secret 注入凭证）。
+结构变更只走 `db/migrations/{sqlite,postgres}/NNN_verb_snake_case.sql` 对称目录（对数不写死，以 `ls db/migrations/postgres | tail -2` 与 `bash tools/check-migrations.sh` 为准），规范见 [MIGRATION_CONVENTION.md](MIGRATION_CONVENTION.md)。**上线形态 C（Vercel + Supabase + Cloudflare DNS）的照勾步骤**在 [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md)，通用 runbook 见 [docs/deployment-runbook-20260920.md](docs/deployment-runbook-20260920.md)。队列消费由 `apps/cron-worker`（Cloudflare Worker Cron，`*/5` 档）驱动，部署用 `pnpm --filter @jobagent/cron-worker deploy`（wrangler secret 注入凭证）。
 
 ### 2.3 浏览器扩展
 

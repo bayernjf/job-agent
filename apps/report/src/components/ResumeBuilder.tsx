@@ -96,6 +96,8 @@ export interface ResumeLabels {
   coverLetterDone: string;
   coverLetterError: string;
   coverLetterNotConfigured: string;
+  /** 内置 LLM 账号小时配额用尽（决策 #29） */
+  coverLetterRateLimited: string;
   coverLetterAuthRequired: string;
   coverLetterRetry: string;
   coverLetterCopy: string;
@@ -415,6 +417,8 @@ export default function ResumeBuilder({ profileId, apiBase, locale, labels, init
         return labels.coverLetterAuthRequired;
       case 'LLM_NOT_CONFIGURED':
         return labels.coverLetterNotConfigured;
+      case 'LLM_ACCOUNT_RATE_LIMITED':
+        return labels.coverLetterRateLimited;
       default:
         return labels.coverLetterError;
     }

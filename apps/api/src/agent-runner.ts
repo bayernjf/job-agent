@@ -350,6 +350,8 @@ export async function advanceRunOnce(
   deps: {
     repos: AgentRepos;
     now: () => string;
+    /** 单调时钟（epoch ms），用于墙钟预算；缺省 Date.now（测试注入可控时钟） */
+    nowMs?: () => number;
     config?: AgentConfig;
     tick?: TickContext;
     /** 用量计量 recorder（决策 #25 ④ Wave B；fail-open）：JD 抽取 LLM 埋点经它落 usage_events */
@@ -416,7 +418,7 @@ export async function advanceRunOnce(
     };
   }
 
-  return scanOnce(repos, cfg, run, preference, profile, nowIso, deps.tick, deps.usage);
+  return scanOnce(repos, cfg, run, preference, profile, nowIso, deps.tick, deps.usage, deps.nowMs);
 }
 
 /** 一轮扫描里的候选形状：matchJobs 的输出 + 它打分的岗位池行。 */
@@ -708,13 +710,16 @@ async function enrichReadyIntentsWithJd(opts: {
   accountId: string;
   tick?: TickContext;
   usage?: UsageRecorder;
+  /** 单调时钟（epoch ms）；缺省 Date.now（测试注入可控时钟，避免读真实耗时） */
+  nowMs?: () => number;
 }): Promise<void> {
   const { cfg, ready, selected, profileSkills, accountId, tick, usage } = opts;
   if (!cfg.jdExtractor) return;
-  const enrichStartedAt = Date.now();
+  const clock = opts.nowMs ?? Date.now;
+  const enrichStartedAt = clock();
   for (const item of ready) {
-    if (Date.now() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
-    if (tick?.deadlineAt !== undefined && Date.now() >= tick.deadlineAt) break;
+    if (clock() - enrichStartedAt >= cfg.jdLlmBudgetMs) break;
+    if (tick?.deadlineAt !== undefined && clock() >= tick.deadlineAt) break;
     const posting = selected.find((c) => c.posting.jobId === item.job.jobId)?.posting;
     const description = posting?.description;
     if (!description) continue;
@@ -776,6 +781,7 @@ async function scanOnce(
   nowIso: string,
   tick?: TickContext,
   usage?: UsageRecorder,
+  nowMs?: () => number,
 ): Promise<AdvanceOutcome> {
   const derivation = await deriveRunCandidates(
     repos,
@@ -826,6 +832,7 @@ async function scanOnce(
     accountId: run.accountId,
     tick,
     usage,
+    nowMs,
   });
 
   // 三表原子收尾：recommending → awaiting_approval 的 CAS 闸 + 票据批量 + generated 事件
@@ -865,6 +872,8 @@ async function scanOnce(
 export async function runAgentTickOnce(deps: {
   repos: AgentRepos;
   now: () => string;
+  /** 单调时钟（epoch ms）；缺省 Date.now（测试注入可控时钟） */
+  nowMs?: () => number;
   config?: AgentConfig;
   /**
    * 用量计量 recorder（决策 #25 ④ Wave A 接缝；fail-open）。
@@ -890,7 +899,8 @@ export async function runAgentTickOnce(deps: {
   };
   // 整轮 tick 共享墙钟截止时刻：串行推进多个 run 时，每接一个新 run 前检查，
   // 超时即停止接新 run（已在跑的 run 不打断）；必须小于 cron-worker 60s fetch 超时。
-  const deadlineAt = Date.now() + cfg.tickDeadlineMs;
+  const clock = deps.nowMs ?? Date.now;
+  const deadlineAt = clock() + cfg.tickDeadlineMs;
   // 超时回收：submitting 超过 submitStaleHours 无回执 → fail（显式原因 submit_timeout，
   // 不静默悬空；用户要重试就新建任务）。取 200 条足够覆盖正常规模，无需新仓储方法。
   const nowIso = deps.now();
@@ -938,7 +948,7 @@ export async function runAgentTickOnce(deps: {
   const results: Array<{ runId: string; status: string; intents: number }> = [];
   for (const run of runs) {
     // 到达整轮截止时刻即停止接新 run；已经在跑的 run 不打断（下一个 tick 会回收/续推）
-    if (Date.now() >= deadlineAt) break;
+    if (clock() >= deadlineAt) break;
     const outcome = await advanceRunOnce({ ...deps, config: cfg, tick }, run.id, 'agent');
     if (outcome.ok) {
       results.push({

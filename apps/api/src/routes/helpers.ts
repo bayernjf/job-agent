@@ -110,6 +110,23 @@ export function oauthBaseOrigin(c: Context, cfg: AuthConfig): string {
 }
 
 /**
+ * 画像归属判定单一事实源（评审 P1-1 修复）：
+ * - 单源画像：platform + login 全部一致才视为本人；
+ * - 融合画像（subjectPlatform='all'）：只认融合主源 GitHub 的同名已验证账号。
+ *   "同 login 即同一人"的融合假设无法跨平台验证——另一平台的同名账号可能是
+ *   完全不同的自然人，绝不能作为身份依据；主源口径与核验落库一致
+ *   （claim-verifications.ts 写行时 'all' 归一到 'github'）。
+ * principal.platform/login 来自 OAuth 回包（不可伪造）；昵称/邮箱不参与判定。
+ */
+export function principalOwnsProfile(
+  profile: Pick<StoredProfile, 'subjectPlatform' | 'subjectLogin'>,
+  principal: Pick<Extract<Principal, { kind: 'user' }>, 'platform' | 'login'>,
+): boolean {
+  const subjectPlatform = profile.subjectPlatform === 'all' ? 'github' : profile.subjectPlatform;
+  return subjectPlatform === principal.platform && profile.subjectLogin === principal.login;
+}
+
+/**
  * 投递管道的隐私闸（#17-F11，handoff item60 T03）：**认领即隐私开关**。
  *
  * 画像未被本人认领时不设限——它没有可授权的主体，且报告本身按决策 #1-A 就是公开的；
@@ -123,7 +140,7 @@ export function requireProfileOwner(c: Context, profile: StoredProfile): Respons
   if (principal.kind !== 'user') {
     return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
   }
-  if (principal.platform !== profile.subjectPlatform || principal.login !== profile.subjectLogin) {
+  if (!principalOwnsProfile(profile, principal)) {
     return c.json({ error: 'not the profile owner', code: AUTH_ERROR_CODES.notProfileOwner }, 403);
   }
   return undefined;
@@ -138,11 +155,7 @@ export function requireProfileOwner(c: Context, profile: StoredProfile): Respons
 export function isProfileOwner(c: Context, profile: StoredProfile): boolean {
   if (!profile.subjectClaimed) return false;
   const principal = c.get('principal');
-  return (
-    principal.kind === 'user' &&
-    principal.platform === profile.subjectPlatform &&
-    principal.login === profile.subjectLogin
-  );
+  return principal.kind === 'user' && principalOwnsProfile(profile, principal);
 }
 
 /**
@@ -162,7 +175,7 @@ export function requireProfileOwnerForWrite(
   if (principal.kind !== 'user') {
     return c.json({ error: 'authentication required', code: AUTH_ERROR_CODES.authRequired }, 401);
   }
-  if (principal.platform !== profile.subjectPlatform || principal.login !== profile.subjectLogin) {
+  if (!principalOwnsProfile(profile, principal)) {
     return c.json({ error: 'not the profile owner', code: AUTH_ERROR_CODES.notProfileOwner }, 403);
   }
   return undefined;

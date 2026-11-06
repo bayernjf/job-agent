@@ -85,6 +85,9 @@ jobs:
             echo "has_db=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # apps/api depends on the vendored tarball
+      # vendor/model-hub-model-kit-<version>.tgz, so pnpm install resolves it
+      # without checking out the model-hub source. No sibling checkout here.
       - name: Install dependencies
         if: steps.guard.outputs.has_db == 'true'
         run: pnpm install --frozen-lockfile

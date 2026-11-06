@@ -30,10 +30,12 @@ import type {
   IUsageEventsRepository,
   UsageRecorder,
   IFunnelEventsRepository,
+  IProfileEventsRepository,
   FunnelRecorder,
 } from '@jobagent/storage';
 import type { Principal } from '@jobagent/shared';
 import type { DemoConfig } from '../demo-config.js';
+import type { LlmQuotaConfig } from '../llm-quota.js';
 import type { AuthConfig } from '../auth-config.js';
 import type { AuthProvider } from '../auth-provider.js';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
@@ -41,6 +43,7 @@ import type { CatalogCache, CoverLetterProvider } from '@jobagent/llm';
 import type { ClaimOneResult } from '@jobagent/worker';
 import type { MaintenanceTask } from '../cron-jobs.js';
 import type { AgentConfig } from '../agent-config.js';
+import type { HubCatalog } from '../hub-catalog.js';
 
 export interface ApiRepos {
   jobs: IAnalysisJobsRepository;
@@ -84,6 +87,8 @@ export interface ApiRepos {
   usageEvents: IUsageEventsRepository;
   /** 验证漏斗匿名事件（design-funnel-analytics-20261015，迁移 040；写口只经 FunnelRecorder） */
   funnelEvents: IFunnelEventsRepository;
+  /** 画像归属/破坏性操作审计（评审 P1-1，迁移 043；DELETE 级联前落 deleted 事件） */
+  profileEvents: IProfileEventsRepository;
   /** 深健康检查（SELECT 1 往返）；由持久化层提供，/health?deep=1 使用 */
   ping: () => Promise<void>;
   /** 迁移漂移守卫（deferred「迁移漂移守卫」）：核对实际 schema 关键列，返回缺失列表 */
@@ -95,8 +100,15 @@ export interface ApiDeps {
   repos?: ApiRepos;
   /** 注入"现在"（测试确定性） */
   now?: () => string;
+  /**
+   * 注入单调时钟（epoch ms），用于墙钟预算（JD LLM 预算 / tick 截止时刻）。
+   * 默认 Date.now；测试注入可控时钟后预算判断不再依赖真实耗时与机器负载。
+   */
+  nowMs?: () => number;
   /** 注入演示配置（测试用；默认从环境变量加载） */
   demoConfig?: DemoConfig;
+  /** 注入内置 LLM 账号配额（决策 #29）；默认从 LLM_ACCOUNT_RATE_PER_HOUR 加载 */
+  llmQuota?: LlmQuotaConfig;
   /** 注入账号/OAuth 配置（测试用；默认从环境变量加载） */
   authConfig?: AuthConfig;
   /**
@@ -142,6 +154,12 @@ export interface ApiDeps {
    * 测试注入固定缓存避免读库。
    */
   llmCatalogCache?: CatalogCache;
+  /**
+   * model-hub 目录同步服务（W5-1）。
+   * 不传（undefined）= 按 MODEL_HUB_URL/TOKEN 自动创建（未配置则为 null）；
+   * 显式注入 = 测试用 fake hub；显式 null = 强制不启用 hub。
+   */
+  hubCatalog?: HubCatalog | null;
   /**
    * BYOK 密钥加密钥（LLM_ENC_KEY）。不传 = 读环境变量；显式传 null = 强制禁用
    * BYOK 保存（503 ENCRYPTION_NOT_CONFIGURED）。

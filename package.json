@@ -3,11 +3,12 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.15.0"
+    "node": ">=24.22.2"
   },
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "build": "pnpm -r build",
+    "build:vercel": "ASTRO_ADAPTER=vercel pnpm --filter @jobagent/report... build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "migrate:up": "pnpm --filter @jobagent/storage exec node dist/cli.js up",
@@ -17,6 +18,8 @@
     "migrate:pg:down": "pnpm --filter @jobagent/storage exec node dist/cli.js down --driver postgres",
     "migrate:pg:status": "pnpm --filter @jobagent/storage exec node dist/cli.js status --driver postgres",
     "check:migrations": "bash tools/check-migrations.sh",
+    "check:model-kit-vendor": "node scripts/check-model-kit-vendor.mjs",
+    "check:release-readiness": "node scripts/check-release-readiness.mjs",
     "prepare": "husky",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",

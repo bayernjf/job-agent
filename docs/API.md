@@ -1634,28 +1634,40 @@ Web Push 应用服务器公钥；未配 `VAPID_PUBLIC_KEY` 时 503 `VAPID_NOT_CO
 
 ### `GET /admin/llm-catalog`
 
-admin 面。返回合并后内置目录（空表回代码默认 agnes-3.0-flash）与内置凭证配置态：
+admin 面。返回目录与凭证/同步状态。hub 启用（`hubConfigured=true`）时目录由
+model-hub 投影同步（只读），每行带 `source`/`revision`/`assignmentId`；本地模式
+（`hubConfigured=false`，迁移期）空表回代码默认 agnes-3.0-flash：
 
 ```json
 {
   "models": [
     { "id": "agnes-3.0-flash", "provider": "agnes", "model": "agnes-3.0-flash",
-      "enabled": true, "isDefault": true, "sortOrder": 1, "modalities": ["text"] }
+      "enabled": true, "isDefault": true, "sortOrder": 1, "modalities": ["text"],
+      "source": "builtin", "revision": null, "assignmentId": null }
   ],
-  "envConfigured": true
+  "envConfigured": true,
+  "hubConfigured": false,
+  "revision": null
 }
 ```
 
-目录只含数据面字段；凭证永远在 env（`LLM_API_KEY` 等），结构上不可被目录覆盖。
+目录只含数据面字段；凭证要么在 env（`LLM_API_KEY` 等，本地模式），要么留在
+model-kit 的 0600 缓存（hub 模式），结构上不可被目录覆盖。
 
 ### `PUT /admin/llm-catalog`
 
-整体替换目录（min 1 条；字段＝id/provider/model/enabled/isDefault/sortOrder/modalities，
+本地模式：整体替换目录（min 1 条；字段＝id/provider/model/enabled/isDefault/sortOrder/modalities，
 **不接受凭证字段**）。写库后显式刷新缓存，`GET` 立即生效。非法负载 400。
+hub 模式下目录只读，`PUT` 一律 409 `CATALOG_SYNCED_FROM_HUB`。
+
+### `POST /admin/llm-catalog/sync`
+
+hub 模式：拉取最新投影并写库、刷新缓存，返回目录视图与 `sync` 计数。
+hub 未配置时 409 `HUB_NOT_CONFIGURED`；同步失败 502 `HUB_SYNC_FAILED`。
 
 ### `POST /admin/llm-catalog/refresh`
 
-重读仓储并刷新进程内缓存（外部 DDL/直改后无需重启）。
+hub 模式等价于一次 `sync`；本地模式重读仓储并刷新进程内缓存（外部 DDL/直改后无需重启）。
 
 ### `GET /account/llm-config`
 

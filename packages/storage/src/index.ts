@@ -51,6 +51,7 @@ export type {
 } from './repositories/notification-subscriptions.js';
 export type { IUsageEventsRepository } from './repositories/usage-events.js';
 export type { IFunnelEventsRepository } from './repositories/funnel-events.js';
+export type { IProfileEventsRepository } from './repositories/profile-events.js';
 
 // 实体领域类型
 export type {
@@ -114,6 +115,11 @@ export type {
   ClaimSource,
   ClaimVerdict,
 } from './entities/claim-verification.js';
+export type {
+  StoredLlmCatalogModel,
+  NewLlmCatalogModel,
+  LlmCatalogSource,
+} from './entities/llm-catalog-model.js';
 export type {
   StoredAccount,
   ProviderIdentity,
@@ -222,6 +228,7 @@ export {
 } from './funnel-recorder.js';
 export type { FunnelRecorder } from './funnel-recorder.js';
 export type { FunnelEventRecord, RawFunnelEventRow } from './entities/funnel-event.js';
+export type { ProfileEventRecord, RawProfileEventRow } from './entities/profile-event.js';
 
 // 迁移（CLI/脚本/测试）
 export {

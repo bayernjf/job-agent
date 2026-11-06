@@ -24,6 +24,13 @@ const SKIP_DIRS = new Set([
   'build',
   'coverage',
   'test-results',
+  /**
+   * `model-hub` 是 CI（真实目录）与本地（常为符号链接）为 `@model-hub/model-kit`
+   * file: 依赖准备的 sibling 仓库 checkout，不是本仓文档。它自己的评审/部署文档里
+   * 的裸文件名锚点按 model-hub 仓库根解析，本仓替它校验只会误报（2026-11-03 CI 实测
+   * 3 处）；该仓有独立门禁。跳过它同时让本地符号链接与 CI 真实目录的扫描范围一致。
+   */
+  'model-hub',
 ]);
 
 /**

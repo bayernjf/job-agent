@@ -38,6 +38,15 @@ const BOB: OAuthProfile = {
   email: 'bob@example.com',
   avatarUrl: null,
 };
+/** 同一 login 的 Gitee 身份：用于验证融合画像的"缺主源权限"拒绝路径。 */
+const GITEE_ALICE: OAuthProfile = {
+  platform: 'gitee',
+  providerAccountId: '903',
+  login: 'workbench-alice',
+  name: 'Alice',
+  email: 'alice@example.com',
+  avatarUrl: null,
+};
 
 const CRON_SECRET = 'agent-tick-test-secret';
 let previousCronSecret: string | undefined;
@@ -120,11 +129,16 @@ function abilityProfile(profileId: string, login: string): AbilityProfile {
   };
 }
 
-async function insertProfile(repos: StorageContext, id: string, login: string): Promise<void> {
+async function insertProfile(
+  repos: StorageContext,
+  id: string,
+  login: string,
+  platform: 'github' | 'gitee' | 'all' = 'github',
+): Promise<void> {
   await repos.profiles.insert({
     id,
     analyzerVersion: '0.1-0.9',
-    subjectPlatform: 'github',
+    subjectPlatform: platform,
     subjectLogin: login,
     dataWindowSince: '2025-10-01T00:00:00.000Z',
     dataWindowUntil: '2026-10-01T00:00:00.000Z',
@@ -177,6 +191,27 @@ async function loginUser(
   const state = extractCookies(loginRes).jobagent_oauth_state;
   const cb = await app.request(
     `/auth/github/callback?state=${encodeURIComponent(state!)}&code=fake-code`,
+    { headers: { Cookie: `jobagent_oauth_state=${state!}` } },
+  );
+  expect(cb.status).toBe(302);
+  const session = extractCookies(cb).jobagent_session;
+  expect(session).toBeTruthy();
+  return { Cookie: `jobagent_session=${session!}`, app };
+}
+
+/** 走完整 Gitee 登录（同一 repos），返回带会话 Cookie 的 app。 */
+async function loginGiteeUser(
+  repos: StorageContext,
+): Promise<{ Cookie: string; app: Awaited<ReturnType<typeof createApp>> }> {
+  const app = await createApp({
+    repos,
+    authConfig: loadAuthConfig({}),
+    giteeAuthProvider: new FakeAuthProvider(GITEE_ALICE, undefined, 'gitee'),
+  });
+  const loginRes = await app.request('/auth/gitee/login');
+  const state = extractCookies(loginRes).jobagent_oauth_state;
+  const cb = await app.request(
+    `/auth/gitee/callback?state=${encodeURIComponent(state!)}&code=fake-code`,
     { headers: { Cookie: `jobagent_oauth_state=${state!}` } },
   );
   expect(cb.status).toBe(302);
@@ -246,6 +281,52 @@ describe('agent workbench — auth and ownership', () => {
       method: 'POST',
       body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-unclaimed' }),
     });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('AGENT_PROFILE_NOT_OWNED');
+  });
+
+  it('lets the verified GitHub primary owner run on a fused profile (P2 over-strict tail)', async () => {
+    const { repos, json } = await harness();
+    await insertProfile(repos, 'p-fused', ALICE.login, 'all');
+    const claim = await json('/profiles/p-fused/claim', { method: 'POST' });
+    expect(claim.status).toBe(200);
+
+    const prefRes = await json('/agent/preferences', {
+      method: 'POST',
+      body: JSON.stringify(PREFERENCE),
+    });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const res = await json('/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-fused' }),
+    });
+    // 融合画像不是通配：这里放行的是已认领且命中主源 GitHub 同名账号的唯一主体。
+    expect(res.status).toBe(201);
+  });
+
+  it('rejects a same-login Gitee account on a fused profile (missing primary-source permission)', async () => {
+    const repos = await createStorage({ sqlitePath: ':memory:' });
+    await insertProfile(repos, 'p-fused', ALICE.login, 'all');
+    const alice = await loginUser(repos, ALICE);
+    const claim = await alice.app.request('/profiles/p-fused/claim', {
+      method: 'POST',
+      headers: { Cookie: alice.Cookie },
+    });
+    expect(claim.status).toBe(200);
+
+    const gitee = await loginGiteeUser(repos);
+    const prefRes = await gitee.app.request('/agent/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: gitee.Cookie },
+      body: JSON.stringify(PREFERENCE),
+    });
+    const { preference } = (await prefRes.json()) as { preference: { preferenceId: string } };
+    const res = await gitee.app.request('/agent/runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: gitee.Cookie },
+      body: JSON.stringify({ preferenceId: preference.preferenceId, profileId: 'p-fused' }),
+    });
+    // Gitee 同名只见证了 gitee 身份，没有主源 GitHub 的已验证权限 → 必须拒绝。
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code: string }).code).toBe('AGENT_PROFILE_NOT_OWNED');
   });
@@ -1164,7 +1245,12 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
   async function harnessWithJd(
     jdExtractor: MeteredJdExtractor,
     configOverride: Partial<ReturnType<typeof loadAgentConfig>> = {},
-    extras: { usageRecorder?: UsageRecorder; jdExtractorMeta?: JdExtractorMeta } = {},
+    extras: {
+      usageRecorder?: UsageRecorder;
+      jdExtractorMeta?: JdExtractorMeta;
+      /** 注入单调时钟：墙钟预算按它判断，不读真实耗时 */
+      nowMs?: () => number;
+    } = {},
   ) {
     const repos = await createStorage({ sqlitePath: ':memory:' });
     const { Cookie } = await loginUser(repos, ALICE);
@@ -1173,6 +1259,7 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
       authConfig: loadAuthConfig({}),
       githubAuthProvider: new FakeAuthProvider(ALICE),
       usageRecorder: extras.usageRecorder,
+      ...(extras.nowMs ? { nowMs: extras.nowMs } : {}),
       agentConfig: {
         ...loadAgentConfig(),
         ...configOverride,
@@ -1266,14 +1353,21 @@ describe('agent workbench — C1 LLM JD extraction (fail-closed)', () => {
 
   it('spends at most the JD LLM wall-clock budget and still writes intents for all ready candidates', async () => {
     const seen: string[] = [];
-    // 每条调用耗时 60ms；预算 100ms ⇒ 第 1、2 条调用（t≈0/60）放行，第 3 条在 t≈120
-    // 被预算挡住。3 条候选都必须写出票据，只是最后一条没有 jdInsight。
+    // 可控时钟：每次抽取推进 60ms，预算 100ms ⇒ 第 1、2 条调用（t=0/60）放行，
+    // 第 3 条在 t=120 被预算挡住。3 条候选都必须写出票据，只是最后一条没有 jdInsight。
+    // 回归位：旧实现读真实 Date.now，而本用例零真实等待（t≈0），会把 3 条全部放行、
+    // seen 变 3；注入时钟后断言与机器负载无关，高并发下也不再假红（评审 P2-3）。
+    let clockMs = 0;
     const extractor: JdExtractor = async (title) => {
       seen.push(title);
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      clockMs += 60;
       return { responsibilities: [], requiredSkills: ['Rust'], qualifications: [] };
     };
-    const { repos, json } = await harnessWithJd(extractor, { jdLlmBudgetMs: 100 });
+    const { repos, json } = await harnessWithJd(
+      extractor,
+      { jdLlmBudgetMs: 100 },
+      { nowMs: () => clockMs },
+    );
     await insertProfile(repos, 'p-c1', ALICE.login);
     expect((await json('/profiles/p-c1/claim', { method: 'POST' })).status).toBe(200);
     await repos.jobPostings.upsertBatch(

@@ -76,11 +76,13 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
         <a href={`/${locale}/`} class="logo">
           <strong>{t('app.name')}</strong>
         </a>
-        <nav class="nav">
+        <nav class="nav-main">
           <a href={`/${locale}/`}>{t('nav.home')}</a>
           <a href={`/${locale}/my`}>{t('nav.my')}</a>
           <a href={`/${locale}/workbench`}>{t('nav.workbench')}</a>
           <a href={`/${locale}/usage`}>{t('nav.usage')}</a>
+        </nav>
+        <div class="nav-actions">
           <AccountMenu
             client:load
             apiBase={apiBase}
@@ -100,7 +102,7 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
             adminLabel={t('account.admin')}
           />
           <a href={langSwitchPath} class="lang-switch">{t('nav.language')}</a>
-        </nav>
+        </div>
       </div>
     </header>
 
@@ -135,13 +137,14 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     padding: var(--ja-space-3) var(--ja-space-5);
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: var(--ja-space-4);
   }
 
   .logo {
     font-size: var(--ja-text-lg);
     color: var(--ja-color-fg);
     text-decoration: none;
+    flex-shrink: 0;
   }
 
   .logo:hover {
@@ -149,29 +152,49 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
     color: var(--ja-color-accent);
   }
 
-  .nav {
+  /* 两级头部（走查 #10）：一级主导航靠左、二级账号操作区固定右侧，
+     语言切换在操作区内固定位置，不随账号菜单展开/折叠跳动。 */
+  .nav-main {
     display: flex;
     align-items: center;
     gap: var(--ja-space-4);
+    margin-left: var(--ja-space-6);
+    min-width: 0;
   }
 
-  .nav a {
+  .nav-main a {
     font-size: var(--ja-text-sm);
     color: var(--ja-color-fg-muted);
+    white-space: nowrap;
   }
 
-  .nav a:hover {
+  .nav-main a:hover {
     color: var(--ja-color-accent);
+  }
+
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--ja-space-3);
+    margin-left: auto;
+    flex-shrink: 0;
   }
 
   .lang-switch {
     padding: var(--ja-space-1) var(--ja-space-3);
     border: 1px solid var(--ja-color-border);
     border-radius: var(--ja-radius-md);
+    white-space: nowrap;
+    /* 显式覆盖全局 a 的 accent 绿：绿色对小字号文本对比度不足
+       （实测 3.30:1，WCAG AA 需 ≥4.5:1），与主导航同用 fg-muted。 */
+    color: var(--ja-color-fg-muted);
   }
 
-  /* 移动端：头区换两行（logo / 导航），导航项保持自然宽度并换行，
-     防止 CJK 链接被逐字竖压、登录按钮撑出横向滚动（2026-10-12 生产 360px 走查修复）。 */
+  .lang-switch:hover {
+    color: var(--ja-color-accent);
+  }
+
+  /* 移动端：第一行 logo + 账号操作区，第二行主导航换行（2026-10-12 生产 360px 走查修复延续） */
   @media (max-width: 640px) {
     .header-inner {
       flex-wrap: wrap;
@@ -179,15 +202,16 @@ const langSwitchPath = currentPath.replace(`/${locale}/`, `/${otherLocale}/`) ||
       padding: var(--ja-space-2) var(--ja-space-3);
     }
 
-    .nav {
+    .nav-main {
       flex-basis: 100%;
+      order: 2;
       flex-wrap: wrap;
       gap: var(--ja-space-2) var(--ja-space-3);
+      margin-left: 0;
     }
 
-    .nav a {
-      flex-shrink: 0;
-      white-space: nowrap;
+    .nav-actions {
+      margin-left: auto;
     }
 
     .lang-switch {

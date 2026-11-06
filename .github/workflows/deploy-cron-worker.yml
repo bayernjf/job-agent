@@ -70,6 +70,9 @@ jobs:
             exit 1
           fi
 
+      # apps/api depends on the vendored tarball
+      # vendor/model-hub-model-kit-<version>.tgz, so pnpm install resolves it
+      # without checking out the model-hub source. No sibling checkout here.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

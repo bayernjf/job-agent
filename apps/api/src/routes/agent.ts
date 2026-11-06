@@ -46,14 +46,14 @@ import {
   toRunViewData,
 } from '../agent-view.js';
 import { aiAssistedDisclosure, renderHtml } from '@jobagent/resume-core';
-import { resolveTextLlm } from './llm-resolve.js';
-import { describeError } from './helpers.js';
+import { enforceBuiltinLlmQuota, resolveTextLlm } from './llm-resolve.js';
+import { describeError, principalOwnsProfile } from './helpers.js';
 import { sendWebPush } from '../web-push.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
 export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
-  const { repos, now, agentConfig, agentRepos, cronAuthorized, usageRecorder } = d;
+  const { repos, now, nowMs, agentConfig, agentRepos, cronAuthorized, usageRecorder } = d;
 
   const requireAgentUser = (
     c: Context,
@@ -215,12 +215,11 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     }
     const profile = await repos.profiles.getById(parsed.data.profileId);
     if (!profile) return c.json({ error: 'profile not found' }, 404);
-    // 求职任务必须挂在**本人已认领**的画像上：Agent 会读写该画像的证据与简历
-    if (
-      !profile.subjectClaimed ||
-      profile.subjectPlatform !== user.platform ||
-      profile.subjectLogin !== user.login
-    ) {
+    // 求职任务必须挂在**本人已认领**的画像上：Agent 会读写该画像的证据与简历。
+    // 归属占用 claim/recruiting 同一谓词：融合画像（subjectPlatform='all'）归一为主源
+    // GitHub，只有已验证的 GitHub 同名账号能过；不是把 'all' 当通配。此前这里直接
+    // 比较 subjectPlatform，导致融合画像连主源本人也被 403（过严，见 deferred-items）。
+    if (!profile.subjectClaimed || !principalOwnsProfile(profile, user)) {
       return c.json(
         {
           error: 'profile must be claimed by the signed-in account',
@@ -238,7 +237,7 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       createdAt: now(),
     });
     const outcome = await advanceRunOnce(
-      { repos: agentRepos, now, config: agentConfig, usage: usageRecorder },
+      { repos: agentRepos, now, nowMs, config: agentConfig, usage: usageRecorder },
       id,
       'user',
     );
@@ -303,7 +302,7 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'job run is not active', code: AGENT_ERROR_CODES.runNotActive }, 409);
     }
     const outcome = await advanceRunOnce(
-      { repos: agentRepos, now, config: agentConfig, usage: usageRecorder },
+      { repos: agentRepos, now, nowMs, config: agentConfig, usage: usageRecorder },
       run.id,
       'user',
     );
@@ -688,6 +687,10 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       if (c.req.query('polish') === 'llm') {
         const artifacts = await buildIntentArtifacts(repos, intent, { locale: locale.data });
         const llm = artifacts ? await resolveTextLlm(c, d).catch(() => null) : null;
+        // 决策 #29：内置调用计入账号配额；429/503 必须原样返回，不能被
+        // 下面「LLM 不可用 → 规则版」的静默降级吞掉。
+        const limited = llm ? await enforceBuiltinLlmQuota(c, d, llm) : null;
+        if (limited) return limited;
         if (artifacts && llm?.cover) {
           try {
             const out = await llm.cover.generate({
@@ -732,7 +735,7 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (!cronAuthorized(c)) return c.json({ error: 'unauthorized' }, 401);
     const started = now();
     try {
-      const outcome = await runAgentTickOnce({ repos: agentRepos, now, config: agentConfig, usage: usageRecorder });
+      const outcome = await runAgentTickOnce({ repos: agentRepos, now, nowMs, config: agentConfig, usage: usageRecorder });
       // 触达通道（决策 #25-2）：本轮有 run 新进入 awaiting_approval（pending 候选>0）时，
       // 对该 account 的启用 web_push 订阅发推送。失败绝不阻塞 tick、不记 run 失败；
       // 404/410 端点即时删行（决策 #25-2 不留沉默订阅）。

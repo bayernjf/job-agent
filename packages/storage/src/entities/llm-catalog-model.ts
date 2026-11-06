@@ -8,6 +8,9 @@
  */
 import type { LlmCatalogModality } from '@jobagent/shared';
 
+/** 行来源：本地 admin/legacy，或 hub 同步投影（migration 042）。 */
+export type LlmCatalogSource = 'builtin' | 'hub';
+
 export interface StoredLlmCatalogModel {
   id: string;
   provider: string;
@@ -16,11 +19,17 @@ export interface StoredLlmCatalogModel {
   isDefault: boolean;
   sortOrder: number;
   modalities: LlmCatalogModality[];
+  /** 行来源（migration 042）。 */
+  source: LlmCatalogSource;
+  /** hub catalog revision；本地行为 null。 */
+  revision: number | null;
+  /** hub assignment id（asn_*）；本地行为 null。 */
+  assignmentId: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** 新建目录行：id 由 admin 面提供，时间戳由仓储填充 */
+/** 新建目录行：id 由调用方提供，时间戳由仓储填充 */
 export interface NewLlmCatalogModel {
   id: string;
   provider: string;
@@ -29,6 +38,9 @@ export interface NewLlmCatalogModel {
   isDefault: boolean;
   sortOrder: number;
   modalities: LlmCatalogModality[];
+  source?: LlmCatalogSource;
+  revision?: number | null;
+  assignmentId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,6 +55,9 @@ export interface RawLlmCatalogModelRow {
   isDefault: boolean | number;
   sortOrder: number;
   modalities: string;
+  source: string;
+  revision: number | null;
+  assignmentId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -64,6 +79,9 @@ export function toStoredLlmCatalogModel(row: RawLlmCatalogModelRow): StoredLlmCa
     isDefault: Boolean(row.isDefault),
     sortOrder: row.sortOrder,
     modalities,
+    source: row.source === 'hub' ? 'hub' : 'builtin',
+    revision: row.revision,
+    assignmentId: row.assignmentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -79,6 +97,9 @@ export function toLlmCatalogModelRow(model: StoredLlmCatalogModel): RawLlmCatalo
     isDefault: model.isDefault,
     sortOrder: model.sortOrder,
     modalities: JSON.stringify(model.modalities),
+    source: model.source,
+    revision: model.revision,
+    assignmentId: model.assignmentId,
     createdAt: model.createdAt,
     updatedAt: model.updatedAt,
   };

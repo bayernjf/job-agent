@@ -11,14 +11,18 @@ import type { ResumePolishProvider } from '@jobagent/resume-core';
 import type { CatalogCache, CoverLetterProvider } from '@jobagent/llm';
 import type { AuthConfig } from '../auth-config.js';
 import type { DemoConfig } from '../demo-config.js';
+import type { LlmQuotaConfig } from '../llm-quota.js';
 import type { ApiDeps, ApiRepos } from './types.js';
 import type { FunnelRecorder, UsageRecorder } from '@jobagent/storage';
+import type { HubCatalog } from '../hub-catalog.js';
 
 export interface RouteDeps {
   /** 全部仓储（生产 createStorage / 测试内存库） */
   repos: ApiRepos;
   /** 可注入的"现在" */
   now: () => string;
+  /** 可注入的单调时钟（epoch ms），用于墙钟预算；默认 Date.now */
+  nowMs: () => number;
   /**
    * 岗位新鲜窗口（天），来自 `JOB_STALE_DAYS`（默认 7），与 `/job-postings/stats` 同源。
    * 推荐给候选人与岗位匹配必须按它过滤——已关闭的岗位不该出现在"为你推荐的岗位"里。
@@ -26,6 +30,8 @@ export interface RouteDeps {
   jobStaleDays: number;
   /** 演示模式配置 */
   cfg: DemoConfig;
+  /** 内置 LLM 账号级限流配置（决策 #29） */
+  llmQuota: LlmQuotaConfig;
   /** 账号 / OAuth 配置 */
   authCfg: AuthConfig;
   githubProvider: AuthProvider | null;
@@ -36,6 +42,8 @@ export interface RouteDeps {
   coverLetterProvider: CoverLetterProvider | null;
   /** 内置模型目录缓存（LLM 供给 P0；启动加载一次 + admin 写后显式刷新） */
   catalogCache: CatalogCache;
+  /** model-hub 目录同步（W5-1；未配置为 null，维持 env 内置面） */
+  hubCatalog: HubCatalog | null;
   /** BYOK 密钥加密钥（LLM_ENC_KEY env；null=未配置，BYOK 保存端点 503） */
   llmEncKey: string | null;
   /** OAuth state 签名密钥（AUTH_STATE_SECRET 或进程随机） */

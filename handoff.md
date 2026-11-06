@@ -84,6 +84,7 @@ JobAgent 当前状态，截至 2026-10-31。
 - [docs/评审-MVP-20260927.md](docs/评审-MVP-20260927.md) — 第四次 MVP 上线就绪评审（2026-09-27，全部实测+file:line 复验）：**结论＝仍未达核心完全可用 MVP，但阻断集收敛到 2 项**——B1 T21 形态 C 部署（外部条件，唯一剩余）＋B2 自助解绑（**已于当日落地，item88**，PRD:230 可解绑验收闭环）；六步链代码侧 6/6 环可达（含 T15/T18/T19/T20/T22 新落地），门禁 968 单测/77 报告 E2E/11 扩展 E2E 四连升无回退，真进程简历 smoke 通过；信心 **78→84/100**（现行）
 - [docs/评审-MVP-20260927b.md](docs/评审-MVP-20260927b.md) — 第五次 MVP 上线就绪再评审（2026-09-27 同日，全部实测）：**结论＝仍未达核心完全可用 MVP，但代码侧阻断已全部清零，唯一剩余阻断＝外部平台条件 F3（Vercel 自定义域名边缘路由分发）**——B2 自助解绑闭环（判据 3 三条全满足），B1 部署从"38 项全未做"推进到"只差 F3 激活 + F4–J 收尾"（Supabase 14 迁移/Vercel 14 env + 部署 Ready/D1 OAuth/F1/F2 域名/G1 secret 全落地，F3 对照实验坐实部署本体正常）；门禁 **983 单测**全绿（记录并行全仓跑 vitest fork 超时假失败的环境现象与串行复跑结论）；信心 **84→89/100**（现行）
 - [docs/部署执行单-形态C-20260921.md](docs/部署执行单-形态C-20260921.md) — 形态 C 上线照勾操作序列（Runbook §4-C/§10/§11 的执行版）：A 本地前置→B Supabase（6543 函数/5432 迁移）→C 三随机密钥→D 生产 OAuth App（回调含 /api）→E Vercel（Root Directory=apps/report、hnd1、env 总表、Pro 每分钟 cron、cron token 走控制台不入 Git）→F 域名/DNS 灰云→G Actions 5432 secret→H CLI 预热三预置画像（demo seed 只读不预热）→I 落地页构建变量→J 人工 smoke；配 `tools/gen-deploy-secrets.sh`、`tools/smoke-deploy.sh`（现行，2026-09-21，item39）
+- [docs/部署-Vercel模型中心变量与Supabase口令轮换-20261106.md](docs/部署-Vercel模型中心变量与Supabase口令轮换-20261106.md) — Vercel 模型中心两条变量（`MODEL_HUB_URL` / `MODEL_HUB_TOKEN`）的取值来源、Production 入口、redeploy 与真实 chat 验证（`/api/resumes/build` 的 `polish.applied` 与 `draft.provenance.polish`），以及 Supabase 口令轮换后的三步验收（旧串被拒 / `/api/health` 200 / 公开写链路）；token 只记录末四位 `8798` 与获取路径，不含任何明文（现行，2026-11-06）
 - [docs/部署前就绪确认单-20260924.md](docs/部署前就绪确认单-20260924.md) — 形态 C 上线前最后一轮"代码/产物侧"门禁实测记录（A1–A7 + B1–B4）：835 单测/报告 E2E 57/扩展 11、Docker PG 11 迁移+9 行为、Vercel 产物、smoke 7/7（含 worker lazy-sources 与脚本断言两个真实修复）、audit/gitleaks 0、CWS 隐私政策/权限/素材；结论＝代码侧门禁全绿，唯一硬阻塞 P0-3 控制台人工部署（**生产已于 2026-09-30 上线，此单转为历史门禁基线**；现行，2026-09-24，item51）
 - [docs/privacy-policy-20260924.md](docs/privacy-policy-20260924.md) — 中英双语隐私政策权威源（10 节×2 语言：处理信息/不收集/用途/共享受托方/留存删除/国际传输/权利/未成年人/安全/变更联系），与在线页 `/[locale]/privacy` 同步，CWS 上架填 `https://<app-origin>/en/privacy`（现行，2026-09-24，item51）
 - [docs/CWS上架执行单-20261030.md](docs/CWS上架执行单-20261030.md) — CWS 上架照着填执行单（注册 $5 → 上传 zip（固定 ID 核对）→ listing/Privacy/Distribution 五页签逐字段文案与建议答案 → 审核预期 → 上架后升级流程）；listing/申辩文案权威源在 `apps/extension/store-assets/README.md`（现行，2026-10-30；唯一卡点＝账号持有人操作）
@@ -108,7 +109,7 @@ JobAgent 当前状态，截至 2026-10-31。
 
 ![JobAgent 任务进度总览（截至 2026-10-02）](docs/assets/任务进度总览-20261002.png)
 
-- 阶段：**M1 核心开发 + 工程化补全完成；P1·Chrome 扩展（Greenhouse/Lever 真实环境冒烟通过，Workday 受限登记）；P2 职位聚合 + 画像↔岗位匹配 + 岗位定向简历；P3 演示模式 / 账号授权主脊 / C 端优先批次（#18）均已落地；求职 Agent 阶段 1「求职工作台」代码已落地（2026-10-03，见 item94，未部署）；**求职 Agent 阶段 2「半自动投递」全链路已于 2026-10-04 落地（item112，A1–A4/C2/D1/E1/F1–F3 全绿，硬边界＝扩展填完停手、绝不自动点提交）**；**2026-10-03 工程债批次（item96）＝T1/T3/T4 测试守护补强 + Q1 拆分 API `index.ts`（2691 行→`routes/` 域模块）+ Q2 拆分报告页（数据装配入 `lib/report-page.ts`、样式入 `styles/report-page.css`）+ 报告 E2E 偶发超时加固（globalSetup 预热路由、webServer 超时 120→180s）**。当前规则版本 `RULE_VERSION` 0.9、迁移 **40 对**（018–022 阶段 1、023–025 LLM 供给、026/027 扩展登录态、028 outcome_feedback、029 claim_verifications、**030 job_runs.last_viewed_at（未读候选）**、**031 cron_heartbeat（cron 消费存活信号，2026-10-07）**、**032/033 websearch 搜岗预设/历史表 + job_postings.search_run_id（2026-10-09，已生产执行）**、**034 notification_subscriptions（触达通道，2026-10-10）**、**035 applications.submit_intent_id 部分唯一索引（一票据至多一条 agent 投递，2026-10-13，已生产手工执行）**、**036 job_postings.created_by_account_id（招聘方自建 JD 归属，决策 #25，2026-10-13 落地代码，✅ 已于 2026-10-13 由用户在 Supabase SQL Editor 执行并实查确认——列+索引+账本三处都在）**、**037 interviews.posting_id（面试挂到自建岗位，决策 #25 补口，2026-10-13，✅ 同日随 036 一起在生产执行并实查确认；两列都已进 `REQUIRED_COLUMNS`，缺列时 `/health?deep=1` 直接 503）**、**038 usage_events（成本回采事件日志，决策 #25 ④，2026-10-14，item163；✅ 已于 2026-10-14 由用户在 Supabase SQL Editor 执行并实查确认——表 11 列 + 3 索引 + 账本行三处都在，B5 先迁库后合码已满足）**、**039 applications.stage + application_events（招聘方 pipeline 状态机，决策 #25 授权，2026-10-14，item164；✅ 已于 2026-10-15 由用户在生产 SQL Editor 执行并实查确认，PR #177 合并部署后深探活无 drift）**、**040 funnel_events（验证漏斗埋点，PRD §11.2 / NFR-7，2026-10-15，item165；✅ 已于 2026-10-16 经 `pnpm migrate:pg:up` 生产执行，同批补登 039 迁移账本行——039 DDL 已于 10-15 由用户在 SQL Editor 手工执行，幂等重放无害）**；对数与最高编号以 `ls db/migrations/postgres | tail -2` 与 `bash tools/check-migrations.sh` 为准）；**决策 #23「逐条声明核验」已于 2026-10-05 拍板，批次 1（内核+持久化）与批次 2（三端点+招聘方/本人两端表面+`/recruit` 计数）均已落地**（`packages/claim-core` + shared 技能词典 + 迁移 029 + 双方言仓储 + `ClaimVerifier` island，明细见活跃待办 item128）；**单测基线（2026-10-11 实跑 `pnpm -r test`：18 个包/应用、合计 1597 例、exit 0）**——**逐包数字不再抄在这里**（上一版抄了 18 个数，两天内就漂了 4 个：storage 239→243、report 192→203、llm 42→47、api 339→352）；要看现值就跑 `pnpm -r test 2>&1 | sed 's/\\x1b\\[[0-9;]*m//g' | grep -aE "Tests +[0-9]+ passed"`。真全栈 agent E2E 11 条用例（匿名门 + stage-1 + stage-2 + 追踪回标 + claim 核验 4 条 + 未读候选徽标 + 搜岗预设）全过，每用例前幂等重灌夹具隔离；mock 版报告 E2E 98 条。历史阶段流水见 [docs/handoff-archive-2026-10-01.md](docs/handoff-archive-2026-10-01.md) §3。
+- 阶段：**M1 核心开发 + 工程化补全完成；P1·Chrome 扩展（Greenhouse/Lever 真实环境冒烟通过，Workday 受限登记）；P2 职位聚合 + 画像↔岗位匹配 + 岗位定向简历；P3 演示模式 / 账号授权主脊 / C 端优先批次（#18）均已落地；求职 Agent 阶段 1「求职工作台」代码已落地（2026-10-03，见 item94，未部署）；**求职 Agent 阶段 2「半自动投递」全链路已于 2026-10-04 落地（item112，A1–A4/C2/D1/E1/F1–F3 全绿，硬边界＝扩展填完停手、绝不自动点提交）**；**2026-10-03 工程债批次（item96）＝T1/T3/T4 测试守护补强 + Q1 拆分 API `index.ts`（2691 行→`routes/` 域模块）+ Q2 拆分报告页（数据装配入 `lib/report-page.ts`、样式入 `styles/report-page.css`）+ 报告 E2E 偶发超时加固（globalSetup 预热路由、webServer 超时 120→180s）**。当前规则版本 `RULE_VERSION` 0.9、迁移 **43 对**（018–022 阶段 1、023–025 LLM 供给、026/027 扩展登录态、028 outcome_feedback、029 claim_verifications、**030 job_runs.last_viewed_at（未读候选）**、**031 cron_heartbeat（cron 消费存活信号，2026-10-07）**、**032/033 websearch 搜岗预设/历史表 + job_postings.search_run_id（2026-10-09，已生产执行）**、**034 notification_subscriptions（触达通道，2026-10-10）**、**035 applications.submit_intent_id 部分唯一索引（一票据至多一条 agent 投递，2026-10-13，已生产手工执行）**、**036 job_postings.created_by_account_id（招聘方自建 JD 归属，决策 #25，2026-10-13 落地代码，✅ 已于 2026-10-13 由用户在 Supabase SQL Editor 执行并实查确认——列+索引+账本三处都在）**、**037 interviews.posting_id（面试挂到自建岗位，决策 #25 补口，2026-10-13，✅ 同日随 036 一起在生产执行并实查确认；两列都已进 `REQUIRED_COLUMNS`，缺列时 `/health?deep=1` 直接 503）**、**038 usage_events（成本回采事件日志，决策 #25 ④，2026-10-14，item163；✅ 已于 2026-10-14 由用户在 Supabase SQL Editor 执行并实查确认——表 11 列 + 3 索引 + 账本行三处都在，B5 先迁库后合码已满足）**、**039 applications.stage + application_events（招聘方 pipeline 状态机，决策 #25 授权，2026-10-14，item164；✅ 已于 2026-10-15 由用户在生产 SQL Editor 执行并实查确认，PR #177 合并部署后深探活无 drift）**、**040 funnel_events（验证漏斗埋点，PRD §11.2 / NFR-7，2026-10-15，item165；✅ 已于 2026-10-16 经 `pnpm migrate:pg:up` 生产执行，同批补登 039 迁移账本行——039 DDL 已于 10-15 由用户在 SQL Editor 手工执行，幂等重放无害）**；对数与最高编号以 `ls db/migrations/postgres | tail -2` 与 `bash tools/check-migrations.sh` 为准）；**决策 #23「逐条声明核验」已于 2026-10-05 拍板，批次 1（内核+持久化）与批次 2（三端点+招聘方/本人两端表面+`/recruit` 计数）均已落地**（`packages/claim-core` + shared 技能词典 + 迁移 029 + 双方言仓储 + `ClaimVerifier` island，明细见活跃待办 item128）；**单测基线（2026-10-11 实跑 `pnpm -r test`：18 个包/应用、合计 1597 例、exit 0）**——**逐包数字不再抄在这里**（上一版抄了 18 个数，两天内就漂了 4 个：storage 239→243、report 192→203、llm 42→47、api 339→352）；要看现值就跑 `pnpm -r test 2>&1 | sed 's/\\x1b\\[[0-9;]*m//g' | grep -aE "Tests +[0-9]+ passed"`。真全栈 agent E2E 11 条用例（匿名门 + stage-1 + stage-2 + 追踪回标 + claim 核验 4 条 + 未读候选徽标 + 搜岗预设）全过，每用例前幂等重灌夹具隔离；mock 版报告 E2E 98 条。历史阶段流水见 [docs/handoff-archive-2026-10-01.md](docs/handoff-archive-2026-10-01.md) §3。
 - **生产形态 C 已上线并在线（2026-09-30 实查）**：域名 `https://app.job-agent.bayjf.com`（Vercel 单项目同域 + Supabase 东京 ref `lianzrtiddyxtoalpiby` + Cloudflare 灰云 CNAME，Root Directory `apps/report`）；`/api/health` 200、三个 demo 预置（torvalds/bayernjf/MSNightmare）`ready:true`、生产画像 `bayernjf`（profileId `f57fac8d-84d0-4f32-88b3-7fb4090bd84a`，规则 0.1-0.8，2026-10-02 presets 实查）报告页 200、岗位池 `active:13242`（inactive 1005；2026-10-09 实查 `GET /api/job-postings/stats`，10-06 记 13021）；落地页 `https://job-agent.bayjf.com` 已接生产 API。**J1（未登录分级）/J4（demo 三道配额闸）/J5（三平台入队 + 分享链接）已于 2026-10-02 实测通过**，**J2 本人 GitHub 登录认领与 J3 Gitee OAuth 冒烟同日完成**（本行此前漏改，与「最近变更 2026-10-02 "J2/J3 完成"」条目矛盾；2026-10-05 复测生产画像行 `subject_claimed=true` 佐证 J2）；**J6 异议邮箱已于 2026-10-08 修复并验证通过**（Cloudflare Email Routing 免费方案 A 落地：`dispute@job-agent.bayjf.com` → `jiangfengkxi@outlook.com` 路由规则 Active、MX/DKIM/SPF 已写入 Locked，生产 Vercel 无需重部署；**真实投递验证已通过**——用户从 QQ 邮箱发测试邮件至 dispute@，outlook 收件箱确认收到转发，见最近变更 2026-10-08 条）；**B4 Supabase 手动备份已于 2026-10-10 完成并验证可恢复**（21M dump 落 `backups/`，gitignored；卡点＝数据库密码已解除）。**🔔 例行提醒：Free 无自动备份，建议每周日分段备份一次——naive 单文件 `pg_dump` 已被生产库体量淘汰（Supabase `statement_timeout=2min` + 池化器吞吐，详见最近变更 2026-10-14 B4 条），用 `bash backups/ja-chunk-dump.sh`（读 `.env` 的 DATABASE_URL，产物＝主转储 + job_postings 分块 CSV，断点可续跑）；最近一次备份 2026-10-31（`backup-20261031-034825`：主转储 544K `pg_restore -l` 191 项 + 19,035 行/10 分块，已验证可读）**；**J7 生产 `LLM_*` 已于 2026-10-09 配齐并连通验证**。**作业消费通道已于 2026-10-02 实查确认生效**（早先"未生效"是误判：J5 的三个作业由 cron-poll 定时 run 36915737929 在入队数分钟后 drain 完，当时只看 3 分钟窗口；三个 Actions secret 齐备、09-29 起 12 次 schedule 全绿）；**真实弱点是 GitHub schedule 稀疏（实测间隔 4–7.5h、约 3–4 次/天，非每小时），排队分析最坏等数小时——2026-10-06 已根治（决策 #24）：定时器切到 Cloudflare Worker Cron（`apps/cron-worker`，`*/5` 档生产部署并经真实档位 tail 验证 `idle=true agentTick=200`），最坏等待降到 ≤5 分钟；GitHub 轮询暂留交叉验证、2–3 天后移除 schedule**；另修复 Vercel cleanup cron 每日 401 的真因（path 内联占位 token → 改由平台注入的 `Authorization: Bearer $CRON_SECRET`，见最近变更）。
 - 仓库：https://github.com/bayernjf/job-agent （public）；长期分支 `main`、`dev`。
 - **消费与观测现状（2026-10-08 补）**：分析队列与求职任务**只由 `apps/cron-worker` 的 `*/5` 档驱动**（GH `cron-poll.yml` 的 `schedule` 已于 10-07 删除 `d0fbd8c`；删除前实测 `*/15` 在 39h11m 内只交付 7/156 次 ≈4.5%）。消费方存活与迁移漂移**站内可读**：`cron_heartbeat`（迁移 031）+ `GET /health?deep=1`（返回 `cronHeartbeat` 与 `schemaDrift`，缺列即 503）；**自动告警已于 2026-10-10 闭环**——`watch-heartbeat` 在 stale **翻转边沿**推 Web Push（防抖＝比较 watchdog 行自身 `lastError`），`digest-tick` 每日兜底（零候选也发纯告警信）。**外部平台 webhook 通道已于 2026-10-14 落地**（item162：`apps/api/src/alert-webhook.ts`，env `ALERT_WEBHOOK_URL`，企业微信/飞书/Slack 兼容、同一翻转边沿、fail-open）——「必定有人看」的平台读者不再缺位。**剩余缺口**：① 告警依赖真实订阅开启（没订阅＝没有告警）；② 平台 webhook 需用户提供一个机器人 webhook 地址配进生产 env（代码零改动即生效）。新迁移必须先在生产执行、再合并代码（执行单顶部硬勾选 / B5）。
@@ -164,6 +165,13 @@ JobAgent 当前状态，截至 2026-10-31。
 - 2026-10-31（**生产运维体检：分段备份 + 迁移 041 账本实查 + CWS 包复核**，纯运维零代码）：① 周日例行备份完成——`bash backups/ja-chunk-dump.sh` 产物 `backups/backup-20261031-034825.*`：主转储 544K（schema + 除 job_postings 外全表，`pg_restore -l` 读出 191 项）+ 10 个分块 CSV 覆盖 **19,035 行**岗位（Docker 17-alpine 在跑，全程无 2min 超时）；② `pnpm migrate:pg:status`（Node 24.20.0 + `.env`）实查生产 **001–041 全部 `[applied]`**，含 item166 的 **041 api_tokens 去明文**——「先在 Production 执行 041 再合并 dev→main」硬约束实际已满足（DDL 与账本均在），无 pending 迁移；`/api/health?deep=1` 200、`schemaDrift` 无缺列、五消费方心跳新鲜；③ CWS release zip 复核（`apps/extension/release/jobagent-extension-v0.1.0.zip`，10-30 打）：manifest 在包根、零 localhost、指向 `app.job-agent.bayjf.com`、v0.1.0、固定 key 在（上传须核对扩展 ID `dgbnkdljapgglpdcmncbleioocbjfmmc`）——代码/素材/文案侧全部就绪，唯一卡点＝账号持有人 $5 注册与 Dashboard 提交（执行单 [docs/CWS上架执行单-20261030.md](docs/CWS上架执行单-20261030.md)）；④ `backups/` 已 232M（10-10/10-12/10-14 三套旧集在），清理旧备份待用户明确授权。被挤出的 10-15 ~ 10-28 变更见 [docs/handoff-archive-2026-10-31.md](docs/handoff-archive-2026-10-31.md)。
 - 2026-10-31（**Vercel 同域入口补测试：forwardToHono 前缀剥离/透传契约**，report 包）：Tier0 代码评审 P1 #6「Vercel rewrite 入口无测试」落地——`internal-api.ts` 抽出最小 `ForwardableApp` 接口（真实 Hono 满足）并新增 test-only `setInternalAppForTest()` 注入/重置后端；新测试 `internal-api.test.ts` 3 例（node 环境）：① `/api/health` 转发后后端实收 `/health`、200 响应体一致；② 未知路由 404 状态码透传；③ POST 方法与请求体原样保留。配合既有 `api-prefix.test.ts`（stripApiPrefix 纯函数 4 例）覆盖入口全部职责。验证：report tsc 0 错、相关 7 测试全绿；report 全包 298 passed（6 个 better-sqlite3 ABI 失败为 Node22 环境基线，已 git stash 对照确认非本次回归；CI Node24 下由 api 内存库测试覆盖真实 Hono 路径）。
 - 2026-10-30（**CWS 上架就绪收口：release zip 当日重打 + 照着填执行单落地**，extension 包文档，零产品代码改动）：① release zip 用生产域重打（`EXTENSION_API_BASE=https://app.job-agent.bayjf.com/api` + `--force` 覆盖 10-10 旧包，旧包缺 Lever 自定义问题修复 `6be200d4`）并验证包内 manifest——`manifest.json` 在包根、localhost 全剥离、`permissions` 仅 `storage`、`host_permissions` 仅 4 家 ATS 通配 + 生产域；② [store-assets/README.md](apps/extension/store-assets/README.md) 修正两处与现行 manifest 不符（listing 详细描述补 Ashby 四家 ATS、权限申辩改精确域口径——宽泛 `*/*careers*` glob 已在 manifest 移除，申辩若仍引用会被审核员核对打回）；③ 新增 [CWS上架执行单-20261030.md](docs/CWS上架执行单-20261030.md)：注册 $5 → 上传（固定 ID `dgbnkdljapgglpdcmncbleioocbjfmmc` 核对）→ listing/Privacy/Distribution 逐字段（含 Data usage 问卷建议答案与「与隐私政策冲突以隐私政策为准」的仲裁规则）→ 审核预期 → 上架后就地升级与版本递增流程。唯一卡点＝账号持有人操作（$5 + Dashboard），代码/素材/文案侧全部就绪。
+- 2026-10-28（**dev↔main 分叉排查 + pr-helper 状态核实，纯文档/只读操作，零代码改动**）：
+  - **分叉实测（`git fetch origin` 后）**：`origin/main..origin/dev` = **1**（dev 领先 main 1 个 commit），`origin/dev..origin/main` = **14**（main 领先 dev 14 个 commit）。此前 handoff 记的「main 仅落后 dev 2 commit」已过时。
+  - **dev 上未进 main 的 1 个 commit**：`d8727e0 docs(handoff): log telemetry healthcheck and db backup completion`——纯 handoff.md 运维记录（埋点体检闭环、675px 确认已修、备份补做、生产快照），零产品代码改动。**是否应发布到 main？属文档同步问题，不影响生产代码；由 owner 决定是否开 dev→main PR 把它带上。**
+  - **origin/main 上 dev 没有的 14 个 commit**：全部是 `--no-ff` merge commit（PR #174~#187，均为 dev→main 合并）。这些 merge commit 只存在于 main 分支上，其携带的实际代码变更早已在 dev 分支上。
+  - **实际代码内容差异**：`git diff origin/dev origin/main` 仅 **5 行差异**（handoff.md 上 dev 独有的那 5 行运维记录）。产品代码两分支完全一致。**该分叉是 `--no-ff` 合并工作流的正常历史形态，不是代码分叉。**
+  - **pr-helper 是否停摆？** 否。pr-helper 的 `Reconcile PR Helper monitoring` GitHub Actions 定时作业持续运行（最新 run 2026-10-28T08:51:15Z，全部 success），Vercel 端点正常。**job-agent 从未被配置进 pr-helper 的监控流程**——pr-helper 仓库的 handoff/current-state/docs 全文检索无 `job-agent` / `job_agent` 字样。它不是"该开 PR 却没开"，而是"根本没被配置来管 job-agent"。无需修复。
+  - **结论**：分叉正常、无需紧急处理。待 owner 决策：(a) 是否开 dev→main PR 将那 1 个文档 commit 同步到 main；(b) 是否要把 job-agent 加入 pr-helper 自动化监控范围。
 - 2026-10-15 ~ 2026-10-28 的「最近变更」（10-28 埋点体检闭环/675px 确认已修、10-27 Lever cards 修复、10-27 scanOnce 拆分、10-24 全面代码审查、10-19 新用户 E2E、10-17 生产体检、10-15 漏斗埋点、10-15 ATS 真实 DOM 回归框架）已整块滚入 [docs/handoff-archive-2026-10-31.md](docs/handoff-archive-2026-10-31.md) §1（冻结只读）。同日第二次轮转（2026-10-30 三条变更流水 + item166 主文件条目原文）见 [docs/handoff-archive-2026-10-31b.md](docs/handoff-archive-2026-10-31b.md)（冻结只读）。
 ## 已知限制 / 待核实
 
@@ -191,3 +199,85 @@ JobAgent 当前状态，截至 2026-10-31。
   **最新交付态基线**：`bash tools/preflight.sh` 五阶段全绿（2026-10-07 A 组后仍全绿：typecheck / check-migrations 0 warning〔31 对〕 / 全仓单测〔storage 232、api 298〕 / build / audit 0 漏洞〔sharp 已钉 0.35.5〕）；（typecheck / check-migrations 0 warning / 全仓单测 / build / audit 0 漏洞），逐批历史数字（item56/57 等）见 [docs/handoff-archive-2026-10-01.md](docs/handoff-archive-2026-10-01.md) §3。**仍有效的本机约束**：形态 C 本地预演（node standalone 同域跑 `/` 与 `/api/*`）必须显式 `DB_AUTO_MIGRATE=false`，否则产物内 storage 会把迁移目录解析到不存在的 `apps/report/db/migrations/sqlite`、首个 `/api/*` 请求即 ENOENT；本机默认 shell Node 不固定（实测 v20/v22 都出现过），跑 native addon 与 standalone 前先 `fnm use 24.0.0`，必要时 `pnpm rebuild -r better-sqlite3`；迁移 CLI 目标库按 `--db`/位置参数 > `DB_PATH` > 仓库根解析且每次打印来源（item55 已修）；本机访问 GitHub 直连不稳，代理 `127.0.0.1:7897`。真实 OAuth/token 凭证只在 gitignored `.env`，`data/`、`.vercel/`、`dist/`、`test-results/`、`apps/extension/release/` 未跟踪，均不入库。
 
 - **历史同步态**（各批次 commit 链与 PR 并入路径）已归档：item30–36 与 2026-09-20 同步态见 [docs/handoff-archive-2026-09-20.md](docs/handoff-archive-2026-09-20.md)；item28/29 见 [docs/handoff-archive-2026-09-19.md](docs/handoff-archive-2026-09-19.md)；2026-09-14 ~ 2026-09-18 见 [docs/handoff-archive-2026-09-18.md](docs/handoff-archive-2026-09-18.md)；item37–91 与 2026-09-27 及更早变更见 [docs/handoff-archive-2026-10-01.md](docs/handoff-archive-2026-10-01.md)。
+
+## 合并前评估：dev → main（2026-11-06，45 个提交）
+
+> 只读评估：评估时 `origin/dev` 领先 `origin/main` **45** 个提交（2026-11-05 首版评估为 38 个，
+> 之后新增 7 个：vendor 化 model-kit 的 4 个构建/CI 提交与 3 个文档提交）；未执行合并、部署或迁移。
+
+### 1. 提交构成
+
+| 类别 | 数量 | 提交 |
+|---|---|---|
+| 功能性（API/storage/report/UI） | 13 | `7f64490e` `b3103a08` `553863f8` `bcb05576` `050c5c2c` `9a930d27` `e41cbb8d` `b7f530bd` `24712fac` `19ce3d3a` `2969aa1a` `fcc93c0f` `c630a4dc` |
+| 构建 / CI / 配置 | 12 | `b00dd2ed` `0e99fb09` `24cb0716` `f085a50d` `8757f43e` `feefce5a` `0512da0a` `5caf066c` `d4a0059c` `320437f4` `c21ad5db` `643d2a22` |
+| 测试 | 5 | `d7e13107` `81be21ab` `e16b446f` `f0ea34de` `ed905a25` |
+| 文档 / handoff | 11 | `02a9f545` `ebef3e95` `093d1ea2` `651569f4` `7a64597f` `7a21ffc4` `c91a3a93` `e7e5ffe2` `8c9cca12` `668fa272` `4767f815` |
+| 合并提交（历史） | 4 | `5cb80ed1` `77da2ce2` `920b2d4f` `abfcb047` |
+
+按主题：
+
+- **model-hub 接入（W5-1）**：`7f64490e`（迁移 042：`llm_catalog_models` 增加 source/revision/assignment_id）→ `b00dd2ed`（`file:` 依赖 model-kit）→ `b3103a08`（启动/手动目录同步）→ `553863f8`（admin 目录改只读 + hub 同步）→ `bcb05576`（内置凭证解析与 L4 测试）→ `050c5c2c`（用量回传 hub）。配套构建是 `0e99fb09`/`24cb0716`/`f085a50d`/`8757f43e`，测试是 `d7e13107`/`81be21ab`/`e16b446f`；随后 `d4a0059c`/`320437f4`/`c21ad5db`/`643d2a22` 把 model-kit 从 `file:../../model-hub` 源码依赖改为仓内 `vendor/model-hub-model-kit-0.2.0.tgz`（安装不再需要 model-hub 源码，CI 的 model-hub checkout 只用于新鲜度比对）。
+- **画像归属 P1-1**：`9a930d27`（归属绑定到已校验平台身份）、`e41cbb8d`（`AUTH_PROFILE_ALREADY_CLAIMED`）、`b7f530bd`（条件 `markClaimed` + 迁移 043 `profile_events` 审计）；测试 `f0ea34de`。
+- **UI**：`24712fac` 二级页头 + 固定语言切换，`19ce3d3a` 对比度修复。
+- **API 修复**：`2969aa1a` 墙钟预算注入时钟、`fcc93c0f` CORS 预检允许 Authorization、`c630a4dc` 融合画像 owner 通过 agent 行闸门。
+- **工具链**：`5caf066c` Node 24.22.2 基线（`.nvmrc` + `engines.node >=24.22.2` + `.npmrc engine-strict=true`）。
+
+### 2. dev CI 状态
+
+最新 CI 为 `643d2a22`（run `42202305456`，2026-11-06T10:23Z）`success`；当前 dev 无 failed/pending。其间 `8c9cca12`/`668fa272` 两次因 Docker deps 阶段未拷贝 vendor tarball 失败，已由 `643d2a22` 修复并复跑通过。
+
+### 3. 合并到 main 会触发的部署
+
+- **Vercel Production 部署**：仓库内没有应用部署 workflow，靠 Vercel Git 集成在 `main` push 时触发（项目 Root Directory=`apps/report`，`apps/report/vercel.json` 固定 install/build）。触发条件＝main 分支收到 push 且未被 Ignored Build Step 跳过；`vercel.json` 仅保留每日 cleanup cron，符合 Hobby 限制。
+- **Cloudflare cron worker 部署**：`.github/workflows/deploy-cron-worker.yml` 的 push 路径过滤包含该 workflow 文件自身，而本次 diff 修改了它 → 合并 main 会真实执行一次 Worker 部署。`apps/cron-worker` 代码本身未变，等于用新流程重发旧 Worker。
+- **CI**：`.github/workflows/ci.yml` 的 push 无分支过滤 → main 上会再跑一次完整 CI。
+- `jobs-sync`（定时）与 `cron-poll`（仅 dispatch）不因本次合并触发。
+
+### 4. 与 `DB_AUTO_MIGRATE=false`、042/043 已应用的相容性
+
+本次只新增两条迁移：**042**（`llm_catalog_models` 增加 `source`/`revision`/`assignment_id`）、**043**（`profile_events` 审计表，SQLite/Postgres 各一份）。
+
+- 缺 042 → 目录同步/读取报 Postgres `42703 column "source" of relation "llm_catalog_models" does not exist`；hub 同步会记 `[hub] initial catalog sync failed` 并回退 env 内置面，但 admin 目录相关读写会 500。
+- 缺 043 → 认领/解绑写审计报 `42P01 relation "profile_events" does not exist`，认领端点 500。
+- 已应用 042/043 ⇒ 代码与 schema 相容。`DB_AUTO_MIGRATE=false` 下冷启动不会补 DDL，符合"先迁移、后发代码"；但 10-31 的账本实查只到 041，**合并前应再用 5432 串跑 `migrate:pg:status` 确认 042/043 均为 `[applied]`**，不能只凭记忆。
+- 若漏设 `DB_AUTO_MIGRATE`：非只读打开默认 `autoMigrate=true`，冷启动会在 6543 事务池化串上执行迁移；即使 042/043 已应用（无 pending），仍会带来额外冷启动连接，且 advisory lock 在事务池化下不能跨事务持有，多实例并发不可靠。
+
+### 5. 合并前必须就位的环境变量
+
+| 变量 | 用途 | 缺失 / 错误时的具体表现 |
+|---|---|---|
+| `DB_DRIVER=postgres` | 指定 Postgres 方言 | 缺省走 sqlite：Vercel 只读文件系统打不开库文件，且迁移目录会解析到不存在的路径，首个 API 请求 500 |
+| `DATABASE_URL` | 6543 事务池化连接串 | 抛出 `DB_DRIVER=postgres requires DATABASE_URL (or config.databaseUrl).`，函数 500 |
+| `DB_AUTO_MIGRATE=false` | 禁止冷启动 DDL | 未设或非法值→默认 true（非只读）；冷启动对 6543 跑迁移，日志出现迁移/advisory lock 相关报错或超时，不能补 042/043 |
+| `API_MOUNT_PREFIX=/api` | 对外 OAuth redirect_uri 与临时 Cookie Path | 空串→redirect_uri 拼成 `https://域名/auth/...`；Vercel 只把 `/api/*` 转给 Hono，GitHub/Gitee 回跳命中 Astro 404，登录整体不可用 |
+| `CRON_SECRET` | cron 端点 `Authorization: Bearer` 鉴权 | 生产 `createApp` 直接抛 `CRON_SECRET must be set in production (cron endpoints would otherwise trust spoofable x-vercel-cron headers)` → 全部 API 500 |
+| `TRUST_PROXY=true` | 反代后按 `X-Forwarded-For` 取真实 IP 做限流 | 生产未设直接抛 `TRUST_PROXY must be explicitly set in production ...` → 全部 API 500；设 false 则所有用户共享 Vercel 代理 IP，演示限流被全站共用一个桶 |
+| `AUTH_STATE_SECRET` | OAuth state 的 HMAC 固定密钥 | 缺省每进程随机；冷启动/多实例后 state 签名对不上，回调 400、登录需重试（多实例下可稳定复现失败） |
+| `AUTH_CALLBACK_BASE_URL` | 固定 OAuth 回调基址（不带 `/api`） | 缺省按请求 Origin 推导；反代/跨子域时可能拼错，GitHub 返回 `redirect_uri_mismatch`（400），登录失败 |
+| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | GitHub 登录 | 任一缺失→`/auth/github/*` 返回 501 `AUTH_NOT_CONFIGURED`，其余功能正常 |
+| `GITEE_OAUTH_CLIENT_ID` / `GITEE_OAUTH_CLIENT_SECRET` | Gitee 登录 | 同上，501 |
+| `GITHUB_TOKEN` | 服务端 GitHub 采集/分析 | 缺失走匿名配额（60 次/时），超限 GitHub 返回 403 rate limit，分析任务失败 |
+| `GITEE_TOKEN` | 可选，提高 Gitee 匿名限额 | 缺失仍可匿名读公开数据；超限约 60 次/分后 403 |
+| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | hub 未启用时的 env 内置面 | 全缺：求职信 `503 LLM_NOT_CONFIGURED`，简历润色 `polish.applied=false, reason=not_configured`；只设 key 缺 `LLM_MODEL` → 启动抛 `LLM_API_KEY is set but LLM_MODEL is missing; set an OpenAI-compatible model id` → 500 |
+| `LLM_ENC_KEY` | BYOK 密文的 AES-256-GCM 密钥 | 缺失/非法→BYOK 保存与读取 503 `ENCRYPTION_NOT_CONFIGURED`（不降级明文） |
+| `MODEL_HUB_URL` + `MODEL_HUB_TOKEN` | 启用 hub 投影同步、凭证解析、用量回传 | 任一缺失或 `MODEL_HUB_DISABLED` 生效→静默不启用，回退 env 内置面（无报错）；两者齐备但不可达→启动日志 warn，用 kit 缓存，无缓存则内置面不可用（求职信 503 / 润色 not_configured） |
+| `MODEL_HUB_CACHE_PATH` | model-kit 投影缓存（0600） | 默认 `./data/model-hub-cache.json`；Vercel 函数文件系统只读，写缓存失败会使同步降级（建议设 `/tmp/model-hub-cache.json`） |
+| `MODEL_HUB_DISABLED` | hub 应急 kill switch | 不设＝正常；设 1 强制停用 hub，回退 env 内置面 |
+| `DEMO_IP_SALT` | 演示 IP 哈希盐 | 缺失每进程随机；冷启动后历史 IP 窗口失效，限流可被重启绕过（不报错） |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | 缺失：`vapid-key` 端点 503，`agent-tick` 跳过推送（不算失败） |
+| `TAVILY_API_KEY` | 指令式搜岗 | 缺失：`search-tick` 503 并记失败心跳；岗位采集不受影响 |
+| `ADMIN_ACCOUNT_LOGINS` | 平台管理员白名单 | 缺失无人自动 `is_admin=1`，admin 接口 403 |
+| `LLM_ACCOUNT_RATE_PER_HOUR` | 内置 LLM 单账号小时配额（求职信 + 润色共用桶，默认 20；决策 #29） | 缺失/非法→回退 20 并 warn，不阻塞启动；超限 429 `LLM_ACCOUNT_RATE_LIMITED` + `Retry-After: 3600`；配额存储故障 fail-closed 503 `LLM_QUOTA_UNAVAILABLE`；BYOK 路径不受影响 |
+| `MCP_API_KEY` | `apps/mcp` 服务密钥 | 仅影响 MCP 进程；生产 `NODE_ENV` 下缺失则 MCP 启动失败，不影响 Vercel API |
+
+### 6. 构建前置（非环境变量）
+
+- **model-hub 安装前置已解除（vendor 现状）**：`apps/api/package.json` 已不再是 `file:../../model-hub/packages/model-kit`，而是仓内提交的 `file:../../vendor/model-hub-model-kit-0.2.0.tgz`（`git ls-files vendor/` 可见；`/model-hub` 仍被 `.gitignore` 忽略，仅作本地新鲜度比对源）。因此 `apps/report/vercel.json` 的 `installCommand`（`cd ../.. && pnpm install --frozen-lockfile`）在 Vercel 从 GitHub 克隆的环境里可直接完成安装，不再需要 clone/build model-hub，也不会再出现 `ERR_PNPM_LINKED_PKG_DIR_NOT_FOUND`。
+  - CI 与 `deploy-cron-worker` 里仍保留 model-hub checkout，但用途只是 `scripts/check-model-kit-vendor.mjs` 的**新鲜度比对**（重打包并逐文件比对），不是安装/构建依赖；`Dockerfile` 的 deps 阶段也已 `COPY vendor/` 后再 `pnpm install --frozen-lockfile`。
+  - 维护含义：升级 model-kit 时必须重打包 `vendor/*.tgz`、同步 `apps/api/package.json` 与 `pnpm-lock.yaml`；CI 的新鲜度检查会拦截忘记重打包的情况。
+- **Node 24.22.2（人工确认项）**：`engines.node >=24.22.2` + `.npmrc engine-strict=true`；Vercel 项目 Node 版本若仍为 22 → 安装期 `ERR_PNPM_UNSUPPORTED_ENGINE`。合并前需在 Vercel 项目设置里确认 Node 24.22.2（或设 `NODE_VERSION=24.22.2`）。
+
+### 7. 结论
+
+代码与构建前置层面可合并：原先唯一的构建阻塞（Vercel 安装缺 model-hub）已由 vendor tarball 解除，剩余 `check:model-kit-vendor` 只做新鲜度比对。**部署层面仍需发布窗口内人工确认**：Vercel 项目 Node 24.22.2、042/043 两条迁移已在生产应用、第 5 节环境变量齐备。合并本身会真实触发 Vercel Production 部署与 cron worker 部署，需按发布窗口执行。

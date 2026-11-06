@@ -24,7 +24,7 @@ import {
 } from '@jobagent/resume-core';
 import type { LlmTokenUsage, MeteredResumePolishProvider } from '@jobagent/llm';
 import type { RouteDeps } from './context.js';
-import { resolveTextLlm } from './llm-resolve.js';
+import { enforceBuiltinLlmQuota, resolveTextLlm } from './llm-resolve.js';
 import { describeError } from './helpers.js';
 import { CoverLetterRequestSchema, ResumeBuildRequestSchema } from './schemas.js';
 import type { HonoEnv } from './types.js';
@@ -112,6 +112,9 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
       if (llm.source === 'none') {
         polish.reason = 'not_configured';
       } else {
+        // 决策 #29：内置调用计入账号配额；超限/存储故障显式返回，不静默降级规则版。
+        const limited = await enforceBuiltinLlmQuota(c, d, llm);
+        if (limited) return limited;
         // 成本回采（决策 #25 ④ Wave B）：给 provider 包一层计量装饰器注入 onUsage
         // 观察者；token 由响应 usage 透出，缺失记 null（绝不编数）。billingSource
         // 按当次 resolveTextLlm 的真实路由结果定（不是按账号有没有 BYOK 配置猜）。
@@ -159,6 +162,15 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
             completionTokens: usageHolder.current?.completionTokens ?? null,
             quantity: null,
           });
+          // hub 模式：内置面用量同步到 hub（含 assignment_id）；BYOK 不上报。
+          if (llm.assignmentId && llm.source === 'builtin') {
+            await d.hubCatalog?.reportUsage({
+              feature: 'resume_polish',
+              assignmentId: llm.assignmentId,
+              promptTokens: usageHolder.current?.promptTokens ?? undefined,
+              completionTokens: usageHolder.current?.completionTokens ?? undefined,
+            });
+          }
         }
       }
     }
@@ -212,6 +224,9 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
       );
     }
     const coverLetterProvider = llm.cover;
+    // 决策 #29：内置调用计入账号配额；超限/存储故障显式返回。
+    const limited = await enforceBuiltinLlmQuota(c, d, llm);
+    if (limited) return limited;
 
     const storedProfile = await repos.profiles.getById(req.profileId);
     if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
@@ -286,6 +301,15 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
         completionTokens: usageHolder.current?.completionTokens ?? null,
         quantity: null,
       });
+      // hub 模式：内置面用量同步到 hub（含 assignment_id）；BYOK 不上报。
+      if (llm.assignmentId && llm.source === 'builtin') {
+        await d.hubCatalog?.reportUsage({
+          feature: 'cover_letter',
+          assignmentId: llm.assignmentId,
+          promptTokens: usageHolder.current?.promptTokens ?? undefined,
+          completionTokens: usageHolder.current?.completionTokens ?? undefined,
+        });
+      }
       return c.json({
         subject: out.subject,
         // E1 决策 #20-4：固定 AI 辅助投递披露，模型无法省略。

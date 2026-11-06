@@ -42,12 +42,15 @@ import {
   createResumePolishProviderFromEnv,
 } from '@jobagent/llm';
 import { loadDemoConfig } from './demo-config.js';
+import { loadLlmQuotaConfig } from './llm-quota.js';
 import { loadAuthConfig } from './auth-config.js';
 import { GithubAuthProvider } from './github-auth.js';
 import { GiteeAuthProvider } from './gitee-auth.js';
 import { configureOutboundProxy } from './proxy-bootstrap.js';
 import { runStartupSchemaCheck, formatSchemaWarning } from './startup-check.js';
 import { loadAgentConfig } from './agent-config.js';
+import { createHubCatalog } from './hub-catalog.js';
+import type { HubCatalog } from './hub-catalog.js';
 import {
   clientIp,
   hashIp,
@@ -92,7 +95,9 @@ export type { ApiDeps, ApiRepos, HonoEnv } from './routes/types.js';
 export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   const repos: ApiRepos = deps.repos ?? (await createStorage());
   const now = deps.now ?? (() => new Date().toISOString());
+  const nowMs = deps.nowMs ?? Date.now;
   const cfg = deps.demoConfig ?? loadDemoConfig();
+  const llmQuota = deps.llmQuota ?? loadLlmQuotaConfig();
   // T27 生产启动闸：上线开关必须显式配置，缺了启动即失败（而不是运行时静默降级成 fail-open）。
   //  - CRON_SECRET 未配时 cron 端点会信任 x-vercel-cron 头（该端点能触发物理删除）；
   //  - TRUST_PROXY 未显式设置时 IP 限流基于直连地址（反向代理后全站同 IP，滑窗形同虚设）。
@@ -144,7 +149,10 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
       // 形态 B（跨子域直连）时求职偏好用 PUT/DELETE、投递与面试用 PATCH：
       // 这三个方法原先不在允许列表里，只有同域（形态 C）能调到；这里一并放开。
       allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type'],
+      // 跨子域直连时扩展用 Authorization: Bearer <tkn->（见下方 principal 解析）；
+      // 浏览器把 Authorization 视为非简单头，预检必须显式允许，否则 token 登录被挡在
+      // 预检阶段。其余客户端头只有 content-type，不额外放开。
+      allowHeaders: ['Content-Type', 'Authorization'],
       ...(allowOrigins.length > 0 ? { credentials: true } : {}),
     }),
   );
@@ -240,6 +248,47 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
       console.warn('[llm] catalog preload failed, using code defaults:', describeError(err));
     }
   }
+  // model-hub 目录同步（W5-1）：未注入时按 MODEL_HUB_URL/TOKEN 自动装配；
+  // 配置齐全且未置 kill switch 时创建同步服务并在启动时同步一次。未配置则为 null，
+  // 内置面维持 LLM_* env（迁移期兜底）。初始化或同步失败均不致命：kit 有缓存兜底，
+  // admin 可手动重试。
+  let hubCatalog: HubCatalog | null;
+  if (deps.hubCatalog !== undefined) {
+    hubCatalog = deps.hubCatalog;
+  } else {
+    const hubUrl = (process.env.MODEL_HUB_URL ?? '').trim();
+    const hubToken = (process.env.MODEL_HUB_TOKEN ?? '').trim();
+    const hubDisabled = ['1', 'true'].includes(
+      (process.env.MODEL_HUB_DISABLED ?? '').trim().toLowerCase(),
+    );
+    if (hubUrl && hubToken && !hubDisabled) {
+      const cachePath =
+        (process.env.MODEL_HUB_CACHE_PATH ?? '').trim() ||
+        './data/model-hub-cache.json';
+      try {
+        const hub = await createHubCatalog(
+          { hubUrl, token: hubToken, cachePath },
+          repos,
+          catalogCache,
+        );
+        try {
+          const result = await hub.sync();
+          console.log(
+            `[hub] catalog synced: revision=${result.revision}, ${result.synced} text model(s)`,
+          );
+        } catch (err) {
+          console.warn('[hub] initial catalog sync failed:', describeError(err));
+        }
+        hubCatalog = hub;
+      } catch (err) {
+        console.warn('[hub] failed to initialize catalog sync:', describeError(err));
+        hubCatalog = null;
+      }
+    } else {
+      hubCatalog = null;
+    }
+  }
+
   const llmEncKey = deps.llmEncKey ?? process.env.LLM_ENC_KEY ?? null;
   // 用量计量 recorder（决策 #25 ④ Wave A）：fail-open 薄壳，埋点失败只进日志；
   // 测试可注入 fake 断言埋点或 null recorder 显式关闭。
@@ -253,12 +302,15 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   const routeDeps: RouteDeps = {
     repos,
     now,
+    nowMs,
     jobStaleDays,
     cfg,
+    llmQuota,
     authCfg,
     githubProvider,
     giteeProvider,
     catalogCache,
+    hubCatalog,
     llmEncKey,
     polishProvider,
     coverLetterProvider,

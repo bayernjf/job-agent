@@ -18,6 +18,7 @@ import { AUTH_ERROR_CODES } from '@jobagent/shared';
 import { assessClaim, SUPPORTABLE_MIN_EVIDENCE, type ClaimEvidence } from '@jobagent/claim-core';
 import type { StoredClaimVerification, StoredProfile } from '@jobagent/storage';
 import { ClaimVerificationCreateSchema, ProfileIdParamSchema } from './schemas.js';
+import { principalOwnsProfile } from './helpers.js';
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
@@ -64,7 +65,8 @@ function formatClaimVerification(
  *   - 未登录 → 401 AUTH_REQUIRED
  *   - 已认领画像但不是本人（且非招聘方）→ 403 AUTH_NOT_PROFILE_OWNER
  *   - 未认领画像的非招聘方 → 403 RECRUITER_DECLARATION_REQUIRED（此时没有可授权的本人）
- * 融合画像（subjectPlatform='all'）沿用认领口径：任一源 login 与登录名一致即视为本人。
+ * 融合画像（subjectPlatform='all'）的本人判定与认领同口径（principalOwnsProfile）：
+ * 只认融合主源 GitHub 的同名账号——跨平台同名不可作为身份依据（评审 P1-1）。
  */
 async function authorizeVerifier(
   c: Context<HonoEnv>,
@@ -77,11 +79,7 @@ async function authorizeVerifier(
   }
   const account = await d.repos.accounts.getById(principal.accountId);
   const isRecruiter = Boolean(account?.recruiterDeclaredAt);
-  const isOwner =
-    profile.subjectClaimed &&
-    (profile.subjectPlatform === 'all'
-      ? profile.subjectLogin === principal.login
-      : profile.subjectPlatform === principal.platform && profile.subjectLogin === principal.login);
+  const isOwner = profile.subjectClaimed && principalOwnsProfile(profile, principal);
   if (isRecruiter || isOwner) return undefined;
   if (profile.subjectClaimed) {
     return c.json({ error: 'not the profile owner', code: AUTH_ERROR_CODES.notProfileOwner }, 403);
@@ -200,19 +198,16 @@ export function registerClaimVerifications(app: Hono<HonoEnv>, d: RouteDeps): vo
     if (!row) return c.json({ error: 'claim verification not found' }, 404);
 
     const isCreator = row.verifierAccountId === principal.accountId;
-    // 画像本人只在"已认领"时可判定（未认领画像没有可授权的本人，与 POST 同口径）
-    let isProfileOwner = false;
+    // 画像本人只在"已认领"时可判定（未认领画像没有可授权的本人，与 POST 同口径）；
+    // 融合画像只认 GitHub 主源同名账号（principalOwnsProfile，评审 P1-1）
+    let isOwner = false;
     if (!isCreator && row.profileId) {
       const profile = await repos.profiles.getById(row.profileId);
       if (profile?.subjectClaimed) {
-        isProfileOwner =
-          profile.subjectPlatform === 'all'
-            ? profile.subjectLogin === principal.login
-            : profile.subjectPlatform === principal.platform &&
-              profile.subjectLogin === principal.login;
+        isOwner = principalOwnsProfile(profile, principal);
       }
     }
-    if (!isCreator && !isProfileOwner) {
+    if (!isCreator && !isOwner) {
       return c.json({ error: 'not allowed to withdraw this claim', code: AUTH_ERROR_CODES.notProfileOwner }, 403);
     }
 

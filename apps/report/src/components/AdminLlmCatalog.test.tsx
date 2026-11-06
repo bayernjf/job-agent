@@ -18,16 +18,24 @@ const labels: AdminLlmCatalogLabels = {
   forbidden: 'FORBIDDEN',
   envConfiguredYes: 'ENV_YES',
   envConfiguredNo: 'ENV_NO',
+  hubConfiguredYes: 'HUB_YES',
   modelProvider: 'Provider',
   modelModel: 'Model',
   modelEnabled: 'Enabled',
   modelIsDefault: 'Default',
   modelSortOrder: 'Sort',
   modelModalities: 'Modalities',
+  modelSource: 'Source',
+  modelAssignmentId: 'Assignment',
+  revision: 'Revision',
   addModel: 'Add',
   saveCatalog: 'Save',
   refresh: 'Refresh',
+  sync: 'Sync',
   refreshDone: 'Refreshed',
+  syncDone: 'Synced',
+  syncFailed: 'SYNC_FAILED',
+  readOnlyHint: 'READ_ONLY',
   saveSuccess: 'Saved',
   saveFailed: 'SAVE_FAILED',
   loadFailed: 'LOAD_FAILED',
@@ -85,12 +93,14 @@ describe('AdminLlmCatalog 加载态', () => {
     await waitFor(() => expect(screen.getByText('LOAD_FAILED')).toBeTruthy());
   });
 
-  it('200 时渲染目录行与 env 配置状态', async () => {
+  it('200 本地模式渲染目录行与 env 配置状态', async () => {
     stubResponse({
       ok: true,
       status: 200,
       json: async () => ({
         envConfigured: true,
+        hubConfigured: false,
+        revision: null,
         models: [
           {
             id: 'm1',
@@ -100,6 +110,9 @@ describe('AdminLlmCatalog 加载态', () => {
             isDefault: true,
             sortOrder: 1,
             modalities: ['text'],
+            source: 'builtin',
+            revision: null,
+            assignmentId: null,
           },
         ],
       }),
@@ -111,5 +124,41 @@ describe('AdminLlmCatalog 加载态', () => {
     expect((screen.getByTestId('admin-model-model') as HTMLInputElement).value).toBe(
       'agnes-3.0-flash',
     );
+  });
+
+  it('200 hub 模式渲染只读目录与同步状态', async () => {
+    stubResponse({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        envConfigured: false,
+        hubConfigured: true,
+        revision: 42,
+        models: [
+          {
+            id: 'noul',
+            provider: 'volces',
+            model: 'ark-code-latest',
+            enabled: true,
+            isDefault: true,
+            sortOrder: 0,
+            modalities: ['text'],
+            source: 'hub',
+            revision: 42,
+            assignmentId: 'asn_0001',
+          },
+        ],
+      }),
+    });
+    render(<AdminLlmCatalog apiBase="http://api.test" locale="zh-CN" labels={labels} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('admin-hub').textContent).toContain('HUB_YES'),
+    );
+    expect(screen.getByTestId('admin-model-source').textContent).toBe('hub');
+    // Read-only: no add/save controls, sync button present.
+    expect(screen.queryByTestId('admin-add-row')).toBeNull();
+    expect(screen.queryByTestId('admin-save')).toBeNull();
+    expect(screen.getByTestId('admin-refresh').textContent).toBe('Sync');
   });
 });
