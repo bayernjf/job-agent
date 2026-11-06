@@ -4,7 +4,7 @@
 #   docker build --target worker -t jobagent-worker .
 #   docker build --target report -t jobagent-report .
 
-FROM node:24-slim AS base
+FROM node:24.22.2-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
@@ -13,14 +13,10 @@ WORKDIR /app
 # ---- Install all workspace dependencies ----
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-# apps/api's file: dependency @model-hub/model-kit lives in the model-hub
-# checkout inside the workspace (gitignored locally, checked out by CI).
-# .dockerignore strips **/dist and **/node_modules, so build the kit in place
-# before pnpm install packs it.
-COPY model-hub/packages/model-kit model-hub/packages/model-kit
-RUN cd model-hub/packages/model-kit \
-  && npm install --workspaces=false --no-audit --no-fund \
-  && npm run build
+# apps/api depends on the committed tarball vendor/model-hub-model-kit-<ver>.tgz
+# (see pnpm-lock.yaml). It must be present before `pnpm install --frozen-lockfile`
+# resolves the file: dependency; no model-hub checkout is needed for the build.
+COPY vendor/ vendor/
 COPY packages/shared/package.json packages/shared/
 COPY packages/storage/package.json packages/storage/
 COPY packages/github-source/package.json packages/github-source/
