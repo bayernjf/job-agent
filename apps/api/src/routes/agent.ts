@@ -46,7 +46,7 @@ import {
   toRunViewData,
 } from '../agent-view.js';
 import { aiAssistedDisclosure, renderHtml } from '@jobagent/resume-core';
-import { resolveTextLlm } from './llm-resolve.js';
+import { enforceBuiltinLlmQuota, resolveTextLlm } from './llm-resolve.js';
 import { describeError, principalOwnsProfile } from './helpers.js';
 import { sendWebPush } from '../web-push.js';
 import type { HonoEnv } from './types.js';
@@ -687,6 +687,10 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       if (c.req.query('polish') === 'llm') {
         const artifacts = await buildIntentArtifacts(repos, intent, { locale: locale.data });
         const llm = artifacts ? await resolveTextLlm(c, d).catch(() => null) : null;
+        // 决策 #29：内置调用计入账号配额；429/503 必须原样返回，不能被
+        // 下面「LLM 不可用 → 规则版」的静默降级吞掉。
+        const limited = llm ? await enforceBuiltinLlmQuota(c, d, llm) : null;
+        if (limited) return limited;
         if (artifacts && llm?.cover) {
           try {
             const out = await llm.cover.generate({

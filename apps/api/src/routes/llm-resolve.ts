@@ -23,7 +23,16 @@ import {
   type MeteredResumePolishProvider,
 } from '@jobagent/llm';
 import { checkLlmEndpoint } from '../llm-endpoint-guard.js';
+import { oneHourAgo } from '../demo-config.js';
+import { describeError } from './helpers.js';
 import type { RouteDeps } from './context.js';
+
+/** 内置 LLM 账号配额超限（决策 #29）。前缀区分于 provider 错误码。 */
+export const LLM_ACCOUNT_RATE_LIMITED = 'LLM_ACCOUNT_RATE_LIMITED';
+/** 配额存储不可用时的 fail-closed 错误码（决策 #29 §6）。 */
+export const LLM_QUOTA_UNAVAILABLE = 'LLM_QUOTA_UNAVAILABLE';
+
+const RETRY_AFTER_SECONDS = 3600;
 
 export type LlmSource = 'byok' | 'builtin' | 'none';
 
@@ -103,4 +112,56 @@ export async function resolveTextLlm(c: Context, d: RouteDeps): Promise<Resolved
 
   // 3) none
   return { source: 'none', cover: null, polish: null, assignmentId: null };
+}
+
+/**
+ * 内置 LLM 的账号级滑窗配额（决策 #29）：
+ * - 仅 `source === 'builtin'` 计数，BYOK / none 直接放行（#21-4）；
+ * - 主体为登录账号 accountId，求职信与润色共用 `llm-account` 单桶；
+ * - 先 count 后 insert（与 demo 桶同口径，接受并发边缘小幅超额）；
+ * - 存储故障 fail-closed（503），并留审计日志。
+ *
+ * 调用点必须在 `resolveTextLlm` 成功之后、真正发起 LLM 请求之前调用，
+ * 且要把非 null 的 Response 原样返回（不要静默降级成规则版）。
+ */
+export async function enforceBuiltinLlmQuota(
+  c: Context,
+  d: RouteDeps,
+  llm: ResolvedTextLlm,
+): Promise<Response | null> {
+  if (llm.source !== 'builtin') return null;
+  const principal = c.get('principal');
+  if (principal.kind !== 'user') return null;
+
+  const nowIso = d.now();
+  try {
+    const recent = await d.repos.demoSessions.countRateEvents(
+      principal.accountId,
+      'llm-account',
+      oneHourAgo(nowIso),
+    );
+    if (recent >= d.llmQuota.accountRatePerHour) {
+      return c.json(
+        {
+          error: 'builtin LLM account rate limit exceeded',
+          code: LLM_ACCOUNT_RATE_LIMITED,
+          limitPerHour: d.llmQuota.accountRatePerHour,
+          retryAfterSeconds: RETRY_AFTER_SECONDS,
+        },
+        429,
+        { 'Retry-After': String(RETRY_AFTER_SECONDS) },
+      );
+    }
+    await d.repos.demoSessions.insertRateEvent(principal.accountId, 'llm-account', nowIso);
+    return null;
+  } catch (err) {
+    console.error(
+      '[llm] account quota check failed, failing closed:',
+      JSON.stringify(describeError(err)),
+    );
+    return c.json(
+      { error: 'LLM quota temporarily unavailable', code: LLM_QUOTA_UNAVAILABLE },
+      503,
+    );
+  }
 }

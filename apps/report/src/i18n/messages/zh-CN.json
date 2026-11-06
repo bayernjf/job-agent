@@ -227,6 +227,7 @@
   "report.resume.coverLetterDone": "已生成，请人工复核后再提交。",
   "report.resume.coverLetterError": "生成失败",
   "report.resume.coverLetterNotConfigured": "服务端未配置模型（LLM_NOT_CONFIGURED）",
+  "report.resume.coverLetterRateLimited": "内置模型本小时额度已用完，请稍后再试，或在设置中配置自己的模型 Key。",
   "report.resume.coverLetterAuthRequired": "需要先登录（求职信为登录用户的付费能力）",
   "report.resume.coverLetterRetry": "重试",
   "report.resume.coverLetterCopy": "复制",

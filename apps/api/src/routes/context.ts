@@ -11,6 +11,7 @@ import type { ResumePolishProvider } from '@jobagent/resume-core';
 import type { CatalogCache, CoverLetterProvider } from '@jobagent/llm';
 import type { AuthConfig } from '../auth-config.js';
 import type { DemoConfig } from '../demo-config.js';
+import type { LlmQuotaConfig } from '../llm-quota.js';
 import type { ApiDeps, ApiRepos } from './types.js';
 import type { FunnelRecorder, UsageRecorder } from '@jobagent/storage';
 import type { HubCatalog } from '../hub-catalog.js';
@@ -29,6 +30,8 @@ export interface RouteDeps {
   jobStaleDays: number;
   /** 演示模式配置 */
   cfg: DemoConfig;
+  /** 内置 LLM 账号级限流配置（决策 #29） */
+  llmQuota: LlmQuotaConfig;
   /** 账号 / OAuth 配置 */
   authCfg: AuthConfig;
   githubProvider: AuthProvider | null;

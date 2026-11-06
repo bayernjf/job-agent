@@ -42,6 +42,7 @@ import {
   createResumePolishProviderFromEnv,
 } from '@jobagent/llm';
 import { loadDemoConfig } from './demo-config.js';
+import { loadLlmQuotaConfig } from './llm-quota.js';
 import { loadAuthConfig } from './auth-config.js';
 import { GithubAuthProvider } from './github-auth.js';
 import { GiteeAuthProvider } from './gitee-auth.js';
@@ -96,6 +97,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
   const now = deps.now ?? (() => new Date().toISOString());
   const nowMs = deps.nowMs ?? Date.now;
   const cfg = deps.demoConfig ?? loadDemoConfig();
+  const llmQuota = deps.llmQuota ?? loadLlmQuotaConfig();
   // T27 生产启动闸：上线开关必须显式配置，缺了启动即失败（而不是运行时静默降级成 fail-open）。
   //  - CRON_SECRET 未配时 cron 端点会信任 x-vercel-cron 头（该端点能触发物理删除）；
   //  - TRUST_PROXY 未显式设置时 IP 限流基于直连地址（反向代理后全站同 IP，滑窗形同虚设）。
@@ -303,6 +305,7 @@ export async function createApp(deps: ApiDeps = {}): Promise<Hono<HonoEnv>> {
     nowMs,
     jobStaleDays,
     cfg,
+    llmQuota,
     authCfg,
     githubProvider,
     giteeProvider,

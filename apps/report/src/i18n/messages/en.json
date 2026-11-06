@@ -227,6 +227,7 @@
   "report.resume.coverLetterDone": "Generated — review before submitting.",
   "report.resume.coverLetterError": "Generation failed",
   "report.resume.coverLetterNotConfigured": "No model configured on the server (LLM_NOT_CONFIGURED)",
+  "report.resume.coverLetterRateLimited": "This hour's built-in model quota is used up. Try again later, or configure your own model key in Settings.",
   "report.resume.coverLetterAuthRequired": "Sign in required (cover letters are a paid capability for signed-in users)",
   "report.resume.coverLetterRetry": "Retry",
   "report.resume.coverLetterCopy": "Copy",

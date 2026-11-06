@@ -35,6 +35,7 @@ import type {
 } from '@jobagent/storage';
 import type { Principal } from '@jobagent/shared';
 import type { DemoConfig } from '../demo-config.js';
+import type { LlmQuotaConfig } from '../llm-quota.js';
 import type { AuthConfig } from '../auth-config.js';
 import type { AuthProvider } from '../auth-provider.js';
 import type { ResumePolishProvider } from '@jobagent/resume-core';
@@ -106,6 +107,8 @@ export interface ApiDeps {
   nowMs?: () => number;
   /** 注入演示配置（测试用；默认从环境变量加载） */
   demoConfig?: DemoConfig;
+  /** 注入内置 LLM 账号配额（决策 #29）；默认从 LLM_ACCOUNT_RATE_PER_HOUR 加载 */
+  llmQuota?: LlmQuotaConfig;
   /** 注入账号/OAuth 配置（测试用；默认从环境变量加载） */
   authConfig?: AuthConfig;
   /**

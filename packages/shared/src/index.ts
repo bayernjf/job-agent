@@ -200,8 +200,8 @@ export const REQUESTER_KINDS = ['anonymous', 'demo', 'user'] as const;
 export const RequesterKindSchema = z.enum(REQUESTER_KINDS);
 export type RequesterKind = z.infer<typeof RequesterKindSchema>;
 
-/** IP 滑动窗口限流的桶类型：建会话 / 触发分析 / 岗位匹配 / 公开主体解析 / 移除申请提交 / 人才检索 / 漏斗事件上报 / BYOK 连通性测试 */
-export const DEMO_RATE_KINDS = ['session', 'analyze', 'match', 'subject', 'removal', 'candidates', 'funnel', 'llm-validate'] as const;
+/** IP 滑动窗口限流的桶类型：建会话 / 触发分析 / 岗位匹配 / 公开主体解析 / 移除申请提交 / 人才检索 / 漏斗事件上报 / BYOK 连通性测试 / 内置 LLM 账号配额 */
+export const DEMO_RATE_KINDS = ['session', 'analyze', 'match', 'subject', 'removal', 'candidates', 'funnel', 'llm-validate', 'llm-account'] as const;
 export const DemoRateKindSchema = z.enum(DEMO_RATE_KINDS);
 export type DemoRateKind = z.infer<typeof DemoRateKindSchema>;
 
