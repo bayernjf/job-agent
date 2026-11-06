@@ -85,25 +85,9 @@ jobs:
             echo "has_db=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # apps/api's file: dependency @model-hub/model-kit resolves at
-      # model-hub/packages/model-kit inside the workspace; pnpm install fails
-      # without it, so check out the public sibling repo and build the kit
-      # first (same layout as ci.yml). Guarded like the install step so a
-      # skipped nightly run does no wasted work.
-      - name: Checkout model-hub (local model-kit dependency)
-        if: steps.guard.outputs.has_db == 'true'
-        uses: actions/checkout@v7
-        with:
-          repository: bayernjf/model-hub
-          path: model-hub
-
-      - name: Build model-kit from model-hub
-        if: steps.guard.outputs.has_db == 'true'
-        working-directory: model-hub/packages/model-kit
-        run: |
-          npm install --workspaces=false --no-audit --no-fund
-          npm run build
-
+      # apps/api depends on the vendored tarball
+      # vendor/model-hub-model-kit-<version>.tgz, so pnpm install resolves it
+      # without checking out the model-hub source. No sibling checkout here.
       - name: Install dependencies
         if: steps.guard.outputs.has_db == 'true'
         run: pnpm install --frozen-lockfile
