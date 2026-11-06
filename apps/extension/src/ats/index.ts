@@ -105,6 +105,19 @@ export function toFillValues(
   return values;
 }
 
+/**
+ * 语义键落地矩阵（2026-11-07 四家真实样本核查，勿为了“消费”硬填）：
+ * - skills：Greenhouse/Lever/Ashby 真实样本均无独立 skills 控件；Workday 的公开表单里是
+ *   `#skillsformfield`（placeholder=Search）的 autocomplete 多选，直接写 value 不会生成 tag，
+ *   且 fill 是同步契约无法等待建议列表，故四家均不消费。技能信息仍通过 summary 文本可见。
+ * - education：四家真实样本均无结构化 education 子表单（Lever 仅存在 `.application-university`
+ *   样式类，样本未渲染控件；Ashby 的 EducationHistoryFormField 未在 Linear 租户渲染），不消费。
+ * - experience：只有 Lever 的 `org`（Current company）是单值公司名，不能承接多行工作经历；
+ *   Greenhouse/Ashby/Workday 无对应控件，故四家均不消费；把整段经历塞进自由文本属于误写。
+ * 结论：拿到含真实 skills 文本框 / education 分段子表单 / 工作经历子表单的样本后，再按
+ * findFields / findLabeledQuestion 机制接入，并同步补 real-dom 回归与防误写断言。
+ */
+
 // 顺序即正确性（2026-10-15 真实 DOM 回归实测）：Ashby 的申请面板 form id 与 Lever 同为
 // #job-application-form，且 Linear 等页面正文含 "workday" 字样——Ashby 的判据
 // （hostname=ashbyhq / _systemfield_ 前缀）最特异，必须排在 Lever/Workday 之前，

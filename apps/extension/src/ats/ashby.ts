@@ -62,6 +62,8 @@ export const ashbyAdapter: AtsAdapter = {
       valueFor(values, 'personal_website_url'),
       ['linkedin', 'github'],
     );
+    // skills/education/experience：Linear 真实样本无对应控件（EducationHistoryFormField
+    // 未在该租户渲染），缺真实落点，故本适配器不消费；见 index.ts 语义键落地矩阵。
     // 求职信（A2，cover_letter 语义键优先；缺省回退画像 summary）：只写 cover_letter 命名字段与
     // 动机/自我介绍类自定义问题（UUID id + label 命中 SUMMARY_HINTS），同一元素只写一次。
     const letter = valueFor(values, 'cover_letter') ?? valueFor(values, 'summary');
