@@ -1,7 +1,8 @@
 /**
  * profile_events 表实体（迁移 043，评审 P1-1 修复）。
- * append-only 画像归属/破坏性操作审计：首事件 'deleted'，在级联清空
- * evidence/applications/interviews 之前落库，保证误删/冒名删后有据可查。
+ * append-only 画像归属/破坏性操作审计：认领成功（'claimed'）、认领冲突
+ * （'claim_conflict'）、级联删除（'deleted'，在清空 evidence/applications/interviews
+ * 之前落库，保证误删/冒名删后有据可查）。
  * 与 funnel_events 的匿名口径相反：审计必须可追责，故记 actor_account_id。
  */
 export interface ProfileEventRecord {
@@ -9,7 +10,7 @@ export interface ProfileEventRecord {
   id: string;
   /** 关联画像 uuid；无 FK（画像行可能随后被删除） */
   profileId: string;
-  /** 审计事件名（deleted；预留 claim/unclaim） */
+  /** 审计事件名（claimed / claim_conflict / deleted） */
   event: string;
   /** 操作者 accounts.id；系统/运营操作为 null */
   actorAccountId: string | null;

@@ -16,9 +16,22 @@ export interface OAuthProviderConfig {
   configured: boolean;
 }
 
+/** 管理员白名单来源；account-ids 为不可变身份，legacy-logins 仅迁移期兼容。 */
+export type AdminAllowlistSource = 'account-ids' | 'legacy-logins' | 'disabled';
+
+export interface AdminAllowlist {
+  /** `platform:providerAccountId`；非空时优先，legacyLogins 被忽略 */
+  accountIds: string[];
+  /** 旧口径 login；可被平台改名/释放，仅在 accountIds 为空时生效 */
+  legacyLogins: string[];
+  source: AdminAllowlistSource;
+}
+
 export interface AuthConfig {
   github: OAuthProviderConfig;
   gitee: OAuthProviderConfig;
+  /** 管理员白名单（ADMIN_ACCOUNT_IDS 优先，ADMIN_ACCOUNT_LOGINS 兼容期兜底） */
+  admin: AdminAllowlist;
   /** 登录会话有效期（ms），同时是会话 Cookie Max-Age（默认 30 天） */
   sessionTtlMs: number;
   /**
@@ -86,6 +99,74 @@ function providerConfig(clientId: string, clientSecret: string): OAuthProviderCo
   return { clientId, clientSecret, configured: Boolean(clientId && clientSecret) };
 }
 
+const ADMIN_PLATFORMS = new Set(['github', 'gitee']);
+
+function splitCsv(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * 解析 ADMIN_ACCOUNT_IDS（`platform:providerAccountId`，逗号分隔）。
+ * 不可变身份白名单：平台改名不影响命中，也就不会被旧 login 的再注册者接管。
+ * 非法条目不回显原值（避免把疑似账号标识写进日志），只报序号与格式要求。
+ */
+function parseAdminAccountIds(raw: string | undefined): string[] {
+  const out: string[] = [];
+  splitCsv(raw).forEach((entry, index) => {
+    const sep = entry.indexOf(':');
+    const platform = sep > 0 ? entry.slice(0, sep).trim().toLowerCase() : '';
+    const providerAccountId = sep > 0 ? entry.slice(sep + 1).trim() : '';
+    if (!ADMIN_PLATFORMS.has(platform) || providerAccountId === '') {
+      console.warn(
+        `[auth-config] invalid ADMIN_ACCOUNT_IDS entry #${index + 1} (expect platform:providerAccountId)`,
+      );
+      return;
+    }
+    out.push(`${platform}:${providerAccountId}`);
+  });
+  return out;
+}
+
+/**
+ * 管理员白名单优先级：
+ * 1) ADMIN_ACCOUNT_IDS 非空 → 只用不可变身份；ADMIN_ACCOUNT_LOGINS 明确忽略并 warn。
+ * 2) 仅 ADMIN_ACCOUNT_LOGINS → 迁移期兼容（login 可被改名/释放，存在接管风险）。
+ * 3) 都为空 → disabled，登录时会把历史 is_admin 降权。
+ */
+export function loadAdminAllowlist(env: NodeJS.ProcessEnv = process.env): AdminAllowlist {
+  const accountIds = parseAdminAccountIds(env.ADMIN_ACCOUNT_IDS);
+  const legacyLogins = splitCsv(env.ADMIN_ACCOUNT_LOGINS);
+  if (accountIds.length > 0) {
+    if (legacyLogins.length > 0) {
+      console.warn(
+        '[auth-config] ADMIN_ACCOUNT_LOGINS ignored because ADMIN_ACCOUNT_IDS is set; migrate legacy logins to platform:providerAccountId',
+      );
+    }
+    return { accountIds, legacyLogins: [], source: 'account-ids' };
+  }
+  if (legacyLogins.length > 0) {
+    return { accountIds: [], legacyLogins, source: 'legacy-logins' };
+  }
+  return { accountIds: [], legacyLogins: [], source: 'disabled' };
+}
+
+/** 判定一次登录身份是否命中管理员白名单（account-ids 口径不看可变 login）。 */
+export function isAdminIdentity(
+  allowlist: AdminAllowlist,
+  identity: { platform: string; providerAccountId: string; login: string },
+): boolean {
+  if (allowlist.source === 'account-ids') {
+    return allowlist.accountIds.includes(`${identity.platform}:${identity.providerAccountId}`);
+  }
+  if (allowlist.source === 'legacy-logins') {
+    return allowlist.legacyLogins.includes(identity.login);
+  }
+  return false;
+}
+
 /** 从环境变量对象加载认证配置（默认 process.env），纯函数、可测试。 */
 export function loadAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig {
   const github = providerConfig(
@@ -99,6 +180,7 @@ export function loadAuthConfig(env: NodeJS.ProcessEnv = process.env): AuthConfig
   return {
     github,
     gitee,
+    admin: loadAdminAllowlist(env),
     sessionTtlMs: positiveInt(
       env.AUTH_SESSION_TTL_MS,
       AUTH_DEFAULTS.sessionTtlMs,

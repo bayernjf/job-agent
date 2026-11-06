@@ -37,6 +37,22 @@ export interface IDemoSessionsRepository {
   countRateEvents(ipHash: string, kind: DemoRateKind, since: string): Promise<number>;
   /** 动作成立后追加一条限流事件 */
   insertRateEvent(ipHash: string, kind: DemoRateKind, now: string): Promise<void>;
+  /**
+   * 原子占位：若 (ipHash, kind) 在 since 之后的事件数 < limit，则插入一条并返回 true；
+   * 已满则不加事件、返回 false。
+   *
+   * 必须在单个事务内完成 count + insert（或等价的单条条件写入）：并发请求同时打到同一
+   * key 时，count-then-insert 会在 READ COMMITTED 下互相放行、击穿上限。实现需按
+   * (kind, ipHash) 串行化（Postgres 用事务级 advisory lock，SQLite 用写事务）。
+   * 存储故障应向上抛错，由调用方 fail-closed。
+   */
+  tryConsumeRateEvent(
+    ipHash: string,
+    kind: DemoRateKind,
+    since: string,
+    now: string,
+    limit: number,
+  ): Promise<boolean>;
 
   // ── CLI cleanup（§11）──
   /** 删除 exited 超保留期、或已过期超保留期的会话，返回删除行数 */

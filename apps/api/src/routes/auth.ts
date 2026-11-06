@@ -31,6 +31,7 @@ import {
 import type { AuthProvider, OAuthProfile } from '../auth-provider.js';
 import { OAuthExchangeError } from '../auth-provider.js';
 import { generateOAuthState, verifyOAuthState } from '../oauth-state.js';
+import { isAdminIdentity } from '../auth-config.js';
 import { sanitizeReturnTo } from '../auth-return-to.js';
 import {
   authReturnCookieOptions,
@@ -125,14 +126,16 @@ export function registerAuth(app: Hono<HonoEnv>, d: RouteDeps): void {
           avatarUrl: identity.avatarUrl ?? null,
         },
       });
-      // 决策 #21-5：ADMIN_ACCOUNT_LOGINS env 白名单（逗号分隔 login）登录自动置管理员。
-      // 每次登录都检查（幂等），管理员资格由平台主 env 控制，不暴露任何自助入口。
-      const adminLogins = (process.env.ADMIN_ACCOUNT_LOGINS ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (adminLogins.includes(identity.login)) {
-        await repos.accounts.setAdmin(account.id, true);
+      // 管理员资格：ADMIN_ACCOUNT_IDS（platform:providerAccountId，不可变）优先；
+      // 未配置时兼容 ADMIN_ACCOUNT_LOGINS（login 可被改名/释放，仅迁移期）。
+      // 每次登录都对账：命中转不命中会降权；日志只记 accountId/platform/source，
+      // 不记 login 或 providerAccountId。
+      const shouldBeAdmin = isAdminIdentity(authCfg.admin, identity);
+      if (shouldBeAdmin !== account.isAdmin) {
+        await repos.accounts.setAdmin(account.id, shouldBeAdmin);
+        console.info(
+          `[auth] admin ${shouldBeAdmin ? 'granted' : 'revoked'} accountId=${account.id} platform=${identity.platform} source=${authCfg.admin.source}`,
+        );
       }
       const nowIso = now();
       const expiresAt = new Date(Date.parse(nowIso) + authCfg.sessionTtlMs).toISOString();

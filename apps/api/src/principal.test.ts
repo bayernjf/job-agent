@@ -21,6 +21,7 @@ function fakeDemoRepo(session: StoredDemoSession | undefined): IDemoSessionsRepo
     exit: async () => {},
     countRateEvents: async () => 0,
     insertRateEvent: async () => {},
+    tryConsumeRateEvent: async () => true,
     purgeExpired: async () => 0,
     purgeRateEventsBefore: async () => 0,
   };

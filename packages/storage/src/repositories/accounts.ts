@@ -43,8 +43,9 @@ export interface IAccountsRepository {
    */
   deleteUnclaimed(nowIso: string, retainMs: number): Promise<number>;
   /**
-   * 设置平台管理员标记（迁移 023，决策 #21-5：ADMIN_ACCOUNT_LOGINS env 白名单
-   * 登录时自动置位）。幂等；账号不存在返回 undefined。
+   * 设置平台管理员标记（迁移 023）。资格由 routes/auth.ts 在每次登录时按
+   * ADMIN_ACCOUNT_IDS（不可变身份优先）/ ADMIN_ACCOUNT_LOGINS（兼容期）对账写入，
+   * 命中转不命中会显式降权；业务层不暴露任何自助提权入口。
    */
   setAdmin(accountId: string, isAdmin: boolean): Promise<StoredAccount | undefined>;
 }

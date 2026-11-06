@@ -90,6 +90,30 @@ async function seedByokConfig(repos: StorageContext, model = 'byok-model-9'): Pr
   });
 }
 
+/** 仓储层直造任意账号的登录会话（用于属主/非属主授权测试）。 */
+async function sessionCookie(
+  repos: StorageContext,
+  identity: { id: string; login: string; providerAccountId: string },
+): Promise<string> {
+  await repos.accounts.upsertFromProvider({
+    id: identity.id,
+    identity: {
+      platform: 'github',
+      providerAccountId: identity.providerAccountId,
+      login: identity.login,
+      name: identity.login,
+      email: null,
+      avatarUrl: null,
+    },
+  });
+  await repos.authSessions.create({
+    id: `sess-${identity.id}`,
+    accountId: identity.id,
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+  });
+  return `${AUTH_SESSION_COOKIE}=sess-${identity.id}`;
+}
+
 async function harness(
   opts: {
     resumePolish?: ResumePolishProvider | null;
@@ -295,6 +319,48 @@ describe('POST /resumes/build', () => {
     });
     expect(notJson.status).toBe(400);
   });
+
+  it('keeps unclaimed profiles public but requires the owner once claimed', async () => {
+    const { app, repos, jobId } = await harness();
+    const request = (cookie?: string) =>
+      app.request('/resumes/build', {
+        method: 'POST',
+        headers: cookie
+          ? { 'Content-Type': 'application/json', Cookie: cookie }
+          : { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: 'p-resume', jobId }),
+      });
+
+    // 未认领：匿名仍可访问（口径不变）
+    expect((await request()).status).toBe(200);
+
+    await repos.profiles.markClaimed('p-resume');
+
+    // 已认领：匿名 401，其他登录账号 403，本人 200
+    const anonymous = await request();
+    expect(anonymous.status).toBe(401);
+    expect((await anonymous.json()) as { code: string }).toMatchObject({
+      code: 'AUTH_REQUIRED',
+    });
+
+    const other = await sessionCookie(repos, {
+      id: 'acc-bob',
+      login: 'bob',
+      providerAccountId: 'bob-1',
+    });
+    const denied = await request(other);
+    expect(denied.status).toBe(403);
+    expect((await denied.json()) as { code: string }).toMatchObject({
+      code: 'AUTH_NOT_PROFILE_OWNER',
+    });
+
+    const owner = await sessionCookie(repos, {
+      id: 'acc-alice-owner',
+      login: 'alice',
+      providerAccountId: 'alice-owner-1',
+    });
+    expect((await request(owner)).status).toBe(200);
+  });
 });
 
 describe('POST /resumes/build optional LLM polish', () => {
@@ -327,6 +393,11 @@ describe('POST /resumes/build optional LLM polish', () => {
         avatarUrl: null,
       },
     });
+    // 模拟登录时的管理员对账（真实链路在 /auth/:provider/callback 写入 is_admin）。
+    await repos.accounts.setAdmin(
+      'acc-alice',
+      (process.env.ADMIN_ACCOUNT_LOGINS ?? '').split(',').map((s) => s.trim()).includes('alice'),
+    );
     await repos.authSessions.create({
       id: 'sess-alice',
       accountId: 'acc-alice',
@@ -554,6 +625,11 @@ describe('POST /resumes/cover-letter (A)', () => {
         avatarUrl: null,
       },
     });
+    // 模拟登录时的管理员对账（真实链路在 /auth/:provider/callback 写入 is_admin）。
+    await repos.accounts.setAdmin(
+      'acc-alice',
+      (process.env.ADMIN_ACCOUNT_LOGINS ?? '').split(',').map((s) => s.trim()).includes('alice'),
+    );
     await repos.authSessions.create({
       id: 'sess-alice',
       accountId: 'acc-alice',
@@ -593,13 +669,14 @@ describe('POST /resumes/cover-letter (A)', () => {
     expect(body.code).toBe('LLM_NOT_CONFIGURED');
   });
 
-  it('returns the generated letter with provenance for a logged-in user', async () => {
+  it('returns the generated letter with provenance for the claimed profile owner', async () => {
     const { app, repos, jobId } = await harness({
       coverLetter: coverProviderWith({
         subject: 'Application for Senior TypeScript Engineer',
         body: 'Dear hiring team, I am a TypeScript backend developer whose public work shows dependable concurrency fixes.',
       }),
     });
+    await repos.profiles.markClaimed('p-resume');
     const cookie = await loginCookie(repos);
     const { status, body } = await cover(app, jobId, { locale: 'en' }, cookie);
     expect(status).toBe(200);
@@ -610,6 +687,19 @@ describe('POST /resumes/cover-letter (A)', () => {
       model: 'fake-model-1',
       promptVersion: 'cover-letter-0.1',
     });
+  });
+
+  it('rejects a logged-in non-owner for a claimed profile with 403', async () => {
+    const { app, repos, jobId } = await harness({ coverLetter: coverProviderWith({ body: 'x' }) });
+    await repos.profiles.markClaimed('p-resume');
+    const other = await sessionCookie(repos, {
+      id: 'acc-bob',
+      login: 'bob',
+      providerAccountId: 'bob-1',
+    });
+    const { status, body } = await cover(app, jobId, {}, other);
+    expect(status).toBe(403);
+    expect(body.code).toBe('AUTH_NOT_PROFILE_OWNER');
   });
 
   it('returns 502 LLM_FAILED when the provider errors', async () => {

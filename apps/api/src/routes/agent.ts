@@ -46,7 +46,7 @@ import {
   toRunViewData,
 } from '../agent-view.js';
 import { aiAssistedDisclosure, renderHtml } from '@jobagent/resume-core';
-import { enforceBuiltinLlmQuota, resolveTextLlm } from './llm-resolve.js';
+import { byokUnreadableResponse, enforceBuiltinLlmQuota, resolveTextLlm } from './llm-resolve.js';
 import { describeError, principalOwnsProfile } from './helpers.js';
 import { sendWebPush } from '../web-push.js';
 import type { HonoEnv } from './types.js';
@@ -687,6 +687,8 @@ export function registerAgent(app: Hono<HonoEnv>, d: RouteDeps): void {
       if (c.req.query('polish') === 'llm') {
         const artifacts = await buildIntentArtifacts(repos, intent, { locale: locale.data });
         const llm = artifacts ? await resolveTextLlm(c, d).catch(() => null) : null;
+        // 已存 BYOK 但不可解密：fail-closed，不能用规则版静默掩盖密钥问题。
+        if (llm?.failure) return byokUnreadableResponse(c);
         // 决策 #29：内置调用计入账号配额；429/503 必须原样返回，不能被
         // 下面「LLM 不可用 → 规则版」的静默降级吞掉。
         const limited = llm ? await enforceBuiltinLlmQuota(c, d, llm) : null;

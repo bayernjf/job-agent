@@ -24,8 +24,8 @@ import {
 } from '@jobagent/resume-core';
 import type { LlmTokenUsage, MeteredResumePolishProvider } from '@jobagent/llm';
 import type { RouteDeps } from './context.js';
-import { enforceBuiltinLlmQuota, resolveTextLlm } from './llm-resolve.js';
-import { describeError } from './helpers.js';
+import { enforceBuiltinLlmQuota, byokUnreadableResponse, resolveTextLlm } from './llm-resolve.js';
+import { describeError, requireProfileOwner } from './helpers.js';
 import { CoverLetterRequestSchema, ResumeBuildRequestSchema } from './schemas.js';
 import type { HonoEnv } from './types.js';
 
@@ -51,6 +51,9 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
 
     const storedProfile = await repos.profiles.getById(req.profileId);
     if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
+    // 授权口径（评审 #8）：已认领画像要求所有者；未认领维持公开。
+    const ownerGate = requireProfileOwner(c, storedProfile);
+    if (ownerGate) return ownerGate;
     if (!storedProfile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
     const profile: AbilityProfile = storedProfile.snapshot;
 
@@ -109,6 +112,7 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (req.polish === true) {
       polish = { requested: true, applied: false };
       const llm = await resolveTextLlm(c, d);
+      if (llm.failure) return byokUnreadableResponse(c);
       if (llm.source === 'none') {
         polish.reason = 'not_configured';
       } else {
@@ -215,8 +219,18 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
       return c.json({ error: 'validation failed', details: parsed.error.flatten() }, 400);
     }
     const req = parsed.data;
+    const storedProfile = await repos.profiles.getById(req.profileId);
+    if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
+    // 授权口径（评审 #8）：已认领画像要求所有者；未认领维持公开。先于 LLM
+    // 解析与配额，避免向未授权调用方泄露 LLM 配置状态或消耗配额。
+    const ownerGate = requireProfileOwner(c, storedProfile);
+    if (ownerGate) return ownerGate;
+    if (!storedProfile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
+    const profile: AbilityProfile = storedProfile.snapshot;
+
     // LLM 供给（决策 #21）：BYOK 优先 → 内置回落；两者都无 → 如实 LLM_NOT_CONFIGURED。
     const llm = await resolveTextLlm(c, d);
+    if (llm.failure) return byokUnreadableResponse(c);
     if (!llm.cover) {
       return c.json(
         { error: 'LLM is not configured on the server', code: 'LLM_NOT_CONFIGURED' },
@@ -224,14 +238,11 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
       );
     }
     const coverLetterProvider = llm.cover;
+
     // 决策 #29：内置调用计入账号配额；超限/存储故障显式返回。
+    // 放在画像校验之后：404 请求没有真正调用 LLM，不应消耗配额。
     const limited = await enforceBuiltinLlmQuota(c, d, llm);
     if (limited) return limited;
-
-    const storedProfile = await repos.profiles.getById(req.profileId);
-    if (!storedProfile) return c.json({ error: 'profile not found' }, 404);
-    if (!storedProfile.snapshot) return c.json({ error: 'profile has no snapshot' }, 404);
-    const profile: AbilityProfile = storedProfile.snapshot;
 
     let posting: JobPosting;
     if (req.posting) {

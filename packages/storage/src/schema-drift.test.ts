@@ -28,6 +28,11 @@ const REQUIRED = [
   { table: 'api_tokens', column: 'id' },
   { table: 'claim_verifications', column: 'id' },
   { table: 'cron_heartbeat', column: 'consumer' },
+  // 042 hub 投影三列与 043 画像审计事件（与 API REQUIRED_COLUMNS 对齐）
+  { table: 'llm_catalog_models', column: 'source' },
+  { table: 'llm_catalog_models', column: 'revision' },
+  { table: 'llm_catalog_models', column: 'assignment_id' },
+  { table: 'profile_events', column: 'profile_id' },
 ];
 
 function fresh() {
@@ -55,6 +60,18 @@ describe('sqliteVerifyRequiredColumns', () => {
       const missing = sqliteVerifyRequiredColumns(client, REQUIRED);
       expect(missing).toContain('claim_verifications.id');
       expect(missing).not.toContain('accounts.is_admin');
+    } finally {
+      client.close();
+    }
+  });
+
+  it('reports a missing profile_events table as missing (043 audit guard)', () => {
+    const client = fresh();
+    try {
+      client.prepare('DROP TABLE profile_events').run();
+      const missing = sqliteVerifyRequiredColumns(client, REQUIRED);
+      expect(missing).toContain('profile_events.profile_id');
+      expect(missing).not.toContain('llm_catalog_models.source');
     } finally {
       client.close();
     }

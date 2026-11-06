@@ -45,6 +45,11 @@ const REQUIRED_COLUMNS: ColumnRequirement[] = [
   // 042 内置目录改 hub 投影：同步服务读取 source/revision/assignment_id，
   // 缺列会让同步与只读目录视图失效，进守卫显式暴露。
   { table: 'llm_catalog_models', column: 'source' },
+  { table: 'llm_catalog_models', column: 'revision' },
+  { table: 'llm_catalog_models', column: 'assignment_id' },
+  // 043 画像审计事件：删除 / 认领路径都直接写 profile_events.profile_id，
+  // 缺表或缺失该列会让审计写入失败，进守卫让深探活显式暴露。
+  { table: 'profile_events', column: 'profile_id' },
 ];
 
 export { REQUIRED_COLUMNS };

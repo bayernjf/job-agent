@@ -337,6 +337,20 @@ describe('postgres repositories (embedded or DATABASE_TEST_URL)', () => {
     expect((await s.demoSessions.getActive(sessionId, T_NOW))!.analyzeCount).toBe(2);
   });
 
+  pgIt('atomically caps concurrent rate events for the same key', async (s) => {
+    const key = `acct_${randomUUID().replace(/-/g, '')}`;
+    const since = '2026-09-21T23:00:00.000Z';
+    const limit = 5;
+
+    const results = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        s.demoSessions.tryConsumeRateEvent(key, 'llm-account', since, T_NOW, limit),
+      ),
+    );
+    expect(results.filter(Boolean)).toHaveLength(limit);
+    expect(await s.demoSessions.countRateEvents(key, 'llm-account', since)).toBe(limit);
+  });
+
   pgIt('creates, claims FIFO and succeeds a job', async (s) => {
     const suffix = randomUUID().slice(0, 8);
     const oldId = `job_old_${suffix}`;
