@@ -1,5 +1,5 @@
 {
-  "note": "真实公开 ATS 申请页 DOM 样本（tools/capture-ats-samples.mjs 录制）。无个人信息无需脱敏；回归测试见 apps/extension/src/ats/real-dom-regression.test.ts。Workday 因多步账号门槛流程不抓，继续由 fake-doc 单测覆盖。",
+  "note": "真实公开 ATS DOM 样本（tools/capture-ats-samples.mjs 录制）。无个人信息无需脱敏；回归测试见 apps/extension/src/ats/real-dom-regression.test.ts。Workday 的 job application wizard 有账号门槛，改抓同租户公开的 Talent Community 表单，覆盖范围见该样本的 coverage 字段。",
   "samples": [
     {
       "file": "greenhouse-anthropic.html",
@@ -32,6 +32,15 @@
       "sourceUrl": "https://jobs.ashbyhq.com/linear/6dd5500a-4bd4-4f57-ba09-7b07acefecf4",
       "finalUrl": "https://jobs.ashbyhq.com/linear/6dd5500a-4bd4-4f57-ba09-7b07acefecf4/application",
       "capturedAt": "2026-10-15T10:36:05.913Z"
+    },
+    {
+      "file": "workday-gdit-introduce-yourself.html",
+      "ats": "workday",
+      "mode": "rendered-spa-talent-community",
+      "coverage": "Talent Community / Introduce Yourself 公开表单：legal-name-section_firstName/lastName、email、phoneNumber、skills（autocomplete 多选）；未覆盖账号门槛后的 job application wizard（My Information/Education/Experience/Review）",
+      "sourceUrl": "https://gdit.wd5.myworkdayjobs.com/en-US/External_Career_Site/introduceYourself",
+      "finalUrl": "https://gdit.wd5.myworkdayjobs.com/en-US/External_Career_Site/introduceYourself",
+      "capturedAt": "2026-11-06T20:04:19.453Z"
     }
   ]
 }
