@@ -146,6 +146,16 @@ describe('POST /profiles/:id/claim — 融合画像归属口径（P1-1）', () =
     expect((await repos.profiles.getById('prof-fused'))?.subjectClaimed).toBe(true);
     const account = await repos.accounts.getById(await accountIdOf(repos, GH_ALICE));
     expect(account?.claimedProfileId).toBe('prof-fused');
+
+    // 认领成功留审计事件；detail 只含主体 platform/login（不追加其他身份字段）
+    const events = await repos.profileEvents.listByProfile('prof-fused');
+    expect(events.filter((e) => e.event === 'claimed')).toHaveLength(1);
+    const claimed = events.find((e) => e.event === 'claimed')!;
+    expect(claimed.actorAccountId).toBe(account!.id);
+    expect(JSON.parse(claimed.detailJson!)).toEqual({
+      subjectPlatform: 'all',
+      subjectLogin: 'alice',
+    });
   });
 
   it('Gitee 同名账号认领融合画像 → 403（跨平台冒名封堵）', async () => {
@@ -222,6 +232,16 @@ describe('POST /profiles/:id/claim — 融合画像归属口径（P1-1）', () =
     // 归属未被抢夺：仍挂在旧账号
     const oldAccount = await repos.accounts.getById(await accountIdOf(repos, GH_ALICE));
     expect(oldAccount?.claimedProfileId).toBe('prof-fused');
+
+    // 409 抢夺尝试同样留审计：操作者是发起抢夺的新账号，detail 仍只含主体信息
+    const events = await repos.profileEvents.listByProfile('prof-fused');
+    const conflicts = events.filter((e) => e.event === 'claim_conflict');
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.actorAccountId).toBe(await accountIdOf(repos, GH_ALICE_NEW));
+    expect(JSON.parse(conflicts[0]!.detailJson!)).toEqual({
+      subjectPlatform: 'all',
+      subjectLogin: 'alice',
+    });
   });
 
   it('本人重复认领保持幂等 200', async () => {
@@ -237,6 +257,9 @@ describe('POST /profiles/:id/claim — 融合画像归属口径（P1-1）', () =
       });
       expect(res.status).toBe(200);
     }
+    // 幂等重复不产生重复 claimed 事件
+    const events = await repos.profileEvents.listByProfile('prof-1');
+    expect(events.filter((e) => e.event === 'claimed')).toHaveLength(1);
   });
 });
 
@@ -263,11 +286,12 @@ describe('DELETE /profiles/:id — 归属校验与审计留痕（P1-1）', () =>
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code: string }).code).toBe('AUTH_NOT_PROFILE_OWNER');
 
-    // 零副作用：画像在、仍归属受害者、无审计事件
+    // 零副作用：画像在、仍归属受害者、无 deleted 审计事件（认领时的 claimed 属正常留痕）
     expect(await repos.profiles.getById('prof-fused')).toBeTruthy();
     const owner = await repos.accounts.getById(await accountIdOf(repos, GH_ALICE));
     expect(owner?.claimedProfileId).toBe('prof-fused');
-    expect(await repos.profileEvents.listByProfile('prof-fused')).toHaveLength(0);
+    const events = await repos.profileEvents.listByProfile('prof-fused');
+    expect(events.filter((e) => e.event === 'deleted')).toHaveLength(0);
   });
 
   it('所有者删除融合画像 → 200 且先落 deleted 审计事件（含级联计数）', async () => {
@@ -323,11 +347,12 @@ describe('DELETE /profiles/:id — 归属校验与审计留痕（P1-1）', () =>
     expect(await repos.profiles.getById('prof-fused')).toBeUndefined();
 
     // 审计事件：画像行已删，但事件保留（无 FK 刻意设计），可回溯操作者与级联规模
+    // （认领时已落一条 claimed，这里只看 deleted）
     const events = await repos.profileEvents.listByProfile('prof-fused');
-    expect(events).toHaveLength(1);
-    expect(events[0]!.event).toBe('deleted');
-    expect(events[0]!.actorAccountId).toBe(accountId);
-    const detail = JSON.parse(events[0]!.detailJson!) as {
+    const deleted = events.filter((e) => e.event === 'deleted');
+    expect(deleted).toHaveLength(1);
+    expect(deleted[0]!.actorAccountId).toBe(accountId);
+    const detail = JSON.parse(deleted[0]!.detailJson!) as {
       subjectPlatform: string;
       subjectLogin: string;
       cascade: { evidence: number; applications: number; interviews: number };

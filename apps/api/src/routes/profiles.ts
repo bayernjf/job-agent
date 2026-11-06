@@ -31,6 +31,17 @@ import {
 import type { HonoEnv } from './types.js';
 import type { RouteDeps } from './context.js';
 
+/**
+ * profile_events 的事件名（集中定义，避免散落字符串）。
+ * 复用迁移 043 的既有表结构与 detail_json 约定，不新增 kind 列/迁移。
+ * detail_json 只记主体 platform/login，不追加操作者以外的身份字段（PII 最小化）。
+ */
+export const PROFILE_EVENT = {
+  claimed: 'claimed',
+  claimConflict: 'claim_conflict',
+  deleted: 'deleted',
+} as const;
+
 export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
   const { repos, now, cfg, ipHashOf, jobStaleDays } = d;
 
@@ -159,6 +170,18 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
     if (!flipped) {
       const self = await repos.accounts.getById(principal.accountId);
       if (self?.claimedProfileId !== profile.id) {
+        // 审计：记录一次被拒绝的抢夺尝试（操作者账号 + 目标主体，不含其他身份字段）。
+        await repos.profileEvents.insert({
+          id: `pev-${randomUUID()}`,
+          profileId: profile.id,
+          event: PROFILE_EVENT.claimConflict,
+          actorAccountId: principal.accountId,
+          detailJson: JSON.stringify({
+            subjectPlatform: profile.subjectPlatform,
+            subjectLogin: profile.subjectLogin,
+          }),
+          createdAt: now(),
+        });
         return c.json(
           {
             error:
@@ -170,6 +193,20 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
       }
     }
     const account = await repos.accounts.setClaimedProfile(principal.accountId, profile.id);
+    // 只在真实归属变更（flipped）时记 claimed，幂等重复认领不产生噪声事件。
+    if (flipped) {
+      await repos.profileEvents.insert({
+        id: `pev-${randomUUID()}`,
+        profileId: profile.id,
+        event: PROFILE_EVENT.claimed,
+        actorAccountId: principal.accountId,
+        detailJson: JSON.stringify({
+          subjectPlatform: profile.subjectPlatform,
+          subjectLogin: profile.subjectLogin,
+        }),
+        createdAt: now(),
+      });
+    }
     // subjectPlatform 存储层为 string；语义上只可能是 github/gitee/all，此处收窄供契约使用
     const subjectPlatform = profile.subjectPlatform as 'github' | 'gitee' | 'all';
     const result: ClaimResult = {
@@ -283,7 +320,7 @@ export function registerProfiles(app: Hono<HonoEnv>, d: RouteDeps): void {
     await repos.profileEvents.insert({
       id: `pev-${randomUUID()}`,
       profileId: profile.id,
-      event: 'deleted',
+      event: PROFILE_EVENT.deleted,
       actorAccountId: principal.accountId,
       detailJson: JSON.stringify({
         subjectPlatform: profile.subjectPlatform,
