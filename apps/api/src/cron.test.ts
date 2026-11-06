@@ -13,6 +13,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStorage, type StorageContext } from '@jobagent/storage';
 import { createApp } from './index.js';
+import { REQUIRED_COLUMNS } from './routes/system.js';
 
 async function freshRepos(): Promise<StorageContext> {
   return createStorage({ sqlitePath: ':memory:' });
@@ -312,6 +313,34 @@ describe('GET /health?deep=1 (migration drift guard)', () => {
     expect(body.status).toBe('error');
     expect(body.db).toBe('ok'); // DB 可达，漂移是另一回事
     expect(body.schemaDrift).toEqual(['claim_verifications.id', 'accounts.is_admin']);
+  });
+
+  it('guards the 042 hub-projection columns and profile_events (043)', () => {
+    const ids = REQUIRED_COLUMNS.map((c) => `${c.table}.${c.column}`);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'llm_catalog_models.source',
+        'llm_catalog_models.revision',
+        'llm_catalog_models.assignment_id',
+        'profile_events.profile_id',
+      ]),
+    );
+  });
+
+  it('returns 503 when profile_events is missing', async () => {
+    const repos = await freshRepos();
+    const app = await createApp({
+      repos: {
+        ...repos,
+        verifyRequiredColumns: async () => ['profile_events.profile_id'],
+      } as StorageContext,
+    });
+
+    const res = await app.request('/health?deep=1');
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { status: string; schemaDrift: string[] };
+    expect(body.status).toBe('error');
+    expect(body.schemaDrift).toContain('profile_events.profile_id');
   });
 
   it('does not run the drift guard on the shallow probe', async () => {
