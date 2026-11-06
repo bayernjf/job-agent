@@ -100,6 +100,13 @@ jobs:
         # on a fresh checkout until shared has been built.
         run: pnpm -r build
 
+      - name: Build report for Vercel
+        # Production deploys on Vercel run with ASTRO_ADAPTER=vercel (see
+        # apps/report/vercel.json). Exercise that adapter shape here so a
+        # serverless-only build break fails CI instead of the live deploy; the
+        # default Node build above is unchanged.
+        run: pnpm build:vercel
+
       - name: Typecheck
         run: pnpm -r typecheck
 
