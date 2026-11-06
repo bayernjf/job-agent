@@ -268,6 +268,7 @@ JobAgent 当前状态，截至 2026-10-31。
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | 缺失：`vapid-key` 端点 503，`agent-tick` 跳过推送（不算失败） |
 | `TAVILY_API_KEY` | 指令式搜岗 | 缺失：`search-tick` 503 并记失败心跳；岗位采集不受影响 |
 | `ADMIN_ACCOUNT_LOGINS` | 平台管理员白名单 | 缺失无人自动 `is_admin=1`，admin 接口 403 |
+| `LLM_ACCOUNT_RATE_PER_HOUR` | 内置 LLM 单账号小时配额（求职信 + 润色共用桶，默认 20；决策 #29） | 缺失/非法→回退 20 并 warn，不阻塞启动；超限 429 `LLM_ACCOUNT_RATE_LIMITED` + `Retry-After: 3600`；配额存储故障 fail-closed 503 `LLM_QUOTA_UNAVAILABLE`；BYOK 路径不受影响 |
 | `MCP_API_KEY` | `apps/mcp` 服务密钥 | 仅影响 MCP 进程；生产 `NODE_ENV` 下缺失则 MCP 启动失败，不影响 Vercel API |
 
 ### 6. 构建前置（非环境变量）
