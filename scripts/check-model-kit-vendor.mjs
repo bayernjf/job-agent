@@ -7,9 +7,13 @@
  *   package's prepare step, so dist is rebuilt first).
  * - Compares extracted file contents, not tarball bytes: gzip metadata and
  *   file mtimes are not reproducible, but the packed files are.
+ * - Always asserts apps/api declares @model-hub/model-kit as the committed
+ *   vendor tarball: a `file:../../model-hub/...` source path would break the
+ *   Vercel install, which clones only this repository. This runs even when the
+ *   model-hub checkout is absent, so the offline/CI shape stays guarded.
  * - When the model-hub checkout or its build toolchain is unavailable the
- *   check prints an explicit skip and exits 0; CI installs the toolchain so
- *   a stale vendored tarball cannot pass there.
+ *   freshness comparison prints an explicit skip and exits 0; CI installs the
+ *   toolchain so a stale vendored tarball cannot pass there.
  */
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -80,6 +84,49 @@ function extract(tarball, destination) {
   mkdirSync(destination, { recursive: true });
   const result = run('tar', ['-xzf', tarball, '-C', destination]);
   if (result.status !== 0) fail(`tar -xzf ${tarball} failed:\n${result.stderr}`);
+}
+
+const apiManifestPath = path.join(repoRoot, 'apps', 'api', 'package.json');
+if (!existsSync(apiManifestPath)) {
+  fail('[fail] apps/api/package.json is missing; expected @model-hub/model-kit to be declared.');
+}
+
+const apiManifest = JSON.parse(readFileSync(apiManifestPath, 'utf8'));
+const dependencySections = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+];
+const declaredSpecs = dependencySections
+  .map((section) => [section, apiManifest[section]?.['@model-hub/model-kit']])
+  .filter(([, spec]) => typeof spec === 'string');
+
+if (declaredSpecs.length === 0) {
+  fail(
+    '[fail] apps/api/package.json is missing "@model-hub/model-kit"; ' +
+      'declare it as "file:../../vendor/model-hub-model-kit-<version>.tgz".',
+  );
+}
+
+const vendoredSpecPattern =
+  /^file:\.\.\/\.\.\/vendor\/model-hub-model-kit-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.tgz$/;
+
+for (const [section, spec] of declaredSpecs) {
+  if (!vendoredSpecPattern.test(spec)) {
+    fail(
+      `[fail] apps/api/package.json ${section}["@model-hub/model-kit"] must point at a vendored tarball ` +
+        `(file:../../vendor/model-hub-model-kit-<version>.tgz), found "${spec}". ` +
+        'Vercel installs from this repository clone, so a model-hub source path cannot resolve.',
+    );
+  }
+  const declaredTarball = path.resolve(path.dirname(apiManifestPath), spec.slice('file:'.length));
+  if (!existsSync(declaredTarball)) {
+    fail(
+      `[fail] apps/api/package.json ${section}["@model-hub/model-kit"] points at "${spec}", ` +
+        `but ${path.relative(repoRoot, declaredTarball)} does not exist. Commit the tarball.`,
+    );
+  }
 }
 
 if (!existsSync(path.join(kitDir, 'package.json'))) {
