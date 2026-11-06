@@ -154,6 +154,37 @@ export class SqliteDemoSessionsRepository implements IDemoSessionsRepository {
       .run();
   }
 
+  async tryConsumeRateEvent(
+    ipHash: string,
+    kind: DemoRateKind,
+    since: string,
+    now: string,
+    limit: number,
+  ): Promise<boolean> {
+    if (limit <= 0) return false;
+    // better-sqlite3 单连接同步执行，写事务天然串行；count 与 insert 放进同一事务，
+    // 保证不会出现"两个请求都读到未满再各插一条"的穿透（语义与 PG advisory lock 一致）。
+    return this.db.transaction((tx): boolean => {
+      const row = tx
+        .select({ count: sql<number>`count(*)` })
+        .from(demoRateEvents)
+        .where(
+          and(
+            eq(demoRateEvents.ipHash, ipHash),
+            eq(demoRateEvents.kind, kind),
+            gt(demoRateEvents.createdAt, since),
+          ),
+        )
+        .get();
+      if (Number(row?.count ?? 0) >= limit) return false;
+
+      tx.insert(demoRateEvents)
+        .values({ id: randomUUID(), ipHash, kind, createdAt: now })
+        .run();
+      return true;
+    });
+  }
+
   async purgeExpired(now: string, retainMs: number): Promise<number> {
     const retainCutoff = new Date(new Date(now).getTime() - retainMs).toISOString();
     // 删除：已退出且超过保留期（以退出时刷新的 last_seen_at 为准），或已过期超过保留期

@@ -145,6 +145,18 @@ describe('SqliteDemoSessionsRepository', () => {
     expect((await repo.getActive('s1', T0))!.analyzeCount).toBe(2);
   });
 
+  it('atomically caps consume attempts for the same key', async () => {
+    const repo = freshRepo();
+    const since = iso(T0, -1);
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        repo.tryConsumeRateEvent('hash-cap', 'llm-account', since, T0, 3),
+      ),
+    );
+    expect(results.filter(Boolean)).toHaveLength(3);
+    expect(await repo.countRateEvents('hash-cap', 'llm-account', since)).toBe(3);
+  });
+
   it('counts IP rate events at the sliding-window boundary', async () => {
     const repo = freshRepo();
     const windowMs = 60 * 60 * 1000;

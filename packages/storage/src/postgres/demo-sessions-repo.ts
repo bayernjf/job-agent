@@ -155,6 +155,42 @@ export class PgDemoSessionsRepository implements IDemoSessionsRepository {
     });
   }
 
+  async tryConsumeRateEvent(
+    ipHash: string,
+    kind: DemoRateKind,
+    since: string,
+    now: string,
+    limit: number,
+  ): Promise<boolean> {
+    if (limit <= 0) return false;
+    return this.db.transaction(async (tx) => {
+      // count + insert 必须串行化：默认 READ COMMITTED 下两个并发事务可能同时读到
+      // count < limit 后都插入，击穿上限。按 (kind, ipHash) 取事务级 advisory lock，
+      // 事务提交/回滚时自动释放，不额外引入锁表或迁移。
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${kind}:${ipHash}`}))`);
+
+      const rows = await tx
+        .select({ count: sql<string>`count(*)` })
+        .from(demoRateEvents)
+        .where(
+          and(
+            eq(demoRateEvents.ipHash, ipHash),
+            eq(demoRateEvents.kind, kind),
+            tsGt(demoRateEvents.createdAt, since),
+          ),
+        );
+      if (Number(rows[0]?.count ?? 0) >= limit) return false;
+
+      await tx.insert(demoRateEvents).values({
+        id: randomUUID(),
+        ipHash,
+        kind,
+        createdAt: now,
+      });
+      return true;
+    });
+  }
+
   async purgeExpired(now: string, retainMs: number): Promise<number> {
     const retainCutoff = new Date(new Date(now).getTime() - retainMs).toISOString();
     const rows = await this.db
