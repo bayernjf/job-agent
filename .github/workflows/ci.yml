@@ -84,6 +84,13 @@ jobs:
         # cannot silently drift from the source it was built from.
         run: pnpm check:model-kit-vendor
 
+      - name: Check release readiness
+        # Static dev->main guards: migrations 042/043 in both dialects, Node
+        # 24.22.2 aligned across .nvmrc/engines/Dockerfile, hard-required env
+        # vars documented in .env.example and handoff §5, and no model-hub
+        # source dependencies. No install needed (Node builtins only).
+        run: pnpm check:release-readiness
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

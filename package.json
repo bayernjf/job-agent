@@ -18,6 +18,7 @@
     "migrate:pg:status": "pnpm --filter @jobagent/storage exec node dist/cli.js status --driver postgres",
     "check:migrations": "bash tools/check-migrations.sh",
     "check:model-kit-vendor": "node scripts/check-model-kit-vendor.mjs",
+    "check:release-readiness": "node scripts/check-release-readiness.mjs",
     "prepare": "husky",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
