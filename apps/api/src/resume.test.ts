@@ -327,6 +327,11 @@ describe('POST /resumes/build optional LLM polish', () => {
         avatarUrl: null,
       },
     });
+    // 模拟登录时的管理员对账（真实链路在 /auth/:provider/callback 写入 is_admin）。
+    await repos.accounts.setAdmin(
+      'acc-alice',
+      (process.env.ADMIN_ACCOUNT_LOGINS ?? '').split(',').map((s) => s.trim()).includes('alice'),
+    );
     await repos.authSessions.create({
       id: 'sess-alice',
       accountId: 'acc-alice',
@@ -554,6 +559,11 @@ describe('POST /resumes/cover-letter (A)', () => {
         avatarUrl: null,
       },
     });
+    // 模拟登录时的管理员对账（真实链路在 /auth/:provider/callback 写入 is_admin）。
+    await repos.accounts.setAdmin(
+      'acc-alice',
+      (process.env.ADMIN_ACCOUNT_LOGINS ?? '').split(',').map((s) => s.trim()).includes('alice'),
+    );
     await repos.authSessions.create({
       id: 'sess-alice',
       accountId: 'acc-alice',

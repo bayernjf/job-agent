@@ -9,13 +9,13 @@
  *
  * 全部内存 SQLite + FakeAuthProvider（不打真实 GitHub/网络），Hono app.request。
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AbilityProfile } from '@jobagent/shared';
 import { createStorage, type StorageContext } from '@jobagent/storage';
 import { createApp, type ApiDeps } from './index.js';
 import { FakeAuthProvider } from './fake-auth.js';
 import type { OAuthProfile } from './auth-provider.js';
-import { loadAuthConfig } from './auth-config.js';
+import { loadAuthConfig, type AuthConfig } from './auth-config.js';
 
 const ALICE: OAuthProfile = {
   platform: 'github',
@@ -91,12 +91,12 @@ async function insertProfile(
 /** 走完整登录，返回带会话 Cookie 的 jar 与 repos。 */
 async function loginAs(
   profile: OAuthProfile = ALICE,
-  opts: { failure?: string } = {},
+  opts: { failure?: string; authConfig?: AuthConfig; repos?: StorageContext } = {},
 ): Promise<{ repos: StorageContext; cookies: Record<string, string> }> {
-  const repos = await freshRepos();
+  const repos = opts.repos ?? (await freshRepos());
   const deps: ApiDeps = {
     repos,
-    authConfig: loadAuthConfig({}),
+    authConfig: opts.authConfig ?? loadAuthConfig({}),
     githubAuthProvider: new FakeAuthProvider(opts.failure ? null : profile, opts.failure),
   };
   const app = await createApp(deps);
@@ -721,5 +721,57 @@ describe('GET /auth/providers', () => {
     expect(body.gitee.configured).toBe(true);
     // 仅回布尔态，不含任何凭证字段
     expect(JSON.stringify(body)).not.toMatch(/secret|clientId|client_id/i);
+  });
+});
+
+describe('admin allowlist (immutable identity)', () => {
+  it('keeps admin after a login rename when matched by platform:providerAccountId', async () => {
+    const repos = await freshRepos();
+    const authConfig = loadAuthConfig({ ADMIN_ACCOUNT_IDS: 'github:101' });
+    await loginAs(ALICE, { repos, authConfig });
+
+    const renamed: OAuthProfile = { ...ALICE, login: 'alice-renamed' };
+    await loginAs(renamed, { repos, authConfig });
+
+    expect((await repos.accounts.getByProvider('github', '101'))?.isAdmin).toBe(true);
+  });
+
+  it('revokes admin when the immutable identity no longer matches', async () => {
+    const repos = await freshRepos();
+    await loginAs(ALICE, { repos, authConfig: loadAuthConfig({ ADMIN_ACCOUNT_IDS: 'github:101' }) });
+
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    await loginAs(ALICE, { repos, authConfig: loadAuthConfig({ ADMIN_ACCOUNT_IDS: 'github:999' }) });
+
+    expect((await repos.accounts.getByProvider('github', '101'))?.isAdmin).toBe(false);
+    const logs = info.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(logs).toContain('admin revoked');
+    // 审计日志不含可变 login 与不可变平台 id
+    expect(logs).not.toContain('alice');
+    expect(logs).not.toContain('github:101');
+    info.mockRestore();
+  });
+
+  it('legacy login allowlist stops matching after rename (migration path)', async () => {
+    const repos = await freshRepos();
+    const authConfig = loadAuthConfig({ ADMIN_ACCOUNT_LOGINS: 'alice' });
+    await loginAs(ALICE, { repos, authConfig });
+    expect((await repos.accounts.getByProvider('github', '101'))?.isAdmin).toBe(true);
+
+    await loginAs({ ...ALICE, login: 'alice-renamed' }, {
+      repos,
+      authConfig: loadAuthConfig({ ADMIN_ACCOUNT_LOGINS: 'alice' }),
+    });
+    expect((await repos.accounts.getByProvider('github', '101'))?.isAdmin).toBe(false);
+  });
+
+  it('does not touch accounts that never matched the allowlist', async () => {
+    const repos = await freshRepos();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    await loginAs(ALICE, { repos, authConfig: loadAuthConfig({ ADMIN_ACCOUNT_IDS: 'github:999' }) });
+
+    expect((await repos.accounts.getByProvider('github', '101'))?.isAdmin).toBe(false);
+    expect(info.mock.calls.map((c) => c.join(' ')).join('\n')).not.toContain('admin revoked');
+    info.mockRestore();
   });
 });
