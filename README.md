@@ -38,11 +38,11 @@
 
 ```bash
 nvm use                       # Node 版本以 .nvmrc 为准（当前 24.22.2）
-# 前置：apps/api 依赖 file: 依赖 @model-hub/model-kit（评审 P2-2）——
-# 需把 github.com/bayernjf/model-hub 克隆到本仓根目录下的 model-hub/（已被
-# .gitignore 忽略；CI 也按同一路径 checkout）并先构建：
-#   git clone git@github.com:bayernjf/model-hub.git model-hub
-#   pnpm -C model-hub/packages/model-kit build
+# apps/api 依赖 vendor/model-hub-model-kit-<version>.tgz（@model-hub/model-kit
+# 的 dist 构建产物，已入库），无需再克隆 model-hub。升级 model-kit 时在
+# model-hub 仓 `npm pack --pack-destination <本仓>/vendor`，再同步
+# apps/api/package.json 与 pnpm-lock.yaml；本地有 model-hub/ 时可用
+# `pnpm check:model-kit-vendor` 校验仓内 tgz 是否与源码一致。
 pnpm install                  # pnpm workspaces，不用 npm/yarn
 cp .env.example .env          # 环境变量权威模板（含注释与默认值）
 pnpm -r build                 # api 的 dev 与 worker 的 start 都跑 dist/，先构建一次
