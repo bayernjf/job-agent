@@ -198,3 +198,81 @@ JobAgent 当前状态，截至 2026-10-31。
   **最新交付态基线**：`bash tools/preflight.sh` 五阶段全绿（2026-10-07 A 组后仍全绿：typecheck / check-migrations 0 warning〔31 对〕 / 全仓单测〔storage 232、api 298〕 / build / audit 0 漏洞〔sharp 已钉 0.35.5〕）；（typecheck / check-migrations 0 warning / 全仓单测 / build / audit 0 漏洞），逐批历史数字（item56/57 等）见 [docs/handoff-archive-2026-10-01.md](docs/handoff-archive-2026-10-01.md) §3。**仍有效的本机约束**：形态 C 本地预演（node standalone 同域跑 `/` 与 `/api/*`）必须显式 `DB_AUTO_MIGRATE=false`，否则产物内 storage 会把迁移目录解析到不存在的 `apps/report/db/migrations/sqlite`、首个 `/api/*` 请求即 ENOENT；本机默认 shell Node 不固定（实测 v20/v22 都出现过），跑 native addon 与 standalone 前先 `fnm use 24.0.0`，必要时 `pnpm rebuild -r better-sqlite3`；迁移 CLI 目标库按 `--db`/位置参数 > `DB_PATH` > 仓库根解析且每次打印来源（item55 已修）；本机访问 GitHub 直连不稳，代理 `127.0.0.1:7897`。真实 OAuth/token 凭证只在 gitignored `.env`，`data/`、`.vercel/`、`dist/`、`test-results/`、`apps/extension/release/` 未跟踪，均不入库。
 
 - **历史同步态**（各批次 commit 链与 PR 并入路径）已归档：item30–36 与 2026-09-20 同步态见 [docs/handoff-archive-2026-09-20.md](docs/handoff-archive-2026-09-20.md)；item28/29 见 [docs/handoff-archive-2026-09-19.md](docs/handoff-archive-2026-09-19.md)；2026-09-14 ~ 2026-09-18 见 [docs/handoff-archive-2026-09-18.md](docs/handoff-archive-2026-09-18.md)；item37–91 与 2026-09-27 及更早变更见 [docs/handoff-archive-2026-10-01.md](docs/handoff-archive-2026-10-01.md)。
+
+## 合并前评估：dev → main（2026-11-05，38 个提交）
+
+> 只读评估：评估时 `origin/dev` 领先 `origin/main` **38** 个提交；未执行合并、部署或迁移。
+
+### 1. 提交构成
+
+| 类别 | 数量 | 提交 |
+|---|---|---|
+| 功能性（API/storage/report/UI） | 13 | `7f64490e` `b3103a08` `553863f8` `bcb05576` `050c5c2c` `9a930d27` `e41cbb8d` `b7f530bd` `24712fac` `19ce3d3a` `2969aa1a` `fcc93c0f` `c630a4dc` |
+| 构建 / CI / 配置 | 8 | `b00dd2ed` `0e99fb09` `24cb0716` `f085a50d` `8757f43e` `feefce5a` `0512da0a` `5caf066c` |
+| 测试 | 5 | `d7e13107` `81be21ab` `e16b446f` `f0ea34de` `ed905a25` |
+| 文档 / handoff | 8 | `02a9f545` `ebef3e95` `093d1ea2` `651569f4` `7a64597f` `7a21ffc4` `c91a3a93` `e7e5ffe2` |
+| 合并提交（历史） | 4 | `5cb80ed1` `77da2ce2` `920b2d4f` `abfcb047` |
+
+按主题：
+
+- **model-hub 接入（W5-1）**：`7f64490e`（迁移 042：`llm_catalog_models` 增加 source/revision/assignment_id）→ `b00dd2ed`（`file:` 依赖 model-kit）→ `b3103a08`（启动/手动目录同步）→ `553863f8`（admin 目录改只读 + hub 同步）→ `bcb05576`（内置凭证解析与 L4 测试）→ `050c5c2c`（用量回传 hub）。配套构建是 `0e99fb09`/`24cb0716`/`f085a50d`/`8757f43e`，测试是 `d7e13107`/`81be21ab`/`e16b446f`。
+- **画像归属 P1-1**：`9a930d27`（归属绑定到已校验平台身份）、`e41cbb8d`（`AUTH_PROFILE_ALREADY_CLAIMED`）、`b7f530bd`（条件 `markClaimed` + 迁移 043 `profile_events` 审计）；测试 `f0ea34de`。
+- **UI**：`24712fac` 二级页头 + 固定语言切换，`19ce3d3a` 对比度修复。
+- **API 修复**：`2969aa1a` 墙钟预算注入时钟、`fcc93c0f` CORS 预检允许 Authorization、`c630a4dc` 融合画像 owner 通过 agent 行闸门。
+- **工具链**：`5caf066c` Node 24.22.2 基线（`.nvmrc` + `engines.node >=24.22.2` + `.npmrc engine-strict=true`）。
+
+### 2. dev CI 状态
+
+最近 6 次 CI 全部 `success`，无 pending/failed。最新为 `e7e5ffe2`（run 42031762714，2026-11-05T12:59Z）。
+
+### 3. 合并到 main 会触发的部署
+
+- **Vercel Production 部署**：仓库内没有应用部署 workflow，靠 Vercel Git 集成在 `main` push 时触发（项目 Root Directory=`apps/report`，`apps/report/vercel.json` 固定 install/build）。触发条件＝main 分支收到 push 且未被 Ignored Build Step 跳过；`vercel.json` 仅保留每日 cleanup cron，符合 Hobby 限制。
+- **Cloudflare cron worker 部署**：`.github/workflows/deploy-cron-worker.yml` 的 push 路径过滤包含该 workflow 文件自身，而本次 diff 修改了它 → 合并 main 会真实执行一次 Worker 部署。`apps/cron-worker` 代码本身未变，等于用新流程重发旧 Worker。
+- **CI**：`.github/workflows/ci.yml` 的 push 无分支过滤 → main 上会再跑一次完整 CI。
+- `jobs-sync`（定时）与 `cron-poll`（仅 dispatch）不因本次合并触发。
+
+### 4. 与 `DB_AUTO_MIGRATE=false`、042/043 已应用的相容性
+
+本次只新增两条迁移：**042**（`llm_catalog_models` 增加 `source`/`revision`/`assignment_id`）、**043**（`profile_events` 审计表，SQLite/Postgres 各一份）。
+
+- 缺 042 → 目录同步/读取报 Postgres `42703 column "source" of relation "llm_catalog_models" does not exist`；hub 同步会记 `[hub] initial catalog sync failed` 并回退 env 内置面，但 admin 目录相关读写会 500。
+- 缺 043 → 认领/解绑写审计报 `42P01 relation "profile_events" does not exist`，认领端点 500。
+- 已应用 042/043 ⇒ 代码与 schema 相容。`DB_AUTO_MIGRATE=false` 下冷启动不会补 DDL，符合"先迁移、后发代码"；但 10-31 的账本实查只到 041，**合并前应再用 5432 串跑 `migrate:pg:status` 确认 042/043 均为 `[applied]`**，不能只凭记忆。
+- 若漏设 `DB_AUTO_MIGRATE`：非只读打开默认 `autoMigrate=true`，冷启动会在 6543 事务池化串上执行迁移；即使 042/043 已应用（无 pending），仍会带来额外冷启动连接，且 advisory lock 在事务池化下不能跨事务持有，多实例并发不可靠。
+
+### 5. 合并前必须就位的环境变量
+
+| 变量 | 用途 | 缺失 / 错误时的具体表现 |
+|---|---|---|
+| `DB_DRIVER=postgres` | 指定 Postgres 方言 | 缺省走 sqlite：Vercel 只读文件系统打不开库文件，且迁移目录会解析到不存在的路径，首个 API 请求 500 |
+| `DATABASE_URL` | 6543 事务池化连接串 | 抛出 `DB_DRIVER=postgres requires DATABASE_URL (or config.databaseUrl).`，函数 500 |
+| `DB_AUTO_MIGRATE=false` | 禁止冷启动 DDL | 未设或非法值→默认 true（非只读）；冷启动对 6543 跑迁移，日志出现迁移/advisory lock 相关报错或超时，不能补 042/043 |
+| `API_MOUNT_PREFIX=/api` | 对外 OAuth redirect_uri 与临时 Cookie Path | 空串→redirect_uri 拼成 `https://域名/auth/...`；Vercel 只把 `/api/*` 转给 Hono，GitHub/Gitee 回跳命中 Astro 404，登录整体不可用 |
+| `CRON_SECRET` | cron 端点 `Authorization: Bearer` 鉴权 | 生产 `createApp` 直接抛 `CRON_SECRET must be set in production (cron endpoints would otherwise trust spoofable x-vercel-cron headers)` → 全部 API 500 |
+| `TRUST_PROXY=true` | 反代后按 `X-Forwarded-For` 取真实 IP 做限流 | 生产未设直接抛 `TRUST_PROXY must be explicitly set in production ...` → 全部 API 500；设 false 则所有用户共享 Vercel 代理 IP，演示限流被全站共用一个桶 |
+| `AUTH_STATE_SECRET` | OAuth state 的 HMAC 固定密钥 | 缺省每进程随机；冷启动/多实例后 state 签名对不上，回调 400、登录需重试（多实例下可稳定复现失败） |
+| `AUTH_CALLBACK_BASE_URL` | 固定 OAuth 回调基址（不带 `/api`） | 缺省按请求 Origin 推导；反代/跨子域时可能拼错，GitHub 返回 `redirect_uri_mismatch`（400），登录失败 |
+| `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` | GitHub 登录 | 任一缺失→`/auth/github/*` 返回 501 `AUTH_NOT_CONFIGURED`，其余功能正常 |
+| `GITEE_OAUTH_CLIENT_ID` / `GITEE_OAUTH_CLIENT_SECRET` | Gitee 登录 | 同上，501 |
+| `GITHUB_TOKEN` | 服务端 GitHub 采集/分析 | 缺失走匿名配额（60 次/时），超限 GitHub 返回 403 rate limit，分析任务失败 |
+| `GITEE_TOKEN` | 可选，提高 Gitee 匿名限额 | 缺失仍可匿名读公开数据；超限约 60 次/分后 403 |
+| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | hub 未启用时的 env 内置面 | 全缺：求职信 `503 LLM_NOT_CONFIGURED`，简历润色 `polish.applied=false, reason=not_configured`；只设 key 缺 `LLM_MODEL` → 启动抛 `LLM_API_KEY is set but LLM_MODEL is missing; set an OpenAI-compatible model id` → 500 |
+| `LLM_ENC_KEY` | BYOK 密文的 AES-256-GCM 密钥 | 缺失/非法→BYOK 保存与读取 503 `ENCRYPTION_NOT_CONFIGURED`（不降级明文） |
+| `MODEL_HUB_URL` + `MODEL_HUB_TOKEN` | 启用 hub 投影同步、凭证解析、用量回传 | 任一缺失或 `MODEL_HUB_DISABLED` 生效→静默不启用，回退 env 内置面（无报错）；两者齐备但不可达→启动日志 warn，用 kit 缓存，无缓存则内置面不可用（求职信 503 / 润色 not_configured） |
+| `MODEL_HUB_CACHE_PATH` | model-kit 投影缓存（0600） | 默认 `./data/model-hub-cache.json`；Vercel 函数文件系统只读，写缓存失败会使同步降级（建议设 `/tmp/model-hub-cache.json`） |
+| `MODEL_HUB_DISABLED` | hub 应急 kill switch | 不设＝正常；设 1 强制停用 hub，回退 env 内置面 |
+| `DEMO_IP_SALT` | 演示 IP 哈希盐 | 缺失每进程随机；冷启动后历史 IP 窗口失效，限流可被重启绕过（不报错） |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push | 缺失：`vapid-key` 端点 503，`agent-tick` 跳过推送（不算失败） |
+| `TAVILY_API_KEY` | 指令式搜岗 | 缺失：`search-tick` 503 并记失败心跳；岗位采集不受影响 |
+| `ADMIN_ACCOUNT_LOGINS` | 平台管理员白名单 | 缺失无人自动 `is_admin=1`，admin 接口 403 |
+| `MCP_API_KEY` | `apps/mcp` 服务密钥 | 仅影响 MCP 进程；生产 `NODE_ENV` 下缺失则 MCP 启动失败，不影响 Vercel API |
+
+### 6. 构建前置（非环境变量，合并前必须解决）
+
+- **Vercel 安装缺少 model-hub（阻塞项）**：`apps/api/package.json` 新增 `@model-hub/model-kit: file:../../model-hub/packages/model-kit`，而 `apps/report/vercel.json` 的 `installCommand` 是 `cd ../.. && pnpm install --frozen-lockfile`，要求仓库根存在 `model-hub/`。该目录在 `.gitignore` 且不是 submodule，Vercel 从 GitHub 克隆的构建环境里不存在 → 安装报 `ERR_PNPM_LINKED_PKG_DIR_NOT_FOUND`（Expected linked package directory .../model-hub/packages/model-kit），Production 部署失败、生产停留在旧版本。CI 与 `deploy-cron-worker` 已各自 clone，Vercel 侧没有对应步骤。合并前需给 Vercel 增加 clone/build 前置，或把 model-kit 版本化发布。
+- **Node 24.22.2**：`engines.node >=24.22.2` + `.npmrc engine-strict=true`；Vercel 项目 Node 版本若仍为 22 → 安装期 `ERR_PNPM_UNSUPPORTED_ENGINE`。
+
+### 7. 结论
+
+代码层面可合并，**部署层面暂不建议合并**：先解决 Vercel 的 model-hub 安装前置（阻塞），再确认 042/043 已应用与第 5 节环境变量齐备。合并本身会真实触发 Vercel Production 部署与 cron worker 部署，需按发布窗口执行。
