@@ -200,23 +200,24 @@ JobAgent 当前状态，截至 2026-10-31。
 
 - **历史同步态**（各批次 commit 链与 PR 并入路径）已归档：item30–36 与 2026-09-20 同步态见 [docs/handoff-archive-2026-09-20.md](docs/handoff-archive-2026-09-20.md)；item28/29 见 [docs/handoff-archive-2026-09-19.md](docs/handoff-archive-2026-09-19.md)；2026-09-14 ~ 2026-09-18 见 [docs/handoff-archive-2026-09-18.md](docs/handoff-archive-2026-09-18.md)；item37–91 与 2026-09-27 及更早变更见 [docs/handoff-archive-2026-10-01.md](docs/handoff-archive-2026-10-01.md)。
 
-## 合并前评估：dev → main（2026-11-05，38 个提交）
+## 合并前评估：dev → main（2026-11-06，45 个提交）
 
-> 只读评估：评估时 `origin/dev` 领先 `origin/main` **38** 个提交；未执行合并、部署或迁移。
+> 只读评估：评估时 `origin/dev` 领先 `origin/main` **45** 个提交（2026-11-05 首版评估为 38 个，
+> 之后新增 7 个：vendor 化 model-kit 的 4 个构建/CI 提交与 3 个文档提交）；未执行合并、部署或迁移。
 
 ### 1. 提交构成
 
 | 类别 | 数量 | 提交 |
 |---|---|---|
 | 功能性（API/storage/report/UI） | 13 | `7f64490e` `b3103a08` `553863f8` `bcb05576` `050c5c2c` `9a930d27` `e41cbb8d` `b7f530bd` `24712fac` `19ce3d3a` `2969aa1a` `fcc93c0f` `c630a4dc` |
-| 构建 / CI / 配置 | 8 | `b00dd2ed` `0e99fb09` `24cb0716` `f085a50d` `8757f43e` `feefce5a` `0512da0a` `5caf066c` |
+| 构建 / CI / 配置 | 12 | `b00dd2ed` `0e99fb09` `24cb0716` `f085a50d` `8757f43e` `feefce5a` `0512da0a` `5caf066c` `d4a0059c` `320437f4` `c21ad5db` `643d2a22` |
 | 测试 | 5 | `d7e13107` `81be21ab` `e16b446f` `f0ea34de` `ed905a25` |
-| 文档 / handoff | 8 | `02a9f545` `ebef3e95` `093d1ea2` `651569f4` `7a64597f` `7a21ffc4` `c91a3a93` `e7e5ffe2` |
+| 文档 / handoff | 11 | `02a9f545` `ebef3e95` `093d1ea2` `651569f4` `7a64597f` `7a21ffc4` `c91a3a93` `e7e5ffe2` `8c9cca12` `668fa272` `4767f815` |
 | 合并提交（历史） | 4 | `5cb80ed1` `77da2ce2` `920b2d4f` `abfcb047` |
 
 按主题：
 
-- **model-hub 接入（W5-1）**：`7f64490e`（迁移 042：`llm_catalog_models` 增加 source/revision/assignment_id）→ `b00dd2ed`（`file:` 依赖 model-kit）→ `b3103a08`（启动/手动目录同步）→ `553863f8`（admin 目录改只读 + hub 同步）→ `bcb05576`（内置凭证解析与 L4 测试）→ `050c5c2c`（用量回传 hub）。配套构建是 `0e99fb09`/`24cb0716`/`f085a50d`/`8757f43e`，测试是 `d7e13107`/`81be21ab`/`e16b446f`。
+- **model-hub 接入（W5-1）**：`7f64490e`（迁移 042：`llm_catalog_models` 增加 source/revision/assignment_id）→ `b00dd2ed`（`file:` 依赖 model-kit）→ `b3103a08`（启动/手动目录同步）→ `553863f8`（admin 目录改只读 + hub 同步）→ `bcb05576`（内置凭证解析与 L4 测试）→ `050c5c2c`（用量回传 hub）。配套构建是 `0e99fb09`/`24cb0716`/`f085a50d`/`8757f43e`，测试是 `d7e13107`/`81be21ab`/`e16b446f`；随后 `d4a0059c`/`320437f4`/`c21ad5db`/`643d2a22` 把 model-kit 从 `file:../../model-hub` 源码依赖改为仓内 `vendor/model-hub-model-kit-0.2.0.tgz`（安装不再需要 model-hub 源码，CI 的 model-hub checkout 只用于新鲜度比对）。
 - **画像归属 P1-1**：`9a930d27`（归属绑定到已校验平台身份）、`e41cbb8d`（`AUTH_PROFILE_ALREADY_CLAIMED`）、`b7f530bd`（条件 `markClaimed` + 迁移 043 `profile_events` 审计）；测试 `f0ea34de`。
 - **UI**：`24712fac` 二级页头 + 固定语言切换，`19ce3d3a` 对比度修复。
 - **API 修复**：`2969aa1a` 墙钟预算注入时钟、`fcc93c0f` CORS 预检允许 Authorization、`c630a4dc` 融合画像 owner 通过 agent 行闸门。
@@ -224,7 +225,7 @@ JobAgent 当前状态，截至 2026-10-31。
 
 ### 2. dev CI 状态
 
-最近 6 次 CI 全部 `success`，无 pending/failed。最新为 `e7e5ffe2`（run 42031762714，2026-11-05T12:59Z）。
+最新 CI 为 `643d2a22`（run `42202305456`，2026-11-06T10:23Z）`success`；当前 dev 无 failed/pending。其间 `8c9cca12`/`668fa272` 两次因 Docker deps 阶段未拷贝 vendor tarball 失败，已由 `643d2a22` 修复并复跑通过。
 
 ### 3. 合并到 main 会触发的部署
 
@@ -269,11 +270,13 @@ JobAgent 当前状态，截至 2026-10-31。
 | `ADMIN_ACCOUNT_LOGINS` | 平台管理员白名单 | 缺失无人自动 `is_admin=1`，admin 接口 403 |
 | `MCP_API_KEY` | `apps/mcp` 服务密钥 | 仅影响 MCP 进程；生产 `NODE_ENV` 下缺失则 MCP 启动失败，不影响 Vercel API |
 
-### 6. 构建前置（非环境变量，合并前必须解决）
+### 6. 构建前置（非环境变量）
 
-- **Vercel 安装缺少 model-hub（阻塞项）**：`apps/api/package.json` 新增 `@model-hub/model-kit: file:../../model-hub/packages/model-kit`，而 `apps/report/vercel.json` 的 `installCommand` 是 `cd ../.. && pnpm install --frozen-lockfile`，要求仓库根存在 `model-hub/`。该目录在 `.gitignore` 且不是 submodule，Vercel 从 GitHub 克隆的构建环境里不存在 → 安装报 `ERR_PNPM_LINKED_PKG_DIR_NOT_FOUND`（Expected linked package directory .../model-hub/packages/model-kit），Production 部署失败、生产停留在旧版本。CI 与 `deploy-cron-worker` 已各自 clone，Vercel 侧没有对应步骤。合并前需给 Vercel 增加 clone/build 前置，或把 model-kit 版本化发布。
-- **Node 24.22.2**：`engines.node >=24.22.2` + `.npmrc engine-strict=true`；Vercel 项目 Node 版本若仍为 22 → 安装期 `ERR_PNPM_UNSUPPORTED_ENGINE`。
+- **model-hub 安装前置已解除（vendor 现状）**：`apps/api/package.json` 已不再是 `file:../../model-hub/packages/model-kit`，而是仓内提交的 `file:../../vendor/model-hub-model-kit-0.2.0.tgz`（`git ls-files vendor/` 可见；`/model-hub` 仍被 `.gitignore` 忽略，仅作本地新鲜度比对源）。因此 `apps/report/vercel.json` 的 `installCommand`（`cd ../.. && pnpm install --frozen-lockfile`）在 Vercel 从 GitHub 克隆的环境里可直接完成安装，不再需要 clone/build model-hub，也不会再出现 `ERR_PNPM_LINKED_PKG_DIR_NOT_FOUND`。
+  - CI 与 `deploy-cron-worker` 里仍保留 model-hub checkout，但用途只是 `scripts/check-model-kit-vendor.mjs` 的**新鲜度比对**（重打包并逐文件比对），不是安装/构建依赖；`Dockerfile` 的 deps 阶段也已 `COPY vendor/` 后再 `pnpm install --frozen-lockfile`。
+  - 维护含义：升级 model-kit 时必须重打包 `vendor/*.tgz`、同步 `apps/api/package.json` 与 `pnpm-lock.yaml`；CI 的新鲜度检查会拦截忘记重打包的情况。
+- **Node 24.22.2（人工确认项）**：`engines.node >=24.22.2` + `.npmrc engine-strict=true`；Vercel 项目 Node 版本若仍为 22 → 安装期 `ERR_PNPM_UNSUPPORTED_ENGINE`。合并前需在 Vercel 项目设置里确认 Node 24.22.2（或设 `NODE_VERSION=24.22.2`）。
 
 ### 7. 结论
 
-代码层面可合并，**部署层面暂不建议合并**：先解决 Vercel 的 model-hub 安装前置（阻塞），再确认 042/043 已应用与第 5 节环境变量齐备。合并本身会真实触发 Vercel Production 部署与 cron worker 部署，需按发布窗口执行。
+代码与构建前置层面可合并：原先唯一的构建阻塞（Vercel 安装缺 model-hub）已由 vendor tarball 解除，剩余 `check:model-kit-vendor` 只做新鲜度比对。**部署层面仍需发布窗口内人工确认**：Vercel 项目 Node 24.22.2、042/043 两条迁移已在生产应用、第 5 节环境变量齐备。合并本身会真实触发 Vercel Production 部署与 cron worker 部署，需按发布窗口执行。
