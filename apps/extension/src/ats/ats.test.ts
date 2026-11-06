@@ -731,7 +731,7 @@ describe('ashby adapter (2026-10-10)', () => {
 describe('workday adapter (2026-10-10)', () => {
   const workdayAdapter = listAdapters().find((a) => a.id === 'workday')!;
 
-  function fakeWorkdayDoc(): {
+  function fakeWorkdayDoc(withCover = false): {
     doc: Document;
     given: HTMLInputElement;
     family: HTMLInputElement;
@@ -741,6 +741,7 @@ describe('workday adapter (2026-10-10)', () => {
     phone: HTMLInputElement;
     phoneCountry: HTMLInputElement;
     consent: HTMLInputElement;
+    cover: HTMLInputElement;
   } {
     // Workday 字段定位键 = data-automation-id（Intel/GDIT 真机探测）
     const mk = (dai: string) => ({
@@ -760,7 +761,18 @@ describe('workday adapter (2026-10-10)', () => {
     const phone = mk('phoneNumber') as unknown as HTMLInputElement;
     const phoneCountry = mk('phoneCountryCode') as unknown as HTMLInputElement;
     const consent = mk('consentCheckbox') as unknown as HTMLInputElement;
-    const all = [given, family, givenLocal, familyLocal, email, phone, phoneCountry, consent];
+    const cover = mk('coverLetter') as unknown as HTMLInputElement;
+    const all = [
+      given,
+      family,
+      givenLocal,
+      familyLocal,
+      email,
+      phone,
+      phoneCountry,
+      consent,
+      ...(withCover ? [cover] : []),
+    ];
     const doc = {
       querySelectorAll: (sel: string) => {
         const out: unknown[] = [];
@@ -770,7 +782,18 @@ describe('workday adapter (2026-10-10)', () => {
       },
       querySelector: () => null,
     } as unknown as Document;
-    return { doc, given, family, givenLocal, familyLocal, email, phone, phoneCountry, consent };
+    return {
+      doc,
+      given,
+      family,
+      givenLocal,
+      familyLocal,
+      email,
+      phone,
+      phoneCountry,
+      consent,
+      cover,
+    };
   }
 
   const fillValues = [
@@ -805,5 +828,14 @@ describe('workday adapter (2026-10-10)', () => {
     workdayAdapter.fill(doc, [{ key: 'full_name', value: 'Cher' }]);
     expect(given.value).toBe('Cher');
     expect(family.value).toBe('');
+  });
+
+  it('matches camelCase coverLetter automation id and prefers cover_letter over summary', () => {
+    const { doc, cover } = fakeWorkdayDoc(true);
+    workdayAdapter.fill(doc, [
+      { key: 'cover_letter', value: 'Dear hiring team, tailored letter.' },
+      { key: 'summary', value: 'fallback summary should not win' },
+    ]);
+    expect(cover.value).toBe('Dear hiring team, tailored letter.');
   });
 });

@@ -1,12 +1,16 @@
 /**
  * Workday ATS 适配器。
  * 特征：*.myworkdayjobs.com 域名 + 全组件化表单（shadow DOM / aria）。
- * 字段定位键 = data-automation-id（真实探测 2026-10-10，Intel/GDIT 两个租户确认）：
+ * 字段定位键 = data-automation-id（真实探测 2026-10-10 Intel/GDIT 两个租户；
+ * 2026-11-06 新增 GDIT Talent Community 公开表单 fixture `workday-gdit-introduce-yourself.html`）：
  *   - legal-name-section_firstName / lastName        → 英文名/姓（Western Script）
  *   - legal-name-section_firstNameLocal / lastNameLocal → 本地（中文）名/姓，刻意不填
  *   - email / phoneNumber                             → 邮箱 / 电话
+ *   - skills（#skillsformfield，placeholder=Search）   → autocomplete 多选，当前不填（见下）
  *   - file-upload-input-ref                           → 简历上传（file input，用户手动，不自动触发）
  *   - consentCheckbox                                 → 同意条款（checkbox，用户主动勾选，不自动勾选）
+ * 未覆盖：账号门槛后的 job application wizard（My Information/Education/Experience/Review）——
+ * 实测 GDIT/SPGI/Nebraska/CareSource 的 “Apply Manually” 均先 Create Account，未抓取。
  * 边界（决策 #15/#20）：只填文本字段并停手；不自动提交、不自动上传、不勾选同意条款。
  * 语义防误写：firstNameLocal/lastNameLocal 是本地语言名（如中文名），用 exclude 排除；
  * phoneCountryCode/phoneDeviceType 等近邻字段用 exclude 排除，避免写错框。
@@ -66,9 +70,18 @@ export const workdayAdapter: AtsAdapter = {
     set(WD_EMAIL, [], valueFor(values, 'email'));
     set(WD_PHONE, EXCLUDE_PHONE_NEIGHBOR, valueFor(values, 'phone'));
     set(['location', 'address'], [], valueFor(values, 'location'));
-    // 求职信：Workday 自定义问题（Why/自我介绍类）在深层组件，data-automation-id 无统一键，
-    // 保持按 label/文本宽松匹配（findLabeledQuestion 已覆盖 shadow DOM）。
-    set(['cover letter', 'summary'], [], valueFor(values, 'cover_letter') ?? valueFor(values, 'summary'));
+    // skills/education/experience：公开样本的 skills 是 #skillsformfield（placeholder=Search）
+    // 的 autocomplete 多选，直接写 value 不会生成 tag；education/experience 只存在于账号门槛
+    // 后的 wizard，无真实样本。故三者均不消费；见 index.ts 语义键落地矩阵。
+    // 求职信：GDIT 公开样本没有 cover-letter 槽；账号门槛后的 wizard 未取到样本，无法确认
+    // 其 label 包裹结构。当前实现走 findFields（name/id/aria-label/placeholder/
+    // data-automation-id 关键字，含 camelCase 的 coverLetter），不是 findLabeledQuestion；
+    // 待拿到 wizard 真实样本后再按实际结构修正。
+    set(
+      ['cover letter', 'coverletter', 'summary'],
+      [],
+      valueFor(values, 'cover_letter') ?? valueFor(values, 'summary'),
+    );
     // Workday 表单无 GitHub/LinkedIn 独立槽（由简历承载），明确不填
     void valueFor(values, 'github_url');
     void valueFor(values, 'linkedin_url');
