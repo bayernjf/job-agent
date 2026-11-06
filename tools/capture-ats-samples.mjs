@@ -4,7 +4,7 @@
  * apps/extension/src/ats/real-dom-regression.test.ts 使用）。
  *
  * 用途：ATS 改版导致扩展适配器静默失效时，重抓样本即可让回归测试变红。
- * 用法：node tools/capture-ats-samples.mjs [--only greenhouse,lever,ashby]
+ * 用法：node tools/capture-ats-samples.mjs [--only greenhouse,lever,ashby,workday]
  *
  * 样本口径：
  * - 全部为**公开申请页**，无个人信息，无需脱敏；EEO/营销同意字段原样保留（适配器本就不得触碰）。
@@ -13,13 +13,17 @@
  * - Lever：`/apply` 页 SSR 直接带完整表单，两家租户（sonarsource/alluxio）以覆盖字段命名差异。
  * - Ashby：整站 React SPA，静态 HTML 无表单，需 Playwright 渲染职位页并点击 Apply 展开表单后存 DOM；
  *   浏览器不可用时跳过（manifest 只登记成功的样本，回归测试按 manifest 迭代，不会因此变红）。
- * - Workday 不抓：myworkdayjobs.com 投递是多步账号门槛流程（需登录建账号），
- *   其 data-automation-id 逻辑继续由 ats.test.ts 的 fake-doc 单测覆盖。
+ * - Workday：job application 是多步 wizard，实测租户（GDIT/SPGI/Nebraska/CareSource）的
+ *   “Apply Manually”均先进 Create Account，无法在不建账号的前提下抓到申请表单。
+ *   改抓同租户公开、无需登录的 Talent Community（Introduce Yourself）表单：它包含
+ *   legal-name-section_* / email / phoneNumber / skills 控件，可覆盖字段结构；
+ *   账号门槛后的 wizard（My Information/Education/Experience/Review）**未覆盖**，
+ *   需在 manifest 的 coverage 字段如实记录。
  *
  * 夹具更新即重跑本脚本并提交结果；回归断言采用「最少写入字段数 + 关键字段落值 + 防误写」，
  * 对常规换岗重抓稳健，对 ATS 真实改版（字段重命名/结构调整）敏感。
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -32,6 +36,8 @@ const UA = {
 const GREENHOUSE_BOARD = 'anthropic';
 const LEVER_BOARDS = ['sonarsource', 'alluxio'];
 const ASHBY_BOARD = 'linear';
+const WORKDAY_INTRODUCE_YOURSELF =
+  'https://gdit.wd5.myworkdayjobs.com/en-US/External_Career_Site/introduceYourself';
 
 /** @param {string} url */
 async function fetchText(url) {
@@ -113,6 +119,39 @@ async function captureAshby() {
   }
 }
 
+async function captureWorkday() {
+  // 账号门槛后的 job application wizard 抓不到（见文件头说明），
+  // 这里抓 GDIT 同租户公开的 Talent Community 表单，覆盖真实 Workday 字段结构。
+  const { chromium } = await import('@playwright/test');
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(WORKDAY_INTRODUCE_YOURSELF, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30_000,
+    });
+    await page.waitForSelector('[data-automation-id="legal-name-section_firstName"]', {
+      timeout: 15_000,
+    });
+    const html = await page.content();
+    if (!/data-automation-id="legal-name-section_firstName"/.test(html)) {
+      throw new Error('渲染后仍无 legal-name 字段，Workday 可能又改版');
+    }
+    return {
+      file: 'workday-gdit-introduce-yourself.html',
+      ats: 'workday',
+      mode: 'rendered-spa-talent-community',
+      coverage:
+        'Talent Community / Introduce Yourself 公开表单：legal-name-section_firstName/lastName、email、phoneNumber、skills（autocomplete 多选）；未覆盖账号门槛后的 job application wizard（My Information/Education/Experience/Review）',
+      sourceUrl: WORKDAY_INTRODUCE_YOURSELF,
+      finalUrl: page.url(),
+      html,
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
 async function main() {
   const only = process.argv.includes('--only')
     ? process.argv[process.argv.indexOf('--only') + 1].split(',')
@@ -125,6 +164,7 @@ async function main() {
   if (want('greenhouse')) tasks.push(['greenhouse', () => captureGreenhouse()]);
   if (want('lever')) for (const slug of LEVER_BOARDS) tasks.push([`lever:${slug}`, () => captureLever(slug)]);
   if (want('ashby')) tasks.push(['ashby', () => captureAshby()]);
+  if (want('workday')) tasks.push(['workday', () => captureWorkday()]);
 
   for (const [name, run] of tasks) {
     try {
@@ -142,12 +182,24 @@ async function main() {
     console.error('没有抓到任何样本，manifest 未更新');
     process.exit(1);
   }
+  // --only 时保留其他已登记样本，避免把 manifest 覆盖成单条。
+  let existingSamples = [];
+  try {
+    const prev = JSON.parse(readFileSync(path.join(OUT_DIR, 'manifest.json'), 'utf8'));
+    existingSamples = prev.samples ?? [];
+  } catch {
+    // 首次运行没有旧 manifest
+  }
+  const merged = [
+    ...existingSamples.filter((s) => !samples.some((n) => n.file === s.file)),
+    ...samples,
+  ];
   const manifest = {
-    note: '真实公开 ATS 申请页 DOM 样本（tools/capture-ats-samples.mjs 录制）。无个人信息无需脱敏；回归测试见 apps/extension/src/ats/real-dom-regression.test.ts。Workday 因多步账号门槛流程不抓，继续由 fake-doc 单测覆盖。',
-    samples,
+    note: '真实公开 ATS DOM 样本（tools/capture-ats-samples.mjs 录制）。无个人信息无需脱敏；回归测试见 apps/extension/src/ats/real-dom-regression.test.ts。Workday 的 job application wizard 有账号门槛，改抓同租户公开的 Talent Community 表单，覆盖范围见该样本的 coverage 字段。',
+    samples: merged,
   };
   writeFileSync(path.join(OUT_DIR, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`manifest.json 更新（${samples.length} 个样本）`);
+  console.log(`manifest.json 更新（${merged.length} 个样本）`);
 }
 
 main().catch((err) => {
