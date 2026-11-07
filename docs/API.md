@@ -825,7 +825,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 | `locale` | `"zh-CN"` \| `"en"` | 否 | 文案语言，默认 `zh-CN`；非法值 400 |
 | `format` | `"json"` \| `"md"` \| `"html"` | 否 | 默认 `json`（仅结构化草稿）；`md`/`html` 额外返回渲染字符串 |
 | `highlightLimit` | number | 否 | 证据亮点上限，正整数，最大 50；默认取内核常量（10） |
-| `polish` | boolean | 否 | 是否请求 **B 档 LLM 措辞润色**，默认 `false`（纯规则版，零费用、零数据外发）。**⚠️ T27②（2026-09-25）起 `polish:true` 仅对已登录 `user` 开放**——匿名/demo 会话传 `true` 返回 **403 `{code:'AUTH_REQUIRED'}`**，因为润色会真实调用付费 LLM，此前任何拿到报告链接的人都能借本端点消耗账号额度。不带 `polish` 的规则版仍公开。见下「LLM 措辞润色」 |
+| `polish` | boolean | 否 | 是否请求 **B 档 LLM 措辞润色**，默认 `false`（纯规则版，零费用、零数据外发）。**⚠️ T27②（2026-09-25）起 `polish:true` 仅对已登录 `user` 开放**——匿名/demo 会话传 `true` 返回 **401 `{code:'AUTH_REQUIRED'}`**，因为润色会真实调用付费 LLM，此前任何拿到报告链接的人都能借本端点消耗账号额度。不带 `polish` 的规则版仍公开。见下「LLM 措辞润色」 |
 
 `local` 子结构（全部可选；空白字符串与不完整行会被服务端/客户端剔除；`personalSite` 须为合法 URL）：
 
@@ -908,7 +908,7 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 ### `POST /resumes/cover-letter`（A 档，2026-10-03）
 
-针对**一个岗位**生成一封**求职信**（LLM 生成性 prose）。与 `/resumes/build` 共用同一套画像/岗位/匹配解析：请求先装配规则版简历草稿（`buildResume`），再把草稿与目标岗位喂给 LLM，产出 `{ subject?, body }`。**只登录 `user` 可调**（LLM 为付费能力，参照 `polish:true` 的 403 模式）；画像已认领时还要求是**画像所有者**（403 `AUTH_NOT_PROFILE_OWNER`），未认领时任意登录用户可用。
+针对**一个岗位**生成一封**求职信**（LLM 生成性 prose）。与 `/resumes/build` 共用同一套画像/岗位/匹配解析：请求先装配规则版简历草稿（`buildResume`），再把草稿与目标岗位喂给 LLM，产出 `{ subject?, body }`。**只登录 `user` 可调**（LLM 为付费能力，与 `polish:true` 同口径：未登录 401 `AUTH_REQUIRED`）；画像已认领时还要求是**画像所有者**（已登录非属主 403 `AUTH_NOT_PROFILE_OWNER`），未认领时任意登录用户可用。
 
 与润色的关键差异：求职信是**全新文本**，没有 resume-core 的契约级防臆造闸可挂，因此防臆造依赖三层：
 
@@ -939,7 +939,8 @@ F10（2026-09-30 起，决策 #17 第一期）招聘方显式自声明的开关�
 
 - `200`：`{ subject?, body, provenance }`。
 - `400`：非法 JSON / 校验失败（`jobId` 与 `posting` 必须恰好给一个）。
-- `403`：匿名/demo 会话 → `{code:'AUTH_REQUIRED'}`。
+- `401`：匿名/demo 会话 → `{code:'AUTH_REQUIRED'}`。
+- `403`：已登录但非画像属主 → `{code:'AUTH_NOT_PROFILE_OWNER'}`。
 - `404`：画像不存在/无快照，或岗位不存在。
 - `502`：`{code:'LLM_FAILED', reason}`——模型调用失败或输出未通过 schema 校验（如实标注，不伪造）。
 - `503`：`{code:'LLM_NOT_CONFIGURED'}`——服务端未配置 `LLM_API_KEY`（默认关闭）。
