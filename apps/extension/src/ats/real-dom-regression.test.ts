@@ -253,7 +253,7 @@ describe('真实 ATS DOM 回归（tests/fixtures/ats）', () => {
     expect(byAuto('email').value).toBe(LOCAL.email);
     expect(byAuto('phoneNumber').value).toBe(LOCAL.phone);
 
-    // 防误写：中间名不是目标槽；skills 是 autocomplete 搜索框，不能被 skills 键硬填；
+    // 防误写：中间名不是目标槽；skills 是 autocomplete 搜索框，任何文本值都不应直接写入；
     // consent 不得自动勾选（账号门槛后的 wizard 未覆盖，见 manifest.coverage）。
     expectEmpty(byAuto('legal-name-section_middleName'), 'middle name');
     expectEmpty(doc.getElementById('skillsformfield'), 'skills autocomplete search');

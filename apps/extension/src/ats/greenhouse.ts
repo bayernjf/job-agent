@@ -47,8 +47,6 @@ export const greenhouseAdapter: AtsAdapter = {
     set(['linkedin'], valueFor(values, 'linkedin_url'));
     set(['website', 'portfolio'], valueFor(values, 'personal_website_url'), ['linkedin', 'github']);
     set(['github'], valueFor(values, 'github_url'), ['linkedin', 'website', 'portfolio']);
-    // skills/education/experience：真实样本（Anthropic embed）只有姓名/邮箱/电话/URL 与
-    // 自定义问题，无这三类独立控件，故本适配器不消费；见 index.ts 语义键落地矩阵。
     // 求职信（阶段 2 A2，cover_letter 语义键优先；缺省回退画像 summary）：
     // 写 cover_letter/summary 命名字段与动机/自我介绍类自定义问题，同一元素只写一次。
     const letter = valueFor(values, 'cover_letter') ?? valueFor(values, 'summary');

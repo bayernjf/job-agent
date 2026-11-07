@@ -71,9 +71,6 @@ export const leverAdapter: AtsAdapter = {
       valueFor(values, 'personal_website_url'),
       ['linkedin', 'github'],
     );
-    // skills/education/experience：真实样本只有 name/email/phone/location/org/urls/cards；
-    // org 是 Current company 单值，不能承接多行 experience，故本适配器不消费；
-    // 见 index.ts 语义键落地矩阵。
     // 求职信（阶段 2 A2，cover_letter 语义键优先；缺省回退画像 summary）：
     // 只写 cover_letter 命名字段与动机/自我介绍类自定义问题；how_did_you_hear 是引流短答案，
     // 不写求职信（与 SUMMARY_HINTS 的排除口径一致）。同一元素只写一次。

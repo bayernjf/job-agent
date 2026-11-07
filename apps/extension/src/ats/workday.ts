@@ -6,7 +6,7 @@
  *   - legal-name-section_firstName / lastName        → 英文名/姓（Western Script）
  *   - legal-name-section_firstNameLocal / lastNameLocal → 本地（中文）名/姓，刻意不填
  *   - email / phoneNumber                             → 邮箱 / 电话
- *   - skills（#skillsformfield，placeholder=Search）   → autocomplete 多选，当前不填（见下）
+ *   - skills（#skillsformfield，placeholder=Search）   → autocomplete 多选，不在 FillValue 语义键内，不填
  *   - file-upload-input-ref                           → 简历上传（file input，用户手动，不自动触发）
  *   - consentCheckbox                                 → 同意条款（checkbox，用户主动勾选，不自动勾选）
  * 未覆盖：账号门槛后的 job application wizard（My Information/Education/Experience/Review）——
@@ -70,9 +70,8 @@ export const workdayAdapter: AtsAdapter = {
     set(WD_EMAIL, [], valueFor(values, 'email'));
     set(WD_PHONE, EXCLUDE_PHONE_NEIGHBOR, valueFor(values, 'phone'));
     set(['location', 'address'], [], valueFor(values, 'location'));
-    // skills/education/experience：公开样本的 skills 是 #skillsformfield（placeholder=Search）
-    // 的 autocomplete 多选，直接写 value 不会生成 tag；education/experience 只存在于账号门槛
-    // 后的 wizard，无真实样本。故三者均不消费；见 index.ts 语义键落地矩阵。
+    // skills 是 autocomplete 搜索框，education/experience 只存在于账号门槛后的 wizard；
+    // 三者都不在 FillValue 语义键内，不提供填充。
     // 求职信：GDIT 公开样本没有 cover-letter 槽；账号门槛后的 wizard 未取到样本，无法确认
     // 其 label 包裹结构。当前实现走 findFields（name/id/aria-label/placeholder/
     // data-automation-id 关键字，含 camelCase 的 coverLetter），不是 findLabeledQuestion；
