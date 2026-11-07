@@ -430,6 +430,17 @@ describe('POST /resumes/build optional LLM polish', () => {
     expect(body.draft.provenance.polish).toBeUndefined();
   });
 
+  it('rejects anonymous polish with 401 (AUTH_REQUIRED)', async () => {
+    const { app, jobId } = await harness();
+    const res = await app.request('/resumes/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: 'p-resume', jobId, polish: true }),
+    });
+    expect(res.status).toBe(401);
+    expect((await res.json()) as { code: string }).toMatchObject({ code: 'AUTH_REQUIRED' });
+  });
+
   it('applies provider wording edits and records provenance (html reflects them)', async () => {
     // 新概述不含任何数字 → 通过防臆造数字闸门
     const polishedSummary = 'A concise, evidence-backed professional profile.';
@@ -654,10 +665,10 @@ describe('POST /resumes/cover-letter (A)', () => {
     return { status: res.status, body: (await res.json()) as Record<string, unknown> };
   }
 
-  it('rejects anonymous callers with 403 (AUTH_REQUIRED)', async () => {
+  it('rejects anonymous callers with 401 (AUTH_REQUIRED)', async () => {
     const { app, jobId } = await harness({ coverLetter: coverProviderWith({ body: 'x' }) });
     const { status, body } = await cover(app, jobId);
-    expect(status).toBe(403);
+    expect(status).toBe(401);
     expect(body.code).toBe('AUTH_REQUIRED');
   });
 
