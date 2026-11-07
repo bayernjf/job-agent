@@ -1182,7 +1182,7 @@ describe('T27 fail-open 收口', () => {
     expect(body.bucket).toBe('match');
   });
 
-  it('rejects polish=true on /resumes/build for anonymous callers (403)', async () => {
+  it('rejects polish=true on /resumes/build for anonymous callers (401)', async () => {
     const app = await createApp({ repos: await freshRepos() });
     const res = await app.request('/resumes/build', {
       method: 'POST',
@@ -1193,7 +1193,7 @@ describe('T27 fail-open 收口', () => {
         polish: true,
       }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
     const body = (await res.json()) as { code?: string };
     expect(body.code).toBe('AUTH_REQUIRED');
   });
