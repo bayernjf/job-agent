@@ -46,7 +46,9 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     }
     const req = parsed.data;
     if (req.polish === true && buildPrincipal.kind !== 'user') {
-      return c.json({ error: 'polish requires an authenticated user', code: 'AUTH_REQUIRED' }, 403);
+      // 统一口径：未登录 401 AUTH_REQUIRED；已登录非属主由 requireProfileOwner 返回 403
+      // AUTH_NOT_PROFILE_OWNER（与 /resumes/cover-letter 一致）。
+      return c.json({ error: 'polish requires an authenticated user', code: 'AUTH_REQUIRED' }, 401);
     }
 
     const storedProfile = await repos.profiles.getById(req.profileId);
@@ -203,9 +205,11 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
   app.post('/resumes/cover-letter', async (c) => {
     const buildPrincipal = c.get('principal');
     if (buildPrincipal.kind !== 'user') {
+      // 统一口径：未登录 401 AUTH_REQUIRED；已登录非属主由 requireProfileOwner 返回 403
+      // AUTH_NOT_PROFILE_OWNER。登录门禁先于属主门禁，但两者状态码/错误码不得混用。
       return c.json(
         { error: 'cover letter requires an authenticated user', code: 'AUTH_REQUIRED' },
-        403,
+        401,
       );
     }
     let body: unknown;
