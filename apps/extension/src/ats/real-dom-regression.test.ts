@@ -237,4 +237,28 @@ describe('真实 ATS DOM 回归（tests/fixtures/ats）', () => {
     expectEmpty(fieldByLabel(doc, 'What country are you based in?'), '国家问题字段');
     expectEmpty(fieldByLabel(doc, 'Has someone at Linear referred you'), '推荐人字段');
   });
+
+  it('workday-gdit-introduce-yourself：公开 Talent Community 表单（申请 wizard 未覆盖）', () => {
+    const meta = sample('workday-gdit-introduce-yourself.html');
+    const doc = loadSample(meta);
+    expect(detectAts(doc)?.id).toBe('workday');
+
+    const written = fillWith(doc, 'workday');
+    expect(written).toBeGreaterThanOrEqual(3);
+
+    const byAuto = (id: string): HTMLInputElement =>
+      doc.querySelector(`[data-automation-id="${id}"]`) as HTMLInputElement;
+    expect(byAuto('legal-name-section_firstName').value).toBe('Ada');
+    expect(byAuto('legal-name-section_lastName').value).toBe('Lovelace');
+    expect(byAuto('email').value).toBe(LOCAL.email);
+    expect(byAuto('phoneNumber').value).toBe(LOCAL.phone);
+
+    // 防误写：中间名不是目标槽；skills 是 autocomplete 搜索框，任何文本值都不应直接写入；
+    // consent 不得自动勾选（账号门槛后的 wizard 未覆盖，见 manifest.coverage）。
+    expectEmpty(byAuto('legal-name-section_middleName'), 'middle name');
+    expectEmpty(doc.getElementById('skillsformfield'), 'skills autocomplete search');
+    expect((byAuto('consentCheckbox') as HTMLInputElement).checked, 'consent 不得自动勾选').toBe(
+      false,
+    );
+  });
 });

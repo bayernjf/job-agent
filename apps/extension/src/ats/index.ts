@@ -33,9 +33,6 @@ export interface FillValue {
     | 'github_url'
     | 'linkedin_url'
     | 'personal_website_url'
-    | 'skills'
-    | 'education'
-    | 'experience'
     | 'cover_letter';
   value: string;
 }
@@ -80,28 +77,11 @@ export function toFillValues(
       .map((s) => `${s.name} (${s.confidence})`)
       .join(skillSeparator)}`,
   });
-  values.push({ key: 'skills', value: profile.skills.map((s) => s.name).join(', ') });
   if (local.email) values.push({ key: 'email', value: local.email });
   if (local.phone) values.push({ key: 'phone', value: local.phone });
   if (local.location) values.push({ key: 'location', value: local.location });
   if (local.linkedinUrl) values.push({ key: 'linkedin_url', value: local.linkedinUrl });
   if (local.personalWebsite) values.push({ key: 'personal_website_url', value: local.personalWebsite });
-  if (local.education?.length) {
-    values.push({
-      key: 'education',
-      value: local.education
-        .map((e) => [e.school, e.degree, e.start && e.end ? `${e.start}–${e.end}` : ''].filter(Boolean).join(', '))
-        .join('\n'),
-    });
-  }
-  if (local.experience?.length) {
-    values.push({
-      key: 'experience',
-      value: local.experience
-        .map((e) => [e.company, e.title, e.start && e.end ? `${e.start}–${e.end}` : ''].filter(Boolean).join(', '))
-        .join('\n'),
-    });
-  }
   return values;
 }
 

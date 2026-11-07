@@ -45,6 +45,11 @@ useDefault = true
 #    own public HTML, not a credential of this project. The slimming commit
 #    657ba64 removed it from the file, but gitleaks scans the commit range, so
 #    the historical addition is what trips the `generic-api-key` rule.
+# 5) a Workday prelogin page token captured in the GDIT fixture (commit 83f55bb)
+#    — an anonymous-browser bootstrap value served with the public form, not a
+#    credential of this project. It is redacted in the current fixture file, but
+#    gitleaks scans the commit range, so the historical addition still trips
+#    `generic-api-key`.
 #
 #    They are pinned as exact values, not shape regexes, on purpose: reCAPTCHA
 #    *secret* keys share the `6L…` shape with site keys, and Rollbar
@@ -67,4 +72,5 @@ regexes = [
   '^e33f87f8-88ec-4e1a-9a13-df9bbb1d8120$',
   '^6a247c6ff13012d02fde17377f0b857b$',
   '^5dccbd5a7b5b760c47b85c725c40c6fea92aad9189df71d8e04818fa175f89b6$',
+  '^0693882e-baa1-47e5-bbcc-b389369b1a80$',
 ]

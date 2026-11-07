@@ -1472,7 +1472,7 @@ packages:
     hasBin: true
 
   '@model-hub/model-kit@file:vendor/model-hub-model-kit-0.3.0.tgz':
-    resolution: {integrity: sha512-oSTNqhnLkvzfLs6tt8U4Xc4B99iCFxMr0E9lPQC0mwq86PtTKgVFkPQjUDnmuQGPHP5XUUXZ8d6pHYFIJJEPow==, tarball: file:vendor/model-hub-model-kit-0.3.0.tgz}
+    resolution: {integrity: sha512-Ne35ImOQX+kOPbTQ6ovz2V3GsmKwKL3zJdUnJyQrRnr2bSS5I/sfU3Erq638lMAxj1Cjt2iLvTy5zwaUtiS4ig==, tarball: file:vendor/model-hub-model-kit-0.3.0.tgz}
     version: 0.3.0
     engines: {node: '>=22.0.0'}
 

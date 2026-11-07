@@ -57,7 +57,6 @@ describe('toFillValues', () => {
     expect(byKey.full_name).toBe('Demo Dev');
     expect(byKey.github_url).toBe('https://github.com/demo-dev');
     expect(byKey.headline).toBe('TypeScript 后端工程师，开源维护者');
-    expect(byKey.skills).toBe('TypeScript');
     expect(byKey.summary).toContain('GitHub 验证');
     expect(byKey.summary).toContain('TypeScript (0.9)');
   });
@@ -91,16 +90,12 @@ describe('toFillValues', () => {
       phone: '123',
       location: 'Hangzhou',
       linkedinUrl: 'https://linkedin.com/in/a',
-      education: [{ school: 'ZJU', degree: 'BS' }],
-      experience: [{ company: 'ACME', title: 'SDE' }],
     });
     const byKey = Object.fromEntries(values.map((v) => [v.key, v.value]));
     expect(byKey.email).toBe('a@b.com');
     expect(byKey.phone).toBe('123');
     expect(byKey.location).toBe('Hangzhou');
     expect(byKey.linkedin_url).toBe('https://linkedin.com/in/a');
-    expect(byKey.education).toContain('ZJU');
-    expect(byKey.experience).toContain('ACME');
   });
 
   it('omits absent local fields', () => {
@@ -200,7 +195,6 @@ describe('greenhouse summary → question_* mapping', () => {
     { key: 'github_url' as const, value: 'https://github.com/demo-dev' },
     { key: 'headline' as const, value: 'TypeScript 后端工程师' },
     { key: 'summary' as const, value: 'TypeScript 后端工程师，开源维护者。' },
-    { key: 'skills' as const, value: 'TypeScript' },
   ];
 
   it('writes summary into a motivation-style custom question', () => {
@@ -421,7 +415,6 @@ describe('lever summary → questions[*] mapping', () => {
       { key: 'github_url' as const, value: 'https://github.com/demo-dev' },
       { key: 'headline' as const, value: 'TypeScript 后端工程师' },
       { key: 'summary' as const, value: 'TypeScript 后端工程师，开源维护者。' },
-      { key: 'skills' as const, value: 'TypeScript' },
     ];
     const written = leverAdapter.fill(doc, values);
     expect(written).toBe(1);
@@ -697,7 +690,6 @@ describe('ashby adapter (2026-10-10)', () => {
     { key: 'github_url' as const, value: 'https://github.com/demo-dev' },
     { key: 'headline' as const, value: 'TypeScript 后端工程师' },
     { key: 'summary' as const, value: 'TypeScript 后端工程师，开源维护者。' },
-    { key: 'skills' as const, value: 'TypeScript' },
   ];
 
   it('fills system fields and label-matched custom questions', () => {
@@ -731,7 +723,7 @@ describe('ashby adapter (2026-10-10)', () => {
 describe('workday adapter (2026-10-10)', () => {
   const workdayAdapter = listAdapters().find((a) => a.id === 'workday')!;
 
-  function fakeWorkdayDoc(): {
+  function fakeWorkdayDoc(withCover = false): {
     doc: Document;
     given: HTMLInputElement;
     family: HTMLInputElement;
@@ -741,6 +733,7 @@ describe('workday adapter (2026-10-10)', () => {
     phone: HTMLInputElement;
     phoneCountry: HTMLInputElement;
     consent: HTMLInputElement;
+    cover: HTMLInputElement;
   } {
     // Workday 字段定位键 = data-automation-id（Intel/GDIT 真机探测）
     const mk = (dai: string) => ({
@@ -760,7 +753,18 @@ describe('workday adapter (2026-10-10)', () => {
     const phone = mk('phoneNumber') as unknown as HTMLInputElement;
     const phoneCountry = mk('phoneCountryCode') as unknown as HTMLInputElement;
     const consent = mk('consentCheckbox') as unknown as HTMLInputElement;
-    const all = [given, family, givenLocal, familyLocal, email, phone, phoneCountry, consent];
+    const cover = mk('coverLetter') as unknown as HTMLInputElement;
+    const all = [
+      given,
+      family,
+      givenLocal,
+      familyLocal,
+      email,
+      phone,
+      phoneCountry,
+      consent,
+      ...(withCover ? [cover] : []),
+    ];
     const doc = {
       querySelectorAll: (sel: string) => {
         const out: unknown[] = [];
@@ -770,7 +774,18 @@ describe('workday adapter (2026-10-10)', () => {
       },
       querySelector: () => null,
     } as unknown as Document;
-    return { doc, given, family, givenLocal, familyLocal, email, phone, phoneCountry, consent };
+    return {
+      doc,
+      given,
+      family,
+      givenLocal,
+      familyLocal,
+      email,
+      phone,
+      phoneCountry,
+      consent,
+      cover,
+    };
   }
 
   const fillValues = [
@@ -805,5 +820,14 @@ describe('workday adapter (2026-10-10)', () => {
     workdayAdapter.fill(doc, [{ key: 'full_name', value: 'Cher' }]);
     expect(given.value).toBe('Cher');
     expect(family.value).toBe('');
+  });
+
+  it('matches camelCase coverLetter automation id and prefers cover_letter over summary', () => {
+    const { doc, cover } = fakeWorkdayDoc(true);
+    workdayAdapter.fill(doc, [
+      { key: 'cover_letter', value: 'Dear hiring team, tailored letter.' },
+      { key: 'summary', value: 'fallback summary should not win' },
+    ]);
+    expect(cover.value).toBe('Dear hiring team, tailored letter.');
   });
 });
