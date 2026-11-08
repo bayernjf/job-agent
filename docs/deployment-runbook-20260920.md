@@ -262,6 +262,40 @@ services:
 用法：`docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile with-pg up -d`。
 （是否把该 override 文件作为 `*.example.yml` 入库，待形态决策后再定，避免固化未决拓扑。）
 
+## 6.1 代码回滚锚点
+
+三个服务镜像由 `JOB_AGENT_IMAGE_TAG` 控制（默认 `latest`，与现有 compose 行为一致）：
+
+- `job-agent-api:<tag>`
+- `job-agent-worker:<tag>`
+- `job-agent-report:<tag>`
+
+每次发布前给当前三个镜像留档，**保留 3 个版本**（当前 + 2 个上一版）：
+
+```bash
+# 发布前：给当前镜像打时间戳
+for s in api worker report; do
+  docker tag "job-agent-$s:latest" "job-agent-$s:$(date -u +%Y%m%d-%H%M)"
+done
+
+# 回滚：把 compose 钉到上一版 tag 并重建
+JOB_AGENT_IMAGE_TAG=20261108-1400 \
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile with-pg up -d
+```
+
+**这条路径会在什么情况下失效**
+
+- tag 只在本机 Docker daemon：换机、清理镜像或 CI runner 重建后不存在；本仓没有
+  registry 推送流程，不能当作跨机回滚方案。
+- 默认值 `latest` 是最后一次构建的产物；不带显式 tag 的 `up -d` 只是重新部署最新版。
+- 构建期变量（如 `PUBLIC_API_BASE`）已写进镜像，回滚镜像会同时回滚该值；如果
+  域名/API 地址已变，需要重新构建而不是只回滚 tag。
+- 需要跨机保留时用 `docker save job-agent-<service>:<tag> | gzip` 异地保存，
+  目标机 `docker load`；这仍不等价于 registry 的不可变 digest。
+
+回滚镜像只回代码；数据库回滚另走 `tools/backup-db.sh` 的 dump（本仓尚无恢复脚本，
+恢复步骤未演练）。
+
 ## 7. 定时任务（cron）
 
 容器内用 worker（或 api）镜像跑 CLI，命令前缀 `node apps/cli/dist/index.js`。

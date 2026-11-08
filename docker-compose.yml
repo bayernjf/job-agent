@@ -40,6 +40,7 @@ services:
       retries: 5
 
   api:
+    image: job-agent-api:${JOB_AGENT_IMAGE_TAG:-latest}
     build:
       context: .
       target: api
@@ -59,6 +60,7 @@ services:
         required: false
 
   worker:
+    image: job-agent-worker:${JOB_AGENT_IMAGE_TAG:-latest}
     build:
       context: .
       target: worker
@@ -76,6 +78,7 @@ services:
         required: false
 
   report:
+    image: job-agent-report:${JOB_AGENT_IMAGE_TAG:-latest}
     build:
       context: .
       target: report
