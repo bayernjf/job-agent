@@ -82,6 +82,17 @@ test.describe('locale negotiation and home render', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('输入用户名');
     await expect(page.getByRole('button', { name: '生成画像' })).toBeVisible();
   });
+
+  test('states privacy limits and no auto-submit near the form', async ({ page }) => {
+    await page.goto('/en/');
+    const privacy = page.getByTestId('form-privacy-note');
+    await expect(privacy).toContainText('Public data only');
+    await expect(privacy.getByRole('link', { name: 'Privacy policy' })).toHaveAttribute(
+      'href',
+      '/en/privacy',
+    );
+    await expect(page.getByTestId('no-auto-submit')).toContainText('never submit it for you');
+  });
 });
 
 test.describe('AnalyzeForm flow', () => {
