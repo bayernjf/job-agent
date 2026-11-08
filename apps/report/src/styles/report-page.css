@@ -122,12 +122,8 @@
     padding: var(--ja-space-3);
   }
 
-  /* 结论卡已经展示可信度徽章与置信度，窄屏头部不再重复同一枚徽章，
-     给首屏腾出空间给三条结论与 CTA。 */
-  .header-auth-badge {
-    display: none;
-  }
-
+  /* 头部徽章是 responsive 守护里的可见控件，窄屏保持显示；首屏空间靠
+     收紧间距与结论行排版来腾出，而不是隐藏控件。 */
   .profile-header {
     gap: var(--ja-space-2);
   }
