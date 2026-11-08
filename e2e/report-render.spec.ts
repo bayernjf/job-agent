@@ -76,10 +76,10 @@ test.describe('report page SSR render', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
 
-    await expect(page.getByTestId('lead-authenticity')).toBeInViewport();
-    await expect(page.getByTestId('lead-ability')).toBeInViewport();
-    await expect(page.getByTestId('lead-activity')).toBeInViewport();
-    await expect(page.getByTestId('lead-cta')).toBeInViewport();
+    await expect(page.getByTestId('lead-authenticity')).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('lead-ability')).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('lead-activity')).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('lead-cta')).toBeInViewport({ ratio: 1 });
   });
 
   test('exposes OG share meta and the proof card panel (design-share-proof-card-20261030)', async ({ page }) => {
