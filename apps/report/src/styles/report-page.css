@@ -53,6 +53,115 @@
   font-size: var(--ja-text-lg);
 }
 
+/* 结论先行（2026-11-08 市场报告 A 类）：首屏三条结论 + 一条 CTA。
+   375px 下三条结论纵向排列，仍保持在首屏内可见。 */
+.report-lead .lead-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ja-space-3);
+  flex-wrap: wrap;
+}
+
+.report-lead .lead-head h2 {
+  margin-bottom: 0;
+}
+
+.lead-path {
+  flex-basis: 100%;
+  margin: 0 0 var(--ja-space-2);
+  font-size: var(--ja-text-sm);
+  max-width: 60ch;
+}
+
+.lead-conclusions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ja-space-3);
+  margin-top: var(--ja-space-4);
+}
+
+.lead-conclusion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ja-space-1);
+  min-width: 0;
+  padding: var(--ja-space-3);
+  border: 1px solid var(--ja-color-border);
+  border-radius: var(--ja-radius-md);
+}
+
+.lead-label {
+  color: var(--ja-color-fg-muted);
+  font-size: var(--ja-text-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lead-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ja-space-3);
+  flex-wrap: wrap;
+  margin-top: var(--ja-space-3);
+}
+
+.proof-section {
+  margin-top: var(--ja-space-4);
+}
+
+@media (max-width: 640px) {
+  .report-lead {
+    padding: var(--ja-space-3);
+  }
+
+  /* 375px 首屏优先保证三条结论与 CTA：引导句与可验证横幅让位给 CTA 下方的证据入口 */
+  .lead-path,
+  .lead-basis,
+  .report-lead .ja-alert--verifiable {
+    display: none;
+  }
+
+  .report-lead h2 {
+    font-size: var(--ja-text-base);
+    margin-bottom: 0;
+  }
+
+  .report-lead .headline {
+    margin-top: var(--ja-space-1);
+    font-size: var(--ja-text-sm);
+  }
+
+  .lead-conclusions {
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin-top: var(--ja-space-1);
+  }
+
+  .lead-conclusion {
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--ja-space-1);
+    padding: 2px 0;
+    border: 0;
+    border-top: 1px solid var(--ja-color-border);
+    font-size: var(--ja-text-sm);
+  }
+
+  .lead-conclusion:first-child {
+    border-top: 0;
+  }
+
+  .lead-label {
+    font-size: var(--ja-text-xs);
+  }
+
+  .lead-actions {
+    margin-top: var(--ja-space-2);
+  }
+}
+
 /* 下一步动作（T10）：只用既有 token，不引入新色板 */
 .next-steps-lead {
   margin-bottom: var(--ja-space-3);
