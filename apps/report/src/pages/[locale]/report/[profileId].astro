@@ -124,9 +124,42 @@ if (profile.semantic) {
   }
 }
 
+// 结论先行（2026-11-08 市场报告 A 类）：首屏三条结论 + 一条 CTA。
+// 可信度＝产品差异点；能力标签＝画像主体；持续投入＝证据是否支撑前两条。
+const severityRank: Record<string, number> = { risk: 0, warn: 1, info: 2 };
+const leadSignals = [...profile.authenticity.signals]
+  .sort((a, b) => (severityRank[a.severity] ?? 3) - (severityRank[b.severity] ?? 3))
+  .slice(0, 2);
+const leadSkills = profile.skillTags.slice(0, 3).map((tag) => tag.name);
+const leadLongevity =
+  profile.activity.longevityMonths !== undefined
+    ? t('report.activity.months', { count: profile.activity.longevityMonths })
+    : null;
+const leadCadence = profile.activity.cadenceSummary ?? null;
+const leadExternal =
+  (profile.collaboration.externalMergedContributions?.length ?? 0) > 0
+    ? `${t('report.collaboration.externalMerged')} × ${profile.collaboration.externalMergedContributions!.length}`
+    : null;
+const leadPrimary = leadLongevity ?? leadCadence ?? leadExternal;
+const leadSecondary = [leadCadence, leadExternal].filter(
+  (item): item is string => Boolean(item) && item !== leadPrimary,
+);
+const hasEvidenceSection =
+  profile.skillTags.some((tag) => resolveEvidence(tag.evidenceRefs).length > 0) ||
+  profile.authenticity.signals.some((s) => resolveEvidence(s.evidenceRefs).length > 0);
+const leadCta = isRecruiter
+  ? { href: '#section-authenticity', label: t('report.lead.ctaVerify') }
+  : !subjectClaimed
+    ? { href: '#claim-section', label: t('report.lead.ctaClaim') }
+    : isProfileOwner
+      ? { href: '#resume-section', label: t('report.lead.ctaResume') }
+      : hasEvidenceSection
+        ? { href: '#section-evidence', label: t('report.lead.ctaEvidence') }
+        : { href: '#section-authenticity', label: t('report.lead.ctaVerify') };
+
 // 右侧章节锚点导航（design-ui-polish V3）：只列服务端确认真实渲染的章节
 const tocItems: { id: string; label: string }[] = [
-  { id: 'section-summary', label: t('report.summary.title') },
+  { id: 'section-summary', label: t('report.lead.title') },
   { id: 'section-authenticity', label: t('report.authenticity.title') },
   ...(profile.skillTags.length > 0 ? [{ id: 'section-skills', label: t('report.skills.title') }] : []),
   ...(profile.semantic ? [{ id: 'section-semantic', label: t('report.semantic.title') }] : []),
@@ -244,7 +277,7 @@ const tocItems: { id: string; label: string }[] = [
                S3 按主体撤回的入口降级到页面底部「数据主体权益」区（data-rights），本人/访客
                都可从页脚找到；已软挂起（isHeldForRemoval）由顶部标注条接管，底部不再重复。 */
           }
-        <span class={`ja-badge ${authClass}`} data-testid="auth-badge">
+        <span class={`ja-badge ${authClass} header-auth-badge`} data-testid="auth-badge">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" set:html={statusIconPath(profile.authenticity.status)} />
           {t(authLabelKey)}
         </span>
@@ -272,6 +305,67 @@ const tocItems: { id: string; label: string }[] = [
           wechatHint={t('report.share.wechatHint')}
         />
       </div>
+    </section>
+
+    <!-- 结论先行（2026-11-08 市场报告 A 类）：新用户跑完一次后，首屏先给三条结论
+         与一条 CTA，而不是先滚过分享卡与行动卡；证据仍在下方，可点回原始记录。 -->
+    <section class="ja-card report-lead" id="section-summary" data-testid="report-lead">
+      <div class="lead-head">
+        <h2>{t('report.lead.title')}</h2>
+        {!isRecruiter && !subjectClaimed && (
+          <p class="ja-muted lead-path">{t('report.lead.path')}</p>
+        )}
+      </div>
+      <p class="headline">{headline}</p>
+      <div class="lead-conclusions">
+        <div class="lead-conclusion" data-testid="lead-authenticity">
+          <span class="lead-label">{t('report.lead.authenticity')}</span>
+          <span class="lead-verdict">
+            <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
+            <span class="ja-muted">
+              {t('report.authenticity.confidence')}: {formatPercent(profile.authenticity.confidence, locale)}
+            </span>
+          </span>
+          {leadSignals.length > 0 && (
+            <span class="ja-muted lead-basis">
+              {t('report.lead.basis')}: {leadSignals.map((s) => composeSignalLabel(s.code, locale, s.label)).join(' · ')}
+            </span>
+          )}
+        </div>
+        <div class="lead-conclusion" data-testid="lead-ability">
+          <span class="lead-label">{t('report.lead.ability')}</span>
+          <strong>{leadSkills.length > 0 ? leadSkills.join(' · ') : t('report.lead.notEnough')}</strong>
+        </div>
+        <div class="lead-conclusion" data-testid="lead-activity">
+          <span class="lead-label">{t('report.lead.activity')}</span>
+          {
+            leadPrimary ? (
+              <>
+                <strong>{leadPrimary}</strong>
+                {
+                  leadSecondary.map((item) => (
+                    <span class="ja-muted lead-detail">{item}</span>
+                  ))
+                }
+              </>
+            ) : (
+              <strong>{t('report.lead.notEnough')}</strong>
+            )
+          }
+        </div>
+      </div>
+      <p class="ja-alert ja-alert--verifiable">{t('report.verifiability.banner')}</p>
+      <div class="lead-actions">
+        <a class="ja-btn" href={leadCta.href} data-testid="lead-cta">{leadCta.label}</a>
+        {!isRecruiter && hasEvidenceSection && (
+          <a class="ja-link verifiability-cta" href="#section-evidence" data-testid="verifiability-cta">
+            {t('report.verifiability.cta')}
+          </a>
+        )}
+      </div>
+    </section>
+
+    <section class="proof-section">
       {
         /* 能力证明卡（design-share-proof-card-20261030）：分享工具面板，
            只渲染快照已有结论；不进 TOC（是工具，不是报告章节）。 */
@@ -449,24 +543,6 @@ const tocItems: { id: string; label: string }[] = [
       <span class="ja-muted">{t('report.generatedAt')}: {generatedAt}</span>
       <span class="ja-muted">{t('report.analyzerVersion')}: {profile.analyzerVersion}</span>
       <span class="ja-muted">{t('report.dataWindow')}: {since} – {until}</span>
-    </section>
-
-    <!-- 概述 -->
-    <section class="ja-card" id="section-summary">
-      <h2>{t('report.summary.title')}</h2>
-      <p class="headline">{headline}</p>
-      <p class="ja-alert ja-alert--verifiable">
-        {t('report.verifiability.banner')}
-        {
-          /* 第一优先①（2026-10-29）：把「可复核」从纯文字变成 C 端显性入口——
-             banner 锚点直达证据溯源区，对抗 GitHub Skills 轻量徽章「不可点开核验」的心智 */
-          !isRecruiter && (
-            <a class="ja-link verifiability-cta" href="#section-evidence" data-testid="verifiability-cta">
-              {t('report.verifiability.cta')}
-            </a>
-          )
-        }
-      </p>
     </section>
 
     <!-- 真实性评估 -->
