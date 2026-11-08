@@ -98,6 +98,13 @@
   text-transform: uppercase;
 }
 
+.lead-verdict {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--ja-space-1) var(--ja-space-2);
+}
+
 .lead-actions {
   display: flex;
   align-items: center;
@@ -115,9 +122,24 @@
     padding: var(--ja-space-3);
   }
 
+  /* 结论卡已经展示可信度徽章与置信度，窄屏头部不再重复同一枚徽章，
+     给首屏腾出空间给三条结论与 CTA。 */
+  .header-auth-badge {
+    display: none;
+  }
+
+  .profile-header {
+    gap: var(--ja-space-2);
+  }
+
+  .header-meta {
+    gap: var(--ja-space-2);
+  }
+
   /* 375px 首屏优先保证三条结论与 CTA：引导句与可验证横幅让位给 CTA 下方的证据入口 */
   .lead-path,
   .lead-basis,
+  .lead-detail,
   .report-lead .ja-alert--verifiable {
     display: none;
   }
@@ -142,11 +164,20 @@
     flex-direction: row;
     align-items: baseline;
     flex-wrap: wrap;
-    gap: var(--ja-space-1);
+    gap: 2px var(--ja-space-1);
     padding: 2px 0;
     border: 0;
     border-top: 1px solid var(--ja-color-border);
     font-size: var(--ja-text-sm);
+  }
+
+  /* 让徽章与置信度直接参与结论行排版，避免 verdict 内层再换行多出一行 */
+  .lead-verdict {
+    display: contents;
+  }
+
+  .lead-conclusion .ja-muted {
+    font-size: var(--ja-text-xs);
   }
 
   .lead-conclusion:first-child {

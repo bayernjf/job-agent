@@ -131,15 +131,19 @@ const leadSignals = [...profile.authenticity.signals]
   .sort((a, b) => (severityRank[a.severity] ?? 3) - (severityRank[b.severity] ?? 3))
   .slice(0, 2);
 const leadSkills = profile.skillTags.slice(0, 3).map((tag) => tag.name);
-const leadActivity: string[] = [
+const leadLongevity =
   profile.activity.longevityMonths !== undefined
     ? t('report.activity.months', { count: profile.activity.longevityMonths })
-    : null,
-  profile.activity.cadenceSummary ?? null,
+    : null;
+const leadCadence = profile.activity.cadenceSummary ?? null;
+const leadExternal =
   (profile.collaboration.externalMergedContributions?.length ?? 0) > 0
     ? `${t('report.collaboration.externalMerged')} × ${profile.collaboration.externalMergedContributions!.length}`
-    : null,
-].filter((item): item is string => Boolean(item));
+    : null;
+const leadPrimary = leadLongevity ?? leadCadence ?? leadExternal;
+const leadSecondary = [leadCadence, leadExternal].filter(
+  (item): item is string => Boolean(item) && item !== leadPrimary,
+);
 const hasEvidenceSection =
   profile.skillTags.some((tag) => resolveEvidence(tag.evidenceRefs).length > 0) ||
   profile.authenticity.signals.some((s) => resolveEvidence(s.evidenceRefs).length > 0);
@@ -273,7 +277,7 @@ const tocItems: { id: string; label: string }[] = [
                S3 按主体撤回的入口降级到页面底部「数据主体权益」区（data-rights），本人/访客
                都可从页脚找到；已软挂起（isHeldForRemoval）由顶部标注条接管，底部不再重复。 */
           }
-        <span class={`ja-badge ${authClass}`} data-testid="auth-badge">
+        <span class={`ja-badge ${authClass} header-auth-badge`} data-testid="auth-badge">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" set:html={statusIconPath(profile.authenticity.status)} />
           {t(authLabelKey)}
         </span>
@@ -316,9 +320,11 @@ const tocItems: { id: string; label: string }[] = [
       <div class="lead-conclusions">
         <div class="lead-conclusion" data-testid="lead-authenticity">
           <span class="lead-label">{t('report.lead.authenticity')}</span>
-          <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
-          <span class="ja-muted">
-            {t('report.authenticity.confidence')}: {formatPercent(profile.authenticity.confidence, locale)}
+          <span class="lead-verdict">
+            <span class={`ja-badge ${authClass}`}>{t(authLabelKey)}</span>
+            <span class="ja-muted">
+              {t('report.authenticity.confidence')}: {formatPercent(profile.authenticity.confidence, locale)}
+            </span>
           </span>
           {leadSignals.length > 0 && (
             <span class="ja-muted lead-basis">
@@ -333,10 +339,14 @@ const tocItems: { id: string; label: string }[] = [
         <div class="lead-conclusion" data-testid="lead-activity">
           <span class="lead-label">{t('report.lead.activity')}</span>
           {
-            leadActivity.length > 0 ? (
+            leadPrimary ? (
               <>
-                <strong>{leadActivity[0]}</strong>
-                {leadActivity.length > 1 && <span class="ja-muted">{leadActivity.slice(1).join(' · ')}</span>}
+                <strong>{leadPrimary}</strong>
+                {
+                  leadSecondary.map((item) => (
+                    <span class="ja-muted lead-detail">{item}</span>
+                  ))
+                }
               </>
             ) : (
               <strong>{t('report.lead.notEnough')}</strong>
