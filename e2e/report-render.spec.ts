@@ -31,8 +31,8 @@ test.describe('report page SSR render', () => {
     await expect(page.locator('.skill-tag', { hasText: 'TypeScript' })).toBeVisible();
     await expect(page.locator('.skill-tag', { hasText: 'React' })).toBeVisible();
 
-    // 真实性信号
-    await expect(page.getByText('External PRs merged')).toBeVisible();
+    // 真实性信号（结论卡的「主要依据」也在页面上，故限定在真实性分区内）
+    await expect(page.locator('#section-authenticity').getByText('External PRs merged')).toBeVisible();
 
     // 外部协作
     await expect(page.getByText('octo/awesome-lib#12')).toBeVisible();
@@ -48,6 +48,38 @@ test.describe('report page SSR render', () => {
     const dispute = page.locator('.caveats .dispute a');
     await expect(dispute).toBeVisible();
     await expect(dispute).toHaveAttribute('href', /^mailto:dispute@job-agent\.bayjf\.com\?subject=.*profe2efixture/);
+  });
+
+  test('leads with three conclusions and a CTA before the proof card', async ({ page }) => {
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+
+    const lead = page.getByTestId('report-lead');
+    await expect(lead).toBeVisible();
+    await expect(lead.locator('.headline')).toHaveText(
+      'TypeScript developer with 24 months of GitHub activity',
+    );
+    await expect(lead.getByTestId('lead-authenticity')).toContainText('Likely authentic');
+    await expect(lead.getByTestId('lead-ability')).toContainText('TypeScript');
+    await expect(lead.getByTestId('lead-activity')).toContainText('24 months');
+    await expect(lead.getByTestId('lead-cta')).toBeVisible();
+
+    const leadBeforeProof = await page.evaluate(() => {
+      const leadNode = document.querySelector('[data-testid="report-lead"]');
+      const proofNode = document.querySelector('#proof-card');
+      if (!leadNode || !proofNode) return false;
+      return Boolean(leadNode.compareDocumentPosition(proofNode) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(leadBeforeProof).toBe(true);
+  });
+
+  test('keeps conclusions and CTA above the fold at 375px', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto(`/en/report/${FIXTURE_PROFILE_ID}`);
+
+    await expect(page.getByTestId('lead-authenticity')).toBeInViewport();
+    await expect(page.getByTestId('lead-ability')).toBeInViewport();
+    await expect(page.getByTestId('lead-activity')).toBeInViewport();
+    await expect(page.getByTestId('lead-cta')).toBeInViewport();
   });
 
   test('exposes OG share meta and the proof card panel (design-share-proof-card-20261030)', async ({ page }) => {
