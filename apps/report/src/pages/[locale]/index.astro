@@ -82,6 +82,11 @@ const notice = Astro.url.searchParams.get('notfound')
         />
       </div>
 
+      <p class="ja-muted form-privacy" data-testid="form-privacy-note">
+        {t('home.formPrivacy')}
+        <a class="ja-link" href={`/${locale}/privacy`}>{t('home.privacyLink')}</a>
+      </p>
+
       <PresetList
         client:load
         locale={locale}
@@ -99,6 +104,12 @@ const notice = Astro.url.searchParams.get('notfound')
       />
     </section>
 
+    {
+      /* 真实报告截图位（2026-11-08 市场报告 A 类）：放在 hero 与 how-it-works 之间。
+         截图必须来自生产环境的真实报告并打码姓名/邮箱；owner 提供前留空，
+         不得用占位图或伪造截图。 */
+    }
+
     <section class="how-it-works">
       <h2>{t('home.howItWorks')}</h2>
       <div class="steps">
@@ -115,6 +126,7 @@ const notice = Astro.url.searchParams.get('notfound')
           <p class="ja-muted">{t('home.step3.desc')}</p>
         </div>
       </div>
+      <p class="ja-muted no-auto-submit" data-testid="no-auto-submit">{t('home.noAutoSubmit')}</p>
     </section>
 
     <section class="extension-cta" data-testid="extension-cta">
@@ -158,6 +170,18 @@ const notice = Astro.url.searchParams.get('notfound')
     max-width: 480px;
     margin: 0 auto;
     text-align: left;
+  }
+
+  .form-privacy {
+    max-width: 480px;
+    margin: var(--ja-space-3) auto 0;
+    font-size: var(--ja-text-sm);
+  }
+
+  .no-auto-submit {
+    max-width: 520px;
+    margin: var(--ja-space-4) auto 0;
+    font-size: var(--ja-text-sm);
   }
 
   .how-it-works {
