@@ -18,9 +18,12 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_DIR" || exit 1
 
 DIR="${BACKUP_DIR:-$HOME/000mycodes-backups/job-agent}"
-# 200 rows/chunk is the largest size observed to survive: 2000 was killed
-# twice on chunk 1 (2026-11-09), 200 ran 13 chunks back to back. Each chunk is
-# its own short connection, so the per-chunk overhead dominates either way.
+# 200 rows/chunk is what actually holds: it ran thirteen consecutive chunks
+# (2026-11-09) at roughly 1.2 MB each. 500 rows is right at the edge — it
+# succeeded on some chunks and timed out on others, and each timeout burns the
+# pooler's full ~2 minutes before the halving logic can retry, which is slower
+# than simply starting small. Halving still guards the occasional oversized
+# slice.
 CHUNK=${JA_CHUNK:-200}
 
 set -a
@@ -59,43 +62,66 @@ else
   TOTAL=0
 fi
 
-while true; do
-  # Boundary pre-query: exact row count plus last id for this chunk. Index-only,
-  # so it stays fast even though the table itself cannot be copied in one go.
-  META=$(docker run --rm postgres:17-alpine psql -qAt --no-psqlrc "$DATABASE_URL" \
-    -c "SELECT count(*), coalesce(max(id),'') FROM (SELECT id FROM public.job_postings WHERE id > '$LAST' ORDER BY id LIMIT $CHUNK) t" \
-    2>"/tmp/ja-chunk-err.log")
-  if [ $? -ne 0 ]; then
-    echo "boundary query failed (last_id='$LAST'):"
-    tail -3 "/tmp/ja-chunk-err.log"
-    exit 3
-  fi
-  ROWS_IN=${META%%|*}
-  NEWLAST=${META#*|}
-  [ "$ROWS_IN" = "0" ] && break
+CHUNK_MAX=$CHUNK
 
+while true; do
+  # The pooler kills anything approaching ~2 minutes, and the cost per row
+  # swings with how much TOAST payload a given slice happens to contain, so a
+  # size that worked for one chunk can fail on the next (500 rows was fine for
+  # chunk 14 and broke chunk 15). Halve on failure rather than giving up, and
+  # restore the full size after each success so one bad slice does not slow the
+  # rest of the run.
+  CHUNK=$CHUNK_MAX
+  ok=0
   N=$((N+1))
   PART=$(printf "%s/backup-%s.job_postings.part%02d.csv" "$DIR" "$TS" "$N")
-  ok=0
-  for attempt in 1 2; do
+  for attempt in 1 2 3 4; do
+    # Boundary pre-query: exact row count plus last id for this chunk. Index-only,
+    # so it stays fast even though the table itself cannot be copied in one go.
+    META=$(docker run --rm postgres:17-alpine psql -qAt --no-psqlrc "$DATABASE_URL" \
+      -c "SELECT count(*), coalesce(max(id),'') FROM (SELECT id FROM public.job_postings WHERE id > '$LAST' ORDER BY id LIMIT $CHUNK) t" \
+      2>"/tmp/ja-chunk-err.log")
+    if [ $? -ne 0 ]; then
+      echo "boundary query failed at $CHUNK rows (last_id='$LAST'), halving:"
+      tail -3 "/tmp/ja-chunk-err.log"
+      CHUNK=$((CHUNK/2))
+      [ "$CHUNK" -ge 1 ] || CHUNK=1
+      sleep 2
+      continue
+    fi
+    ROWS_IN=${META%%|*}
+    NEWLAST=${META#*|}
+    if [ "$ROWS_IN" = "0" ]; then
+      ok=2
+      break
+    fi
+
     if docker run --rm postgres:17-alpine psql -q --no-psqlrc "$DATABASE_URL" \
         -c "\copy (SELECT * FROM public.job_postings WHERE id > '$LAST' ORDER BY id LIMIT $CHUNK) TO STDOUT WITH (FORMAT csv, NULL '\N')" \
         > "$PART" 2>"/tmp/ja-chunk-err.log"; then
       ok=1
       break
     fi
-    echo "chunk $N attempt $attempt failed (last_id='$LAST'):"
+    echo "chunk $N attempt $attempt failed at $CHUNK rows (last_id='$LAST'), halving:"
     tail -3 "/tmp/ja-chunk-err.log"
     rm -f "$PART"
+    CHUNK=$((CHUNK/2))
+    [ "$CHUNK" -ge 1 ] || CHUNK=1
     sleep 2
   done
+
+  if [ "$ok" = "2" ]; then
+    N=$((N-1))
+    break
+  fi
   if [ "$ok" -ne 1 ]; then
-    echo "CHUNK $N FAILED twice; resume with JA_TS=$TS JA_SKIP_MAIN=1 after fixing; last boundary id='$LAST'"
+    N=$((N-1))
+    echo "CHUNK $N failed even at the smallest size tried; resume with JA_TS=$TS JA_SKIP_MAIN=1; last boundary id='$LAST'"
     exit 2
   fi
   TOTAL=$((TOTAL+ROWS_IN))
   printf 'LAST=%s\nN=%d\nTOTAL=%d\n' "$NEWLAST" "$N" "$TOTAL" > "$STATE"
-  echo "chunk $N: rows=$ROWS_IN last_id=$NEWLAST (cumulative=$TOTAL)"
+  echo "chunk $N: rows=$ROWS_IN last_id=$NEWLAST size=$CHUNK (cumulative=$TOTAL)"
   if [ "$ROWS_IN" -lt "$CHUNK" ]; then
     break
   fi
