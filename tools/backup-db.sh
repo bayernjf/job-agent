@@ -3,8 +3,9 @@
 # backup-db.sh — Snapshot the application database with pg_dump.
 #
 # B4: Supabase Free tier has no platform-managed backups, so keep timestamped
-# local dumps as the manual safety net. Dumps land in ./backups/ (gitignored)
-# and old ones are pruned beyond BACKUP_KEEP (default 7).
+# local dumps as the manual safety net. Dumps land in ~/000mycodes-backups/job-agent
+# (outside the repo, so a re-clone or wipe cannot take them along) and old ones
+# are pruned beyond BACKUP_KEEP (default 7).
 # ROUTINE: run this every week (e.g. Sunday) — Free tier has no automatic
 # backups. DATABASE_URL can live in the local .env (gitignored); see handoff
 # "当前状态" for the reminder.
@@ -30,7 +31,7 @@
 
 set -u
 
-BACKUP_DIR="${BACKUP_DIR:-./backups}"
+BACKUP_DIR="${BACKUP_DIR:-$HOME/000mycodes-backups/job-agent}"
 BACKUP_KEEP="${BACKUP_KEEP:-7}"
 DRY_RUN=0
 if [ "${1:-}" = "--dry-run" ]; then
