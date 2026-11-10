@@ -7,6 +7,20 @@
 FROM node:24.22.2-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+# registry.npmjs.org drops TLS connections at random from this network; the
+# mirror serves the same packages. corepack ignores npm_config_registry, so it
+# needs the COREPACK_ variable as well.
+ENV npm_config_registry=https://registry.npmmirror.com
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+# Native addons (better-sqlite3) build from source when the prebuilt binary
+# cannot be fetched; node-gyp then needs Node headers, which nodejs.org also
+# drops. Point it at the mirror that hosts the same tarballs.
+ENV npm_config_disturl=https://npmmirror.com/mirrors/node
+ENV npm_config_better_sqlite3_binary_host=https://npmmirror.com/mirrors/better-sqlite3
+# better-sqlite3 ships a native addon and node:*-slim carries no build toolchain.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
 
