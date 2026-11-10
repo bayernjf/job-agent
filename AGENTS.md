@@ -2,6 +2,14 @@
 
 本文档供在本仓库工作的 AI coding agents 使用。**修改代码或文档前应先通读本文件**，并保持本文档与项目实际状态同步。本文件是项目工程约定的单一事实源；`CLAUDE.md` 只引用本文件。工程惯例与 `agent-world` 对齐。
 
+## 本地容器运行时（macOS）
+
+本机 macOS 开发只用 OrbStack，不再使用 Docker Desktop。`docker` / `docker compose`
+命令不变（`docker context` 为 `orbstack`）。拉公共镜像直连失败时，用
+`docker.m.daocloud.io` 等镜像站前缀兜底。完整约定与恢复步骤见
+`../bayjf/AGENTS.md` 的「本地容器运行时约定（macOS）」和
+`~/000mycodes-backups/README.md`。
+
 ## 0. 任务追踪与文档分层（接手先读 handoff）
 
 - **[handoff.md](handoff.md) 是任务追踪主入口**：当前状态 + 活跃待办 + 最近变更 + 「Project documents」文档索引。任何 agent 接手先读它。

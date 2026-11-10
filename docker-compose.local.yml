@@ -1,0 +1,29 @@
+# Local-only overrides. The committed compose file binds 3000 (loom's frontend
+# holds it here) and the api refuses to boot in production mode without a
+# CRON_SECRET, which only matters for the deployed cron endpoints.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
+networks:
+  tier0-net:
+    external: true
+
+services:
+  api:
+    ports: !override
+      - "127.0.0.1:13000:3000"
+    networks:
+      - default
+      - tier0-net
+    environment:
+      CRON_SECRET: local-dev-only-not-a-real-secret
+      # No reverse proxy in front of this container, so the app must not trust
+      # X-Forwarded-* headers.
+      TRUST_PROXY: "false"
+      # The repo .env points at 127.0.0.1:8791, which inside a container is the
+      # container itself. Reach the hub by service name on the shared network.
+      MODEL_HUB_URL: http://model-hub:8791
+      MODEL_HUB_TOKEN: ${MODEL_HUB_TOKEN:-}
+  worker:
+    networks:
+      - default
+      - tier0-net
