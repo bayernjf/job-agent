@@ -19,6 +19,19 @@ services:
       # No reverse proxy in front of this container, so the app must not trust
       # X-Forwarded-* headers.
       TRUST_PROXY: "false"
+      # Keep local runs off the shared Supabase database. DB_DRIVER wins over
+      # DATABASE_URL in storage.ts, but blanking the URL means a future change
+      # to the driver cannot silently reconnect to the cloud.
+      DB_DRIVER: sqlite
+      DATABASE_URL: ""
+      # The app falls back to a rules-only path when LLM_API_KEY is absent, so
+      # these are opt-in. Pass them through from .env to enable LLM polish.
+      # LLM_MODEL is mandatory whenever the key is set — the client fail-fasts
+      # without it, which takes the whole api container down.
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-30000}
       # The repo .env points at 127.0.0.1:8791, which inside a container is the
       # container itself. Reach the hub by service name on the shared network.
       MODEL_HUB_URL: http://model-hub:8791
@@ -27,3 +40,10 @@ services:
     networks:
       - default
       - tier0-net
+    environment:
+      # Worker shares the appdata volume, so it must use the same local SQLite.
+      DB_DRIVER: sqlite
+      DATABASE_URL: ""
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
