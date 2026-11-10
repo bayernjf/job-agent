@@ -3,11 +3,15 @@
 # backup-db.sh — Snapshot the application database with pg_dump.
 #
 # B4: Supabase Free tier has no platform-managed backups, so keep timestamped
-# local dumps as the manual safety net. Dumps land in ~/000mycodes-backups/job-agent
-# (outside the repo, so a re-clone or wipe cannot take them along) and old ones
-# are pruned beyond BACKUP_KEEP (default 7).
-# ROUTINE: run this every week (e.g. Sunday) — Free tier has no automatic
-# backups. DATABASE_URL can live in the local .env (gitignored); see handoff
+# local dumps. Dumps land in ~/000mycodes-backups/job-agent (outside the repo,
+# so a re-clone or wipe cannot take them along) and old ones are pruned beyond
+# BACKUP_KEEP (default 7).
+# ROUTINE: launched automatically every Sunday 03:00 by the
+# com.bayjf.jobagent.backup LaunchAgent (see tools/backup-db-launchd.sh);
+# manual runs still work. This is the full-blob path — use
+# backup-db-chunked.sh instead when public.job_postings is too large for a
+# single COPY (the pooler kills COPYs that run longer than ~2 minutes).
+# DATABASE_URL can live in the local .env (gitignored); see handoff
 # "当前状态" for the reminder.
 #
 # Usage:
