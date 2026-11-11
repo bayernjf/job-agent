@@ -125,7 +125,12 @@ jobs:
         run: pnpm -r test
 
       - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        # No --with-deps: the runner image already ships every shared library
+        # Chromium needs, so apt only adds fonts - and its Ubuntu mirror DNS
+        # failures turned a fully green build into exit 100. No suite here
+        # asserts on screenshots, so the missing fonts only affect glyphs in
+        # failure artifacts.
+        run: pnpm exec playwright install chromium
 
       - name: E2E tests
         run: pnpm e2e
