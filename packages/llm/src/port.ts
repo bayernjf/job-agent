@@ -65,6 +65,8 @@ export interface LlmFailureDetail {
   status?: number;
   /** 本次请求的超时预算（kind='timeout'） */
   timeoutMs?: number;
+  /** 上游 finish_reason（kind='parse' 时，用于诊断 reasoning 模型预算不足） */
+  finishReason?: string;
 }
 
 /** LLM 响应不可用：网络/HTTP 错误、超时、或输出不是合法 JSON 对象。 */

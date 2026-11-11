@@ -135,16 +135,34 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
           model: base.model,
           promptVersion: base.promptVersion,
           polish: async (input) => {
-            const out = await base.polish({
-              ...input,
-              onUsage: (u) => {
-                usageHolder.current = u;
-              },
-            });
-            // provider 不抛 ⇒ 本次 LLM 调用成功完成（schema 校验失败会抛，
-            // 被 polishResume 吞成 provider_error，那种情形不记）。
-            usageHolder.succeeded = true;
-            return out;
+            try {
+              const out = await base.polish({
+                ...input,
+                onUsage: (u) => {
+                  usageHolder.current = u;
+                },
+              });
+              // provider 不抛 ⇒ 本次 LLM 调用成功完成（schema 校验失败会抛，
+              // 被 polishResume 吞成 provider_error，那种情形不记）。
+              usageHolder.succeeded = true;
+              return out;
+            } catch (err) {
+              // polishResume 的 catch 把异常吞成 provider_error（安全层是纯函数、不落日志），
+              // 所以诊断只能落在这个 I/O 边界：否则线上只剩一个无信息量的 reason，
+              // 上游 400 与超时看起来一模一样。key、prompt、请求体一律不落。
+              console.error(
+                '[llm] resume polish failed:',
+                JSON.stringify({
+                  provider: base.provider,
+                  model: base.model,
+                  profileId: req.profileId,
+                  jobId: req.jobId,
+                  locale,
+                  ...describeError(err),
+                }),
+              );
+              throw err;
+            }
           },
         };
         const result = await polishResume(ruleDraft, posting, metered, {

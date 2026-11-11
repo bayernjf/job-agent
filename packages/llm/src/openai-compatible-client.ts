@@ -228,13 +228,18 @@ export class OpenAICompatibleClient implements LlmClient {
       throw new LlmResponseError('LLM response body is not valid JSON', err, { kind: 'parse' });
     }
 
-    const content = (
-      data as { choices?: Array<{ message?: { content?: unknown } }> } | null
-    )?.choices?.[0]?.message?.content;
+    const choice = (
+      data as { choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }> } | null
+    )?.choices?.[0];
+    const content = choice?.message?.content;
+    const finishReason = typeof choice?.finish_reason === 'string' ? choice.finish_reason : undefined;
     if (typeof content !== 'string' || !content.trim()) {
-      throw new LlmResponseError('LLM response missing choices[0].message.content string', undefined, {
-        kind: 'parse',
-      });
+      // 带上 finish_reason：空正文可能是预算耗尽（length），也可能是上游真没产出。
+      throw new LlmResponseError(
+        `LLM response missing choices[0].message.content string${finishReason ? ` (finish_reason=${finishReason})` : ''}`,
+        undefined,
+        { kind: 'parse', finishReason },
+      );
     }
     const parsed = parseJsonObject(content);
     if (parsed === undefined) {
