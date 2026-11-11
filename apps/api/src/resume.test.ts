@@ -371,6 +371,9 @@ describe('POST /resumes/build optional LLM polish', () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    // 断言失败时测试体内的 mockRestore 不会执行；不兜底会让泄漏的 console spy
+    // 把后续用例的日志调用混进同一个 mock.calls，制造级联假红。
+    vi.restoreAllMocks();
     if (prevAdminLogins === undefined) delete process.env.ADMIN_ACCOUNT_LOGINS;
     else process.env.ADMIN_ACCOUNT_LOGINS = prevAdminLogins;
   });
@@ -502,6 +505,7 @@ describe('POST /resumes/build optional LLM polish', () => {
   });
 
   it('falls back when the provider errors (non-JSON output) with provider_error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { app, repos, jobId } = await harness({
       resumePolish: providerWith('not-json-at-all'),
     });
@@ -511,6 +515,39 @@ describe('POST /resumes/build optional LLM polish', () => {
     expect(body.polish).toEqual({ requested: true, applied: false, reason: 'provider_error' });
     expect(body.draft.summary).toBe(rule.draft.summary);
     expect(body.draft.provenance.polish).toBeUndefined();
+    spy.mockRestore();
+  });
+
+  it('logs the polish failure server-side instead of only returning provider_error', async () => {
+    // Ark 只接受 temperature=1，其它值回 HTTP 400；polishResume 的 catch 把它吞成
+    // provider_error，响应里没有任何可诊断信息，上一轮因此误判成 max_tokens 不够。
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failing: ResumePolishProvider = {
+      provider: 'ark',
+      model: 'ark-code-latest',
+      promptVersion: 'resume-polish-0.1',
+      polish: async () => {
+        throw new LlmResponseError(
+          'LLM endpoint returned HTTP 400: `temperature` only 1 is allowed for this model',
+          undefined,
+          { kind: 'http', status: 400 },
+        );
+      },
+    };
+    const { app, repos, jobId } = await harness({ resumePolish: failing });
+    const cookie = await loginCookie(repos);
+    const body = await build(app, jobId, { polish: true }, cookie);
+    expect(body.polish).toEqual({ requested: true, applied: false, reason: 'provider_error' });
+
+    const call = spy.mock.calls.find((c) => String(c[0]).includes('[llm] resume polish failed'));
+    expect(call, '服务端必须落一行可读诊断日志').toBeTruthy();
+    const payload = JSON.parse(String(call![1])) as Record<string, unknown>;
+    expect(payload.model).toBe('ark-code-latest');
+    expect(payload.profileId).toBe('p-resume');
+    expect(payload.jobId).toBe(jobId);
+    expect(payload.detail).toEqual({ kind: 'http', status: 400 });
+    expect(payload.message).toContain('temperature');
+    spy.mockRestore();
   });
 
   it('records resume_polish usage with builtin routing after a successful polish (决策 #25 ④ Wave B)', async () => {

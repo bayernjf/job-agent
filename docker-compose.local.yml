@@ -32,6 +32,11 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-30000}
+      # Upstream models may only accept a fixed sampling temperature (Ark
+      # ark-code-latest rejects anything but 1 with HTTP 400). The hub projection
+      # carries it per model as adapter.temperature and wins over this value;
+      # this is the fallback for the env-only built-in path.
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-}
       # The repo .env points at 127.0.0.1:8791, which inside a container is the
       # container itself. Reach the hub by service name on the shared network.
       MODEL_HUB_URL: http://model-hub:8791
@@ -47,3 +52,4 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-}

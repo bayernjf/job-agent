@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   OpenAICompatibleClient,
   createResumePolishProviderFromEnv,
+  llmTemperatureFromEnv,
+  llmTimeoutFromEnv,
   parseJsonObject,
   parseTokenUsage,
   providerFromBaseUrl,
@@ -340,5 +342,127 @@ describe('createResumePolishProviderFromEnv', () => {
     });
     const url = spy.mock.calls[0]![0];
     expect(url).toBe('https://api.openai.com/v1/chat/completions');
+  });
+});
+
+describe('llmTemperatureFromEnv', () => {
+  it('treats unset, blank and non-finite values as no override', () => {
+    expect(llmTemperatureFromEnv({})).toBeUndefined();
+    expect(llmTemperatureFromEnv({ LLM_TEMPERATURE: '   ' })).toBeUndefined();
+    expect(llmTemperatureFromEnv({ LLM_TEMPERATURE: 'hot' })).toBeUndefined();
+    expect(llmTemperatureFromEnv({ LLM_TEMPERATURE: 'NaN' })).toBeUndefined();
+  });
+
+  it('parses a numeric override and keeps 0 as a real value', () => {
+    expect(llmTemperatureFromEnv({ LLM_TEMPERATURE: '1' })).toBe(1);
+    expect(llmTemperatureFromEnv({ LLM_TEMPERATURE: ' 0.2 ' })).toBe(0.2);
+    expect(llmTemperatureFromEnv({ LLM_TEMPERATURE: '0' })).toBe(0);
+  });
+});
+
+describe('llmTimeoutFromEnv', () => {
+  it('treats unset, blank, non-finite and non-positive values as no override', () => {
+    expect(llmTimeoutFromEnv({})).toBeUndefined();
+    expect(llmTimeoutFromEnv({ LLM_TIMEOUT_MS: '   ' })).toBeUndefined();
+    expect(llmTimeoutFromEnv({ LLM_TIMEOUT_MS: 'soon' })).toBeUndefined();
+    expect(llmTimeoutFromEnv({ LLM_TIMEOUT_MS: 'Infinity' })).toBeUndefined();
+    // 0 与负数不是合法超时预算： AbortSignal.timeout(0) 会立刻中断每一次调用。
+    expect(llmTimeoutFromEnv({ LLM_TIMEOUT_MS: '0' })).toBeUndefined();
+    expect(llmTimeoutFromEnv({ LLM_TIMEOUT_MS: '-5' })).toBeUndefined();
+  });
+
+  it('parses a positive millisecond budget', () => {
+    expect(llmTimeoutFromEnv({ LLM_TIMEOUT_MS: '120000' })).toBe(120000);
+    expect(llmTimeoutFromEnv({ LLM_TIMEOUT_MS: ' 45000 ' })).toBe(45000);
+  });
+});
+
+describe('deployment temperature override', () => {
+  /**
+   * 复刻 2026-11-11 实测的上游行为：Ark `ark-code-latest` 只接受 temperature=1，
+   * 其它值一律 HTTP 400 InvalidParameter。各 feature 的默认温度（0/0.1/0.2/0.3/0.4）
+   * 全在被拒区间，所以润色/求职信/语义/JD 抽取会一起静默降级。
+   */
+  function arkLikeFetch() {
+    return fakeFetch((_url, init) => {
+      const body = JSON.parse(init.body) as { temperature?: number };
+      if (body.temperature !== 1) {
+        return contentResponse(
+          {
+            error: {
+              code: 'InvalidParameter',
+              message: '`temperature` only 1 is allowed for this model',
+              type: 'BadRequest',
+            },
+          },
+          400,
+        );
+      }
+      return contentResponse(JSON.stringify({ summary: 'polished line' }));
+    });
+  }
+
+  it('reproduces the upstream 400 when the feature default temperature is sent', async () => {
+    const { fn, calls } = arkLikeFetch();
+    const provider = createResumePolishProviderFromEnv(
+      { LLM_API_KEY: 'k', LLM_MODEL: 'ark-code-latest', LLM_BASE_URL: 'https://ark.example/api/v3' },
+      { fetchImpl: fn },
+    );
+    await expect(
+      provider!.polish({
+        draft: { summary: 'rule summary', evidenceHighlights: [] } as never,
+        posting: { title: 'SWE', company: 'Acme' } as never,
+        locale: 'en',
+      }),
+    ).rejects.toMatchObject({
+      name: 'LlmResponseError',
+      detail: { kind: 'http', status: 400 },
+    });
+    expect(JSON.parse(calls[0]!.init.body).temperature).toBe(0.3);
+  });
+
+  it('lets LLM_TEMPERATURE pin the value the upstream accepts', async () => {
+    const { fn, calls } = arkLikeFetch();
+    const provider = createResumePolishProviderFromEnv(
+      {
+        LLM_API_KEY: 'k',
+        LLM_MODEL: 'ark-code-latest',
+        LLM_BASE_URL: 'https://ark.example/api/v3',
+        LLM_TEMPERATURE: '1',
+      },
+      { fetchImpl: fn },
+    );
+    const edits = await provider!.polish({
+      draft: { summary: 'rule summary', evidenceHighlights: [] } as never,
+      posting: { title: 'SWE', company: 'Acme' } as never,
+      locale: 'en',
+    });
+    expect(edits.summary).toBe('polished line');
+    expect(JSON.parse(calls[0]!.init.body).temperature).toBe(1);
+  });
+
+  it('overrides an explicit per-request temperature, including 0', async () => {
+    const { fn, calls } = fakeFetch(() => contentResponse('{}'));
+    const client = new OpenAICompatibleClient({ ...baseCfg, temperature: 1, fetchImpl: fn });
+    await client.generateJson({ messages: [], temperature: 0 });
+    expect(JSON.parse(calls[0]!.init.body).temperature).toBe(1);
+  });
+
+  it('keeps the caller temperature when no override is configured', async () => {
+    const { fn, calls } = fakeFetch(() => contentResponse('{}'));
+    const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+    await client.generateJson({ messages: [], temperature: 0.4 });
+    expect(JSON.parse(calls[0]!.init.body).temperature).toBe(0.4);
+  });
+
+  it('surfaces finish_reason when the upstream returns an empty content', async () => {
+    const { fn } = fakeFetch(() =>
+      contentResponse({ choices: [{ message: { content: '' }, finish_reason: 'length' }] }),
+    );
+    const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+    await expect(client.generateJson({ messages: [] })).rejects.toMatchObject({
+      name: 'LlmResponseError',
+      detail: { kind: 'parse', finishReason: 'length' },
+    });
   });
 });

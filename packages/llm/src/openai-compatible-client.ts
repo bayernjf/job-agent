@@ -48,6 +48,12 @@ export interface OpenAICompatibleConfig {
   provider?: string;
   /** 请求超时毫秒，默认 30000 */
   timeoutMs?: number;
+  /**
+   * 部署级采样温度覆盖（LLM_TEMPERATURE），设置后覆盖 per-request 值。
+   * 上游可能只接受固定温度：Ark `ark-code-latest` 对 0.3 直接回 HTTP 400
+   * `temperature only 1 is allowed for this model`，各 feature 默认值全在被拒区间。
+   */
+  temperature?: number;
   /** 额外请求头（如自建网关的兼容头），Authorization 不可被覆盖 */
   extraHeaders?: Record<string, string>;
   /** 注入 fetch（测试） */
@@ -135,6 +141,7 @@ export class OpenAICompatibleClient implements LlmClient {
   private readonly endpoint: string;
   private readonly apiKey: string;
   private readonly timeoutMs: number;
+  private readonly temperature: number | undefined;
   private readonly extraHeaders: Record<string, string>;
   private readonly fetchImpl: LlmFetch;
 
@@ -147,6 +154,7 @@ export class OpenAICompatibleClient implements LlmClient {
     this.endpoint = `${stripTrailingSlash(config.baseUrl.trim())}/chat/completions`;
     this.provider = config.provider?.trim() || providerFromBaseUrl(config.baseUrl);
     this.timeoutMs = config.timeoutMs ?? 30_000;
+    this.temperature = config.temperature;
     this.extraHeaders = config.extraHeaders ?? {};
     this.fetchImpl = config.fetchImpl ?? defaultFetch;
   }
@@ -169,7 +177,7 @@ export class OpenAICompatibleClient implements LlmClient {
       body: JSON.stringify({
         model: this.model,
         messages,
-        temperature: request.temperature ?? 0.3,
+        temperature: this.temperature ?? request.temperature ?? 0.3,
         response_format: { type: 'json_object' },
       }),
       signal: AbortSignal.timeout(this.timeoutMs),
@@ -220,13 +228,18 @@ export class OpenAICompatibleClient implements LlmClient {
       throw new LlmResponseError('LLM response body is not valid JSON', err, { kind: 'parse' });
     }
 
-    const content = (
-      data as { choices?: Array<{ message?: { content?: unknown } }> } | null
-    )?.choices?.[0]?.message?.content;
+    const choice = (
+      data as { choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }> } | null
+    )?.choices?.[0];
+    const content = choice?.message?.content;
+    const finishReason = typeof choice?.finish_reason === 'string' ? choice.finish_reason : undefined;
     if (typeof content !== 'string' || !content.trim()) {
-      throw new LlmResponseError('LLM response missing choices[0].message.content string', undefined, {
-        kind: 'parse',
-      });
+      // 带上 finish_reason：空正文可能是预算耗尽（length），也可能是上游真没产出。
+      throw new LlmResponseError(
+        `LLM response missing choices[0].message.content string${finishReason ? ` (finish_reason=${finishReason})` : ''}`,
+        undefined,
+        { kind: 'parse', finishReason },
+      );
     }
     const parsed = parseJsonObject(content);
     if (parsed === undefined) {
@@ -245,6 +258,30 @@ export interface LlmEnv {
   LLM_MODEL?: string;
   LLM_PROVIDER?: string;
   LLM_TIMEOUT_MS?: string;
+  LLM_TEMPERATURE?: string;
+}
+
+/**
+ * 解析部署级 temperature 覆盖：缺失或非有限数一律 undefined（沿用调用方默认值），
+ * 与 LLM_TIMEOUT_MS 同款宽容口径。0 是合法值，不能被当成"未设置"。
+ */
+export function llmTemperatureFromEnv(env: LlmEnv = process.env): number | undefined {
+  const raw = env.LLM_TEMPERATURE?.trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * 解析部署级请求超时：缺失、非有限数或非正数一律 undefined（沿用客户端默认 30s）。
+ * 推理模型会先花掉大量思考时间再产出正文，30s 对它们普遍不够（Ark ark-code-latest
+ * 实测一次简历润色 23–30s），部署方必须能调大这个值。
+ */
+export function llmTimeoutFromEnv(env: LlmEnv = process.env): number | undefined {
+  const raw = env.LLM_TIMEOUT_MS?.trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 export interface CreateProviderOptions {
@@ -286,6 +323,7 @@ export function createResumePolishProviderFromEnv(
     model,
     provider: env.LLM_PROVIDER?.trim() || undefined,
     timeoutMs,
+    temperature: llmTemperatureFromEnv(env),
     fetchImpl: options.fetchImpl,
   });
   return new LlmResumePolishProvider(client);
@@ -324,6 +362,7 @@ export function createCoverLetterProviderFromEnv(
     model,
     provider: env.LLM_PROVIDER?.trim() || undefined,
     timeoutMs,
+    temperature: llmTemperatureFromEnv(env),
     fetchImpl: options.fetchImpl,
   });
   return new LlmCoverLetterProvider(client);
@@ -361,6 +400,7 @@ export function createSemanticProviderFromEnv(
     model,
     provider: env.LLM_PROVIDER?.trim() || undefined,
     timeoutMs,
+    temperature: llmTemperatureFromEnv(env),
     fetchImpl: options.fetchImpl,
   });
   return new LlmSemanticProvider(client);
@@ -399,6 +439,7 @@ export function createJdExtractionProviderFromEnv(
     model,
     provider: env.LLM_PROVIDER?.trim() || undefined,
     timeoutMs,
+    temperature: llmTemperatureFromEnv(env),
     fetchImpl: options.fetchImpl,
   });
   return new LlmJdExtractionProvider(client);

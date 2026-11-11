@@ -23,6 +23,8 @@ import {
   LlmCoverLetterProvider,
   LlmResumePolishProvider,
   OpenAICompatibleClient,
+  llmTemperatureFromEnv,
+  llmTimeoutFromEnv,
   providerFromBaseUrl,
   type CatalogCache,
   type CoverLetterProvider,
@@ -143,6 +145,17 @@ function mapClientError(err: unknown): TestResult['error'] {
 }
 
 /**
+ * hub 投影里逐模型声明的采样温度。adapter 是宽松 bag（`[key: string]: unknown`），
+ * 只认有限数，其余按未声明处理。上游可能只接受固定值：Ark `ark-code-latest`
+ * 对 0.3 直接回 HTTP 400，而各 feature 默认温度全在被拒区间——投影已经给了
+ * 正确答案（`adapter.temperature=1`），消费端不读就等于把它丢掉。
+ */
+function adapterTemperature(model: ResolvedModel): number | undefined {
+  const raw = model.adapter?.temperature;
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+}
+
+/**
  * L4 driver factory：用 job-agent 自己的 LlmClient（OpenAICompatibleClient）
  * 跑最小 JSON 调用，验证模型能完成 job-agent 实际需要的 JSON 任务，而不是
  * 走 model-kit 的通用 probe。fetchImpl 透传（测试用假 fetch，生产用真实 fetch）。
@@ -156,6 +169,8 @@ function createLlmDriverFactory(fetchImpl?: LlmFetch): DriverFactory {
         apiKey: model.apiKey,
         model: model.model,
         provider: providerFromBaseUrl(model.baseUrl),
+        temperature: adapterTemperature(model) ?? llmTemperatureFromEnv(),
+        timeoutMs: llmTimeoutFromEnv(),
         ...(fetchImpl ? { fetchImpl } : {}),
       });
       try {
@@ -237,6 +252,13 @@ export async function createHubCatalog(
       apiKey: primary.apiKey,
       model: primary.model,
       provider: providerFromBaseUrl(primary.baseUrl),
+      temperature: adapterTemperature(primary) ?? llmTemperatureFromEnv(),
+      // 投影只声明 temperature，不声明超时；漏读 LLM_TIMEOUT_MS 会让这条路径
+      // 永远卡在客户端默认 30s，而推理模型一次润色实测就要 23–30s。
+      timeoutMs: llmTimeoutFromEnv(),
+      // 注入的 fetch 必须透传：漏掉它，测试里的 polish/cover 调用会带着夹具占位密钥
+      // 打到真实上游（实测收到 Ark 的 401），违反「测试零网络」硬约束。
+      ...(config.fetchImpl ? { fetchImpl: config.fetchImpl as LlmFetch } : {}),
     });
     return {
       cover: new LlmCoverLetterProvider(client),
