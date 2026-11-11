@@ -24,7 +24,7 @@ Playwright `1.63` + Chromium 加载 unpacked MV3 扩展的结论（已用最小�
 
 - 新增 `playwright.extension.config.ts`：`testDir=./e2e/extension`，单 chromium project，**无 webServer**，`workers:1`、`fullyParallel:false`（扩展实例与 user-data-dir 串行更稳）。
 - 测试放 `e2e/extension/`，与 report 用例物理隔离；根 `package.json` 加脚本 `e2e:extension`；原 `pnpm e2e`（report）不变。
-- CI 在现有 "E2E tests"（report）后追加一步 "Extension E2E tests"，复用已安装的同一 Chromium（`playwright install --with-deps chromium` 已含新无头能力），无需额外系统依赖。
+- CI 在现有 "E2E tests"（report）后追加一步 "Extension E2E tests"，复用已安装的同一 Chromium（`playwright install chromium` 已含新无头能力），无需额外系统依赖。
 
 ### 3.1 自定义 fixture（`e2e/extension/extension-test.ts`）
 
