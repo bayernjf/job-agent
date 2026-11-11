@@ -229,6 +229,96 @@ describe('hub catalog sync', () => {
     expect(builtin?.polish).not.toBeNull();
   });
 
+  it('sends the projection adapter.temperature on built-in polish calls', async () => {
+    // Ark ark-code-latest 只接受 temperature=1，投影里已经声明了它；消费端不读
+    // 就会把 polish 的默认 0.3 发上去吃 HTTP 400，然后静默回退规则版。
+    const noul = catalog.models[0]!;
+    const prevAdapter = noul.adapter;
+    noul.adapter = { temperature: 1 };
+    try {
+      const { hub } = await setup();
+      const builtin = await hub.resolveBuiltin();
+      await builtin!.polish.polish({
+        draft: { summary: 'rule summary', evidenceHighlights: [] } as never,
+        posting: { title: 'SWE', company: 'Acme' } as never,
+        locale: 'en',
+      });
+      const chat = fetchCalls.find((c) => c.url.includes('/chat/completions'));
+      expect(chat, '必须真的打了一次上游 chat').toBeTruthy();
+      expect(JSON.parse(chat!.body!).temperature).toBe(1);
+    } finally {
+      noul.adapter = prevAdapter;
+    }
+  });
+
+  it('keeps the feature default temperature when the projection declares none', async () => {
+    const { hub } = await setup();
+    const builtin = await hub.resolveBuiltin();
+    await builtin!.polish.polish({
+      draft: { summary: 'rule summary', evidenceHighlights: [] } as never,
+      posting: { title: 'SWE', company: 'Acme' } as never,
+      locale: 'en',
+    });
+    const chat = fetchCalls.find((c) => c.url.includes('/chat/completions'));
+    expect(JSON.parse(chat!.body!).temperature).toBe(0.3);
+  });
+
+  it('applies adapter.temperature to the L4 probe as well', async () => {
+    const noul = catalog.models[0]!;
+    const prevAdapter = noul.adapter;
+    noul.adapter = { temperature: 1 };
+    try {
+      const { hub } = await setup();
+      const test = await hub.test('noul');
+      expect(test.ok).toBe(true);
+      const chat = fetchCalls.find((c) => c.url.includes('/chat/completions'));
+      expect(JSON.parse(chat!.body!).temperature).toBe(1);
+    } finally {
+      noul.adapter = prevAdapter;
+    }
+  });
+
+  it('honors LLM_TIMEOUT_MS on the built-in polish path', async () => {
+    // 投影只声明 temperature、不声明超时。漏读 LLM_TIMEOUT_MS 时这条路径永远卡在
+    // 客户端默认 30s，而 Ark 推理模型一次润色实测就要 23–30s ⇒ 必然超时回退规则版。
+    // 用 40ms + 挂住的假 fetch 证明 env 值真的到了客户端（默认 30s 会让本用例挂 30s）。
+    const prevTimeout = process.env.LLM_TIMEOUT_MS;
+    process.env.LLM_TIMEOUT_MS = '40';
+    const base = fakeFetch(fetchCalls);
+    const hanging: typeof fetch = (input, init) => {
+      if (!String(input).includes('/chat/completions')) return base(input, init);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
+        );
+      });
+    };
+    try {
+      const repos = await createStorage({ sqlitePath: ':memory:' });
+      const hub = await createHubCatalog(
+        {
+          hubUrl: 'https://hub.local',
+          token: 'tok',
+          cachePath: join(dir, 'cache.json'),
+          fetchImpl: hanging,
+        },
+        repos,
+        createCatalogCache(),
+      );
+      const builtin = await hub.resolveBuiltin();
+      await expect(
+        builtin!.polish.polish({
+          draft: { summary: 'rule summary', evidenceHighlights: [] } as never,
+          posting: { title: 'SWE', company: 'Acme' } as never,
+          locale: 'en',
+        }),
+      ).rejects.toMatchObject({ detail: { kind: 'timeout', timeoutMs: 40 } });
+    } finally {
+      if (prevTimeout === undefined) delete process.env.LLM_TIMEOUT_MS;
+      else process.env.LLM_TIMEOUT_MS = prevTimeout;
+    }
+  });
+
   it('reports built-in usage to the hub with assignment_id', async () => {
     const { hub } = await setup();
     await hub.sync();
