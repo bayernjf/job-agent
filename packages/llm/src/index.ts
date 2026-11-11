@@ -43,6 +43,8 @@ export {
   createSemanticProviderFromEnv,
   createJdExtractionProviderFromEnv,
   providerFromBaseUrl,
+  llmTemperatureFromEnv,
+  llmTimeoutFromEnv,
   parseJsonObject,
   parseTokenUsage,
 } from './openai-compatible-client.js';

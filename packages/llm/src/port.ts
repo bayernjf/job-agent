@@ -36,7 +36,7 @@ export type LlmUsageObserver = (usage: LlmTokenUsage) => void;
 
 export interface LlmJsonRequest {
   messages: LlmChatMessage[];
-  /** 低温度默认更稳；润色等保守任务建议 0.2–0.4。 */
+  /** 低温度默认更稳；润色等保守任务建议 0.2–0.4。可被部署级 LLM_TEMPERATURE 覆盖。 */
   temperature?: number;
   /** 调用方可选的请求标识（日志/去重），不参与签名。 */
   requestId?: string;

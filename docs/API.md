@@ -76,6 +76,8 @@
 | `AUTH_CALLBACK_BASE_URL` | 空（按请求推导） | OAuth 回调基址，不带尾斜杠；生产反代/跨子域时显式填域名 |
 | `AUTH_AFTER_LOGIN_URL` | `/` | 登录成功后跳转地址 |
 | `LLM_ENC_KEY` | 空 | BYOK apiKey 的 AES-256-GCM 加密钥（决策 #21-1）；未配置时 `/account/llm-config` 保存/读取返回 503 ENCRYPTION_NOT_CONFIGURED |
+| `LLM_TEMPERATURE` | 空（沿用各 feature 默认值） | 部署级采样温度覆盖，只作用于内置与 hub 投影模型（BYOK 用用户自己的端点，不受此约束）。上游只接受固定温度时必填：Ark `ark-code-latest` 对其它值回 HTTP 400 `temperature only 1 is allowed for this model`，此时填 `1`。`0` 是合法值；非有限数按未设置处理 |
+| `LLM_TIMEOUT_MS` | `30000` | 单次 LLM 请求超时毫秒；超时/非 2xx/非 JSON 一律回退规则版，不使请求失败。**推理模型必须调大**：Ark `ark-code-latest` 先产出数千 reasoning token 再写正文，实测一次简历润色 `completion_tokens=4557`／136s、求职信 `completion_tokens=2890`／83s，30s 默认值必然超时。非正数/非有限数按未设置处理 |
 | `ADMIN_ACCOUNT_LOGINS` | 空 | 平台管理员白名单（逗号分隔 OAuth 登录名）；名单内账号登录自动置 `is_admin=1`（迁移 023，决策 #21-5），`/auth/me` 回 `canManageLlmCatalog: true` |
 | `AGENT_CANDIDATE_LIMIT` | `10` | 求职任务一轮扫描最多产出多少条待投票据（≥1 且 ≤50，非法值启动即报错） |
 | `AGENT_SCAN_POOL_LIMIT` | `2000` | 单轮扫描从岗位池取多少条候选（按发布时间倒序，≥1 且 ≤5000；默认 2000 约覆盖生产池最近 20%） |
