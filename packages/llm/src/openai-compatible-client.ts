@@ -178,6 +178,9 @@ export class OpenAICompatibleClient implements LlmClient {
         model: this.model,
         messages,
         temperature: this.temperature ?? request.temperature ?? 0.3,
+        // reasoning 模型默认 max_tokens 太小，polish 长输出会被 length 截断成空 content。
+        // 给一个合理默认，调用方可通过 request.maxTokens 覆盖。
+        max_tokens: request.maxTokens ?? 4096,
         response_format: { type: 'json_object' },
       }),
       signal: AbortSignal.timeout(this.timeoutMs),

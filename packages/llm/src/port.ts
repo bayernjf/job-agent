@@ -38,6 +38,12 @@ export interface LlmJsonRequest {
   messages: LlmChatMessage[];
   /** 低温度默认更稳；润色等保守任务建议 0.2–0.4。可被部署级 LLM_TEMPERATURE 覆盖。 */
   temperature?: number;
+  /**
+   * 输出 token 上限。reasoning 模型（ark-code-latest / doubao-seed）默认预算很小，
+   * 长简历 polish 会在 finish_reason=length 时返回空 content；调用方应显式设置。
+   * 未设置时客户端使用保守默认值。
+   */
+  maxTokens?: number;
   /** 调用方可选的请求标识（日志/去重），不参与签名。 */
   requestId?: string;
   /** 可选的用量观察回调（计量埋点用）；不设置则不观察，不影响主调用。 */
