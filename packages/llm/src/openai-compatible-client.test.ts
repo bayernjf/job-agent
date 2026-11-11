@@ -68,10 +68,23 @@ describe('OpenAICompatibleClient', () => {
     expect(body.model).toBe('gpt-test');
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.temperature).toBe(0.2);
+    expect(body.max_tokens).toBe(4096); // reasoning 模型默认预算太小，必须显式给
     expect(body.messages).toEqual([
       { role: 'system', content: 'sys' },
       { role: 'user', content: 'hi' },
     ]);
+  });
+
+  it('honours request.maxTokens override', async () => {
+    const { fn, calls } = fakeFetch(() => contentResponse('{"summary": "x"}'));
+    const client = new OpenAICompatibleClient({ ...baseCfg, fetchImpl: fn });
+    await client.generateJson({
+      messages: [{ role: 'user', content: 'hi' }],
+      maxTokens: 8192,
+    });
+    const { init } = calls[0]!;
+    const body = JSON.parse(String(init.body));
+    expect(body.max_tokens).toBe(8192);
   });
 
   it('strips ```json fences and surrounding whitespace', async () => {
