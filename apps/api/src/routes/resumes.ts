@@ -6,7 +6,7 @@
 import type { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
 import {
-  JobPostingSchema,
+  JobPostingReadSchema,
   type AbilityProfile,
   type JobPosting,
   type LocalResumeFields,
@@ -82,11 +82,11 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     } else {
       const postingRow = await repos.jobPostings.getById(req.jobId!);
       if (!postingRow) return c.json({ error: 'job posting not found' }, 404);
-      const postingParse = JobPostingSchema.safeParse(postingRow);
+      const postingParse = JobPostingReadSchema.safeParse(postingRow);
       if (!postingParse.success) {
         return c.json({ error: 'stored job posting is invalid' }, 500);
       }
-      posting = postingParse.data;
+      posting = postingParse.data as JobPosting;
     }
 
     const evidenceRows = await repos.evidence.listByProfile(req.profileId);
@@ -288,11 +288,11 @@ export function registerResumes(app: Hono<HonoEnv>, d: RouteDeps): void {
     } else {
       const postingRow = await repos.jobPostings.getById(req.jobId!);
       if (!postingRow) return c.json({ error: 'job posting not found' }, 404);
-      const postingParse = JobPostingSchema.safeParse(postingRow);
+      const postingParse = JobPostingReadSchema.safeParse(postingRow);
       if (!postingParse.success) {
         return c.json({ error: 'stored job posting is invalid' }, 500);
       }
-      posting = postingParse.data;
+      posting = postingParse.data as JobPosting;
     }
 
     const evidenceRows = await repos.evidence.listByProfile(req.profileId);

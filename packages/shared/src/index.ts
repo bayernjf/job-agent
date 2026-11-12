@@ -171,6 +171,16 @@ export const JobPostingSchema = z.object({
 export type JobPosting = z.infer<typeof JobPostingSchema>;
 
 /**
+ * 读侧投影：从库里/文件里读出的岗位行把 `source` 放宽为任意非空字符串。
+ *
+ * 写路径（采集适配器、API 输入）仍用 JobPostingSchema 严格校验枚举；但已入库行的
+ * source 可能先于枚举存在（历史值、下线源、UAT 直插如 'uat'），读路径（简历/求职信
+ * 渲染、CLI resume 命令）复用写校验会让这些行一律 500/抛错——公开的 /job-postings/match
+ * 读侧本就不校验 source，两边口径需一致。除 source 外的其余字段仍按契约全量校验。
+ */
+export const JobPostingReadSchema = JobPostingSchema.extend({ source: z.string().min(1) });
+
+/**
  * 匹配分三档（报告页与扩展共用，单一事实源，2026-09-14）。
  *
  * 匹配分随命中技能数叠加（每个技能满分 6 = title×3 + tags×2 + description×1），
