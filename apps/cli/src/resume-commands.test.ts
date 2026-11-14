@@ -156,6 +156,30 @@ describe('jobagent resume build', () => {
     expect(draft.header.contact.email).toBe('a@b.com');
   });
 
+  it('builds a JSON draft from a stored row whose source predates the write enum (uat)', async () => {
+    // UAT 曾 raw SQL 直插 source='uat' 的行：读路径不得因写路径的 source 枚举抛错。
+    const { storage } = await seedStorage();
+    await storage.jobPostings.upsertBatch(
+      [
+        {
+          ...makePosting(),
+          jobId: 'uat-1',
+          source: 'uat' as JobPosting['source'],
+          sourceUrl: 'https://example.com/jobs/uat-1',
+          title: 'UAT Seeded TypeScript Engineer',
+          normalizedKey: 'nk-uat-1',
+        },
+      ],
+      NOW,
+    );
+    const { deps, out } = harness(storage);
+    const jobId = makeJobPostingId('uat', 'https://example.com/jobs/uat-1');
+    const code = await run(['resume', 'build', '--profile', 'p-1', '--job', jobId, '--format', 'json'], deps);
+    expect(code).toBe(0);
+    const draft = JSON.parse(out());
+    expect(draft.targetJob.title).toBe('UAT Seeded TypeScript Engineer');
+  });
+
   it('returns 2 without --profile', async () => {
     const { storage } = await seedStorage();
     const { deps, err } = harness(storage);

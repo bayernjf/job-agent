@@ -17,7 +17,7 @@ import { parseArgs } from 'node:util';
 import {
   EvidenceItemSchema,
   LocalResumeFieldsSchema,
-  JobPostingSchema,
+  JobPostingReadSchema,
   parseAbilityProfile,
   type AbilityProfile,
   type EvidenceItem,
@@ -121,12 +121,12 @@ async function runBuild(rest: string[], deps: CliDeps): Promise<number> {
   if (values['job-file']) {
     const raw = readJson(values['job-file'], 'job', logger);
     if (raw === null) return 1;
-    const parsed = JobPostingSchema.safeParse(raw);
+    const parsed = JobPostingReadSchema.safeParse(raw);
     if (!parsed.success) {
       logger.error(`job-file ${values['job-file']} is not a valid JobPosting: ${parsed.error.issues[0]?.message}`);
       return 1;
     }
-    posting = parsed.data;
+    posting = parsed.data as JobPosting;
   } else if (values.job) {
     storage = storage ?? (await resolveCliStorage(deps));
     const row = await storage.jobPostings.getById(values.job);
@@ -134,7 +134,7 @@ async function runBuild(rest: string[], deps: CliDeps): Promise<number> {
       logger.error(`job posting '${values.job}' not found in local DB (try 'jobagent jobs search')`);
       return 1;
     }
-    posting = JobPostingSchema.parse(row);
+    posting = JobPostingReadSchema.parse(row) as JobPosting;
   } else {
     logger.error('one of --job <jobId> or --job-file <posting.json> is required');
     return 2;
@@ -331,7 +331,7 @@ async function runBatch(rest: string[], deps: CliDeps): Promise<number> {
         return 1;
       }
       const [m] = matchJobs([row], { skills, limit: 1 });
-      items.push({ posting: JobPostingSchema.parse(row), internalId: row.id, matched: fromJobMatch(m ?? null) });
+      items.push({ posting: JobPostingReadSchema.parse(row) as JobPosting, internalId: row.id, matched: fromJobMatch(m ?? null) });
     }
   } else {
     const candidates = await storage.jobPostings.search({ limit: 500, orderBy: 'posted_desc' });
@@ -341,7 +341,7 @@ async function runBatch(rest: string[], deps: CliDeps): Promise<number> {
       return 0;
     }
     for (const m of matches) {
-      items.push({ posting: JobPostingSchema.parse(m.posting), internalId: (m.posting as { id?: string }).id ?? m.posting.jobId, matched: fromJobMatch(m) });
+      items.push({ posting: JobPostingReadSchema.parse(m.posting) as JobPosting, internalId: (m.posting as { id?: string }).id ?? m.posting.jobId, matched: fromJobMatch(m) });
     }
   }
 

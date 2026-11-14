@@ -190,6 +190,33 @@ describe('POST /resumes/build', () => {
     expect(body.draft.generatedAt).toBe(NOW);
   });
 
+  it('renders a stored posting whose source predates the write enum (no 500)', async () => {
+    // UAT 曾经 raw SQL 直插 source='uat' 的行：读路径不得因写路径的 source 枚举拒绝它
+    // （公开的 /job-postings/match 读侧本就不校验 source）。修复前这里返回 500。
+    const { app, repos } = await harness();
+    await repos.jobPostings.upsertBatch(
+      [
+        posting({
+          title: 'UAT Seeded TypeScript Engineer',
+          source: 'uat' as JobPosting['source'],
+          sourceUrl: 'https://example.test/jobs/uat-1',
+          tags: ['typescript'],
+          description: 'typescript backend role',
+        }),
+      ],
+      NOW,
+    );
+    const [row] = await repos.jobPostings.search({ keyword: 'UAT Seeded' });
+    const res = await app.request('/resumes/build', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: 'p-resume', jobId: row!.id }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as BuildOkResponse;
+    expect(body.draft.targetJob.title).toBe('UAT Seeded TypeScript Engineer');
+  });
+
   it('renders html and markdown on demand', async () => {
     const { app, jobId } = await harness();
     const htmlRes = await app.request('/resumes/build', {
