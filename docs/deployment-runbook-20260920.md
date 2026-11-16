@@ -293,7 +293,7 @@ JOB_AGENT_IMAGE_TAG=20261108-1400 \
 - 需要跨机保留时用 `docker save job-agent-<service>:<tag> | gzip` 异地保存，
   目标机 `docker load`；这仍不等价于 registry 的不可变 digest。
 
-回滚镜像只回代码；数据库回滚另走 `tools/backup-db.sh` 的 dump（本仓尚无恢复脚本，
+回滚镜像只回代码；数据库回滚另走分段备份的产物（`tools/backup-db-chunked.sh` → `~/000mycodes-backups/job-agent`，已验证可 restore；本仓尚无恢复脚本，
 恢复步骤未演练）。
 
 ## 7. 定时任务（cron）
