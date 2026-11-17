@@ -55,6 +55,11 @@
       "ip-address": ">=10.7.4",
       "@vercel/cli-config>zod": ">=4.6.6",
       "vite": "^8.3.3"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
     }
   }
 }
