@@ -92,8 +92,8 @@ importers:
         specifier: workspace:*
         version: link:../worker
       '@model-hub/model-kit':
-        specifier: file:../../vendor/model-hub-model-kit-0.3.0.tgz
-        version: file:vendor/model-hub-model-kit-0.3.0.tgz
+        specifier: file:../../vendor/model-hub-model-kit-0.4.0.tgz
+        version: file:vendor/model-hub-model-kit-0.4.0.tgz
       hono:
         specifier: ^4.13.11
         version: 4.13.13
@@ -1471,9 +1471,9 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
-  '@model-hub/model-kit@file:vendor/model-hub-model-kit-0.3.0.tgz':
-    resolution: {integrity: sha512-HxtqKdTRbP7aXuAdT3Jw0C52I6LYSADJ9RQn1PlnK0Ny1lF1naZsZWhFuXjtlCggAeN2rnae70uN5Jimopw5ow==, tarball: file:vendor/model-hub-model-kit-0.3.0.tgz}
-    version: 0.3.0
+  '@model-hub/model-kit@file:vendor/model-hub-model-kit-0.4.0.tgz':
+    resolution: {integrity: sha512-tRGm+vNodprn+wzb9Qo/Zkxf8B4UzWpoWiXP23OjuzTqJTlCnX2lpSUmCuamInFCtGA4971sNQMdE2XydozNQw==, tarball: file:vendor/model-hub-model-kit-0.4.0.tgz}
+    version: 0.4.0
     engines: {node: '>=22.0.0'}
 
   '@modelcontextprotocol/sdk@1.32.2':
@@ -5533,7 +5533,7 @@ snapshots:
       - encoding
       - supports-color
 
-  '@model-hub/model-kit@file:vendor/model-hub-model-kit-0.3.0.tgz':
+  '@model-hub/model-kit@file:vendor/model-hub-model-kit-0.4.0.tgz':
     dependencies:
       ws: 8.22.1
     transitivePeerDependencies:
