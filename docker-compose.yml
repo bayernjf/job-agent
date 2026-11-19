@@ -52,6 +52,7 @@ services:
       DB_PATH: /app/data/job-agent.db
       DATABASE_URL: ${DATABASE_URL:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:4321}
     volumes:
       - appdata:/app/data
     depends_on:
@@ -82,6 +83,8 @@ services:
     build:
       context: .
       target: report
+      args:
+        PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:13000}
     ports:
       - "4321:4321"
     environment:
@@ -89,6 +92,7 @@ services:
       DB_DRIVER: ${DB_DRIVER:-sqlite}
       DB_PATH: /app/data/job-agent.db
       DATABASE_URL: ${DATABASE_URL:-}
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:13000}
     volumes:
       - appdata:/app/data
     depends_on:
