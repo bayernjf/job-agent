@@ -56,6 +56,9 @@ RUN pnpm install --frozen-lockfile
 
 # ---- Build all workspace packages ----
 FROM deps AS build
+# PUBLIC_API_BASE is baked into the report's client bundle at build time.
+ARG PUBLIC_API_BASE=
+ENV PUBLIC_API_BASE=$PUBLIC_API_BASE
 COPY . .
 RUN pnpm -r build
 
